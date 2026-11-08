@@ -44,7 +44,7 @@ final class OverlayWindow: NSPanel {
             defer: false
         )
 
-        configureStealthProperties()
+        configureWindowBehavior()
         configureAppearance()
         switch SettingsManager.shared.overlayAnchorEdge {
         case .left:
@@ -137,27 +137,20 @@ final class OverlayWindow: NSPanel {
         updateScale(contentView?.layer)
     }
 
-    private func configureStealthProperties() {
-        // Critical: Make invisible to screen capture/sharing
-        self.sharingType = .none
-
-        // Floating above other windows but below screen capture
+    /// The interviewer's app has nothing to hide: the window shows up in
+    /// screen sharing, screenshots and Mission Control like any other. It
+    /// floats above other windows so it stays beside the video call, and it
+    /// can follow the interviewer into a full screen call.
+    private func configureWindowBehavior() {
         self.level = .floating
-
-        // Appear on all spaces and work with fullscreen apps
         self.collectionBehavior = [
             .canJoinAllSpaces,
-            .fullScreenAuxiliary,
-            .transient
+            .fullScreenAuxiliary
         ]
-
-        // Don't show in Mission Control or app exposé
-        self.collectionBehavior.insert(.stationary)
 
         // Allow interaction without activating the app
         self.hidesOnDeactivate = false
         self.ignoresMouseEvents = false
-        StealthCursorGuard.shared.install()
 
         // Can become key window for keyboard input
         self.becomesKeyOnlyIfNeeded = true

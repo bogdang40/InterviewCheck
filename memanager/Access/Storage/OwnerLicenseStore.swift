@@ -16,7 +16,7 @@ struct FileOwnerLicenseStore: OwnerLicenseStoring {
             return TestRuntime.temporaryDirectory.appendingPathComponent("owner.license")
         }
         return FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".memanager", isDirectory: true)
+            .appendingPathComponent(AppBrand.homeFolder, isDirectory: true)
             .appendingPathComponent("owner.license")
     }()
 

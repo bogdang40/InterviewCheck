@@ -16,7 +16,7 @@ export class BillingReturnPage {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="refresh" content="1;url=${deepLink}">
-<title>memanager</title>
+<title>InterviewCheck</title>
 <style>
   :root { color-scheme: light dark; }
   body { margin: 0; font: 16px/1.5 -apple-system, BlinkMacSystemFont, "SF Pro Text", Helvetica, Arial, sans-serif;
@@ -33,8 +33,8 @@ export class BillingReturnPage {
 <main>
   <h1>${copy.title}</h1>
   <p>${copy.body}</p>
-  <p>You can close this tab and return to memanager.</p>
-  <a class="button" href="${deepLink}">Open memanager</a>
+  <p>You can close this tab and return to InterviewCheck.</p>
+  <a class="button" href="${deepLink}">Open InterviewCheck</a>
 </main>
 </body>
 </html>`;
@@ -47,7 +47,7 @@ export class BillingReturnPage {
   private static copyFor(status: "success" | "cancel" | "portal"): { title: string; body: string } {
     switch (status) {
       case "success":
-        return { title: "Subscription active", body: "Payment received. memanager unlocks automatically within a few seconds." };
+        return { title: "Subscription active", body: "Payment received. InterviewCheck unlocks automatically within a few seconds." };
       case "cancel":
         return { title: "Checkout cancelled", body: "No charge was made. You can subscribe any time from the app." };
       case "portal":

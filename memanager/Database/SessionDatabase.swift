@@ -129,7 +129,7 @@ final class SessionDatabase {
 
     private static func defaultDatabasePath() -> String {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let dbDir = appSupport.appendingPathComponent("memanager/db")
+        let dbDir = appSupport.appendingPathComponent("\(AppBrand.storageFolder)/db")
         return dbDir.appendingPathComponent("sessions.sqlite").path
     }
 }

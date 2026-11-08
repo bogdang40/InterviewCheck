@@ -2,6 +2,7 @@ import Foundation
 
 /// One page of the Settings screen. Order here is display order in the rail.
 enum SettingsPane: String, CaseIterable, Identifiable {
+    case detector
     case aiProvider
     case hotkeys
     case modes
@@ -16,6 +17,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
+        case .detector: return "Detector"
         case .aiProvider: return "Providers"
         case .hotkeys: return "Hotkeys"
         case .modes: return "Modes"
@@ -31,12 +33,13 @@ enum SettingsPane: String, CaseIterable, Identifiable {
     /// One line under the pane title saying what lives on the page.
     var caption: String {
         switch self {
+        case .detector: return "Which AIs answer each question, the AI review, and the candidate notice"
         case .aiProvider: return "Keys, models, and connection checks"
         case .hotkeys: return "Every action and the key that triggers it"
         case .modes: return "Prompt presets, attachments, and project folders for Quick Assist"
         case .appearance: return "Overlay, text, audio, diagnostics, and the intelligent hub"
         case .voice: return "Speaker identification and your voice signature"
-        case .permissions: return "System access Abley needs to listen and see"
+        case .permissions: return "System access \(AppBrand.name) needs to hear the interview"
         case .account: return "Sign in, entitlement, billing, and the owner license"
         case .admin: return "Accounts, grants, and roles on the access server"
         case .about: return "Version and quit"
@@ -45,6 +48,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
 
     var systemImage: String {
         switch self {
+        case .detector: return "checkmark.shield"
         case .aiProvider: return "brain"
         case .hotkeys: return "keyboard"
         case .modes: return "square.stack.3d.up.fill"

@@ -7,7 +7,7 @@ enum PaywallPresentation {
         switch snapshot.entitlement.source {
         case .none:
             if let trial = snapshot.user.trialEndsAt, let date = ISO8601DateParser.parse(trial), date < now {
-                return "Your trial has ended. Subscribe to keep using Abley."
+                return "Your trial has ended. Subscribe to keep using \(AppBrand.name)."
             }
             if let status = snapshot.subscription?.status, status != "active" {
                 return "Your subscription is \(status.replacingOccurrences(of: "_", with: " ")). Renew to continue."

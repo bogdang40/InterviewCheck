@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Settings as an overlay screen: a page rail on the left and the selected
 /// page on the right. Replaces the separate Settings window so the pages
-/// share the stealth overlay's look and its screen capture protection.
+/// share the main window's look.
 struct SettingsScreen: View {
     @ObservedObject private var settings = SettingsManager.shared
     @ObservedObject private var access = AccessController.shared

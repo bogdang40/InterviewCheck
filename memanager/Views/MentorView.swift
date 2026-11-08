@@ -1,7 +1,7 @@
 import Combine
 import SwiftUI
 
-/// Root of the stealth overlay. Shows the access gate until the account is
+/// Root of the main window. Shows the access gate until the account is
 /// entitled, then the shell. Three native backgrounds share geometry with
 /// the retained content and leave real desktop gaps between the islands.
 struct MentorView: View {

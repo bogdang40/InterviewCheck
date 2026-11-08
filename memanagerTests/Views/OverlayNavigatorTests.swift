@@ -70,7 +70,7 @@ final class OverlayNavigatorTests: XCTestCase {
     }
 
     func testSwitchableScreensExcludeTheMentorSurface() {
-        XCTAssertEqual(OverlayScreen.switchable, [.workspaces, .knowledge, .practice, .history, .settings])
+        XCTAssertEqual(OverlayScreen.switchable, [.workspaces, .history, .settings])
         XCTAssertFalse(OverlayScreen.switchable.contains(.mentor))
         for screen in OverlayScreen.allCases {
             XCTAssertFalse(screen.title.isEmpty)

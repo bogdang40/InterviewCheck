@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// The sign in, paywall, and unreachable steps, rendered inside the stealth
+/// The sign in, paywall, and unreachable steps, rendered inside the main
 /// overlay in place of the shell until the controller reports access. The
 /// overlay has no close box, so the header carries Quit and the footer
 /// prints the keys that show or hide the panel.
@@ -38,7 +38,7 @@ struct AccessGateView: View {
                     .frame(width: 18, height: 18)
                     .accessibilityHidden(true)
             }
-            Text("Abley")
+            Text(AppBrand.name)
                 .font(OverlayType.callout)
                 .foregroundStyle(OverlayPalette.textPrimary)
             Spacer(minLength: 0)
@@ -54,7 +54,7 @@ struct AccessGateView: View {
                 }
             }
             .buttonStyle(.overlay(.ghost, size: .small))
-            .help("Quit Abley")
+            .help("Quit \(AppBrand.name)")
         }
         .padding(.horizontal, DesignTokens.Spacing.md)
         .frame(height: OverlayLayout.commandBarHeight)

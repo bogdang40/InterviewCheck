@@ -13,9 +13,9 @@ import { OwnerLicenseSigner } from "../owner/OwnerLicenseSigner.js";
  *   npm run owner-license -- verify --public-key <base64> --device auto
  *   npm run owner-license -- public-key
  *
- * keygen writes the private key to ~/.memanager/owner-signing.key (mode 600)
+ * keygen writes the private key to ~/.interviewcheck/owner-signing.key (mode 600)
  * and prints the public key to paste into OwnerLicensePublicKey.swift.
- * issue writes ~/.memanager/owner.license, which the app reads at launch.
+ * issue writes ~/.interviewcheck/owner.license, which the app reads at launch.
  */
 class OwnerLicenseCommand {
   constructor(private readonly args: readonly string[]) {}

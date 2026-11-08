@@ -19,7 +19,7 @@ struct PermissionsSettingsView: View {
                 actions: [BannerAction(title: "Refresh") { permissionManager.refreshAllStatuses() }]
             )
 
-            SettingsSection("System access", footer: "Some permissions take effect only after Abley is restarted.") {
+            SettingsSection("System access", footer: "Some permissions take effect only after \(AppBrand.name) is restarted.") {
                 ForEach(PermissionType.allCases) { permission in
                     PermissionRow(
                         permission: permission,

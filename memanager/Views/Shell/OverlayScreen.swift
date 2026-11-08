@@ -1,9 +1,8 @@
 import Foundation
 
-/// Top level screens the stealth overlay can show. `mentor` is the live
-/// interview surface (Assist, Solve, Design, Transcript); the others are
-/// full screens that share the overlay so nothing about memanager is ever
-/// visible to screen capture.
+/// Top level screens the main window can show. `mentor` is the live
+/// interview; the others (roles, reports, settings) are full screens in
+/// the same window.
 enum OverlayScreen: String, CaseIterable, Identifiable {
     case mentor
     case workspaces
@@ -17,7 +16,7 @@ enum OverlayScreen: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .mentor: return "Mentor"
-        case .workspaces: return "Workspaces"
+        case .workspaces: return "Roles"
         case .knowledge: return "Knowledge"
         case .practice: return "Practice"
         case .history: return "History"
@@ -38,8 +37,8 @@ enum OverlayScreen: String, CaseIterable, Identifiable {
 
     var help: String {
         switch self {
-        case .mentor: return "Back to the interview surface"
-        case .workspaces: return "Job Workspaces: one folder per role, injected into Quick Assist"
+        case .mentor: return "Back to the interview"
+        case .workspaces: return "Roles: job description, planned questions and cheater prompts"
         case .knowledge: return "Personal Knowledge Graph: facts about you that Quick Assist can cite"
         case .practice: return "Practice: spaced repetition cards built from your sessions"
         case .history: return "History: past sessions, replay, and debriefs"
@@ -49,5 +48,5 @@ enum OverlayScreen: String, CaseIterable, Identifiable {
 
     /// Screens offered in the command bar, in display order. `mentor` is
     /// reached by picking any surface instead.
-    static let switchable: [OverlayScreen] = [.workspaces, .knowledge, .practice, .history, .settings]
+    static let switchable: [OverlayScreen] = [.workspaces, .history, .settings]
 }

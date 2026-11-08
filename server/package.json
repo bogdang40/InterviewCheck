@@ -2,7 +2,7 @@
   "name": "memanager-access-server",
   "version": "0.1.0",
   "private": true,
-  "description": "Accounts, Stripe subscriptions, entitlements, and admin API for the memanager macOS app.",
+  "description": "Accounts, Stripe subscriptions, entitlements, and admin API for the InterviewCheck macOS app.",
   "type": "module",
   "engines": {
     "node": ">=22.13"

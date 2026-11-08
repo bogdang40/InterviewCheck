@@ -95,18 +95,19 @@ final class HotkeyActionWiring {
         let sectionNavigation = self.sectionNavigation
         let stepNavigation = self.stepNavigation
 
+        // Start opens the interview setup; recording starts from there, after
+        // the interviewer confirms the candidate was told.
         hotkeyManager.onStartSession = {
-            sessionLifecycle.startSession()
+            Task { @MainActor in OverlayNavigator.shared.returnToMentor() }
         }
 
         hotkeyManager.onScreenshot = {
             ScreenshotService.shared.captureFullScreen()
         }
 
+        // Cmd+Shift+Return: the interviewer just asked a question.
         hotkeyManager.onSolve = {
-            Task {
-                await solveControl.solve()
-            }
+            Task { @MainActor in InterviewController.shared.markQuestion() }
         }
 
         hotkeyManager.onResetSession = {
@@ -121,8 +122,9 @@ final class HotkeyActionWiring {
             sessionLifecycle.togglePauseSession()
         }
 
+        // Cmd+Shift+E: the candidate finished answering.
         hotkeyManager.onEndSession = {
-            sessionLifecycle.endSession()
+            Task { @MainActor in InterviewController.shared.answerDone() }
         }
 
         hotkeyManager.onNextSection = {

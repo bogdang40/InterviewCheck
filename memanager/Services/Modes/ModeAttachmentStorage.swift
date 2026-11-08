@@ -32,7 +32,7 @@ final class FileSystemModeAttachmentStorage: ModeAttachmentStoring {
             return TestRuntime.temporaryDirectory.appendingPathComponent("modes", isDirectory: true)
         }
         let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        return appSupport.appendingPathComponent("memanager/modes", isDirectory: true)
+        return appSupport.appendingPathComponent("\(AppBrand.storageFolder)/modes", isDirectory: true)
     }
 
     func attachmentsDirectory(for modeID: UUID) throws -> URL {

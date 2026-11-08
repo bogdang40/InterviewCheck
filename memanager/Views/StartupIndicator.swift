@@ -15,19 +15,17 @@ final class StartupIndicatorWindow: NSPanel {
             defer: false
         )
 
-        configureStealthProperties()
+        configureWindowBehavior()
         configureAppearance()
         centerOnScreen()
     }
 
-    private func configureStealthProperties() {
-        sharingType = .none
+    private func configureWindowBehavior() {
         level = .floating
         collectionBehavior = [
             .canJoinAllSpaces,
             .fullScreenAuxiliary,
-            .transient,
-            .stationary
+            .transient
         ]
         hidesOnDeactivate = false
     }

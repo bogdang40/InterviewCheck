@@ -112,7 +112,7 @@ class Fixture:
         scripts.mkdir(exist_ok=True)
         name = 'build-' + self.config.lower() + '.sh'
         source = (ROOT / 'scripts' / name).read_text()
-        old_target = 'DEPLOY_TARGET="$HOME/.memanager/memanager.app"'
+        old_target = 'DEPLOY_TARGET="$HOME/.interviewcheck/InterviewCheck.app"'
         assert source.count(old_target) == 1
         source = source.replace(old_target, 'DEPLOY_TARGET=' + shlex.quote(str(self.deploy)))
         # Keep the real user's environment and log untouched, even in debug cases.

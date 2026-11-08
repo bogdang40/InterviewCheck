@@ -20,7 +20,8 @@ struct OverlayShellView: View {
             isTranscriptVisible: controller.isTranscriptViewVisible,
             currentSection: controller.currentSection).surface
     }
-    private var assistOwnsDock: Bool { navigator.isShowingMentor && surface == .assist }
+    /// The interview screens always keep the utility dock below them.
+    private var assistOwnsDock: Bool { false }
     private var borderWidth: CGFloat {
         CGFloat(settings.configuration(for: settings.borderShaderStyle)?.width ?? 0)
     }
@@ -122,16 +123,6 @@ struct OverlayShellView: View {
                     .padding(.horizontal, 8)
                     .padding(.vertical, 5)
                     .overlay(Capsule().stroke(OverlayPalette.hairline.opacity(0.45), lineWidth: 1))
-                Button {
-                    if controller.session.state == .idle { controller.startSession() }
-                    else { controller.togglePauseSession() }
-                } label: {
-                    Image(systemName: controller.session.state == .listening ? "pause.fill" : "play.fill")
-                        .foregroundStyle(OverlayPalette.accent)
-                }
-                .buttonStyle(.overlayIcon(size: 34))
-                .accessibilityLabel(controller.session.state == .idle ? "Start session"
-                    : controller.session.state == .paused ? "Resume session" : "Pause session")
             }
         }
         .padding(.horizontal, 20)
@@ -139,62 +130,31 @@ struct OverlayShellView: View {
     }
 
     @ViewBuilder private var localNavigation: some View {
-        if navigator.destination == .live {
-            HStack(spacing: 18) {
-                ForEach([MentorSurface.assist, .solve, .design]) { item in
-                    Button { select(item) } label: {
-                        Text(item.title)
-                            .font(.system(size: 14, weight: surface == item ? .medium : .regular))
-                            .foregroundStyle(surface == item ? OverlayPalette.accent : OverlayPalette.textPrimary)
-                            .frame(height: 40)
-                            .overlay(alignment: .bottom) {
-                                if surface == item {
-                                    Capsule().fill(OverlayPalette.accent).frame(height: 2)
-                                }
-                            }
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityAddTraits(surface == item ? .isSelected : [])
-                }
-                Button("Context") { drawerVisible.toggle() }
-                    .font(.system(size: 14))
-                    .foregroundStyle(drawerVisible ? OverlayPalette.accent : OverlayPalette.textPrimary)
-                    .buttonStyle(.plain)
-                    .frame(height: 40)
-            }
-        } else if navigator.destination == .prepare {
-            SegmentStrip(items: [OverlayScreen.workspaces, .knowledge, .practice].map {
-                SegmentItem(id: $0, title: $0.title, systemImage: $0.systemImage)
-            }, selection: Binding(get: { navigator.screen }, set: navigator.show))
-        } else {
-            HStack {
-                Text(navigator.destination == .review ? "Session review" : "Settings")
-                    .font(OverlayType.heading).foregroundStyle(OverlayPalette.textPrimary)
-                Spacer(minLength: 0)
-                if navigator.destination == .settings {
-                    Button("Done") { navigator.toggle(.settings) }
-                        .buttonStyle(.overlay(.ghost, size: .small))
-                }
+        HStack {
+            Text(navigator.destination.heading)
+                .font(OverlayType.heading).foregroundStyle(OverlayPalette.textPrimary)
+            Spacer(minLength: 0)
+            if navigator.destination == .settings {
+                Button("Done") { navigator.toggle(.settings) }
+                    .buttonStyle(.overlay(.ghost, size: .small))
             }
         }
+        .frame(height: 40)
     }
 
     private func utilityDock(width: CGFloat) -> some View {
         VStack(spacing: 2) {
             HStack(spacing: 10) {
                 Button { navigator.show(.workspaces) } label: {
-                    Label(workspaceStore.activeWorkspace?.displayTitle ?? "Choose a workspace", systemImage: "folder")
+                    Label(workspaceStore.activeWorkspace.map { "Role: \($0.displayTitle)" } ?? "Choose a role",
+                          systemImage: "briefcase")
                         .lineLimit(1)
                 }
-                .help("Current workspace. Choose or prepare context for future answers.")
+                .help("The role whose job description and prompts the interview uses.")
                 Spacer(minLength: 0)
-                if navigator.isShowingMentor {
-                    Button("Transcript", systemImage: "text.alignleft") { controller.showTranscriptLog() }
-                } else {
-                    Button("Live", systemImage: "waveform.path") { navigator.returnToMentor() }
+                if !navigator.isShowingMentor {
+                    Button("Interview", systemImage: "waveform.path") { navigator.returnToMentor() }
                 }
-                Button { screenshotService.captureFullScreen() } label: { Image(systemName: "camera.viewfinder") }
-                    .accessibilityLabel("Capture screen")
             }
             .buttonStyle(.overlay(.ghost, size: .small))
             .padding(.horizontal, 12)
@@ -208,7 +168,8 @@ struct OverlayShellView: View {
     }
 
     @ViewBuilder private func destinationHost(_ screen: OverlayScreen, width: CGFloat) -> some View {
-        if screen == .mentor { MentorStage(width: width) }
+        if screen == .mentor { InterviewScreen(width: width) }
+        else if screen == .history { InterviewReportsScreen(width: width) }
         else { OverlayScreenHost(screen: screen) }
     }
 
@@ -228,8 +189,8 @@ struct OverlayShellView: View {
     }
 
     private var sessionActions: SessionPillActions {
-        SessionPillActions(start: { controller.startSession() }, pauseOrResume: { controller.togglePauseSession() },
-            end: { controller.endSession() }, reset: { controller.resetSession() },
+        SessionPillActions(start: { navigator.returnToMentor() }, pauseOrResume: { controller.togglePauseSession() },
+            end: { InterviewController.shared.end() }, reset: {},
             screenshot: { screenshotService.captureFullScreen() })
     }
 

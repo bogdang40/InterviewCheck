@@ -10,8 +10,27 @@ struct CheatScoreWeights: Equatable, Codable {
     var minimumWordsForConfidence = 40
     /// Answers at least this long, with references and the judge, can be high confidence.
     var wordsForHighConfidence = 60
+    /// The detector never claims certainty: shown scores stop here.
+    var maximumPercent = 95
 
     static let `default` = CheatScoreWeights()
+}
+
+extension CheatScoreWeights {
+    /// Missing keys (from an older saved version) fall back to defaults.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let fallback = CheatScoreWeights()
+        timing = try container.decodeIfPresent(Double.self, forKey: .timing) ?? fallback.timing
+        fluency = try container.decodeIfPresent(Double.self, forKey: .fluency) ?? fallback.fluency
+        similarity = try container.decodeIfPresent(Double.self, forKey: .similarity) ?? fallback.similarity
+        judge = try container.decodeIfPresent(Double.self, forKey: .judge) ?? fallback.judge
+        minimumWordsForConfidence = try container.decodeIfPresent(Int.self, forKey: .minimumWordsForConfidence)
+            ?? fallback.minimumWordsForConfidence
+        wordsForHighConfidence = try container.decodeIfPresent(Int.self, forKey: .wordsForHighConfidence)
+            ?? fallback.wordsForHighConfidence
+        maximumPercent = try container.decodeIfPresent(Int.self, forKey: .maximumPercent) ?? fallback.maximumPercent
+    }
 }
 
 enum ScoreConfidence: String, Codable, Equatable {
@@ -71,7 +90,7 @@ enum CheatScorer {
 
         let notes = ScoreNotes.build(timing: timing, fluency: fluency, similarity: similarity, judge: judge)
         return AnswerScore(
-            percent: min(max(percent, 0), 100),
+            percent: min(max(percent, 0), weights.maximumPercent),
             confidence: confidence,
             reasons: notes.reasons,
             counterpoints: notes.counterpoints,

@@ -6,7 +6,7 @@ import Foundation
 enum WorkspaceFolderLayout {
     static let manifestFileName = "workspace.json"
     static let readmeFileName = "README.md"
-    static let defaultRootFolderName = "memanager Workspaces"
+    static let defaultRootFolderName = AppBrand.rolesFolder
 
     /// Subfolders created for every new workspace, in display order.
     static let provisionedCategories: [WorkspaceDocumentCategory] = [

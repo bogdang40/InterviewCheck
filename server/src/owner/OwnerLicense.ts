@@ -23,5 +23,5 @@ export interface OwnerLicenseEnvelope {
 export const OWNER_LICENSE_VERSION = 1 as const;
 
 /** Default locations next to the deployed app. */
-export const OWNER_LICENSE_DEFAULT_PATH = "~/.memanager/owner.license";
-export const OWNER_SIGNING_KEY_DEFAULT_PATH = "~/.memanager/owner-signing.key";
+export const OWNER_LICENSE_DEFAULT_PATH = "~/.interviewcheck/owner.license";
+export const OWNER_SIGNING_KEY_DEFAULT_PATH = "~/.interviewcheck/owner-signing.key";

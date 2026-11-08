@@ -160,8 +160,8 @@ final class AccessControllerTests: XCTestCase {
         await controller.startCheckout(plan: "annual")
         XCTAssertEqual(opened, [client.checkoutURL])
         XCTAssertTrue(controller.isAwaitingCheckout)
-        XCTAssertTrue(controller.handleDeepLink(URL(string: "memanager://billing/cancel")!))
+        XCTAssertTrue(controller.handleDeepLink(URL(string: "interviewcheck://billing/cancel")!))
         XCTAssertFalse(controller.isAwaitingCheckout)
-        XCTAssertFalse(controller.handleDeepLink(URL(string: "memanager://nothing")!))
+        XCTAssertFalse(controller.handleDeepLink(URL(string: "interviewcheck://nothing")!))
     }
 }

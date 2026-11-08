@@ -4,7 +4,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 BUILD_OUTPUT="$ROOT_DIR/build/DerivedData/Build/Products/Release/memanager.app"
-DEPLOY_TARGET="$HOME/.memanager/memanager.app"
+DEPLOY_TARGET="$HOME/.interviewcheck/InterviewCheck.app"
 DEVELOPMENT_TEAM_ID="${MEMANAGER_DEVELOPMENT_TEAM:-}"
 CODE_SIGN_IDENTITY_VALUE="${MEMANAGER_CODE_SIGN_IDENTITY:-Apple Development}"
 USE_ADHOC_SIGNING=0

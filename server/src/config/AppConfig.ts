@@ -43,7 +43,7 @@ const schema = z.object({
   APP_URL_SCHEME: z
     .string()
     .regex(/^[a-z][a-z0-9+.-]*$/i, "must be a valid URL scheme")
-    .default("memanager"),
+    .default("interviewcheck"),
 });
 
 export type AppConfig = Readonly<z.infer<typeof schema>>;

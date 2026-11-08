@@ -15,7 +15,7 @@ extension HotkeyRegistry {
         ),
         .init(
             id: "startSession",
-            title: "Start Session",
+            title: "New Interview",
             shortcut: "Cmd+Shift+S",
             scope: .global,
             owner: .session,
@@ -37,7 +37,7 @@ extension HotkeyRegistry {
         ),
         .init(
             id: "endSession",
-            title: "End Session",
+            title: "Answer Done",
             shortcut: "Cmd+Shift+E",
             scope: .global,
             owner: .session,
@@ -103,7 +103,7 @@ extension HotkeyRegistry {
         ),
         .init(
             id: "solve",
-            title: "Solve",
+            title: "Question Asked",
             shortcut: "Cmd+Shift+Return",
             scope: .global,
             owner: .session,

@@ -33,7 +33,7 @@ final class SessionDatabaseCharacterizationTests: XCTestCase {
         let inspector = SQLiteInspector(path: databasePath)
         defer { inspector.close() }
 
-        XCTAssertEqual(inspector.userVersion(), 16, "schema version must stay frozen at 16 until an intentional migration is added")
+        XCTAssertEqual(inspector.userVersion(), 17, "schema version must stay frozen at 17 until an intentional migration is added")
 
         let expectedTables = [
             "sessions",
@@ -47,7 +47,13 @@ final class SessionDatabaseCharacterizationTests: XCTestCase {
             "workspace_documents",
             "workspace_journal",
             "kg_nodes",
-            "kg_edges"
+            "kg_edges",
+            "interviews",
+            "interview_words",
+            "interview_questions",
+            "reference_answers",
+            "answer_scores",
+            "role_profiles"
         ]
         let tables = inspector.tableNames()
         for table in expectedTables {
@@ -66,7 +72,7 @@ final class SessionDatabaseCharacterizationTests: XCTestCase {
 
         let inspector = SQLiteInspector(path: databasePath)
         defer { inspector.close() }
-        XCTAssertEqual(inspector.userVersion(), 16, "rerunning migrations on an up-to-date database must not change user_version")
+        XCTAssertEqual(inspector.userVersion(), 17, "rerunning migrations on an up-to-date database must not change user_version")
 
         let state = reopened.loadPracticeState()
         XCTAssertEqual(state.cards, [card], "data written before reopen must survive the migration rerun")

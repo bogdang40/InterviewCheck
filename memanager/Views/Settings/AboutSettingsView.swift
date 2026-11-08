@@ -20,7 +20,7 @@ struct AboutSettingsView: View {
                     .frame(width: 40, height: 40)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: DesignTokens.Spacing.xxs) {
-                    Text("Abley")
+                    Text(AppBrand.name)
                         .font(OverlayType.display)
                         .foregroundStyle(OverlayPalette.textPrimary)
                     Text("Version \(version)")
@@ -40,7 +40,7 @@ struct AboutSettingsView: View {
             }
 
             SettingsSection("Quit") {
-                SettingsRow(title: "Quit Abley", helper: "Ends the session and closes the overlay.") {
+                SettingsRow(title: "Quit \(AppBrand.name)", helper: "Ends the interview and closes the app.") {
                     Button {
                         NSApplication.shared.terminate(nil)
                     } label: {

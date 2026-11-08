@@ -140,8 +140,11 @@ final class AccessAPIClient: AccessAPIClienting {
 /// app anywhere; release builds are pinned to the shipped origin so the
 /// paywall cannot be redirected to a look alike server from the UI.
 enum AccessServerAddress {
-    /// Set this to the deployed origin before shipping a release build.
-    static let releaseOrigin = "https://access.memanager.app"
+    /// Set this to the deployed origin before shipping a release build. The
+    /// original app's server is not ours; until our own access server is
+    /// deployed, release builds point at a local one and the owner license
+    /// unlocks the developer's Mac.
+    static let releaseOrigin = "http://localhost:8787"
 
     #if DEBUG
     static let isEditable = true

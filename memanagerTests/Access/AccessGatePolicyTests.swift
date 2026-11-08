@@ -89,10 +89,10 @@ final class AccessGatePolicyTests: XCTestCase {
     }
 
     func testDeepLinkParsing() {
-        XCTAssertEqual(AccessDeepLink.parse(URL(string: "memanager://billing/success")!), .billingSuccess)
-        XCTAssertEqual(AccessDeepLink.parse(URL(string: "MEMANAGER://Billing/Cancel/")!), .billingCancel)
-        XCTAssertEqual(AccessDeepLink.parse(URL(string: "memanager://billing/portal")!), .billingPortal)
-        XCTAssertNil(AccessDeepLink.parse(URL(string: "memanager://other/success")!))
+        XCTAssertEqual(AccessDeepLink.parse(URL(string: "interviewcheck://billing/success")!), .billingSuccess)
+        XCTAssertEqual(AccessDeepLink.parse(URL(string: "INTERVIEWCHECK://Billing/Cancel/")!), .billingCancel)
+        XCTAssertEqual(AccessDeepLink.parse(URL(string: "interviewcheck://billing/portal")!), .billingPortal)
+        XCTAssertNil(AccessDeepLink.parse(URL(string: "interviewcheck://other/success")!))
         XCTAssertNil(AccessDeepLink.parse(URL(string: "https://example.com/billing/success")!))
     }
 

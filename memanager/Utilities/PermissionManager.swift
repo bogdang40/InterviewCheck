@@ -22,7 +22,7 @@ final class PermissionManager: ObservableObject {
     private let permissionHistoryKey = "memanager.permissions.history"
     private let audioPermissionsCompletedKey = "memanager.permissions.audioCompleted"
 
-    /// Tracks whether audio permissions have been granted at least once (for stealth mode)
+    /// Tracks whether audio permissions have been granted at least once (so later launches skip the prompt)
     var audioPermissionsCompleted: Bool {
         get { AppDefaults.standard.bool(forKey: audioPermissionsCompletedKey) }
         set { AppDefaults.standard.set(newValue, forKey: audioPermissionsCompletedKey) }
@@ -32,7 +32,7 @@ final class PermissionManager: ObservableObject {
     func markAudioPermissionsCompletedIfReady() {
         if microphoneStatus.isGranted && speechRecognitionStatus.isGranted {
             audioPermissionsCompleted = true
-            logDebug("Audio permissions marked as completed - app can go stealth on next launch")
+            logDebug("Audio permissions marked as completed - later launches skip the prompt")
         }
     }
 

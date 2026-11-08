@@ -96,7 +96,10 @@ final class ShellChromeModelTests: XCTestCase {
         }
     }
 
-    func testSwitchableScreensCoverEveryNonMentorScreen() {
-        XCTAssertEqual(Set(OverlayScreen.switchable), Set(OverlayScreen.allCases).subtracting([.mentor]))
+    /// Knowledge and Practice were candidate features; the interviewer app
+    /// keeps their code but no longer offers them.
+    func testSwitchableScreensCoverEveryInterviewerScreen() {
+        XCTAssertEqual(Set(OverlayScreen.switchable),
+                       Set(OverlayScreen.allCases).subtracting([.mentor, .knowledge, .practice]))
     }
 }

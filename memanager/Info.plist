@@ -11,9 +11,9 @@
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
-    <string>Abley</string>
+    <string>InterviewCheck</string>
     <key>CFBundleDisplayName</key>
-    <string>Abley</string>
+    <string>InterviewCheck</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
@@ -25,19 +25,19 @@
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
 
-    <!-- Agent app - always invisible, no dock icon ever -->
+    <!-- A normal app with a Dock icon, visible in screen sharing. -->
     <key>LSUIElement</key>
-    <true/>
+    <false/>
 
     <!-- Privacy permissions -->
     <key>NSMicrophoneUsageDescription</key>
-    <string>Abley needs microphone access to transcribe coding discussions.</string>
+    <string>InterviewCheck transcribes your side of the interview so it knows when you asked each question.</string>
     <key>NSSpeechRecognitionUsageDescription</key>
-    <string>Abley uses speech recognition to convert your voice to text.</string>
+    <string>InterviewCheck uses speech recognition when no Deepgram key is set.</string>
     <key>NSAppleEventsUsageDescription</key>
-    <string>Abley needs automation access for global hotkeys.</string>
+    <string>InterviewCheck uses keyboard shortcuts such as Question asked while you are in your video call.</string>
     <key>NSScreenCaptureUsageDescription</key>
-    <string>Abley needs screen recording access to capture code on your screen.</string>
+    <string>InterviewCheck records the call's audio (the candidate's side) to time and compare their answers.</string>
 
     <!-- High resolution support -->
     <key>NSHighResolutionCapable</key>
@@ -52,10 +52,10 @@
     <array>
         <dict>
             <key>CFBundleURLName</key>
-            <string>com.memanager.app.billing</string>
+            <string>com.interviewcheck.app.billing</string>
             <key>CFBundleURLSchemes</key>
             <array>
-                <string>memanager</string>
+                <string>interviewcheck</string>
             </array>
             <key>CFBundleTypeRole</key>
             <string>Viewer</string>

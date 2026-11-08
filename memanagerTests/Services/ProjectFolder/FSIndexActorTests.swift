@@ -16,7 +16,9 @@ final class FSIndexActorTests: XCTestCase {
     }
 
     override func tearDown() {
-        try? FileManager.default.removeItem(at: root)
+        // setUp skips before assigning `root` when ripgrep is missing; using
+        // the nil value here crashed the test host once per test.
+        if let root { try? FileManager.default.removeItem(at: root) }
         super.tearDown()
     }
 

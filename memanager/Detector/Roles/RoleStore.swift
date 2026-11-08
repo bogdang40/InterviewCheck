@@ -8,7 +8,11 @@ import Foundation
 final class RoleStore: ObservableObject {
     static let shared = RoleStore()
 
-    @Published private(set) var profiles: [UUID: RoleProfile] = [:]
+    /// Bumped on every save so screens showing a role redraw.
+    @Published private(set) var revision = 0
+    /// Loaded lazily and silently, so reading a role from a view body never
+    /// publishes a change mid-draw.
+    private var cache: [UUID: RoleProfile] = [:]
     private let database: SessionDatabase
 
     init(database: SessionDatabase = .shared) {
@@ -16,10 +20,10 @@ final class RoleStore: ObservableObject {
     }
 
     func profile(for workspaceID: UUID) -> RoleProfile {
-        if let cached = profiles[workspaceID] { return cached }
+        if let cached = cache[workspaceID] { return cached }
         let loaded = database.loadRoleProfile(workspaceID: workspaceID.uuidString)
             ?? RoleProfile(workspaceID: workspaceID.uuidString)
-        profiles[workspaceID] = loaded
+        cache[workspaceID] = loaded
         return loaded
     }
 
@@ -29,7 +33,8 @@ final class RoleStore: ObservableObject {
     func save(_ profile: RoleProfile, workspace: JobWorkspace?) {
         var updated = profile
         updated.updatedAt = Date()
-        if let id = UUID(uuidString: profile.workspaceID) { profiles[id] = updated }
+        if let id = UUID(uuidString: profile.workspaceID) { cache[id] = updated }
+        revision += 1
         database.saveRoleProfile(updated)
         if let workspace { writeJobDescription(updated.jobDescription, into: workspace) }
     }

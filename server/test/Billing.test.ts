@@ -151,7 +151,7 @@ describe("billing", () => {
     const response = await harness.app.request("/v1/billing/return?status=success");
     expect(response.status).toBe(200);
     const html = await response.text();
-    expect(html).toContain("memanager://billing/success");
+    expect(html).toContain("interviewcheck://billing/success");
     expect(html).toContain("Subscription active");
   });
 });

@@ -69,9 +69,12 @@ final class OverlayWindowTests: XCTestCase {
     }
 
     @MainActor
-    func testOverlayWindowUsesMousePassthroughStealthDefaults() {
+    func testOverlayWindowUsesMousePassthroughDefaults() {
         let window = OverlayWindow()
 
+        // The interviewer version is never hidden from screen sharing.
+        XCTAssertNotEqual(window.sharingType, .none)
+        XCTAssertFalse(window.collectionBehavior.contains(.stationary))
         XCTAssertFalse(window.ignoresMouseEvents)
         XCTAssertFalse(window.isMovableByWindowBackground)
         XCTAssertTrue(window.styleMask.contains(.nonactivatingPanel))

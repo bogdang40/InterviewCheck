@@ -89,7 +89,7 @@ fi
 echo "=== Verifying staged deployment ==="
 codesign --verify --deep --strict --verbose=2 "$STAGED_APP"
 
-echo "=== Deploying to ~/.memanager ==="
+echo "=== Deploying to $DEPLOY_DIR ==="
 if [ -e "$DEPLOY_TARGET" ] || [ -L "$DEPLOY_TARGET" ]; then
   rename_bundle "$DEPLOY_TARGET" "$PREVIOUS_APP"
 fi

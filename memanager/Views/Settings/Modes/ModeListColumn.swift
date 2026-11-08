@@ -51,7 +51,7 @@ struct ModeListColumn: View {
             }
             Button("Cancel", role: .cancel) { modeToRemove = nil }
         } message: {
-            Text("This removes its saved prompt, attachments and any unsaved draft. Original files outside Abley are kept.")
+            Text("This removes its saved prompt, attachments and any unsaved draft. Original files outside \(AppBrand.name) are kept.")
         }
     }
 

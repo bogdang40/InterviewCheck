@@ -57,7 +57,7 @@ final class ProviderCredentials {
 
     private static func readFileValue(_ name: String) -> String? {
         guard !TestRuntime.isRunningUnitTests else { return nil }
-        let url = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".memanager/keys.env")
+        let url = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("\(AppBrand.homeFolder)/keys.env")
         if let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
            let permissions = attributes[.posixPermissions] as? NSNumber,
            !KeysFileAccess.isPermissionSafe(mode: permissions.uint16Value) {

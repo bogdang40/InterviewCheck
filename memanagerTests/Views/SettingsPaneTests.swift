@@ -11,7 +11,7 @@ final class SettingsPaneTests: XCTestCase {
         let member = SettingsPane.available(isAdmin: false)
         XCTAssertEqual(member, SettingsPane.allCases.filter { $0 != .admin })
         XCTAssertEqual(SettingsPane.available(isAdmin: true), SettingsPane.allCases)
-        XCTAssertEqual(member.first, .aiProvider)
+        XCTAssertEqual(member.first, .detector)
         XCTAssertEqual(member.last, .about)
     }
 

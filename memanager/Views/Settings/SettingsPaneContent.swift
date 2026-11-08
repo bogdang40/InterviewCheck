@@ -8,6 +8,8 @@ struct SettingsPaneContent: View {
 
     var body: some View {
         switch pane {
+        case .detector:
+            DetectorSettingsView()
         case .aiProvider:
             AIProviderSettingsView(draft: $providerDraft)
         case .hotkeys:

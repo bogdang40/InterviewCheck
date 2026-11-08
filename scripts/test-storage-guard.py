@@ -9,13 +9,13 @@ import sys
 
 def fingerprint():
     home = Path.home()
-    roots = [home / "Library/Application Support/memanager",
-             home / ".memanager/cache/tool-outputs",
-             home / "Documents/memanager Workspaces",
-             home / "Library/Logs/memanager"]
+    roots = [home / "Library/Application Support/InterviewCheck",
+             home / ".interviewcheck/cache/tool-outputs",
+             home / "Documents/InterviewCheck Roles",
+             home / "Library/Logs/InterviewCheck"]
     paths = {path for root in roots if root.exists() for path in root.rglob("*")}
-    paths.update([home / "Library/Preferences/com.memanager.app.plist",
-                  home / ".memanager/owner.license"])
+    paths.update([home / "Library/Preferences/com.interviewcheck.app.plist",
+                  home / ".interviewcheck/owner.license"])
     result = {}
     for path in sorted(paths):
         # SQLite shared memory holds reader locks, not persistent app data.

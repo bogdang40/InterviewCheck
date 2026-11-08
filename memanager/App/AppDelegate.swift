@@ -19,7 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @MainActor
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // App is always invisible via LSUIElement=true in Info.plist
+        // A normal app: Dock icon, visible in screen sharing and Mission Control.
 
         if AppearanceProfileSession.isRequested {
             appearanceProfileSession = AppearanceProfileSession()
@@ -75,7 +75,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Initialize hotkey manager
         hotkeyManager = HotkeyManager.shared
 
-        // Create the stealth overlay window
+        // Create the main window
         setupOverlayWindow()
 
         // Setup hotkey actions

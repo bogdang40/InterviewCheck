@@ -2,7 +2,7 @@ import SwiftUI
 
 /// The launch toast: one line saying the app is ready and the key that
 /// shows the overlay. Drawn on the palette's canvas with a hairline, no
-/// material, so it stays invisible to screen capture like the panel.
+/// material, matching the main window.
 struct StartupIndicatorView: View {
     @State private var opacity: Double = 0
 
@@ -18,7 +18,7 @@ struct StartupIndicatorView: View {
                 Image(systemName: "checkmark.circle.fill")
                     .font(OverlayType.title)
                     .foregroundStyle(OverlayTone.success.color)
-                Text("Abley ready")
+                Text("\(AppBrand.name) ready")
                     .font(OverlayType.title)
                     .foregroundStyle(OverlayPalette.textPrimary)
             }
@@ -34,6 +34,6 @@ struct StartupIndicatorView: View {
                 opacity = 1
             }
         }
-        .accessibilityLabel("Abley ready. \(ShortcutCatalog.toggleOverlay) shows or hides the overlay.")
+        .accessibilityLabel("\(AppBrand.name) ready. \(ShortcutCatalog.toggleOverlay) shows or hides the overlay.")
     }
 }

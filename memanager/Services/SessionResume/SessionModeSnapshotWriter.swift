@@ -26,7 +26,7 @@ final class SessionModeSnapshotAssetStorage: SessionModeSnapshotAssetStoring {
             return TestRuntime.temporaryDirectory.appendingPathComponent("session_mode_snapshots", isDirectory: true)
         }
         let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        return appSupport.appendingPathComponent("memanager/session_mode_snapshots", isDirectory: true)
+        return appSupport.appendingPathComponent("\(AppBrand.storageFolder)/session_mode_snapshots", isDirectory: true)
     }
 
     func attachmentsDirectory(for snapshotID: UUID) throws -> URL {

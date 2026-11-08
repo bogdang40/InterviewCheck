@@ -3,7 +3,7 @@ import LocalAuthentication
 import Security
 
 enum KeychainManager {
-    private static let service = "com.memanager.api"
+    private static let service = AppBrand.keychainService
 
     /// Whether the data protection keychain is usable in this process.
     /// Requires proper code signing entitlements. Production falls back to

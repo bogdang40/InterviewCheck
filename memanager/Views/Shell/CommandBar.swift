@@ -12,7 +12,7 @@ struct CommandBar: View {
         HStack(spacing: 12) {
             HStack(spacing: 7) {
                 Color.clear.frame(width: 32)
-                Text("Abley")
+                Text(AppBrand.name)
                     .font(.system(size: width < 560 ? 14 : 17, weight: .medium))
                     .foregroundStyle(OverlayPalette.textPrimary)
             }

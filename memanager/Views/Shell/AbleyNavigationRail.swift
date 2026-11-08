@@ -17,7 +17,7 @@ struct AbleyNavigationRail: View {
                     HStack(spacing: 8) {
                         // The welcome presentation owns the interactive mascot.
                         Color.clear.frame(width: 32, height: 32)
-                        Text("Abley")
+                        Text(AppBrand.name)
                             .font(.system(size: 20, weight: .semibold))
                             .foregroundStyle(OverlayPalette.textPrimary)
                     }
@@ -72,8 +72,8 @@ struct AbleyNavigationRail: View {
     private func symbol(for destination: OverlayDestination) -> String {
         switch destination {
         case .live: return "waveform.path"
-        case .prepare: return "doc.text"
-        case .review: return "checkmark.circle"
+        case .prepare: return "briefcase"
+        case .review: return "doc.text.magnifyingglass"
         case .settings: return "gearshape"
         }
     }

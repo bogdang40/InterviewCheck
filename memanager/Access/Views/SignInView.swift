@@ -16,7 +16,7 @@ struct SignInView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: DesignTokens.Spacing.lg) {
                 SurfaceHeader(isCreatingAccount ? "Create account" : "Sign in",
-                              subtitle: isCreatingAccount ? "Create a server account for Abley." : "Sign in to verify your account access.")
+                              subtitle: isCreatingAccount ? "Create a server account for \(AppBrand.name)." : "Sign in to verify your account access.")
                 AccessCredentialForm(controller: controller, isCreatingAccount: $isCreatingAccount)
                 if case .invalid(let error) = controller.ownerLicense {
                     ToneBanner(tone: .warning, title: "Owner license needs attention", message: error.localizedDescription)

@@ -18,7 +18,7 @@ final class ToolOutputCacheDir {
             self.baseURL = TestRuntime.temporaryDirectory.appendingPathComponent("tool-outputs", isDirectory: true)
         } else {
             self.baseURL = fileManager.homeDirectoryForCurrentUser
-                .appendingPathComponent(".memanager", isDirectory: true)
+                .appendingPathComponent(AppBrand.homeFolder, isDirectory: true)
                 .appendingPathComponent("cache", isDirectory: true)
                 .appendingPathComponent("tool-outputs", isDirectory: true)
         }

@@ -48,7 +48,7 @@ final class KeychainReadPolicyTests: XCTestCase {
     func testQueryScopesAuthenticationToOneCredential() throws {
         for dataProtection in [true, false] {
             let query = KeychainManager.noninteractiveReadQuery(key: "fixture", dataProtection: dataProtection)
-            XCTAssertEqual(query[kSecAttrService as String] as? String, "com.memanager.api")
+            XCTAssertEqual(query[kSecAttrService as String] as? String, "com.interviewcheck.api")
             XCTAssertEqual(query[kSecAttrAccount as String] as? String, "fixture")
             XCTAssertEqual(query[kSecMatchLimit as String] as? String, kSecMatchLimitOne as String)
             XCTAssertEqual(query[kSecReturnData as String] as? Bool, true)

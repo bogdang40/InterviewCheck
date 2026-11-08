@@ -4,7 +4,24 @@ import Foundation
 enum OverlayDestination: String, CaseIterable, Identifiable {
     case live, prepare, review, settings
     var id: String { rawValue }
-    var title: String { rawValue.capitalized }
+    var title: String {
+        switch self {
+        case .live: return "Interview"
+        case .prepare: return "Roles"
+        case .review: return "Reports"
+        case .settings: return "Settings"
+        }
+    }
+
+    /// The line above the content pane.
+    var heading: String {
+        switch self {
+        case .live: return "Interview"
+        case .prepare: return "Roles and interview kits"
+        case .review: return "Interview reports"
+        case .settings: return "Settings"
+        }
+    }
 
     init(screen: OverlayScreen) {
         switch screen {

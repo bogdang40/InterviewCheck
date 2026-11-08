@@ -153,7 +153,7 @@ final class DebugNDJSONLogger {
         }
 
         let logsDir = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Logs/memanager")
+            .appendingPathComponent("Library/Logs/\(AppBrand.storageFolder)")
         return logsDir.appendingPathComponent("debug.log").path
     }
 }

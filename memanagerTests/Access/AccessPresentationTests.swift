@@ -15,7 +15,7 @@ final class AccessPresentationTests: XCTestCase {
     func testPaywallStatusExplainsWhyAccessIsBlocked() {
         let now = ISO8601DateParser.parse("2026-03-01T00:00:00Z")!
         let expiredTrial = AccessSnapshot(user: user(trialEndsAt: "2026-02-01T00:00:00Z"), entitlement: entitlement(active: false, source: .none), subscription: nil, serverTime: "")
-        XCTAssertEqual(PaywallPresentation.statusLine(for: expiredTrial, now: now), "Your trial has ended. Subscribe to keep using Abley.")
+        XCTAssertEqual(PaywallPresentation.statusLine(for: expiredTrial, now: now), "Your trial has ended. Subscribe to keep using InterviewCheck.")
 
         let lapsed = AccessSnapshot(user: user(), entitlement: entitlement(active: false, source: .none), subscription: AccountSubscription(id: "s", status: "past_due", plan: "monthly", currentPeriodEnd: nil, cancelAtPeriodEnd: false), serverTime: "")
         XCTAssertEqual(PaywallPresentation.statusLine(for: lapsed, now: now), "Your subscription is past due. Renew to continue.")
