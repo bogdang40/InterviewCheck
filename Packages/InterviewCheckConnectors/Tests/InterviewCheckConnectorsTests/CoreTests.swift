@@ -70,7 +70,7 @@ final class CoreTests: XCTestCase {
     func testOAuthExchangeRefreshAndCallback() async throws {
         let stub = StubTransport()
         stub.on("POST", "googleapis.com/token", json: #"{"access_token":"a1","refresh_token":"r1","expires_in":3600,"scope":"cal"}"#)
-        var client = OAuthClient(provider: GoogleConnector.provider, clientID: "cid", clientSecret: "sec", transport: stub)
+        var client = OAuthClient(provider: GoogleConnectorProvider.provider, clientID: "cid", clientSecret: "sec", transport: stub)
         client.now = { Date(timeIntervalSince1970: 1_000) }
         let redirect = URL(string: "http://127.0.0.1:5555/callback")!
         let url = client.authorizationURL(redirectURI: redirect, state: "s1", codeChallenge: "ch")

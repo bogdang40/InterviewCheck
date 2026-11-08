@@ -50,13 +50,17 @@ public struct CredentialField: Equatable, Sendable {
     public var placeholder: String
     public var isSecret: Bool
     public var isOptional: Bool
+    /// An on/off switch stored as "true" or empty.
+    public var isToggle: Bool
 
-    public init(_ key: String, _ label: String, placeholder: String = "", secret: Bool = false, optional: Bool = false) {
+    public init(_ key: String, _ label: String, placeholder: String = "", secret: Bool = false, optional: Bool = false,
+                toggle: Bool = false) {
         self.key = key
         self.label = label
         self.placeholder = placeholder
         self.isSecret = secret
-        self.isOptional = optional
+        self.isOptional = optional || toggle
+        self.isToggle = toggle
     }
 }
 

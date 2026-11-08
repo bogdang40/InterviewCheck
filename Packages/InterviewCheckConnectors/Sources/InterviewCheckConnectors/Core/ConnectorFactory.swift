@@ -41,6 +41,9 @@ public enum ConnectorFactory {
         case .kombo: return try KomboConnector(credentials: credentials, transport: transport)
         case .unifiedTo: return try UnifiedToConnector(credentials: credentials, transport: transport)
         case .apideck: return try ApideckConnector(credentials: credentials, transport: transport)
+        case .google: return try GoogleWorkspaceConnector(credentials: credentials, transport: transport, accessToken: accessToken)
+        case .microsoft365: return try MicrosoftGraphConnector(credentials: credentials, transport: transport, accessToken: accessToken)
+        case .zoom: return try ZoomMeetingsConnector(credentials: credentials, transport: transport, accessToken: accessToken)
         default: return nil
         }
     }

@@ -31,14 +31,17 @@ public struct OAuthProvider: Equatable, Sendable {
     /// Some providers want the client id and secret as Basic auth on the
     /// token call (Zoom) instead of form fields.
     public var basicAuthOnTokenCall: Bool
+    /// Microsoft wants the scopes again on the token calls.
+    public var scopeOnTokenCalls: Bool
 
     public init(authorizeURL: URL, tokenURL: URL, scopes: [String], extraParameters: [String: String] = [:],
-                basicAuthOnTokenCall: Bool = false) {
+                basicAuthOnTokenCall: Bool = false, scopeOnTokenCalls: Bool = false) {
         self.authorizeURL = authorizeURL
         self.tokenURL = tokenURL
         self.scopes = scopes
         self.extraParameters = extraParameters
         self.basicAuthOnTokenCall = basicAuthOnTokenCall
+        self.scopeOnTokenCalls = scopeOnTokenCalls
     }
 }
 
@@ -115,12 +118,15 @@ public struct OAuthClient: Sendable {
         var fields = fields
         var client = APIClient(baseURL: provider.tokenURL, transport: transport)
         client.maxRetries = 1
-        if provider.basicAuthOnTokenCall {
-            client.headers["Authorization"] = APIClient.basic(clientID, clientSecret ?? "")
+        // Public clients (no secret) send only the client id; confidential
+        // ones send the secret as Basic auth or as a form field.
+        if provider.basicAuthOnTokenCall, let clientSecret, !clientSecret.isEmpty {
+            client.headers["Authorization"] = APIClient.basic(clientID, clientSecret)
         } else {
             fields["client_id"] = clientID
             if let clientSecret, !clientSecret.isEmpty { fields["client_secret"] = clientSecret }
         }
+        if provider.scopeOnTokenCalls, !provider.scopes.isEmpty { fields["scope"] = provider.scopes.joined(separator: " ") }
         let json: JSONValue
         do {
             json = try await client.postForm(provider.tokenURL.absoluteString, fields: fields)

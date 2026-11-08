@@ -13,22 +13,25 @@ public enum ConnectorCatalog {
             return entry(kind, "Invite files (.ics)", .calendar, "Drop an interview invite from any email into the app.",
                          .system, [.upcomingInterviews, .emailInvites], setup: "Drag a .ics invite onto the Interview screen, or use File \u{203A} Import Invite.", tested: true)
         case .google:
-            return entry(kind, "Google Workspace", .calendar, "Google Calendar interviews, Gmail invites, and Google Meet recordings and transcripts.",
-                         .oauth(GoogleConnector.provider, clientFields: oauthClient), [.upcomingInterviews, .emailInvites, .recordings, .transcripts],
-                         setup: "Create a Desktop OAuth client in Google Cloud Console (APIs: Calendar, Gmail, Meet, Drive), paste its client ID and secret, then Sign In.",
-                         docs: "https://developers.google.com/workspace/calendar/api/guides/overview")
+            return entry(kind, "Google Workspace", .calendar, "Interviews from Google Calendar (including invites from Gmail) and Google Meet transcripts with speakers and timing.",
+                         .oauth(GoogleConnectorProvider.provider, clientFields: oauthClient + [keywords]), [.upcomingInterviews, .transcripts],
+                         setup: "In Google Cloud Console enable the Calendar and Meet APIs and create an OAuth client of type Desktop app. Paste its client ID (and secret), then Sign In. Meet transcripts are available for meetings you organised, for 30 days.",
+                         docs: "https://developers.google.com/workspace/calendar/api/v3/reference/events/list")
         case .microsoft365:
-            return entry(kind, "Microsoft 365", .calendar, "Outlook calendar and mail invites, Teams meeting recordings and transcripts.",
-                         .oauth(MicrosoftConnector.provider, clientFields: [CredentialField("clientID", "Application (client) ID"),
-                                                                            CredentialField("tenant", "Tenant", placeholder: "organizations", optional: true)]),
-                         [.upcomingInterviews, .emailInvites, .recordings, .transcripts],
-                         setup: "Register a public client app in Microsoft Entra with redirect http://localhost, add the delegated permissions listed, then Sign In. Teams transcripts need admin consent.",
-                         docs: "https://learn.microsoft.com/graph/api/resources/onlinemeeting")
+            return entry(kind, "Microsoft 365", .calendar, "Interviews from Outlook calendars and Teams meeting transcripts with speakers and timing.",
+                         .oauth(MicrosoftConnectorProvider.provider(), clientFields: [
+                             CredentialField("clientID", "Application (client) ID"),
+                             CredentialField("tenant", "Tenant", placeholder: "organizations, or your tenant ID", optional: true),
+                             CredentialField("transcripts", "Teams transcripts and recordings (needs admin consent)", toggle: true),
+                             keywords]),
+                         [.upcomingInterviews, .transcripts, .recordings],
+                         setup: "Register an app in Microsoft Entra (Mobile and desktop platform, redirect http://localhost/callback, no secret) with delegated Calendars.Read and OnlineMeetings.Read. For Teams transcripts add OnlineMeetingTranscript.Read.All and OnlineMeetingRecording.Read.All and have an admin grant consent.",
+                         docs: "https://learn.microsoft.com/graph/api/onlinemeeting-list-transcripts")
         case .zoom:
-            return entry(kind, "Zoom", .meetings, "Upcoming Zoom meetings and cloud recordings (audio and transcripts).",
-                         .oauth(ZoomConnector.provider, clientFields: oauthClient), [.upcomingInterviews, .recordings, .transcripts],
-                         setup: "Create a General (user-managed) OAuth app in the Zoom App Marketplace with redirect http://127.0.0.1, add the meeting and recording read scopes, then Sign In.",
-                         docs: "https://developers.zoom.us/docs/api/")
+            return entry(kind, "Zoom", .meetings, "Zoom meetings you host and their cloud recordings: the audio-only file is scored like any recording.",
+                         .oauth(ZoomConnectorProvider.provider, clientFields: oauthClient + [keywords]), [.upcomingInterviews, .recordings, .transcripts],
+                         setup: "In the Zoom App Marketplace create a General app (user-managed), turn on Use Public Client OAuth, add redirect http://127.0.0.1/callback and the scopes user:read:user, meeting:read:list_meetings, cloud_recording:read:list_user_recordings. Cloud recordings need a Pro plan.",
+                         docs: "https://developers.zoom.us/docs/api/meetings/")
         case .greenhouse:
             return entry(kind, "Greenhouse", .ats, "Scheduled interviews, candidates, r\u{00E9}sum\u{00E9}s, job posts, and private notes.",
                          .fields([CredentialField("clientID", "Client ID"),
@@ -71,6 +74,7 @@ public enum ConnectorCatalog {
         }
     }
 
+    static let keywords = CredentialField("keywords", "Extra title words", placeholder: "Optional, e.g. pairing, debrief", optional: true)
     static let oauthClient = [CredentialField("clientID", "OAuth client ID"),
                               CredentialField("clientSecret", "OAuth client secret", secret: true, optional: true)]
 

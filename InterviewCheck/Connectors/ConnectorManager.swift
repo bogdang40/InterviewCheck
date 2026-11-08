@@ -70,9 +70,7 @@ final class ConnectorManager: ObservableObject {
         guard case .oauth(var provider, _) = kind.descriptor.auth else { return }
         let clientID = fields["clientID"]?.trimmingCharacters(in: .whitespaces) ?? ""
         guard !clientID.isEmpty else { throw ConnectorError.missingCredential("client ID") }
-        if kind == .microsoft365 {
-            provider = MicrosoftConnector.provider(tenant: fields["tenant"].flatMap { $0.isEmpty ? nil : $0 } ?? "organizations")
-        }
+        if kind == .microsoft365 { provider = MicrosoftConnectorProvider.provider(ConnectorCredentials(fields: fields)) }
         let client = OAuthClient(provider: provider, clientID: clientID, clientSecret: fields["clientSecret"], transport: transport)
         let receiver = try LoopbackReceiver()
         defer { receiver.stop() }
@@ -106,7 +104,7 @@ final class ConnectorManager: ObservableObject {
         }
         var tokenProvider: AccessTokenProvider?
         if case .oauth(var provider, _) = kind.descriptor.auth, let tokens = credentials.tokens {
-            if kind == .microsoft365 { provider = MicrosoftConnector.provider(tenant: credentials["tenant"] ?? "organizations") }
+            if kind == .microsoft365 { provider = MicrosoftConnectorProvider.provider(credentials) }
             let client = OAuthClient(provider: provider, clientID: credentials["clientID"] ?? "",
                                      clientSecret: credentials["clientSecret"], transport: transport)
             let store = self.store

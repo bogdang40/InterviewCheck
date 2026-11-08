@@ -124,7 +124,10 @@ struct ConnectorDetailView: View {
 
     private func field(_ field: CredentialField) -> some View {
         Group {
-            if field.isSecret {
+            if field.isToggle {
+                Toggle(field.label, isOn: Binding(get: { fields[field.key] == "true" },
+                                                  set: { fields[field.key] = $0 ? "true" : "" }))
+            } else if field.isSecret {
                 SecureField(field.label, text: binding(field.key), prompt: Text(field.isOptional ? "Optional" : "Required"))
             } else {
                 TextField(field.label, text: binding(field.key),
