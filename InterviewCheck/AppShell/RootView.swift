@@ -29,6 +29,7 @@ struct MainSplitView: View {
     @ObservedObject private var navigation = AppNavigation.shared
     @ObservedObject private var interview = InterviewController.shared
     @ObservedObject private var permissions = InterviewPermissions.shared
+    @ObservedObject private var welcome = WelcomePresenter.shared
     @State private var columnVisibility = NavigationSplitViewVisibility.all
 
     var body: some View {
@@ -50,6 +51,9 @@ struct MainSplitView: View {
             case .reports:
                 ReportsView()
             }
+        }
+        .sheet(isPresented: $welcome.isPresented) {
+            WelcomeView(onDone: { welcome.dismiss() })
         }
         .alert(item: $permissions.problem) { problem in
             Alert(title: Text(problem.title), message: Text(problem.message),

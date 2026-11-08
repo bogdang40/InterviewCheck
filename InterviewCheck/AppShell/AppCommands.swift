@@ -14,6 +14,9 @@ struct AppCommands: Commands {
             CompanionMenuItem()
             Divider()
         }
+        CommandGroup(replacing: .help) {
+            Button("Welcome to \(AppBrand.name)") { WelcomePresenter.shared.show() }
+        }
     }
 }
 
