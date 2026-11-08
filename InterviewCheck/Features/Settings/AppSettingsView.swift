@@ -10,6 +10,8 @@ struct AppSettingsView: View {
                 .tabItem { Label("Detector", systemImage: "checkmark.shield") }
             ShortcutsSettingsTab()
                 .tabItem { Label("Shortcuts", systemImage: "keyboard") }
+            PrivacySettingsTab()
+                .tabItem { Label("Privacy", systemImage: "hand.raised") }
             LicenseSettingsTab()
                 .tabItem { Label("License", systemImage: "person.badge.key") }
             AboutSettingsTab()

@@ -108,6 +108,21 @@ extension SessionDatabase {
         }
     }
 
+    /// Deletes interviews that started before `date`; returns how many.
+    @discardableResult
+    func deleteInterviews(startedBefore date: Date) -> Int {
+        let ids = interviewRead("interviewsBefore", "SELECT id FROM interviews WHERE started_at < ?",
+                                bind: { $0.bindMillis(date, at: 1) }, row: { $0.columnText(0) ?? "" })
+        ids.forEach { deleteInterview(id: $0) }
+        return ids.count
+    }
+
+    /// Deletes every interview, its words, AI answers and scores (roles stay).
+    @discardableResult
+    func deleteAllInterviews() -> Int {
+        deleteInterviews(startedBefore: .distantFuture)
+    }
+
     private static func interviewRow(_ row: SQLiteStatement) -> InterviewRecord {
         InterviewRecord(
             id: row.columnText(0) ?? "", workspaceID: row.columnText(1), roleTitle: row.columnText(2) ?? "",

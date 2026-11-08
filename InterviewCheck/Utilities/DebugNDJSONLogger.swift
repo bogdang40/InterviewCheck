@@ -30,6 +30,16 @@ final class DebugNDJSONLogger {
         self.rotationThresholdBytes = rotationThresholdBytes
     }
 
+    /// Diagnostics are written only in debug builds or when turned on in
+    /// Settings › Privacy (they never contain interview content).
+    static var isEnabled: Bool {
+        #if DEBUG
+        return true
+        #else
+        return UserDefaults.standard.bool(forKey: "interviewcheck.diagnosticLogging")
+        #endif
+    }
+
     func log(
         sessionId: String = "debug-session",
         runId: String,
@@ -38,6 +48,7 @@ final class DebugNDJSONLogger {
         message: String,
         data: [String: Any] = [:]
     ) {
+        guard Self.isEnabled else { return }
         let payload: [String: Any] = [
             "sessionId": sessionId,
             "runId": runId,

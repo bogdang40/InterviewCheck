@@ -18,6 +18,8 @@ final class DetectorSettings: ObservableObject {
     /// Sentence the interviewer can read or paste to tell the candidate.
     @Published var consentNotice: String { didSet { defaults.set(consentNotice, forKey: Keys.notice) } }
     @Published var weights: CheatScoreWeights { didSet { save(weights, key: Keys.weights) } }
+    /// Delete interviews older than this many days; 0 keeps them forever.
+    @Published var retentionDays: Int { didSet { defaults.set(retentionDays, forKey: Keys.retention) } }
 
     static let defaultLineup = [
         LineupEntry(provider: .claude, model: "claude-sonnet-5"),
@@ -40,6 +42,7 @@ final class DetectorSettings: ObservableObject {
         static let embeddings = "interviewcheck.detector.embeddings"
         static let notice = "interviewcheck.detector.consentNotice"
         static let weights = "interviewcheck.detector.weights"
+        static let retention = "interviewcheck.detector.retentionDays"
     }
 
     init(defaults: UserDefaults = TestRuntime.isRunningUnitTests ? DetectorSettings.testDefaults : .standard) {
@@ -50,6 +53,7 @@ final class DetectorSettings: ObservableObject {
         useEmbeddings = defaults.object(forKey: Keys.embeddings) as? Bool ?? true
         consentNotice = defaults.string(forKey: Keys.notice) ?? Self.defaultNotice
         weights = Self.load(CheatScoreWeights.self, key: Keys.weights, from: defaults) ?? .default
+        retentionDays = defaults.object(forKey: Keys.retention) as? Int ?? 0
     }
 
     private static let testDefaults = UserDefaults(suiteName: "interviewcheck.tests.\(UUID().uuidString)")!

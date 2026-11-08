@@ -153,5 +153,8 @@ final class DetectorRenderTests: XCTestCase {
         try await RenderHarness.render("native-settings-shortcuts", size: CGSize(width: 640, height: 560)) {
             native { ShortcutsSettingsTab() }
         }
+        try await RenderHarness.render("native-settings-privacy", size: CGSize(width: 640, height: 640)) {
+            native { PrivacySettingsTab() }
+        }
     }
 }
