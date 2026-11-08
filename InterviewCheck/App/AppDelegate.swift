@@ -83,6 +83,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 item.indentationLevel = 1
                 menu.addItem(item)
             }
+            if upcoming.first?.meetingURL != nil {
+                let join = NSMenuItem(title: "Join Next Interview", action: #selector(joinFromDock), keyEquivalent: "")
+                join.target = self
+                menu.addItem(join)
+            }
             menu.addItem(.separator())
         }
         if !ConnectorManager.shared.accounts.isEmpty {
@@ -91,6 +96,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             menu.addItem(sync)
         }
         return menu.items.isEmpty ? nil : menu
+    }
+
+    @objc private func joinFromDock() {
+        NSApp.activate(ignoringOtherApps: true)
+        Task { await InterviewAutomation.joinNext() }
     }
 
     @objc private func prepareFromDock(_ item: NSMenuItem) {
