@@ -79,7 +79,7 @@ extension ConnectorManager {
         // two interviews, whatever names were guessed for them (InterviewMerger
         // .distinctEvents). Not for ATSs: a prepared link keeps the calendar
         // event's id under the ATS's name.
-        if ![.ats, .unified, .mcp].contains(a.source.descriptor.category), InterviewMerger.distinctEvents(a, b) { return false }
+        if InterviewMerger.distinctEvents(a, b) { return false }
         guard abs(a.startsAt.timeIntervalSince(b.startsAt)) <= 10 * 60 else { return false }
         if let left = a.candidate?.email?.lowercased(), let right = b.candidate?.email?.lowercased(), left == right { return true }
         let left = nameWords(a.candidate?.name), right = nameWords(b.candidate?.name)

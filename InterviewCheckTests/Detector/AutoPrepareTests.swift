@@ -295,6 +295,9 @@ final class AutoPrepareTests: XCTestCase {
         var atsRow = copy
         atsRow.externalID = "lever-interview-9"
         XCTAssertTrue(ConnectorManager.sameInterview(linkSaved, atsRow), "the ATS's own copy of the prepared interview")
+        atsRow.startsAt = atsRow.startsAt.addingTimeInterval(120)      // nudged, and no email in the ATS row
+        atsRow.candidate = ExternalCandidate(name: "Jane Doe")
+        XCTAssertTrue(ConnectorManager.sameInterview(linkSaved, atsRow), "still the same interview: the shared meeting room decides")
     }
 
     func testTheInterviewJustRunIsNotPreparedAgain() async throws {

@@ -42,13 +42,17 @@ public enum InterviewMerger {
         return false
     }
 
-    /// Two different events of one source at different times (back-to-back
-    /// screens in one meeting room). The same event moved, or listed in two
-    /// calendars at the same time, is not distinct: Mac Calendar and Zoom ids
-    /// end in "@<start>", which is ignored.
+    /// Two different events of one calendar, mailbox, booking or meeting tool
+    /// at different times (back-to-back screens in one meeting room). The same
+    /// event moved, or listed in two calendars at the same time, is not
+    /// distinct: Mac Calendar and Zoom ids end in "@<start>", which is ignored.
+    /// ATS records are never ruled apart this way: a prepared link keeps the
+    /// calendar event's id under the ATS's name, and one ATS can list an
+    /// interview twice (JobAdder's interviews and scheduler events).
     public static func distinctEvents(_ a: ExternalInterview, _ b: ExternalInterview) -> Bool {
+        guard a.source == b.source, ![.ats, .unified, .mcp].contains(a.source.descriptor.category) else { return false }
         let base = { (id: String) in id.replacingOccurrences(of: #"@\d+$"#, with: "", options: .regularExpression) }
-        return a.source == b.source && base(a.externalID) != base(b.externalID) && a.startsAt != b.startsAt
+        return base(a.externalID) != base(b.externalID) && a.startsAt != b.startsAt
     }
 
     static func fill(_ primary: ExternalInterview, from other: ExternalInterview) -> ExternalInterview {
