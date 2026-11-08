@@ -18,7 +18,7 @@ final class ReportExportTests: XCTestCase {
     }
 
     func testPDFSpansSeveralLetterPages() throws {
-        let data = try XCTUnwrap(PaginatedPDF.data(html: InterviewReportComposer.html(report(questions: 12))))
+        let data = try XCTUnwrap(PaginatedPDF.data(ReportAttributedText.make(report(questions: 12))))
         let document = try XCTUnwrap(PDFDocument(data: data))
         XCTAssertGreaterThan(document.pageCount, 1)
         let bounds = try XCTUnwrap(document.page(at: 0)).bounds(for: .mediaBox)

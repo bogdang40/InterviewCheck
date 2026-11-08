@@ -1,7 +1,7 @@
 import Foundation
 import InterviewCheckKit
 
-/// Writes an interview report as Markdown or as simple HTML (for PDF).
+/// Writes an interview report as Markdown.
 enum InterviewReportComposer {
     static func markdown(_ report: InterviewReportData) -> String {
         let interview = report.interview
@@ -39,41 +39,6 @@ enum InterviewReportComposer {
         return lines.joined(separator: "\n")
     }
 
-    static func html(_ report: InterviewReportData) -> String {
-        let interview = report.interview
-        var body = "<h1>Interview report: \(escape(interview.candidateName.isEmpty ? "Candidate" : interview.candidateName))</h1>"
-        body += "<p class=meta>\(escape(interview.roleTitle)) &middot; \(escape(dateFormatter.string(from: interview.startedAt)))"
-        body += " &middot; candidate notified: \(interview.consentConfirmedAt == nil ? "not recorded" : "yes")</p>"
-        if let overall = interview.overallPercent {
-            body += "<p class=overall><b>\(overall)%</b> overall &middot; \(interview.flaggedCount) of \(interview.questionCount) answers flagged</p>"
-        }
-        body += "<p class=note>Scores are signals to follow up on, not proof.</p>"
-        for question in report.questions {
-            body += "<h2>Q\(question.ordinal). \(escape(question.text))</h2>"
-            if let score = report.scores[question.id] {
-                body += "<p class=score><b>\(score.percent)%</b> \(escape(ScoreBand(percent: score.percent).title)) (\(score.confidence.rawValue) confidence)</p><ul>"
-                body += (score.reasons + score.counterpoints.map { "In their favour: \($0)" }).map { "<li>\(escape($0))</li>" }.joined()
-                body += "</ul>"
-                if !score.followUps.isEmpty {
-                    body += "<p><i>Ask next:</i></p><ul>" + score.followUps.map { "<li>\(escape($0))</li>" }.joined() + "</ul>"
-                }
-            }
-            body += "<blockquote>\(escape(question.answerText))</blockquote>"
-            for answer in report.references[question.id] ?? [] where answer.error == nil && !answer.text.isEmpty {
-                body += "<h3>\(escape(answer.label))</h3><p class=ref>\(escape(answer.text).replacingOccurrences(of: "\n", with: "<br>"))</p>"
-            }
-        }
-        return """
-        <html><head><meta charset="utf-8"><style>
-        body{font:12px -apple-system,Helvetica,sans-serif;color:#203225;margin:36px;line-height:1.45}
-        h1{font-size:20px;margin:0 0 4px}h2{font-size:15px;margin:22px 0 6px;border-top:1px solid #cdd8cb;padding-top:12px}
-        h3{font-size:12px;margin:10px 0 2px;color:#2B653F}.meta,.note{color:#506050}.overall{font-size:14px}
-        .score b{font-size:15px}blockquote{margin:8px 0;padding:8px 12px;background:#F2EFE3;border-left:3px solid #2B653F}
-        .ref{color:#3E5443;font-size:11px}
-        </style></head><body>\(body)</body></html>
-        """
-    }
-
     private static func metricsLines(_ metrics: AnswerMetrics) -> [String] {
         var parts: [String] = []
         if let latency = metrics.substantiveLatency { parts.append("real answer after \(ScoreNotes.seconds(latency))") }
@@ -87,11 +52,6 @@ enum InterviewReportComposer {
     private static func duration(_ interview: InterviewRecord) -> String {
         guard let end = interview.endedAt else { return "" }
         return ", \(max(1, Int(end.timeIntervalSince(interview.startedAt) / 60))) min"
-    }
-
-    static func escape(_ text: String) -> String {
-        text.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "<", with: "&lt;")
-            .replacingOccurrences(of: ">", with: "&gt;")
     }
 
     static let dateFormatter: DateFormatter = {

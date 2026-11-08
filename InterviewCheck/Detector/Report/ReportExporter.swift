@@ -11,7 +11,7 @@ enum ReportExporter {
 
     static func exportPDF(_ report: InterviewReportData) {
         guard let url = savePanel(report, type: .pdf, extension: "pdf") else { return }
-        if let data = PaginatedPDF.data(html: InterviewReportComposer.html(report)) {
+        if let data = PaginatedPDF.data(ReportAttributedText.make(report)) {
             try? data.write(to: url)
         }
     }
@@ -25,19 +25,13 @@ enum ReportExporter {
     }
 }
 
-/// Lays HTML out on US Letter pages with margins, like printing it.
+/// Lays formatted text out on US Letter pages with margins, like printing it.
 @MainActor
 enum PaginatedPDF {
     static let paperSize = NSSize(width: 612, height: 792)
     static let margin: CGFloat = 54
 
-    static func data(html: String) -> Data? {
-        guard let attributed = NSAttributedString(
-            html: Data(html.utf8),
-            options: [.documentType: NSAttributedString.DocumentType.html,
-                      .characterEncoding: String.Encoding.utf8.rawValue],
-            documentAttributes: nil
-        ) else { return nil }
+    static func data(_ attributed: NSAttributedString) -> Data? {
 
         let printInfo = NSPrintInfo()
         printInfo.paperSize = paperSize
