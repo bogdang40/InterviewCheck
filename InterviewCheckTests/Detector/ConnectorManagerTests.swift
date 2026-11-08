@@ -5,12 +5,28 @@ import InterviewCheckConnectors
 /// An ATS stand-in: one interview, its job and a résumé file.
 final class NoteLog: @unchecked Sendable { var notes: [String] = [] }
 
-private struct FakeATS: InterviewSource, JobSource, CandidateSource, NoteDestination {
+private struct FakeCalendar: InterviewSource {
+    let kind = ConnectorKind.appleCalendar
+    let start: Date
+    func verify() async throws -> String { "2 calendars" }
+    func upcomingInterviews(from: Date, to: Date) async throws -> [ExternalInterview] {
+        [ExternalInterview(source: .appleCalendar, externalID: "evt1", title: "Interview: Jane Doe", startsAt: start,
+                           meetingURL: URL(string: "https://zoom.us/j/1"),
+                           candidate: ExternalCandidate(name: "Jane Doe", email: "jane@example.com"))]
+    }
+}
+
+private struct FakeATS: InterviewSource, JobSource, CandidateSource, NoteDestination, CandidateLookup {
     let kind = ConnectorKind.greenhouse
     let start: Date
     var log = NoteLog()
 
     func addNote(_ text: String, to interview: ExternalInterview) async throws { log.notes.append(text) }
+
+    func findCandidate(email: String) async throws -> CandidateMatch? {
+        email == "jane@example.com" ? CandidateMatch(candidate: ExternalCandidate(externalID: "c7", name: "Jane Doe", email: email),
+                                                     job: ExternalJob(externalID: "j4", title: "Job"), applicationID: "a3") : nil
+    }
 
     func verify() async throws -> String { "acme.greenhouse.io" }
 
@@ -27,7 +43,10 @@ private struct FakeATS: InterviewSource, JobSource, CandidateSource, NoteDestina
         ExternalJob(externalID: id, title: "Backend Engineer", description: "Own the payments API in Go and Postgres.")
     }
 
-    func candidate(id: String) async throws -> ExternalCandidate { ExternalCandidate(name: "Jane Doe") }
+    func candidate(id: String) async throws -> ExternalCandidate {
+        ExternalCandidate(externalID: id, name: "Jane Doe",
+                          resume: ExternalFile(kind: .resume, filename: "jane.txt", url: URL(string: "https://x/r")!, needsAuth: true))
+    }
 
     func download(_ file: ExternalFile, into folder: URL) async throws -> URL {
         let url = folder.appendingPathComponent(file.filename)
@@ -149,5 +168,33 @@ final class ConnectorManagerTests: XCTestCase {
         XCTAssertEqual(requests.map(\.identifier), ["interview.appleCalendar:b"], "too late to remind about the first")
         XCTAssertEqual(requests.first?.content.body, "Ana Silva \u{00B7} Designer")
         XCTAssertEqual(requests.first?.content.userInfo["interviewID"] as? String, "appleCalendar:b")
+    }
+
+    func testCalendarInviteIsFilledFromTheATSByEmail() async throws {
+        let path = NSTemporaryDirectory() + "enrich-\(UUID().uuidString).sqlite"
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let database = SessionDatabase(databasePath: path)
+        let defaults = UserDefaults(suiteName: "enrich.\(UUID().uuidString)")!
+        let manager = ConnectorManager(store: MemoryCredentialStore(), database: database, defaults: defaults)
+        let start = Date().addingTimeInterval(3600)
+        let ats = FakeATS(start: start)
+        manager.factory = { kind, _, _, _ in kind == .appleCalendar ? FakeCalendar(start: start) as Connector : ats }
+        try await manager.connect(.appleCalendar, fields: [:])
+        try await manager.connect(.greenhouse, fields: ["clientID": "c", "clientSecret": "s"])
+
+        let invite = try XCTUnwrap(manager.database.loadExternalInterviews(startingAfter: .distantPast).first { $0.source == .appleCalendar })
+        let roles = RoleStore(database: database, defaults: defaults)
+        let controller = InterviewController(timeline: InterviewTimeline(), database: database,
+                                             settings: DetectorSettings(defaults: defaults))
+        let missing = await manager.prepare(invite, controller: controller, roles: roles)
+        XCTAssertEqual(missing, [])
+        XCTAssertEqual(controller.externalRef, "greenhouse:evt1", "the summary goes to the ATS, not the calendar")
+        XCTAssertTrue(controller.resumeText.contains("payment systems"))
+        let role = try XCTUnwrap(roles.selectedRole)
+        XCTAssertEqual(role.name, "Backend Engineer", "the placeholder title is replaced by the ATS job's")
+        XCTAssertEqual(role.jobDescription, "Own the payments API in Go and Postgres.")
+        let link = try XCTUnwrap(database.loadExternalLink("greenhouse:evt1"))
+        XCTAssertEqual(link.applicationID, "a3")
+        XCTAssertEqual(link.meetingURL?.host, "zoom.us", "the meeting link from the invite is kept")
     }
 }

@@ -48,8 +48,9 @@ public struct APIClient: Sendable {
         try JSONValue.parse(try await get(path, query: query).0)
     }
 
-    public func postJSON(_ path: String, body: JSONValue, query: [URLQueryItem] = []) async throws -> JSONValue {
-        let (data, _) = try await send(method: "POST", url: url(path, query: query), body: try body.encoded())
+    public func postJSON(_ path: String, body: JSONValue, query: [URLQueryItem] = [],
+                         contentType: String = "application/json") async throws -> JSONValue {
+        let (data, _) = try await send(method: "POST", url: url(path, query: query), body: try body.encoded(), contentType: contentType)
         return data.isEmpty ? .null : try JSONValue.parse(data)
     }
 

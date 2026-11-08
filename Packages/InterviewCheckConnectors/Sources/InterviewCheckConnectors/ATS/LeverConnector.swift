@@ -118,3 +118,15 @@ public struct LeverConnector: InterviewSource, JobSource, CandidateSource, NoteD
                                    body: ["value": .string(text), "secret": true, "notifyFollowers": false])
     }
 }
+
+extension LeverConnector: CandidateLookup {
+    public func findCandidate(email: String) async throws -> CandidateMatch? {
+        let opportunities = try await list("opportunities", [URLQueryItem(name: "email", value: email),
+                                                             URLQueryItem(name: "expand", value: "applications")], limit: 5)
+        guard let opportunity = opportunities.first(where: { $0["archived"].isNull }) ?? opportunities.first,
+              let id = opportunity["id"].string else { return nil }
+        let posting = opportunity["applications"][0]["posting"].string
+        return CandidateMatch(candidate: ExternalCandidate(externalID: id, name: opportunity["name"].string ?? "Candidate", email: email),
+                              job: posting.map { ExternalJob(externalID: $0, title: "Job") }, applicationID: id)
+    }
+}

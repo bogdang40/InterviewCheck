@@ -4,7 +4,7 @@ import Foundation
 /// path, offset paging over plain arrays. Widest ATS coverage (iCIMS, Jobvite).
 public struct UnifiedToConnector: InterviewSource, JobSource, CandidateSource, NoteDestination {
     public let kind = ConnectorKind.unifiedTo
-    private let api: APIClient
+    let api: APIClient
     private let connection: String
 
     public init(credentials: ConnectorCredentials, transport: HTTPTransport) throws {
@@ -100,7 +100,7 @@ public struct UnifiedToConnector: InterviewSource, JobSource, CandidateSource, N
 /// Apideck: jobs and applicants only (no interviews or notes in its ATS API).
 public struct ApideckConnector: JobSource, CandidateSource {
     public let kind = ConnectorKind.apideck
-    private let api: APIClient
+    let api: APIClient
 
     public init(credentials: ConnectorCredentials, transport: HTTPTransport) throws {
         var headers = ["Authorization": "Bearer \(try credentials.required("apiKey", "API key"))",
@@ -133,5 +133,16 @@ public struct ApideckConnector: JobSource, CandidateSource {
 
     public func download(_ file: ExternalFile, into folder: URL) async throws -> URL {
         try await FileDownload.save(file, into: folder, client: nil, transport: api.transport)
+    }
+}
+
+extension UnifiedToConnector: CandidateLookup {
+    public func findCandidate(email: String) async throws -> CandidateMatch? {
+        guard let json = try await api.getJSON("candidate", query: [URLQueryItem(name: "query", value: email),
+                                                                    URLQueryItem(name: "limit", value: "5")]).array
+            .first(where: { $0["emails"].array.contains { $0["email"].string?.lowercased() == email.lowercased() } })?.asObject
+        else { return nil }
+        let jobID = json["job_ids"][0].string
+        return CandidateMatch(candidate: Self.candidate(json), job: jobID.map { ExternalJob(externalID: $0, title: "Job") })
     }
 }

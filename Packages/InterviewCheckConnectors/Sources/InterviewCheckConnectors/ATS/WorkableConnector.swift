@@ -3,7 +3,7 @@ import Foundation
 /// Workable: per-account subdomain, Bearer account token.
 public struct WorkableConnector: InterviewSource, JobSource, CandidateSource, NoteDestination {
     public let kind = ConnectorKind.workable
-    private let api: APIClient
+    let api: APIClient
     private let subdomain: String
     private let memberID: String?
 
@@ -82,5 +82,15 @@ public struct WorkableConnector: InterviewSource, JobSource, CandidateSource, No
             "member_id": .string(memberID),
             "comment": ["body": .string(text), "policy": ["admin"]],
         ])
+    }
+}
+
+extension WorkableConnector: CandidateLookup {
+    public func findCandidate(email: String) async throws -> CandidateMatch? {
+        guard let json = try await api.getJSON("candidates", query: [URLQueryItem(name: "email", value: email)])["candidates"][0].asObject,
+              let id = json["id"].string else { return nil }
+        return CandidateMatch(candidate: ExternalCandidate(externalID: id, name: json["name"].string ?? "Candidate", email: email),
+                              job: json.at("job.shortcode").string.map { ExternalJob(externalID: $0, title: json.at("job.title").string ?? "Job") },
+                              applicationID: id)
     }
 }

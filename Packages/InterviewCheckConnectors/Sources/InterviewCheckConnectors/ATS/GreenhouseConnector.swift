@@ -136,3 +136,18 @@ extension Array {
         stride(from: 0, to: count, by: size).map { Array(self[$0..<Swift.min($0 + size, count)]) }
     }
 }
+
+extension GreenhouseConnector: CandidateLookup {
+    public func findCandidate(email: String) async throws -> CandidateMatch? {
+        guard let json = try await list("candidates", [URLQueryItem(name: "email", value: email)], maxPages: 1).first,
+              let id = json["id"].string else { return nil }
+        let application = try await list("applications", [URLQueryItem(name: "candidate_ids", value: id)], maxPages: 1)
+            .first { $0["job_id"].string != nil }
+        let jobID = application?["job_id"].string
+        var jobName: String?
+        if let jobID { jobName = try await byIDs("jobs", [jobID])[jobID]?["name"].string }
+        return CandidateMatch(candidate: Self.candidate(json),
+                              job: jobID.map { ExternalJob(externalID: $0, title: jobName ?? "Job") },
+                              applicationID: application?["id"].string)
+    }
+}

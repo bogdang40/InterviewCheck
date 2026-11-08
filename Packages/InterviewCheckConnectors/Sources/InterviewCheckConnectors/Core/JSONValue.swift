@@ -76,6 +76,9 @@ public enum JSONValue: Equatable, Sendable {
 
     public var isNull: Bool { self == .null }
 
+    /// Self when present, nil when null (for optional chaining).
+    public var asObject: JSONValue? { isNull ? nil : self }
+
     public var date: Date? { string.flatMap(DateParsing.parse) }
 
     public var url: URL? { string.flatMap(URL.init(string:)) }

@@ -10,6 +10,8 @@ extension ConnectorManager {
                  roles: RoleStore = .shared) async -> [String] {
         guard controller.phase != .live else { return ["An interview is live."] }
         controller.reset()
+        // A calendar invite knows little: find the candidate in a connected ATS.
+        let interview = await enriched(interview)
         controller.candidateName = interview.candidate?.name ?? ""
         controller.externalRef = interview.id
         database.saveExternalLink(interview)
@@ -43,20 +45,42 @@ extension ConnectorManager {
         return missing
     }
 
+    /// For interviews from calendars and meeting tools: the same interview as
+    /// the connected ATS sees it (candidate, job, application), found by the
+    /// candidate's email. Unchanged when nothing matches.
+    func enriched(_ interview: ExternalInterview) async -> ExternalInterview {
+        guard [.calendar, .meetings].contains(interview.source.descriptor.category),
+              let email = interview.candidate?.email else { return interview }
+        for account in accounts where [.ats, .unified].contains(account.kind.descriptor.category) {
+            guard let lookup = try? makeConnector(account.kind) as? CandidateLookup,
+                  let match = try? await lookup.findCandidate(email: email) else { continue }
+            var found = interview
+            found.source = account.kind
+            found.candidate = match.candidate
+            found.job = match.job ?? interview.job
+            found.applicationID = match.applicationID
+            if found.meetingURL == nil { found.meetingURL = interview.meetingURL }
+            return found
+        }
+        return interview
+    }
+
     /// The role for a job: the one already made from it, one with the same
     /// title, or a new one with the job description.
     private func role(for job: ExternalJob, source: ConnectorKind, connector: Connector?, roles: RoleStore) async -> RoleProfile {
         let key = job.externalID.isEmpty ? nil : "\(source.rawValue):\(job.externalID)"
         var role = roles.roles.first { key != nil && $0.externalJobKey == key }
-            ?? roles.roles.first { $0.name.caseInsensitiveCompare(job.title) == .orderedSame }
+            ?? (job.title == "Job" ? nil : roles.roles.first { $0.name.caseInsensitiveCompare(job.title) == .orderedSame })
             ?? roles.create(name: job.title, company: job.company ?? "")
         if role.externalJobKey == nil { role.externalJobKey = key }
-        if role.jobDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        if role.jobDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || role.name == "Job" {
             var description = job.description
-            if description.isEmpty, !job.externalID.isEmpty, let jobs = connector as? JobSource {
-                description = (try? await jobs.job(id: job.externalID).description) ?? ""
+            if description.isEmpty, !job.externalID.isEmpty, let jobs = connector as? JobSource,
+               let full = try? await jobs.job(id: job.externalID) {
+                description = full.description
+                if role.name == "Job" || role.name.isEmpty { role.name = full.title }
             }
-            role.jobDescription = description
+            if role.jobDescription.isEmpty { role.jobDescription = description }
         }
         roles.save(role)
         return roles.role(id: role.id) ?? role

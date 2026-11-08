@@ -70,8 +70,9 @@ tools; pull finished meeting recordings for scoring; optionally post a private n
 - [x] E2 App: Connections sidebar section (⌘4), ConnectorManager (connect, browser sign-in, sync
       every 15 min, cache in schema v21), Upcoming Interviews with Prepare (candidate, role + JD,
       résumé) and Join, Calendar on this Mac, .ics invites.
-- [~] E3 ATS direct: Greenhouse (Harvest v3), Lever, Ashby, Workable DONE; SmartRecruiters, BambooHR, Teamtailor,
-      Recruitee, JazzHR, Breezy, Personio, Zoho Recruit.
+- [x] E3 ATS direct: Greenhouse (Harvest v3), Lever, Ashby, Workable, Recruitee, Zoho Recruit,
+      SmartRecruiters (interviews); Teamtailor, BambooHR, JazzHR, Breezy, Personio (no interview API:
+      calendar invites are matched to the candidate by email); Workday and iCIMS through unified APIs.
 - [x] E4 Unified: Merge, Kombo, Unified.to (interviews + notes), Apideck (jobs + applicants only).
 - [x] E5 Google (Calendar + Meet transcripts; Gmail/Drive skipped: restricted scopes), Microsoft 365 (Outlook, Teams
       recordings/transcripts), Zoom (meetings, cloud recordings).
@@ -113,3 +114,4 @@ tools; pull finished meeting recordings for scoring; optionally post a private n
 - 22:11 E4 unified APIs (Merge, Kombo, Unified.to, Apideck). 25 connector tests.
 - 22:17 E5 Google / Microsoft Graph / Zoom connectors + WebVTT; public-client OAuth (no secret). 31 connector tests.
 - 22:23 E6 recordings → analysis, transcript scoring, reminders, Send Summary. 286 app + 31 connector tests.
+- 22:31 E3b remaining ATSs + CandidateLookup enrichment in Prepare. 37 connector tests.

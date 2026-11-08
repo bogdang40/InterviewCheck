@@ -112,3 +112,17 @@ public struct MergeConnector: InterviewSource, JobSource, CandidateSource, NoteD
         ])
     }
 }
+
+extension MergeConnector: CandidateLookup {
+    public func findCandidate(email: String) async throws -> CandidateMatch? {
+        guard let json = try await list("candidates", [URLQueryItem(name: "email_addresses", value: email)], maxPages: 1).first,
+              let id = json["id"].string else { return nil }
+        let application = try await list("applications", [URLQueryItem(name: "candidate_id", value: id),
+                                                          URLQueryItem(name: "expand", value: "job")], maxPages: 1).first
+        return CandidateMatch(candidate: Self.candidate(json),
+                              job: application?.at("job.id").string.map {
+                                  ExternalJob(externalID: $0, title: application?.at("job.name").string ?? "Job")
+                              },
+                              applicationID: application?["id"].string)
+    }
+}

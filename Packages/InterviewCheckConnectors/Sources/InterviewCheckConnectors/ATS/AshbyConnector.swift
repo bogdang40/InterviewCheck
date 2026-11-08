@@ -124,3 +124,18 @@ public struct AshbyConnector: InterviewSource, JobSource, CandidateSource, NoteD
         ])
     }
 }
+
+extension AshbyConnector: CandidateLookup {
+    public func findCandidate(email: String) async throws -> CandidateMatch? {
+        guard let json = try await call("candidate.search", ["email": .string(email)])["results"][0].asObject,
+              let id = json["id"].string else { return nil }
+        let applicationID = json["applicationIds"].array.last?.string
+        var application: JSONValue?
+        if let applicationID { application = try await call("application.info", ["applicationId": .string(applicationID)])["results"] }
+        return CandidateMatch(candidate: ExternalCandidate(externalID: id, name: json["name"].string ?? "Candidate", email: email),
+                              job: application?.at("job.id").string.map {
+                                  ExternalJob(externalID: $0, title: application?.at("job.title").string ?? "Job")
+                              },
+                              applicationID: applicationID)
+    }
+}

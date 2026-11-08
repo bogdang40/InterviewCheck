@@ -8,7 +8,7 @@ public enum ConnectorFactory {
             (try? make(kind, credentials: ConnectorCredentials(fields: ["apiKey": "x", "subdomain": "x", "companyID": "x",
                                                                         "accountToken": "x", "integrationID": "x", "url": "https://x",
                                                                         "clientID": "x", "clientSecret": "x", "domain": "zoho.com",
-                                                                        "email": "x", "password": "x", "appID": "x",
+                                                                        "email": "x", "password": "x", "appID": "x", "refreshToken": "x",
                                                                         "consumerID": "x", "connectionID": "x"]),
                            accessToken: { "x" })) != nil
         })
@@ -41,6 +41,14 @@ public enum ConnectorFactory {
         case .kombo: return try KomboConnector(credentials: credentials, transport: transport)
         case .unifiedTo: return try UnifiedToConnector(credentials: credentials, transport: transport)
         case .apideck: return try ApideckConnector(credentials: credentials, transport: transport)
+        case .recruitee: return try RecruiteeConnector(credentials: credentials, transport: transport)
+        case .zohoRecruit: return try ZohoRecruitConnector(credentials: credentials, transport: transport)
+        case .smartRecruiters: return try SmartRecruitersConnector(credentials: credentials, transport: transport)
+        case .teamtailor: return try TeamtailorConnector(credentials: credentials, transport: transport)
+        case .bambooHR: return try BambooHRConnector(credentials: credentials, transport: transport)
+        case .jazzHR: return try JazzHRConnector(credentials: credentials, transport: transport)
+        case .breezyHR: return try BreezyConnector(credentials: credentials, transport: transport)
+        case .personio: return try PersonioConnector(credentials: credentials, transport: transport)
         case .google: return try GoogleWorkspaceConnector(credentials: credentials, transport: transport, accessToken: accessToken)
         case .microsoft365: return try MicrosoftGraphConnector(credentials: credentials, transport: transport, accessToken: accessToken)
         case .zoom: return try ZoomMeetingsConnector(credentials: credentials, transport: transport, accessToken: accessToken)

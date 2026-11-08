@@ -98,3 +98,17 @@ public struct KomboConnector: InterviewSource, JobSource, CandidateSource, NoteD
         ])
     }
 }
+
+extension KomboConnector: CandidateLookup {
+    public func findCandidate(email: String) async throws -> CandidateMatch? {
+        guard let json = try await list("ats/candidates", [URLQueryItem(name: "email", value: email)], maxPages: 1).first,
+              let id = json["id"].string else { return nil }
+        let name = [json["first_name"].string, json["last_name"].string].compactMap { $0 }.joined(separator: " ")
+        let application = json["applications"].array.first { $0["outcome"].string == "PENDING" } ?? json["applications"][0].asObject
+        return CandidateMatch(candidate: ExternalCandidate(externalID: id, name: name.isEmpty ? "Candidate" : name, email: email),
+                              job: application?.at("job.id").string.map {
+                                  ExternalJob(externalID: $0, title: application?.at("job.name").string ?? "Job")
+                              },
+                              applicationID: application?["id"].string)
+    }
+}
