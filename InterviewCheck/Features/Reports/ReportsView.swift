@@ -121,6 +121,8 @@ private struct ReportRow: View {
 /// One interview's report.
 struct ReportDetail: View {
     let report: InterviewReportData
+    var database: SessionDatabase = .shared
+    @State private var labels: [String: AnswerLabel] = [:]
 
     var body: some View {
         ScrollView {
@@ -132,7 +134,10 @@ struct ReportDetail: View {
                             .font(.title3.weight(.semibold))
                             .fixedSize(horizontal: false, vertical: true)
                             .textSelection(.enabled)
-                        if let score = report.scores[question.id] { ScoreCard(score: score) }
+                        if let score = report.scores[question.id] {
+                            ScoreCard(score: score)
+                            verdictPicker(question.id)
+                        }
                         Text("CANDIDATE'S ANSWER").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                         Text(question.answerText.isEmpty ? "(nothing captured)" : question.answerText)
                             .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
@@ -150,6 +155,25 @@ struct ReportDetail: View {
             .padding(24)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .onAppear { labels = database.loadAnswerLabels(interviewID: report.interview.id) }
+        .onChange(of: report.interview.id) { _, id in labels = database.loadAnswerLabels(interviewID: id) }
+    }
+
+    /// The interviewer's own verdict, used to tune the weights.
+    private func verdictPicker(_ questionID: String) -> some View {
+        Picker("Your verdict", selection: Binding(
+            get: { labels[questionID] },
+            set: { label in
+                labels[questionID] = label
+                database.saveAnswerLabel(label, questionID: questionID)
+            }
+        )) {
+            Text("Not judged").tag(AnswerLabel?.none)
+            ForEach(AnswerLabel.allCases) { Text($0.title).tag(Optional($0)) }
+        }
+        .pickerStyle(.segmented)
+        .frame(maxWidth: 460)
+        .help("After follow-ups, mark what you concluded. Settings \u{203A} Detector can tune the weights from these.")
     }
 
     private var header: some View {

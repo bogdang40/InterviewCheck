@@ -98,6 +98,7 @@ extension SessionDatabase {
 
     func deleteInterview(id: String) {
         for sql in [
+            "DELETE FROM answer_labels WHERE question_id IN (SELECT id FROM interview_questions WHERE interview_id = ?)",
             "DELETE FROM answer_scores WHERE question_id IN (SELECT id FROM interview_questions WHERE interview_id = ?)",
             "DELETE FROM reference_answers WHERE question_id IN (SELECT id FROM interview_questions WHERE interview_id = ?)",
             "DELETE FROM interview_questions WHERE interview_id = ?",

@@ -76,6 +76,13 @@ extension SessionDatabaseSchema {
         )
         """,
         """
+        CREATE TABLE IF NOT EXISTS answer_labels (
+            question_id TEXT PRIMARY KEY,
+            label TEXT NOT NULL,
+            labeled_at INTEGER NOT NULL
+        )
+        """,
+        """
         CREATE TABLE IF NOT EXISTS role_profiles (
             workspace_id TEXT PRIMARY KEY,
             profile TEXT NOT NULL,
@@ -92,5 +99,15 @@ extension SessionDatabaseSchema {
 extension SessionDatabaseMigrationSteps {
     static let interviews: [MigrationStep] = [
         MigrationStep(version: 17, statements: SessionDatabaseSchema.interviewStatements),
+        // The interviewer's verdict on an answer, for tuning the weights.
+        MigrationStep(version: 18, statements: [
+            """
+            CREATE TABLE IF NOT EXISTS answer_labels (
+                question_id TEXT PRIMARY KEY,
+                label TEXT NOT NULL,
+                labeled_at INTEGER NOT NULL
+            )
+            """,
+        ]),
     ]
 }

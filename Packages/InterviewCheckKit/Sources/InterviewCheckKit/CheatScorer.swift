@@ -39,6 +39,22 @@ public enum ScoreConfidence: String, Codable, Equatable {
     case low, medium, high
 }
 
+/// Each signal's value (0...1) before weighting; nil when the signal did
+/// not apply. Kept with every score so weights can be re-tuned later.
+public struct ScoreComponents: Codable, Equatable {
+    public var timing: Double?
+    public var fluency: Double?
+    public var similarity: Double?
+    public var judge: Double?
+
+    public init(timing: Double? = nil, fluency: Double? = nil, similarity: Double? = nil, judge: Double? = nil) {
+        self.timing = timing
+        self.fluency = fluency
+        self.similarity = similarity
+        self.judge = judge
+    }
+}
+
 /// The % shown for one answer, with the reasons behind it.
 public struct AnswerScore: Equatable {
     /// 0 ... 100.
@@ -53,6 +69,7 @@ public struct AnswerScore: Equatable {
     public let fluency: FluencyResult
     public let similarity: SimilarityResult?
     public let judge: JudgeResult?
+    public let components: ScoreComponents
 }
 
 /// Combines the four signals. Timing only counts in full when the answer
@@ -67,18 +84,8 @@ public enum CheatScorer {
         hasTimingGap: Bool,
         weights: CheatScoreWeights = .default
     ) -> AnswerScore {
-        var parts: [(weight: Double, value: Double)] = []
-        let fluencyValue = fluency.isReliable ? fluency.score : 0.5
-        if timing.firstWordLatency != nil {
-            parts.append((weights.timing, timing.score * (0.5 + 0.5 * fluencyValue)))
-        }
-        if fluency.isReliable { parts.append((weights.fluency, fluency.score)) }
-        if let similarity, similarity.best != nil { parts.append((weights.similarity, similarity.score)) }
-        if let judge { parts.append((weights.judge, judge.score)) }
-
-        let totalWeight = parts.reduce(0) { $0 + $1.weight }
-        let blended = totalWeight > 0 ? parts.reduce(0) { $0 + $1.weight * $1.value } / totalWeight : 0
-        let percent = Int((blended * 100).rounded())
+        let components = Self.components(timing: timing, fluency: fluency, similarity: similarity, judge: judge)
+        let percent = Int((blend(components, weights: weights) * 100).rounded())
 
         let hasReferences = similarity?.best != nil
         let confidence: ScoreConfidence
@@ -100,8 +107,30 @@ public enum CheatScorer {
             timing: timing,
             fluency: fluency,
             similarity: similarity,
-            judge: judge
+            judge: judge,
+            components: components
         )
+    }
+
+    /// Each signal's contribution before weighting.
+    public static func components(timing: TimingResult, fluency: FluencyResult,
+                                  similarity: SimilarityResult?, judge: JudgeResult?) -> ScoreComponents {
+        let fluencyValue = fluency.isReliable ? fluency.score : 0.5
+        return ScoreComponents(
+            timing: timing.firstWordLatency == nil ? nil : timing.score * (0.5 + 0.5 * fluencyValue),
+            fluency: fluency.isReliable ? fluency.score : nil,
+            similarity: similarity?.best == nil ? nil : similarity?.score,
+            judge: judge?.score
+        )
+    }
+
+    /// Weighted average of the signals that applied (0...1).
+    public static func blend(_ components: ScoreComponents, weights: CheatScoreWeights) -> Double {
+        let parts: [(Double, Double?)] = [(weights.timing, components.timing), (weights.fluency, components.fluency),
+                                          (weights.similarity, components.similarity), (weights.judge, components.judge)]
+        let present = parts.compactMap { weight, value in value.map { (weight, $0) } }
+        let total = present.reduce(0) { $0 + $1.0 }
+        return total > 0 ? present.reduce(0) { $0 + $1.0 * $1.1 } / total : 0
     }
 }
 

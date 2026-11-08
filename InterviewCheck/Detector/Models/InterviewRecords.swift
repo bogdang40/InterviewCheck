@@ -78,6 +78,8 @@ struct AnswerMetrics: Codable, Equatable {
     var referenceAgreement: Double?
     var judgeLikelihood: Int?
     var timingGap: Bool
+    /// Each signal's value before weighting (absent on older scores).
+    var components: ScoreComponents?
 
     init(score: AnswerScore, timingGap: Bool) {
         firstWordLatency = score.timing.firstWordLatency
@@ -97,6 +99,7 @@ struct AnswerMetrics: Codable, Equatable {
         referenceAgreement = score.similarity?.referenceAgreement
         judgeLikelihood = score.judge?.likelihood
         self.timingGap = timingGap
+        components = score.components
     }
 }
 

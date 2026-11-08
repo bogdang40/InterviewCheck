@@ -157,6 +157,8 @@ struct DetectorSettingsTab: View {
                 Text("The review adds evidence and two follow-up questions to each score.")
             }
 
+            CalibrationSection()
+
             Section("Notice for candidates") {
                 TextEditor(text: $settings.consentNotice)
                     .frame(minHeight: 80)
