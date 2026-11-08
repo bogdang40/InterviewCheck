@@ -138,4 +138,4 @@ ship inside a desktop app:
 - Each vendor's partner OAuth secret: Greenhouse partner sign-in, Lever OAuth and Workable partner tokens.
 - The unified APIs' workspace keys: Merge, Kombo, Unified.to and Apideck.
 
-Until then, each company uses its own keys, which stay in that interviewer's Keychain.
+Until then, each company uses its own keys, which stay in that interviewer's Keychain. The proposed server design is in [backend-plan.md](backend-plan.md).
