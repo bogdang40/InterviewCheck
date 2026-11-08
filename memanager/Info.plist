@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>CFBundleExecutable</key>
+    <string>$(EXECUTABLE_NAME)</string>
+    <key>CFBundleIdentifier</key>
+    <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>Abley</string>
+    <key>CFBundleDisplayName</key>
+    <string>Abley</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>$(MACOSX_DEPLOYMENT_TARGET)</string>
+    <key>NSPrincipalClass</key>
+    <string>NSApplication</string>
+
+    <!-- Agent app - always invisible, no dock icon ever -->
+    <key>LSUIElement</key>
+    <true/>
+
+    <!-- Privacy permissions -->
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Abley needs microphone access to transcribe coding discussions.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>Abley uses speech recognition to convert your voice to text.</string>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>Abley needs automation access for global hotkeys.</string>
+    <key>NSScreenCaptureUsageDescription</key>
+    <string>Abley needs screen recording access to capture code on your screen.</string>
+
+    <!-- High resolution support -->
+    <key>NSHighResolutionCapable</key>
+    <true/>
+
+    <!-- Supports secure state restoration -->
+    <key>NSSupportsSecureStateRestoration</key>
+    <true/>
+
+    <!-- Deep link back from Stripe Checkout and the Billing Portal -->
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>com.memanager.app.billing</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>memanager</string>
+            </array>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+        </dict>
+    </array>
+</dict>
+</plist>

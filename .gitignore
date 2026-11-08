@@ -1,0 +1,67 @@
+# Xcode
+*.xcodeproj/
+!*.xcodeproj/project.pbxproj
+*.xcworkspace/
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.xcuserstate
+*.xccheckout
+*.xcscmblueprint
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Build artifacts
+build/
+DerivedData/
+*.o
+*.d
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Dependencies
+Pods/
+Carthage/
+
+# Third-party binaries (downloaded by bootstrap)
+third_party/picovoice/eagle/lib/
+third_party/picovoice/eagle/include/*.h
+third_party/picovoice/eagle/eagle_params.pv
+third_party/picovoice/eagle/CHECKSUMS.sha256
+third_party/picovoice/eagle/VERSION
+
+# Keep the modulemap
+!third_party/picovoice/eagle/include/module.modulemap
+
+# IDE
+.idea/
+*.swp
+*.swo
+*~
+
+# Swift Package Manager
+.build/
+Package.resolved
+
+# Archives
+*.xcarchive
+
+# Logs
+*.log
+
+# Local caches
+.derivedData*/
+.swiftpm/
+.cursor/
+
+# Local design generation and Blender authoring
+docs/ui-makeover/
+*.blend
+*.blend[0-9]

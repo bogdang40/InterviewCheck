@@ -1,0 +1,116 @@
+name: memanager
+
+options:
+  bundleIdPrefix: com.memanager
+  deploymentTarget:
+    macOS: "14.0"
+  xcodeVersion: "15.0"
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    PRODUCT_NAME: memanager
+    MARKETING_VERSION: 1.0.0
+    CURRENT_PROJECT_VERSION: 1
+    SWIFT_VERSION: "5.9"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    CODE_SIGN_STYLE: Automatic
+    ENABLE_HARDENED_RUNTIME: YES
+    CODE_SIGN_IDENTITY: "Apple Development"
+    DEVELOPMENT_TEAM: "$(MEMANAGER_DEVELOPMENT_TEAM)"
+    CLANG_ENABLE_MODULES: YES
+
+targets:
+  memanager:
+    type: application
+    platform: macOS
+    sources:
+      - path: memanager
+        excludes:
+          - "*.entitlements"
+    settings:
+      base:
+        INFOPLIST_FILE: memanager/Info.plist
+        CODE_SIGN_ENTITLEMENTS: memanager/memanager.entitlements
+        LD_RUNPATH_SEARCH_PATHS:
+          - "@executable_path/../Frameworks"
+        PRODUCT_BUNDLE_IDENTIFIER: com.memanager.app
+        COMBINE_HIDPI_IMAGES: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        HEADER_SEARCH_PATHS:
+          - "$(PROJECT_DIR)/third_party/picovoice/eagle/include"
+          - "$(inherited)"
+        LIBRARY_SEARCH_PATHS:
+          - "$(PROJECT_DIR)/third_party/picovoice/eagle/lib/$(CURRENT_ARCH)"
+          - "$(inherited)"
+        OTHER_LDFLAGS:
+          - "$(inherited)"
+        SWIFT_INCLUDE_PATHS:
+          - "$(PROJECT_DIR)/third_party/picovoice/eagle/include"
+    preBuildScripts:
+      - name: Bootstrap Eagle SDK
+        script: |
+          "${SRCROOT}/scripts/bootstrap-eagle.sh"
+        basedOnDependencyAnalysis: false
+      - name: Verify Entitlements
+        script: |
+          "${SRCROOT}/scripts/verify-entitlements.sh"
+    postCompileScripts:
+      - name: Copy Eagle dylib
+        script: |
+          set -eu
+          FRAMEWORKS_DIR="${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}"
+          EAGLE_LIB_DIR="${SRCROOT}/third_party/picovoice/eagle/lib"
+          DYLIB_DST="${FRAMEWORKS_DIR}/libpv_eagle.dylib"
+
+          for EAGLE_ARCH in arm64 x86_64; do
+            DYLIB_SRC="$EAGLE_LIB_DIR/$EAGLE_ARCH/libpv_eagle.dylib"
+            if [ ! -f "$DYLIB_SRC" ]; then
+              echo "error: Missing pinned Eagle dylib: $DYLIB_SRC" >&2
+              exit 1
+            fi
+            lipo "$DYLIB_SRC" -verify_arch "$EAGLE_ARCH"
+          done
+
+          mkdir -p "$FRAMEWORKS_DIR"
+          lipo -create "$EAGLE_LIB_DIR/arm64/libpv_eagle.dylib" \
+            "$EAGLE_LIB_DIR/x86_64/libpv_eagle.dylib" -output "$DYLIB_DST"
+          install_name_tool -id "@rpath/libpv_eagle.dylib" "$DYLIB_DST"
+          codesign --force --sign - --timestamp=none "$DYLIB_DST"
+          lipo "$DYLIB_DST" -verify_arch arm64 x86_64
+          echo "Embedded Eagle dylib for arm64 and x86_64"
+        basedOnDependencyAnalysis: false
+    entitlements:
+      path: memanager/memanager.entitlements
+      properties:
+        com.apple.security.app-sandbox: false
+        com.apple.security.device.audio-input: true
+        com.apple.security.cs.disable-library-validation: true
+
+  memanagerTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: memanagerTests
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_NAME: memanagerTests
+        PRODUCT_BUNDLE_IDENTIFIER: com.memanager.tests
+    dependencies:
+      - target: memanager
+
+schemes:
+  memanager:
+    build:
+      targets:
+        memanager: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      gatherCoverageData: false
+      targets:
+        - memanagerTests
+    archive:
+      config: Release

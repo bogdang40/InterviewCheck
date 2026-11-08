@@ -1,0 +1,38 @@
+# Fly.io deployment for the memanager access server.
+# One machine plus a persistent volume is all this service needs.
+#
+#   fly launch --no-deploy --copy-config
+#   fly volumes create memanager_data --size 1
+#   fly secrets set STRIPE_SECRET_KEY=... STRIPE_WEBHOOK_SECRET=... \
+#       STRIPE_PRICE_MONTHLY=price_... STRIPE_PRICE_ANNUAL=price_... \
+#       ADMIN_EMAILS=you@example.com ADMIN_BOOTSTRAP_SECRET=<random> \
+#       PUBLIC_BASE_URL=https://<app>.fly.dev
+#   fly deploy
+
+app = "memanager-access"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8787"
+  DATABASE_PATH = "/data/access.sqlite"
+  TRUST_PROXY = "true"
+
+[[mounts]]
+  source = "memanager_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8787
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    method = "GET"
+    path = "/health"

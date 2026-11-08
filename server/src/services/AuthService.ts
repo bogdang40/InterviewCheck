@@ -1,0 +1,115 @@
+import { AccessPolicy, MILLISECONDS_PER_DAY } from "../config/AppConfig.js";
+import { AuthSessionRules, type AuthSession } from "../domain/Session.js";
+import { EmailNormalizer, type User } from "../domain/User.js";
+import { HttpError } from "../http/HttpError.js";
+import type { AuditLogRepository } from "../repositories/AuditLogRepository.js";
+import type { SessionRepository } from "../repositories/SessionRepository.js";
+import type { UserRepository } from "../repositories/UserRepository.js";
+import type { AdminBootstrap } from "./AdminBootstrap.js";
+import type { AccessSnapshot, EntitlementService } from "./EntitlementService.js";
+import type { PasswordHasher } from "./PasswordHasher.js";
+import type { TokenService } from "./TokenService.js";
+
+export interface Credentials {
+  email: string;
+  password: string;
+  deviceName?: string | undefined;
+  adminSecret?: string | undefined;
+}
+
+const SQLITE_CONSTRAINT_UNIQUE = 2067;
+
+export interface SignedInResponse extends AccessSnapshot {
+  readonly token: string;
+}
+
+export interface AuthenticatedRequest {
+  readonly user: User;
+  readonly session: AuthSession;
+}
+
+export class AuthService {
+  constructor(
+    private readonly users: UserRepository,
+    private readonly sessions: SessionRepository,
+    private readonly audit: AuditLogRepository,
+    private readonly hasher: PasswordHasher,
+    private readonly tokens: TokenService,
+    private readonly entitlements: EntitlementService,
+    private readonly bootstrap: AdminBootstrap,
+    private readonly policy: AccessPolicy,
+    private readonly clock: () => Date = () => new Date(),
+  ) {}
+
+  async signup(credentials: Credentials): Promise<SignedInResponse> {
+    const email = EmailNormalizer.normalize(credentials.email);
+    if (this.users.findByEmail(email)) {
+      throw new HttpError(409, "email_taken", "An account with this email already exists.");
+    }
+    const now = this.clock();
+    const trialEndsAt = this.policy.trialDays > 0 ? new Date(now.getTime() + this.policy.trialDays * MILLISECONDS_PER_DAY) : null;
+    const passwordHash = await this.hasher.hash(credentials.password);
+    let user: User;
+    try {
+      user = this.users.create(
+        { email, passwordHash, role: this.bootstrap.roleForNewAccount(email, credentials.adminSecret), trialEndsAt },
+        now,
+      );
+    } catch (error) {
+      // Two signups raced past the existence check while hashing.
+      if ((error as { errcode?: number }).errcode === SQLITE_CONSTRAINT_UNIQUE) {
+        throw new HttpError(409, "email_taken", "An account with this email already exists.");
+      }
+      throw error;
+    }
+    this.audit.record({ actorUserId: user.id, action: "auth.signup", targetUserId: user.id, details: { role: user.role } }, now);
+    return this.issueSession(user, credentials.deviceName ?? null, now);
+  }
+
+  async login(credentials: Credentials): Promise<SignedInResponse> {
+    const email = EmailNormalizer.normalize(credentials.email);
+    const user = this.users.findByEmail(email);
+    const storedHash = user ? this.users.passwordHash(user.id) : null;
+    const verified = await this.hasher.verify(credentials.password, storedHash ?? (await this.hasher.decoyHash()));
+    if (!user || !verified) {
+      throw new HttpError(401, "invalid_credentials", "Email or password is incorrect.");
+    }
+    if (user.disabled) {
+      throw new HttpError(403, "account_disabled", "This account has been disabled.");
+    }
+    const now = this.clock();
+    const updated = this.users.update(user.id, { lastLoginAt: now }, now);
+    this.audit.record({ actorUserId: user.id, action: "auth.login", targetUserId: user.id }, now);
+    return this.issueSession(updated, credentials.deviceName ?? null, now);
+  }
+
+  async authenticate(token: string): Promise<AuthenticatedRequest | null> {
+    if (!this.tokens.looksValid(token)) return null;
+    const session = this.sessions.findByTokenHash(this.tokens.hash(token));
+    const now = this.clock();
+    if (!session || !AuthSessionRules.isUsable(session, now)) return null;
+    const user = this.users.findById(session.userId);
+    if (!user || user.disabled) return null;
+
+    const ttlMillis = this.policy.sessionTtlDays * MILLISECONDS_PER_DAY;
+    if (AuthSessionRules.shouldExtend(session, ttlMillis, now)) {
+      this.sessions.touch(session.id, now, new Date(now.getTime() + ttlMillis));
+    } else {
+      this.sessions.touch(session.id, now, session.expiresAt);
+    }
+    return { user, session };
+  }
+
+  logout(request: AuthenticatedRequest): void {
+    const now = this.clock();
+    this.sessions.revoke(request.session.id, now);
+    this.audit.record({ actorUserId: request.user.id, action: "auth.logout", targetUserId: request.user.id }, now);
+  }
+
+  private issueSession(user: User, deviceName: string | null, now: Date): SignedInResponse {
+    const token = this.tokens.generate();
+    const expiresAt = new Date(now.getTime() + this.policy.sessionTtlDays * MILLISECONDS_PER_DAY);
+    this.sessions.create({ userId: user.id, tokenHash: this.tokens.hash(token), deviceName, expiresAt }, now);
+    return { token, ...this.entitlements.snapshotFor(user) };
+  }
+}
