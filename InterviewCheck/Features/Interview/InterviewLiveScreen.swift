@@ -27,6 +27,11 @@ struct InterviewLiveScreen: View {
                         Button("Dismiss") { controller.errorMessage = nil }.buttonStyle(.borderless)
                     }
                 }
+                if timeline.voiceNeedsRepick {
+                    Label("The call audio reconnected. Pick the candidate's voice again once more than one voice appears.",
+                          systemImage: "arrow.triangle.2.circlepath")
+                        .font(.callout).foregroundStyle(.orange)
+                }
                 if timeline.remoteSpeakers.count > 1 { speakerPicker }
                 if !planned.isEmpty { plannedStrip }
                 if let question = focusQuestion {

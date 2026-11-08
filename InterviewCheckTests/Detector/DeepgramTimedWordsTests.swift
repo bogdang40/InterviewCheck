@@ -106,4 +106,16 @@ final class ReconnectGapTests: XCTestCase {
         other.ingest(batch("b", at: 40, breaks: 1, connection: 1))
         XCTAssertTrue(other.hasGap(between: 38, and: 45))
     }
+
+    func testAReconnectAsksForTheVoiceAgain() {
+        let timeline = InterviewTimeline(uptime: { 0 })
+        timeline.ingest(batch("hello", at: 10, breaks: 0, connection: 1))
+        timeline.candidateSpeakerIndex = 1
+        XCTAssertFalse(timeline.voiceNeedsRepick)
+        timeline.ingest(batch("again", at: 30, breaks: 0, connection: 2))
+        XCTAssertNil(timeline.candidateSpeakerIndex, "voice numbers restart on a new connection")
+        XCTAssertTrue(timeline.voiceNeedsRepick)
+        timeline.candidateSpeakerIndex = 0
+        XCTAssertFalse(timeline.voiceNeedsRepick)
+    }
 }

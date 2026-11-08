@@ -16,7 +16,12 @@ final class InterviewTimeline: ObservableObject {
     /// Remote voices in the order they were first heard.
     @Published private(set) var remoteSpeakers: [Int] = []
     /// Nil means every remote voice counts as the candidate.
-    @Published var candidateSpeakerIndex: Int?
+    @Published var candidateSpeakerIndex: Int? {
+        didSet { if candidateSpeakerIndex != nil { voiceNeedsRepick = false } }
+    }
+    /// The call audio reconnected after a voice was picked: Deepgram numbers
+    /// voices afresh on a new connection, so the pick has to be made again.
+    @Published private(set) var voiceNeedsRepick = false
     /// Host times at which either stream's audio was not contiguous.
     @Published private(set) var gapTimes: [TimeInterval] = []
 
@@ -38,6 +43,7 @@ final class InterviewTimeline: ObservableObject {
         gapTimes = []
         lastBreaks = [:]
         lastConnection = [:]
+        voiceNeedsRepick = false
     }
 
     func ingest(_ batch: DeepgramTimedWords) {
@@ -54,7 +60,14 @@ final class InterviewTimeline: ObservableObject {
             )
         }
         let at = incoming.first?.start ?? now
-        if let previous = lastConnection[batch.source], previous != batch.connection { noteReconnect(at: at) }
+        if let previous = lastConnection[batch.source], previous != batch.connection {
+            noteReconnect(at: at)
+            if batch.source == .systemAudio, candidateSpeakerIndex != nil {
+                candidateSpeakerIndex = nil
+                remoteSpeakers = []
+                voiceNeedsRepick = true
+            }
+        }
         lastConnection[batch.source] = batch.connection
         noteBreaks(batch.clockBreaks, source: batch.source, at: at)
         append(incoming)
