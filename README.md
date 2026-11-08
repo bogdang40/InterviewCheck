@@ -62,7 +62,7 @@ Interview Report**; the Dock icon's menu lists the next interviews; links
 `interviewcheck://prepare-next`, `interviewcheck://sync` and `interviewcheck://report/latest`
 work from anywhere. Keys stay in the
 Keychain; synced data stays on this Mac. Connector code and tests live in
-`Packages/InterviewCheckConnectors` (`swift test`).
+`Packages/InterviewCheckConnectors` (`swift test`). Setup steps for every system: [docs/CONNECTORS.md](docs/CONNECTORS.md).
 
 Keyboard: ⌘1 Interview, ⌘2 Roles, ⌘3 Reports, ⌘4 Connections, ⌘N new interview, ⇧⌘N new
 role, ⌘O analyze a recording, ⌘R start, ⇧⌘↩ question asked, ⇧⌘E answer done,
