@@ -150,7 +150,7 @@ struct InterviewLiveScreen: View {
             CandidateAnswerBlock(text: answerText, references: answers, question: question.text)
         }
         if let score = controller.scores[question.id] {
-            ScoreCard(score: score)
+            ScoreCard(score: score, baselineNote: BaselineSignal.note(for: question.id, scores: controller.scores))
         } else if question.closedAt != nil, !question.answerText.isEmpty {
             HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Scoring the answer\u{2026}").foregroundStyle(.secondary) }
         }

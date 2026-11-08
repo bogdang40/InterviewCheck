@@ -15,6 +15,8 @@ extension ScoreBand {
 struct ScoreCard: View {
     let score: AnswerScoreRecord
     var showsFollowUps = true
+    /// How this answer differs from the candidate's other answers, if it does.
+    var baselineNote: String?
 
     private var band: ScoreBand { ScoreBand(percent: score.percent) }
 
@@ -42,6 +44,10 @@ struct ScoreCard: View {
                 if !score.reasons.isEmpty {
                     BulletList(title: "Why", items: score.reasons, symbol: "exclamationmark.circle",
                                color: band == .genuine ? .secondary : band.color)
+                }
+                if let baselineNote {
+                    BulletList(title: "Compared with their other answers", items: [baselineNote],
+                               symbol: "person.crop.circle.badge.exclamationmark", color: .orange)
                 }
                 if !score.counterpoints.isEmpty {
                     BulletList(title: "In their favour", items: score.counterpoints, symbol: "checkmark.circle", color: .green)
@@ -371,6 +377,22 @@ struct QuestionRail: View {
         if let score { parts.append("\(score.percent) percent") }
         if !question.text.isEmpty { parts.append(question.text) }
         return parts.joined(separator: ", ")
+    }
+}
+
+extension AnswerMetrics {
+    /// Delivery traits that differ from person to person.
+    var style: AnswerStyle {
+        AnswerStyle(latency: substantiveLatency ?? firstWordLatency, wordCount: wordCount, hesitations: fillers + restarts)
+    }
+}
+
+extension BaselineSignal {
+    /// This answer against the same candidate's other finished answers.
+    static func note(for questionID: String, scores: [String: AnswerScoreRecord]) -> String? {
+        guard let score = scores[questionID], score.isFinal else { return nil }
+        let others = scores.filter { $0.key != questionID && $0.value.isFinal }.map(\.value.metrics.style)
+        return compare(score.metrics.style, with: others)
     }
 }
 

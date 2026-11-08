@@ -1,5 +1,6 @@
 import XCTest
 @testable import InterviewCheck
+import InterviewCheckKit
 
 /// A whole interview against a fake clock, fake AI and a temporary database.
 @MainActor
@@ -219,5 +220,31 @@ final class InterviewFlowTests: XCTestCase {
             if Date() > deadline { XCTFail("Timed out waiting"); return }
             try await Task.sleep(nanoseconds: 20_000_000)
         }
+    }
+}
+
+/// "Compared with their other answers" uses finished answers only.
+final class BaselineNoteTests: XCTestCase {
+    private typealias F = DetectorFixtures
+
+    private func record(_ id: String, _ words: [TimedWord], isFinal: Bool = true) -> AnswerScoreRecord {
+        let timing = TimingSignal.evaluate(answerWords: words, questionEnd: 100, questionText: F.question)
+        let fluency = FluencySignal.evaluate(answerWords: words, from: timing.substantiveIndex)
+        let score = CheatScorer.score(timing: timing, fluency: fluency, similarity: nil, judge: nil, hasTimingGap: false)
+        return AnswerScoreRecord(questionID: id, percent: score.percent, confidence: score.confidence,
+                                 reasons: score.reasons, counterpoints: score.counterpoints, followUps: [],
+                                 metrics: AnswerMetrics(score: score, timingGap: false), isFinal: isFinal)
+    }
+
+    func testReadAnswerStandsOutFromTheirOwnAnswers() throws {
+        let scores = ["a": record("a", F.honestAnswer(after: 100)), "b": record("b", F.honestAnswer(after: 100)),
+                      "c": record("c", F.readingAnswer(after: 100))]
+        let note = try XCTUnwrap(BaselineSignal.note(for: "c", scores: scores))
+        XCTAssertTrue(note.hasPrefix("Unlike their other answers: started after"), note)
+        XCTAssertNil(BaselineSignal.note(for: "a", scores: scores), "an honest answer is like the other honest one")
+
+        var live = scores
+        live["b"] = record("b", F.honestAnswer(after: 100), isFinal: false)
+        XCTAssertNil(BaselineSignal.note(for: "c", scores: live), "an answer still being scored is not part of the usual")
     }
 }

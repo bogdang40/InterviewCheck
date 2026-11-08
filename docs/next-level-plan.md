@@ -26,7 +26,7 @@ every screen of the installed app and the demo.
 | N3 | **A demo that tells the story.** AI answers take as long as real ones; the demo ends on its report. | Done (check below) |
 | N4 | **First run.** "Watch a 2-minute demo" on the welcome sheet and on the setup screen while keys are missing. | Done |
 | N5 | **AI phrasing.** A signal that works without keys: read-aloud LLM wording ("furthermore", "it's worth noting", spoken "Situation: … Task: …", announced lists). | Done |
-| N6 | **Their own baseline.** An answer that starts much later and runs much cleaner than the same candidate's other answers is called out. | |
+| N6 | **Their own baseline.** An answer that starts much later and runs much cleaner than the same candidate's other answers is called out. | Done |
 
 ## Log
 
@@ -35,3 +35,4 @@ every screen of the installed app and the demo.
 - **N3.** The demo's AI answers now wait 1.0–2.3 s before their first words, like real models, so the pause and "first line after" mean something. When the last score is saved the demo switches to its report (Interview | Report switch, overall line in the header).
 - **N4 done.** The welcome sheet already had "Watch a Demo Interview". The two orange warnings on New Interview are now a "Before your first interview" checklist (Deepgram key, Claude or OpenAI key, with check marks), "Add Keys in Settings…" and "Watch the Demo".
 - **N5 done.** `PhrasingSignal` (core package) looks for model wording read aloud: strong tells ("furthermore", "it's worth noting", "plays a crucial role" …) count fully, common tech words ("leverage", "robust") a third; STAR labels said in order and announced or ordinal lists add a little. It is scored per 100 words, needs 25+ words, and only counts from 0.3 up: an answer without such words is not evidence of anything. It joins the blend at weight 0.10 (saved weights without it gain the default) with the reason "Sounds written, not spoken: …". It works without any AI key. 8 new core tests; full app suite green (345).
+- **N6 done.** `BaselineSignal` (core package) compares an answer with the same candidate's other finished answers (20+ words, at least two of them). It is called out when the answer has a third or less of their usual hesitations (fillers and restarts per 100 words, when they usually have 3+), and more strongly when it also starts much later than usual (2.5× and 2.5 s more). It appears on the score card under "Compared with their other answers", in the report and in the PDF. It is evidence only and does not change the %, so the calibration stays as it is. 6 core tests and 1 app test.

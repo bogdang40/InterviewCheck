@@ -38,6 +38,7 @@ enum ReportAttributedText {
                 text.append(line("\(score.percent)% \u{00B7} \(ScoreBand(percent: score.percent).title) (\(score.confidence.rawValue) confidence)",
                                  font: .systemFont(ofSize: 12, weight: .semibold), color: accent, after: 4))
                 for reason in score.reasons { text.append(bullet(reason)) }
+                if let note = BaselineSignal.note(for: question.id, scores: report.scores) { text.append(bullet(note)) }
                 for point in score.counterpoints { text.append(bullet("In their favour: \(point)")) }
                 if !score.followUps.isEmpty {
                     text.append(line("Ask next:", font: .systemFont(ofSize: 11, weight: .semibold), before: 4, after: 2))

@@ -233,7 +233,7 @@ struct ReportDetail: View {
                             .fixedSize(horizontal: false, vertical: true)
                             .textSelection(.enabled)
                         if let score = report.scores[question.id] {
-                            ScoreCard(score: score)
+                            ScoreCard(score: score, baselineNote: BaselineSignal.note(for: question.id, scores: report.scores))
                             verdictPicker(question.id)
                         }
                         SectionCaption("Your notes")
