@@ -1,5 +1,5 @@
 import XCTest
-@testable import InterviewCheck
+@testable import InterviewCheckKit
 
 final class StreamClockTests: XCTestCase {
     /// 1 second of 48 kHz mono PCM16.

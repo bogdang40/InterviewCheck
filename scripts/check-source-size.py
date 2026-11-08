@@ -5,7 +5,7 @@ from pathlib import Path
 import sys
 
 ROOT = Path(__file__).resolve().parent.parent
-SOURCE_ROOTS = ("InterviewCheck", "InterviewCheckTests", "server/src", "server/test", "scripts")
+SOURCE_ROOTS = ("InterviewCheck", "InterviewCheckTests", "Packages", "server/src", "server/test", "scripts")
 EXTENSIONS = {".swift", ".ts", ".js", ".mjs", ".py", ".sh", ".metal", ".html", ".css"}
 VENDOR_FILES: set = set()
 
@@ -17,6 +17,8 @@ def main():
         for path in sorted((ROOT / directory).rglob("*")):
             relative = path.relative_to(ROOT).as_posix()
             if not path.is_file() or path.suffix not in EXTENSIONS or relative in VENDOR_FILES:
+                continue
+            if "/.build/" in relative or "/node_modules/" in relative:
                 continue
             count = len(path.read_text().splitlines())
             checked += 1

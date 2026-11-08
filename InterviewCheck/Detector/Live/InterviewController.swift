@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import InterviewCheckKit
 
 /// Runs one live interview: setup, questions, AI answers, scores, saving.
 @MainActor

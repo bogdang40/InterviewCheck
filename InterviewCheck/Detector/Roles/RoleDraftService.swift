@@ -1,4 +1,5 @@
 import Foundation
+import InterviewCheckKit
 
 /// What one "Draft" press produces from a job description.
 struct RoleDraft: Equatable {

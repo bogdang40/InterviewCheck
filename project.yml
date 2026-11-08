@@ -20,10 +20,16 @@ settings:
     DEVELOPMENT_TEAM: "$(INTERVIEWCHECK_DEVELOPMENT_TEAM)"
     CLANG_ENABLE_MODULES: YES
 
+packages:
+  InterviewCheckKit:
+    path: Packages/InterviewCheckKit
+
 targets:
   InterviewCheck:
     type: application
     platform: macOS
+    dependencies:
+      - package: InterviewCheckKit
     sources:
       - path: InterviewCheck
         excludes:
@@ -60,6 +66,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.interviewcheck.tests
     dependencies:
       - target: InterviewCheck
+      - package: InterviewCheckKit
 
 schemes:
   InterviewCheck:

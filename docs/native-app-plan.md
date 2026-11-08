@@ -28,33 +28,27 @@ Status key: [ ] todo · [~] in progress · [x] done (commit)
 
 ## B. Scalable structure
 - [x] B1 Rename target/module InterviewCheck → InterviewCheck (folders, imports, scripts).
-- [ ] B2 `Packages/InterviewCheckKit`: detector core (models, timing, scoring) as a
+- [x] B2 `Packages/InterviewCheckKit`: detector core (models, timing, scoring) as a
       Swift package with `swift test` (fast, no app host, no crash dialogs).
 - [x] B3 Remove candidate-only code: Quick Assist/Solve/Design/ML guide, Practice,
       Knowledge, Modes, teleprompter, coach nudges, voice signature + Eagle SDK,
       overlay window + glass/Metal shaders (drops the Metal toolchain need).
-- [ ] B4 README + ARCHITECTURE docs; one `scripts/ci.sh`.
+- [x] B4 README + ARCHITECTURE docs; one `scripts/ci.sh`.
 
 ## C. Verify every step
 - build; guarded tests; render native screens light/dark; launch the installed app,
   confirm it stays up, no new crash report, window screenshot.
 
-## Log
+## Log (times from commits)
 - 20:05 plan written.
-- 20:16 A1–A6: native WindowGroup + sidebar, menus, Settings scene, companion, Carbon
-  shortcuts only while live, native screens. Launched from ~/Applications: real window
-  with traffic lights, no crash. Commit 6da0258.
-- 20:22 A7: generated app icon (shield + check), AccentColor, `-InterviewCheckStartSection`
-  launch option for screenshots. Window screenshots of Interview / Roles / Reports OK.
-- 20:30 A8: Start checks Deepgram key, asks microphone, checks Screen \& System Audio
-  Recording with System Settings link; interview drives AudioCaptureService directly.
-- 20:45 B3 round 1: deleted overlay UI (Views/, Rendering/), candidate services (session hub,
-  Quick Assist, Solve/Design, practice, knowledge, workspaces, project tools, screenshots,
-  hotkeys), candidate DB DAOs, provider classes; native access gate; slim SettingsManager.
-  App 1,260 -> ~230 Swift files; 310 tests pass in 5 s; app launches.
-- 21:00 B3 round 2: removed Picovoice Eagle voice ID (Swift code, dylib, model, build steps,
-  disable-library-validation), old welcome frames (30 MB), Mermaid bundle. App 49 MB -> 10 MB;
-  no network needed to build; 281 tests pass; launches.
-- 21:08 B1: renamed target/module/folders memanager -> InterviewCheck (InterviewCheck/,
-  InterviewCheckTests/, entitlements, scripts, settings keys, queue labels, server names).
-  Old cheating-tool docs removed. 281 tests pass; installed app runs as InterviewCheck.
+- 20:16 6da0258 A1–A6: native window + sidebar, menus, Settings, companion, Carbon shortcuts
+  only while live, native screens. Launched from ~/Applications: real window, no crash.
+- 20:20 65814e8 A7: app icon, accent colour, `-InterviewCheckStartSection`.
+- 20:22 d855c55 A8: permissions asked at Start (Deepgram key, mic, call audio).
+- 20:30 4727ff8 B3 round 1: overlay UI, candidate services/DAOs/providers removed;
+  ~1,260 -> ~200 Swift files; 310 tests pass in 5 s.
+- 20:34 5ff2b7f B3 round 2: Eagle voice ID + dylib + model + library-validation
+  exception, welcome frames, Mermaid removed. App 49 MB -> 10 MB.
+- 20:36 f77cb14 B1: memanager -> InterviewCheck everywhere.
+- 20:42 B2: Packages/InterviewCheckKit (core, 34 tests via `swift test` in 0.03 s);
+  app 247 tests pass. B4: README, ARCHITECTURE, scripts/ci.sh.

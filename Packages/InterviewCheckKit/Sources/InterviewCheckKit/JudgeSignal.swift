@@ -1,20 +1,27 @@
 import Foundation
 
 /// What the AI judge concluded about one answer.
-struct JudgeResult: Equatable, Codable {
+public struct JudgeResult: Equatable, Codable {
     /// 0 ... 100, the judge's own estimate that the answer was read from AI.
-    let likelihood: Int
-    let confidence: String
-    let evidence: [String]
-    let followUpQuestions: [String]
+    public let likelihood: Int
+    public let confidence: String
+    public let evidence: [String]
+    public let followUpQuestions: [String]
 
-    var score: Double { Double(min(max(likelihood, 0), 100)) / 100 }
+    public var score: Double { Double(min(max(likelihood, 0), 100)) / 100 }
+
+    public init(likelihood: Int, confidence: String, evidence: [String], followUpQuestions: [String]) {
+        self.likelihood = likelihood
+        self.confidence = confidence
+        self.evidence = evidence
+        self.followUpQuestions = followUpQuestions
+    }
 }
 
 /// Pulls the first JSON object out of a model reply, tolerating code fences
 /// and text around it.
-enum LooseJSON {
-    static func object(from text: String) -> [String: Any]? {
+public enum LooseJSON {
+    public static func object(from text: String) -> [String: Any]? {
         var cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
         for fence in ["```json", "```"] where cleaned.hasPrefix(fence) {
             cleaned = String(cleaned.dropFirst(fence.count))
@@ -33,7 +40,7 @@ enum LooseJSON {
         return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
     }
 
-    static func strings(_ value: Any?) -> [String] {
+    public static func strings(_ value: Any?) -> [String] {
         (value as? [Any] ?? []).compactMap { ($0 as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
     }
@@ -42,8 +49,8 @@ enum LooseJSON {
 /// Builds the judge prompt and reads its reply. The judge sees the
 /// question, the candidate's words annotated with silences and fillers,
 /// the AI answers, and the measured signals, and returns JSON.
-enum JudgeSignal {
-    static let systemPrompt = """
+public enum JudgeSignal {
+    public static let systemPrompt = """
     You help a hiring interviewer spot candidates who read answers from an AI tool \
     (such as Cluely or ChatGPT) during a live interview. You are careful and fair: \
     nervous, rehearsed, non-native or neurodivergent speakers can sound unusual without \
@@ -54,7 +61,7 @@ enum JudgeSignal {
     language that people rarely speak. Reply with JSON only.
     """
 
-    static func userPrompt(
+    public static func userPrompt(
         question: String,
         annotatedAnswer: String,
         references: [ReferenceText],
@@ -95,7 +102,7 @@ enum JudgeSignal {
     }
 
     /// The candidate's words with silences of 1.5 s or more and fillers marked.
-    static func annotate(answerWords: [TimedWord], questionEnd: TimeInterval) -> String {
+    public static func annotate(answerWords: [TimedWord], questionEnd: TimeInterval) -> String {
         var parts: [String] = []
         var previousEnd = questionEnd
         for word in answerWords {
@@ -107,7 +114,7 @@ enum JudgeSignal {
         return parts.joined(separator: " ")
     }
 
-    static func parse(_ reply: String) -> JudgeResult? {
+    public static func parse(_ reply: String) -> JudgeResult? {
         guard let json = LooseJSON.object(from: reply) else { return nil }
         let raw = json["likelihood"]
         let likelihood: Int?
@@ -128,5 +135,5 @@ enum JudgeSignal {
         )
     }
 
-    static func format(_ value: Double) -> String { String(format: "%.1f", value) }
+    public static func format(_ value: Double) -> String { String(format: "%.1f", value) }
 }

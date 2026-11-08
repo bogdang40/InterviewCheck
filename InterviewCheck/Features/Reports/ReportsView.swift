@@ -1,4 +1,5 @@
 import SwiftUI
+import InterviewCheckKit
 
 /// Reports: past interviews beside the selected report.
 struct ReportsView: View {

@@ -1,5 +1,6 @@
 import XCTest
 @testable import InterviewCheck
+import InterviewCheckKit
 
 /// A client that returns fixed text, streamed in two chunks.
 struct FakeTextClient: DetectorTextGenerating {

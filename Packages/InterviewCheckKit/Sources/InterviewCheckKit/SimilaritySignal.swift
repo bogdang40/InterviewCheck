@@ -1,43 +1,50 @@
 import Foundation
 
 /// How closely the spoken answer follows one AI reference answer.
-struct ReferenceMatch: Equatable {
-    let referenceID: UUID
-    let label: String
+public struct ReferenceMatch: Equatable {
+    public let referenceID: UUID
+    public let label: String
     /// Share of the candidate's three-word phrases that appear in the reference.
-    let phraseContainment: Double
+    public let phraseContainment: Double
     /// Overlap of distinctive content words (Jaccard).
-    let contentOverlap: Double
+    public let contentOverlap: Double
     /// Cosine similarity of the two embeddings, when available.
-    let semantic: Double?
+    public let semantic: Double?
     /// The longest phrases both share, for the evidence line.
-    let sharedPhrases: [String]
-    let score: Double
+    public let sharedPhrases: [String]
+    public let score: Double
 }
 
-struct SimilarityResult: Equatable {
-    let best: ReferenceMatch?
+public struct SimilarityResult: Equatable {
+    public let best: ReferenceMatch?
     /// How much the AI answers agree with each other (0...1). When every
     /// model says the same thing, any correct answer matches them.
-    let referenceAgreement: Double
-    let score: Double
+    public let referenceAgreement: Double
+    public let score: Double
 }
 
 /// One AI answer to compare against.
-struct ReferenceText: Equatable {
-    let id: UUID
-    let label: String
-    let text: String
-    let embedding: [Double]?
+public struct ReferenceText: Equatable {
+    public let id: UUID
+    public let label: String
+    public let text: String
+    public let embedding: [Double]?
+
+    public init(id: UUID, label: String, text: String, embedding: [Double]?) {
+        self.id = id
+        self.label = label
+        self.text = text
+        self.embedding = embedding
+    }
 }
 
 /// Compares the candidate's words with each AI answer. Exact shared
 /// phrasing is the strongest sign of reading; meaning similarity alone is
 /// weak, because a correct answer covers the same ground as the AI.
-enum SimilaritySignal {
-    static let phraseLength = 3
+public enum SimilaritySignal {
+    public static let phraseLength = 3
 
-    static func evaluate(
+    public static func evaluate(
         answerText: String,
         answerEmbedding: [Double]?,
         questionText: String,
@@ -61,7 +68,7 @@ enum SimilaritySignal {
         return SimilarityResult(best: best, referenceAgreement: agreement, score: (best?.score ?? 0) * discount)
     }
 
-    static func match(
+    public static func match(
         answerTokens: [String],
         answerEmbedding: [Double]?,
         questionGrams: Set<[String]>,
@@ -97,7 +104,7 @@ enum SimilaritySignal {
     }
 
     /// Mean pairwise phrase containment between the references.
-    static func referenceAgreement(_ references: [ReferenceText], questionGrams: Set<[String]>) -> Double {
+    public static func referenceAgreement(_ references: [ReferenceText], questionGrams: Set<[String]>) -> Double {
         let grams = references.map { distinctiveGrams(FillerLexicon.tokens($0.text), excluding: questionGrams) }
         var total = 0.0
         var pairs = 0
@@ -113,18 +120,18 @@ enum SimilaritySignal {
     }
 
     /// Three-word phrases that are not all small words and not in the question.
-    static func distinctiveGrams(_ tokens: [String], excluding: Set<[String]>) -> Set<[String]> {
+    public static func distinctiveGrams(_ tokens: [String], excluding: Set<[String]>) -> Set<[String]> {
         Set(ngrams(tokens, phraseLength).filter { gram in
             !excluding.contains(gram) && gram.contains { !FillerLexicon.stopwords.contains($0) }
         })
     }
 
-    static func contentWords(_ tokens: [String]) -> Set<String> {
+    public static func contentWords(_ tokens: [String]) -> Set<String> {
         Set(tokens.filter { $0.count >= 4 && !FillerLexicon.stopwords.contains($0) })
     }
 
     /// Longest shared runs (up to 8 words, at least 4), longest first, max 3.
-    static func sharedPhrases(_ answer: [String], _ reference: [String], excluding: Set<[String]>) -> [String] {
+    public static func sharedPhrases(_ answer: [String], _ reference: [String], excluding: Set<[String]>) -> [String] {
         var found: [[String]] = []
         let referenceGrams = Set(ngrams(reference, 4))
         var index = 0
@@ -143,12 +150,12 @@ enum SimilaritySignal {
         return found.sorted { $0.count > $1.count }.prefix(3).map { $0.joined(separator: " ") }
     }
 
-    static func ngrams(_ tokens: [String], _ n: Int) -> [[String]] {
+    public static func ngrams(_ tokens: [String], _ n: Int) -> [[String]] {
         guard tokens.count >= n else { return [] }
         return (0...(tokens.count - n)).map { Array(tokens[$0..<($0 + n)]) }
     }
 
-    static func cosine(_ a: [Double], _ b: [Double]) -> Double {
+    public static func cosine(_ a: [Double], _ b: [Double]) -> Double {
         guard a.count == b.count, !a.isEmpty else { return 0 }
         var dot = 0.0, normA = 0.0, normB = 0.0
         for (x, y) in zip(a, b) {
@@ -165,5 +172,5 @@ enum SimilaritySignal {
         return (a, b)
     }
 
-    static func clamp(_ value: Double) -> Double { min(max(value, 0), 1) }
+    public static func clamp(_ value: Double) -> Double { min(max(value, 0), 1) }
 }

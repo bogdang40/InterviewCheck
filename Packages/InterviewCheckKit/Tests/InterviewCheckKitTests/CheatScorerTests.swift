@@ -1,5 +1,5 @@
 import XCTest
-@testable import InterviewCheck
+@testable import InterviewCheckKit
 
 final class CheatScorerTests: XCTestCase {
     private typealias F = DetectorFixtures

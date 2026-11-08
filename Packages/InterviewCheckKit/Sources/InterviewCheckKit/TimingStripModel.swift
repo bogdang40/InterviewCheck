@@ -2,21 +2,21 @@ import Foundation
 
 /// The start of an answer on a time axis: silence after the question,
 /// stalling words, then the real answer. Makes the "Cluely pause" visible.
-struct TimingStripModel: Equatable {
-    struct Segment: Equatable {
-        enum Kind: Equatable { case silence, stall, speech }
-        let kind: Kind
-        let start: TimeInterval
-        let end: TimeInterval
+public struct TimingStripModel: Equatable {
+    public struct Segment: Equatable {
+        public enum Kind: Equatable { case silence, stall, speech }
+        public let kind: Kind
+        public let start: TimeInterval
+        public let end: TimeInterval
     }
 
-    let segments: [Segment]
-    let duration: TimeInterval
-    let summary: String
+    public let segments: [Segment]
+    public let duration: TimeInterval
+    public let summary: String
 
     /// Builds the strip from the question end to the end of the answer's
     /// first `span` seconds.
-    init(window: QuestionWindow, timing: TimingResult, now: TimeInterval, span: TimeInterval = 20) {
+    public init(window: QuestionWindow, timing: TimingResult, now: TimeInterval, span: TimeInterval = 20) {
         let origin = window.questionEnd
         var segments: [Segment] = []
         var cursor = origin

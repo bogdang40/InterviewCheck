@@ -1,31 +1,31 @@
 import Foundation
 
 /// How the answer sounds once it gets going.
-struct FluencyResult: Equatable {
-    let wordCount: Int
-    let fillerCount: Int
-    let restartCount: Int
-    let longPauseCount: Int
-    let wordsPerMinute: Double
+public struct FluencyResult: Equatable {
+    public let wordCount: Int
+    public let fillerCount: Int
+    public let restartCount: Int
+    public let longPauseCount: Int
+    public let wordsPerMinute: Double
     /// Spread of the speaking pace across 5-second windows (std / mean).
     /// Reading aloud is steady; thinking aloud speeds up and slows down.
-    let paceVariation: Double?
+    public let paceVariation: Double?
     /// 0 (halting, natural) ... 1 (steady, filler-free, read-like).
-    let score: Double
+    public let score: Double
     /// Too few words to judge.
-    var isReliable: Bool { wordCount >= FluencySignal.minimumWords }
+    public var isReliable: Bool { wordCount >= FluencySignal.minimumWords }
 }
 
 /// Reading-like delivery: almost no fillers or restarts, no long mid-answer
 /// pauses, and an even pace. Measured over the first minute after the
 /// substantive start, where reading from a tool is most visible.
-enum FluencySignal {
-    static let window: TimeInterval = 60
-    static let minimumWords = 25
-    static let longPause: TimeInterval = 1.5
-    static let paceBin: TimeInterval = 5
+public enum FluencySignal {
+    public static let window: TimeInterval = 60
+    public static let minimumWords = 25
+    public static let longPause: TimeInterval = 1.5
+    public static let paceBin: TimeInterval = 5
 
-    static func evaluate(answerWords: [TimedWord], from startIndex: Int?) -> FluencyResult {
+    public static func evaluate(answerWords: [TimedWord], from startIndex: Int?) -> FluencyResult {
         let start = startIndex ?? 0
         guard start < answerWords.count else { return empty }
         let origin = answerWords[start].start
@@ -60,7 +60,7 @@ enum FluencySignal {
 
     /// A word said twice in a row, or a two-word phrase repeated ("I would,
     /// I would"), marks a self-correction.
-    static func countRestarts(_ words: [String]) -> Int {
+    public static func countRestarts(_ words: [String]) -> Int {
         var count = 0
         var index = 1
         while index < words.count {
@@ -76,7 +76,7 @@ enum FluencySignal {
 
     /// Coefficient of variation of words per 5-second bin; nil when there
     /// are fewer than three full bins.
-    static func paceVariation(_ words: [TimedWord], origin: TimeInterval) -> Double? {
+    public static func paceVariation(_ words: [TimedWord], origin: TimeInterval) -> Double? {
         guard let last = words.last else { return nil }
         let binCount = Int((last.start - origin) / paceBin)
         guard binCount >= 3 else { return nil }

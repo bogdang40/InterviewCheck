@@ -1,4 +1,5 @@
 import Foundation
+import InterviewCheckKit
 
 /// One interview with one candidate.
 struct InterviewRecord: Equatable, Identifiable {

@@ -1,24 +1,26 @@
 import Foundation
 
 /// Every tunable number behind the %, in one place for calibration.
-struct CheatScoreWeights: Equatable, Codable {
-    var timing = 0.35
-    var fluency = 0.20
-    var similarity = 0.25
-    var judge = 0.20
+public struct CheatScoreWeights: Equatable, Codable {
+    public var timing = 0.35
+    public var fluency = 0.20
+    public var similarity = 0.25
+    public var judge = 0.20
     /// Answers shorter than this get low confidence.
-    var minimumWordsForConfidence = 40
+    public var minimumWordsForConfidence = 40
     /// Answers at least this long, with references and the judge, can be high confidence.
-    var wordsForHighConfidence = 60
+    public var wordsForHighConfidence = 60
     /// The detector never claims certainty: shown scores stop here.
-    var maximumPercent = 95
+    public var maximumPercent = 95
 
-    static let `default` = CheatScoreWeights()
+    public static let `default` = CheatScoreWeights()
+
+    public init() {}
 }
 
 extension CheatScoreWeights {
     /// Missing keys (from an older saved version) fall back to defaults.
-    init(from decoder: Decoder) throws {
+    public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let fallback = CheatScoreWeights()
         timing = try container.decodeIfPresent(Double.self, forKey: .timing) ?? fallback.timing
@@ -33,31 +35,31 @@ extension CheatScoreWeights {
     }
 }
 
-enum ScoreConfidence: String, Codable, Equatable {
+public enum ScoreConfidence: String, Codable, Equatable {
     case low, medium, high
 }
 
 /// The % shown for one answer, with the reasons behind it.
-struct AnswerScore: Equatable {
+public struct AnswerScore: Equatable {
     /// 0 ... 100.
-    let percent: Int
-    let confidence: ScoreConfidence
+    public let percent: Int
+    public let confidence: ScoreConfidence
     /// Plain-language observations that raised the score, strongest first.
-    let reasons: [String]
+    public let reasons: [String]
     /// Observations that point to a genuine answer.
-    let counterpoints: [String]
-    let followUps: [String]
-    let timing: TimingResult
-    let fluency: FluencyResult
-    let similarity: SimilarityResult?
-    let judge: JudgeResult?
+    public let counterpoints: [String]
+    public let followUps: [String]
+    public let timing: TimingResult
+    public let fluency: FluencyResult
+    public let similarity: SimilarityResult?
+    public let judge: JudgeResult?
 }
 
 /// Combines the four signals. Timing only counts in full when the answer
 /// that follows is fluent: a long pause and then halting speech is how
 /// people think, a long pause and then a polished answer is how they read.
-enum CheatScorer {
-    static func score(
+public enum CheatScorer {
+    public static func score(
         timing: TimingResult,
         fluency: FluencyResult,
         similarity: SimilarityResult?,
@@ -105,8 +107,8 @@ enum CheatScorer {
 
 /// Turns the measurements into short sentences an interviewer can read at
 /// a glance.
-enum ScoreNotes {
-    static func build(
+public enum ScoreNotes {
+    public static func build(
         timing: TimingResult,
         fluency: FluencyResult,
         similarity: SimilarityResult?,
@@ -156,7 +158,7 @@ enum ScoreNotes {
         return (Array(unique.prefix(3)), Array(counterpoints.prefix(2)))
     }
 
-    static func seconds(_ value: TimeInterval) -> String {
+    public static func seconds(_ value: TimeInterval) -> String {
         value < 10 ? String(format: "%.1f s", value) : "\(Int(value.rounded())) s"
     }
 

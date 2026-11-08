@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import InterviewCheckKit
 
 /// The detector's own settings, saved in UserDefaults.
 @MainActor

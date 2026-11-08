@@ -1,4 +1,5 @@
 import Foundation
+import InterviewCheckKit
 
 /// Writes an interview report as Markdown or as simple HTML (for PDF).
 enum InterviewReportComposer {

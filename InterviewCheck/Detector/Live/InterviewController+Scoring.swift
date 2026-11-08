@@ -1,4 +1,5 @@
 import Foundation
+import InterviewCheckKit
 
 extension InterviewController {
     // MARK: - Live updates

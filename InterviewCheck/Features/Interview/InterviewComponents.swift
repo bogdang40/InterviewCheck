@@ -1,4 +1,5 @@
 import SwiftUI
+import InterviewCheckKit
 
 extension ScoreBand {
     var color: Color {

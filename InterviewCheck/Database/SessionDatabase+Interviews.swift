@@ -1,5 +1,6 @@
 import Foundation
 import SQLite3
+import InterviewCheckKit
 
 /// Reads and writes for the cheating detector's interview tables.
 extension SessionDatabase {

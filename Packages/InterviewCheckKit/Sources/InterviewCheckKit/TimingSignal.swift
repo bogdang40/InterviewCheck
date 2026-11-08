@@ -1,20 +1,20 @@
 import Foundation
 
 /// How the candidate started answering.
-struct TimingResult: Equatable {
+public struct TimingResult: Equatable {
     /// Seconds from the end of the question to the candidate's first word.
-    let firstWordLatency: TimeInterval?
+    public let firstWordLatency: TimeInterval?
     /// Seconds from the end of the question to the first word that is not
     /// a filler, a stall phrase, or the question read back.
-    let substantiveLatency: TimeInterval?
+    public let substantiveLatency: TimeInterval?
     /// Words spent stalling before the substantive start.
-    let stallWordCount: Int
+    public let stallWordCount: Int
     /// The stall words themselves, for the evidence line.
-    let stallText: String
+    public let stallText: String
     /// Index into the answer words of the substantive start.
-    let substantiveIndex: Int?
+    public let substantiveIndex: Int?
     /// 0 (answered straight away) ... 1 (long silence before real words).
-    let score: Double
+    public let score: Double
 }
 
 /// The "Cluely pause": a candidate reading from a tool waits in silence, or
@@ -22,15 +22,15 @@ struct TimingResult: Equatable {
 /// This signal measures only the wait; `CheatScorer` combines it with
 /// fluency, because a long pause followed by halting speech is ordinary
 /// thinking.
-enum TimingSignal {
+public enum TimingSignal {
     /// Latency (s) → suspicion. Linear between points.
-    static let curve: [(TimeInterval, Double)] = [
+    public static let curve: [(TimeInterval, Double)] = [
         (0, 0), (1.5, 0.05), (3, 0.35), (5, 0.7), (8, 0.9), (20, 0.9), (45, 0.7),
     ]
     /// Scan no further than this many words for the substantive start.
-    static let scanLimit = 40
+    public static let scanLimit = 40
 
-    static func evaluate(answerWords: [TimedWord], questionEnd: TimeInterval, questionText: String) -> TimingResult {
+    public static func evaluate(answerWords: [TimedWord], questionEnd: TimeInterval, questionText: String) -> TimingResult {
         guard let first = answerWords.first else {
             return TimingResult(firstWordLatency: nil, substantiveLatency: nil, stallWordCount: 0,
                                 stallText: "", substantiveIndex: nil, score: 0)
@@ -63,7 +63,7 @@ enum TimingSignal {
 
     /// First index that is not a filler, stall word, stall phrase or echo of
     /// the question; nil when the scan limit is reached first.
-    static func substantiveStart(in words: [String], questionTokens: Set<String>) -> Int? {
+    public static func substantiveStart(in words: [String], questionTokens: Set<String>) -> Int? {
         var index = 0
         let limit = min(words.count, scanLimit)
         while index < limit {
@@ -115,7 +115,7 @@ enum TimingSignal {
 
     /// A wait that matches how long the fastest AI took to produce its
     /// first sentence (plus a few seconds to start reading) adds a little.
-    static func pacedToAI(_ timing: TimingResult, fastestFirstSentence: TimeInterval?) -> TimingResult {
+    public static func pacedToAI(_ timing: TimingResult, fastestFirstSentence: TimeInterval?) -> TimingResult {
         guard let ai = fastestFirstSentence, let latency = timing.substantiveLatency,
               latency >= 2.5, latency >= ai, latency <= ai + 5 else { return timing }
         return TimingResult(
@@ -125,7 +125,7 @@ enum TimingSignal {
         )
     }
 
-    static func interpolate(_ latency: TimeInterval) -> Double {
+    public static func interpolate(_ latency: TimeInterval) -> Double {
         guard let last = curve.last else { return 0 }
         if latency >= last.0 { return last.1 }
         for (lower, upper) in zip(curve, curve.dropFirst()) where latency <= upper.0 {

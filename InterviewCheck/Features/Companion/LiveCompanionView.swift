@@ -1,4 +1,5 @@
 import SwiftUI
+import InterviewCheckKit
 
 /// A small window that stays above the video call during an interview:
 /// the current question, the latest score, and the two buttons. It is a

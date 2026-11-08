@@ -1,6 +1,7 @@
 import SwiftUI
 import XCTest
 @testable import InterviewCheck
+import InterviewCheckKit
 
 /// Renders the native screens with sample data, light and dark, to PNG.
 /// Opt in with INTERVIEWCHECK_RENDER_SMOKE=1; files land in INTERVIEWCHECK_RENDER_DIR.

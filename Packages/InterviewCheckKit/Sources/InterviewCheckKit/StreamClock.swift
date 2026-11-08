@@ -10,15 +10,15 @@ import Foundation
 /// should be by more than `gapTolerance` (audio was dropped, queued while
 /// connecting, or delivered late). Offsets inside a run convert exactly;
 /// breaks are counted so callers can lower their confidence.
-final class StreamClock {
-    struct Run: Equatable {
-        let offsetStart: TimeInterval
-        let hostStart: TimeInterval
-        var duration: TimeInterval
+public final class StreamClock {
+    public struct Run: Equatable {
+        public let offsetStart: TimeInterval
+        public let hostStart: TimeInterval
+        public var duration: TimeInterval
     }
 
-    let bytesPerSecond: Double
-    let gapTolerance: TimeInterval
+    public let bytesPerSecond: Double
+    public let gapTolerance: TimeInterval
 
     private let lock = NSLock()
     private var runs: [Run] = []
@@ -26,8 +26,8 @@ final class StreamClock {
     private var breaks = 0
 
     /// Defaults match the router's output: 48 kHz mono PCM16.
-    init(
-        bytesPerSecond: Double = Double(DeepgramStreamCore.Config.sampleRate * 2 * DeepgramStreamCore.Config.channels),
+    public init(
+        bytesPerSecond: Double = 96_000, // 48 kHz mono PCM16, the format the app streams
         gapTolerance: TimeInterval = 0.5
     ) {
         self.bytesPerSecond = bytesPerSecond
@@ -35,18 +35,18 @@ final class StreamClock {
     }
 
     /// Seconds of audio a chunk of `byteCount` bytes holds.
-    func duration(ofBytes byteCount: Int) -> TimeInterval {
+    public func duration(ofBytes byteCount: Int) -> TimeInterval {
         bytesPerSecond > 0 ? Double(byteCount) / bytesPerSecond : 0
     }
 
     /// Host time the audio in a chunk started, for a chunk that arrived now.
-    func captureStart(ofBytes byteCount: Int, arrivedAt uptime: TimeInterval) -> TimeInterval {
+    public func captureStart(ofBytes byteCount: Int, arrivedAt uptime: TimeInterval) -> TimeInterval {
         uptime - duration(ofBytes: byteCount)
     }
 
     /// Forget everything; call when a new socket connection starts, because
     /// Deepgram's offsets restart at zero for each connection.
-    func reset() {
+    public func reset() {
         lock.withLock {
             runs.removeAll()
             sentDuration = 0
@@ -55,7 +55,7 @@ final class StreamClock {
     }
 
     /// Record a chunk in the same order it is handed to the socket.
-    func recordSent(byteCount: Int, capturedAt hostStart: TimeInterval) {
+    public func recordSent(byteCount: Int, capturedAt hostStart: TimeInterval) {
         let chunkDuration = duration(ofBytes: byteCount)
         guard chunkDuration > 0 else { return }
         lock.withLock {
@@ -75,7 +75,7 @@ final class StreamClock {
     }
 
     /// Host time for a Deepgram offset, or nil before any audio was sent.
-    func hostTime(forOffset offset: TimeInterval) -> TimeInterval? {
+    public func hostTime(forOffset offset: TimeInterval) -> TimeInterval? {
         lock.withLock {
             // Recent offsets sit at the end, so scan backwards.
             guard let run = runs.last(where: { $0.offsetStart <= offset }) ?? runs.first else { return nil }
@@ -84,7 +84,7 @@ final class StreamClock {
     }
 
     /// Number of times the stream's audio was not contiguous.
-    var breakCount: Int { lock.withLock { breaks } }
+    public var breakCount: Int { lock.withLock { breaks } }
 
-    var snapshot: [Run] { lock.withLock { runs } }
+    public var snapshot: [Run] { lock.withLock { runs } }
 }

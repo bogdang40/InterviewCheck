@@ -1,5 +1,6 @@
 import Foundation
 import SQLite3
+import InterviewCheckKit
 
 /// Everything stored about one interview, for the report.
 struct InterviewReportData: Equatable {

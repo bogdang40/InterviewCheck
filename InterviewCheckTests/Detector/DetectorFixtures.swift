@@ -1,5 +1,6 @@
 import Foundation
 @testable import InterviewCheck
+import InterviewCheckKit
 
 /// Builds word streams on the shared clock for detector tests.
 enum DetectorFixtures {

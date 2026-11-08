@@ -6,20 +6,20 @@ import Foundation
 /// on. Stall phrases are what people say while waiting for a tool to
 /// produce text ("that's a great question, so..."). Neither counts as the
 /// start of a substantive answer.
-enum FillerLexicon {
-    static let fillers: Set<String> = [
+public enum FillerLexicon {
+    public static let fillers: Set<String> = [
         "um", "umm", "uh", "uhh", "uhm", "er", "erm", "ah", "eh", "hmm", "hm", "mm", "mmm",
     ]
 
     /// Single words that open an answer without content.
-    static let stallWords: Set<String> = [
+    public static let stallWords: Set<String> = [
         "so", "well", "okay", "ok", "yeah", "yes", "sure", "right", "alright", "absolutely",
         "definitely", "basically", "actually", "and", "um", "uh",
     ]
 
     /// Multi-word stalls, normalized and space separated. Longest first so
     /// the longest match wins.
-    static let stallPhrases: [[String]] = [
+    public static let stallPhrases: [[String]] = [
         "thats a really great question",
         "thats a really good question",
         "thats a great question",
@@ -47,7 +47,7 @@ enum FillerLexicon {
 
     /// Common English words that carry no topic of their own. Used to keep
     /// phrase matching about content, not grammar.
-    static let stopwords: Set<String> = [
+    public static let stopwords: Set<String> = [
         "a", "an", "the", "and", "or", "but", "if", "then", "so", "of", "to", "in", "on", "at", "by",
         "for", "with", "from", "as", "is", "are", "was", "were", "be", "been", "being", "it", "its",
         "this", "that", "these", "those", "i", "im", "ive", "id", "we", "you", "they", "he", "she",
@@ -58,25 +58,25 @@ enum FillerLexicon {
         "going", "want", "make", "lot", "more", "most", "into", "out", "up", "than", "too", "well",
     ]
 
-    static func normalize(_ raw: String) -> String {
+    public static func normalize(_ raw: String) -> String {
         let lowered = raw.lowercased()
         let kept = lowered.unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) }
         return String(String.UnicodeScalarView(kept))
     }
 
-    static func isFiller(_ word: String) -> Bool {
+    public static func isFiller(_ word: String) -> Bool {
         fillers.contains(normalize(word))
     }
 
     /// Splits free text into normalized words, dropping fillers.
-    static func tokens(_ text: String) -> [String] {
+    public static func tokens(_ text: String) -> [String] {
         text.split(whereSeparator: { $0.isWhitespace || $0 == "-" || $0 == "/" })
             .map { normalize(String($0)) }
             .filter { !$0.isEmpty && !fillers.contains($0) }
     }
 
     /// Length of the stall phrase starting at `index`, or 0.
-    static func stallPhraseLength(in words: [String], at index: Int) -> Int {
+    public static func stallPhraseLength(in words: [String], at index: Int) -> Int {
         for phrase in stallPhrases where index + phrase.count <= words.count {
             if Array(words[index..<(index + phrase.count)]) == phrase { return phrase.count }
         }
