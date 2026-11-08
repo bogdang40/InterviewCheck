@@ -120,7 +120,8 @@ extension DualStreamDeepgramService {
             mapped.append(.init(word: word, hostStart: start, hostEnd: max(end, start)))
         }
         guard !mapped.isEmpty else { return nil }
-        return DeepgramTimedWords(source: source, words: mapped, clockBreaks: streamClock.breakCount)
+        return DeepgramTimedWords(source: source, words: mapped, clockBreaks: streamClock.breakCount,
+                                  connection: connectionEpoch(for: source))
     }
 }
 
@@ -136,4 +137,7 @@ struct DeepgramTimedWords {
     let words: [Word]
     /// How often this connection's audio was not contiguous so far.
     let clockBreaks: Int
+    /// Which socket delivered it; a new value means the stream reconnected
+    /// (and its clock and break count started over).
+    var connection: UInt64 = 0
 }

@@ -82,3 +82,28 @@ final class DeepgramTimedWordsTests: XCTestCase {
         }
     }
 }
+
+@MainActor
+final class ReconnectGapTests: XCTestCase {
+    private func batch(_ text: String, at start: TimeInterval, breaks: Int, connection: UInt64) -> DeepgramTimedWords {
+        let word = DeepgramWord(word: text, start: 0, end: 0.3, confidence: 0.9, speaker: 1, punctuatedWord: text)
+        return DeepgramTimedWords(source: .systemAudio, words: [.init(word: word, hostStart: start, hostEnd: start + 0.3)],
+                                  clockBreaks: breaks, connection: connection)
+    }
+
+    func testAReconnectIsAGapEvenWhenTheBreakCountMatches() {
+        let timeline = InterviewTimeline(uptime: { 0 })
+        timeline.ingest(batch("first", at: 10, breaks: 0, connection: 1))
+        timeline.ingest(batch("more", at: 11, breaks: 0, connection: 1))
+        XCTAssertFalse(timeline.hasGap(between: 20, and: 30))
+        // The socket reconnected mid-answer: a fresh clock, no breaks of its own yet.
+        timeline.ingest(batch("after", at: 25, breaks: 0, connection: 2))
+        XCTAssertTrue(timeline.hasGap(between: 20, and: 30), "audio between the sockets was never heard")
+
+        // A count that goes down (a reconnect without a new epoch) is a gap too.
+        let other = InterviewTimeline(uptime: { 0 })
+        other.ingest(batch("a", at: 10, breaks: 2, connection: 1))
+        other.ingest(batch("b", at: 40, breaks: 1, connection: 1))
+        XCTAssertTrue(other.hasGap(between: 38, and: 45))
+    }
+}

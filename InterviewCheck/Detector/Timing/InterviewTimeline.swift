@@ -20,6 +20,8 @@ final class InterviewTimeline: ObservableObject {
     /// Host times at which either stream's audio was not contiguous.
     @Published private(set) var gapTimes: [TimeInterval] = []
 
+    private var lastConnection: [AudioSource: UInt64] = [:]
+
     private var lastBreaks: [AudioSource: Int] = [:]
     let uptime: () -> TimeInterval
 
@@ -35,6 +37,7 @@ final class InterviewTimeline: ObservableObject {
         candidateSpeakerIndex = nil
         gapTimes = []
         lastBreaks = [:]
+        lastConnection = [:]
     }
 
     func ingest(_ batch: DeepgramTimedWords) {
@@ -50,7 +53,10 @@ final class InterviewTimeline: ObservableObject {
                 isFiller: FillerLexicon.isFiller(item.word.word)
             )
         }
-        noteBreaks(batch.clockBreaks, source: batch.source, at: incoming.first?.start ?? now)
+        let at = incoming.first?.start ?? now
+        if let previous = lastConnection[batch.source], previous != batch.connection { noteReconnect(at: at) }
+        lastConnection[batch.source] = batch.connection
+        noteBreaks(batch.clockBreaks, source: batch.source, at: at)
         append(incoming)
     }
 
@@ -76,13 +82,24 @@ final class InterviewTimeline: ObservableObject {
         return speaker == chosen
     }
 
+    /// A gap from shortly before the question ended to the end of the
+    /// answer (mic breaks are dated at the next batch, which can be earlier).
     func hasGap(between start: TimeInterval, and end: TimeInterval) -> Bool {
-        gapTimes.contains { $0 >= start && $0 <= end }
+        gapTimes.contains { $0 >= start - 5 && $0 <= end }
     }
 
+    /// A new break, or a count that went down (a reconnect starts a fresh
+    /// clock, so its count restarts), means audio may be missing here.
     private func noteBreaks(_ count: Int, source: AudioSource, at time: TimeInterval) {
         let previous = lastBreaks[source] ?? 0
-        if count > previous { gapTimes.append(time) }
+        if count > previous || count < previous { gapTimes.append(time) }
         lastBreaks[source] = count
+    }
+
+    /// The stream reconnected: whatever was said meanwhile was not heard.
+    /// Recorded as a gap at the reconnect time so the scores near it are
+    /// marked low confidence.
+    func noteReconnect(at time: TimeInterval) {
+        gapTimes.append(time)
     }
 }
