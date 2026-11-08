@@ -11,11 +11,16 @@ struct ReportsView: View {
     @State private var report: InterviewReportData?
     @State private var search = ""
     @State private var confirmDelete = false
+    @AppStorage("interviewcheck.reports.sort") private var sort = ReportSort.newest
+    @AppStorage("interviewcheck.reports.flaggedOnly") private var flaggedOnly = false
+    @State private var roleFilter: String?
 
     private var filtered: [InterviewRecord] {
-        let query = search.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !query.isEmpty else { return interviews }
-        return interviews.filter { "\($0.candidateName) \($0.roleTitle)".lowercased().contains(query) }
+        ReportFilter(search: search, flaggedOnly: flaggedOnly, roleTitle: roleFilter, sort: sort).apply(interviews)
+    }
+
+    private var roleTitles: [String] {
+        Array(Set(interviews.map(\.roleTitle).filter { !$0.isEmpty })).sorted()
     }
 
     var body: some View {
@@ -32,13 +37,28 @@ struct ReportsView: View {
                 }
             }
             .searchable(text: $search, placement: .sidebar, prompt: "Candidate or role")
-            .frame(minWidth: 240, idealWidth: 280, maxWidth: 380)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if !interviews.isEmpty { filterBar }
+            }
             .overlay {
                 if interviews.isEmpty {
                     ContentUnavailableView("No Reports Yet", systemImage: "doc.text.magnifyingglass",
                                            description: Text("Finished interviews appear here."))
+                } else if filtered.isEmpty {
+                    ContentUnavailableView {
+                        Label("No Matches", systemImage: "line.3.horizontal.decrease.circle")
+                    } description: {
+                        Text("No interviews match the search and filters.")
+                    } actions: {
+                        Button("Clear Filters") {
+                            search = ""
+                            flaggedOnly = false
+                            roleFilter = nil
+                        }
+                    }
                 }
             }
+            .frame(minWidth: 240, idealWidth: 280, maxWidth: 380)
 
             Group {
                 if let report {
@@ -94,11 +114,48 @@ struct ReportsView: View {
         }
     }
 
+    private var filterBar: some View {
+        HStack(spacing: 8) {
+            Picker("Sort", selection: $sort) {
+                ForEach(ReportSort.allCases) { Text($0.title).tag($0) }
+            }
+            .labelsHidden()
+            .fixedSize()
+            .help("Sort the interviews")
+            Picker("Role", selection: $roleFilter) {
+                Text("All roles").tag(String?.none)
+                ForEach(roleTitles, id: \.self) { Text($0).tag(Optional($0)) }
+            }
+            .labelsHidden()
+            .frame(maxWidth: 150)
+            .help("Show one role's interviews")
+            Spacer(minLength: 0)
+            Toggle(isOn: $flaggedOnly) {
+                Image(systemName: "flag")
+            }
+            .toggleStyle(.button)
+            .help("Only interviews with an answer at 70% or more")
+            .accessibilityLabel("Flagged only")
+        }
+        .controlSize(.small)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+    }
+
     private func reload(select id: String?) {
         interviews = database.loadInterviews()
-        if let id { navigation.reportToShow = nil }
-        let target = id ?? selection ?? interviews.first?.id
-        selection = interviews.contains { $0.id == target } ? target : interviews.first?.id
+        if let id {
+            navigation.reportToShow = nil
+            // A report asked for by name is shown even if a filter hid it.
+            if !filtered.contains(where: { $0.id == id }) {
+                search = ""
+                flaggedOnly = false
+                roleFilter = nil
+            }
+        }
+        let visible = filtered
+        let target = id ?? selection ?? visible.first?.id
+        selection = visible.contains { $0.id == target } ? target : visible.first?.id
         report = selection.flatMap { database.loadInterviewReport(id: $0) }
         navigation.selectedReportID = report?.interview.id
     }
@@ -121,6 +178,12 @@ private struct ReportRow: View {
                     .font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer(minLength: 4)
+            if record.wasInterrupted {
+                Image(systemName: "exclamationmark.triangle")
+                    .foregroundStyle(.orange)
+                    .help("The app closed before this interview was ended")
+                    .accessibilityLabel("Interrupted")
+            }
             if let percent = record.overallPercent {
                 Tag(text: "\(percent)%", color: ScoreBand(percent: percent).color)
             }

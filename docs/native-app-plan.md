@@ -58,6 +58,8 @@ Status key: [ ] todo · [~] in progress · [x] done (commit)
       Interview/Roles/Reports ⌘1–⌘3, Show/Hide Sidebar, File › Print Report ⌘P, "Live" Dock badge.
 - [x] D15 Documents in: job description and résumé from PDF, Word (.docx/.doc), RTF, ODT or text.
       Roles: Duplicate, Export… and File › Import Role… (JSON, always imported as a new role).
+- [x] D16 Reports list: sort (newest, oldest, highest score, candidate), role filter, flagged-only,
+      "No Matches" with Clear Filters; interrupted interviews marked in the list.
 
 ## C. Verify every step
 - build; guarded tests; render native screens light/dark; launch the installed app,
@@ -86,3 +88,4 @@ Status key: [ ] todo · [~] in progress · [x] done (commit)
 - 21:31 D13 crash recovery: interviews left open by a quit/crash are closed, scored offline (low confidence) and marked interrupted at next launch (schema v20).
 - 21:37 D14: fixed File/View commands opening a second main window (WindowGroup → Window); ⌘1–3, ⌘P, Dock badge, sidebar commands. Checked in the installed app via System Events.
 - 21:43 D15 documents in (DocumentText replaces the candidate-app extractor), role duplicate/export/import. 278 app tests.
+- 21:46 D16 reports sort/filter; fixed list centring (frame applied before the inset). 280 app tests.

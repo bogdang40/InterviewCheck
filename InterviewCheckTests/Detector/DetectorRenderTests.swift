@@ -115,6 +115,27 @@ final class DetectorRenderTests: XCTestCase {
         }
     }
 
+    func testRenderReportsList() async throws {
+        let (controller, _) = try liveController()
+        controller.end()
+        let database = controller.database
+        let samples: [(String, String, Int?, Int, Double)] = [
+            ("Priya Natarajan", "Senior Backend Engineer", 22, 0, 1),
+            ("Marcus O'Connell-Whitfield", "Staff Platform Engineer", 78, 3, 2),
+            ("Lee", "Senior Backend Engineer", nil, 0, 3),
+        ]
+        for (name, role, percent, flagged, days) in samples {
+            database.saveInterview(InterviewRecord(
+                id: UUID().uuidString, workspaceID: nil, roleTitle: role, candidateName: name,
+                consentConfirmedAt: Date(), startedAt: Date().addingTimeInterval(-days * 86_400),
+                endedAt: Date().addingTimeInterval(-days * 86_400 + 1_800), overallPercent: percent,
+                flaggedCount: flagged, questionCount: 6, wasInterrupted: name == "Lee"))
+        }
+        try await RenderHarness.render("native-reports-list", size: CGSize(width: 1100, height: 760), settle: 0.8) {
+            native { ReportsView(database: database) }
+        }
+    }
+
     func testRenderAnalyzeRecording() async throws {
         let analyzer = RecordingAnalyzer()
         try await RenderHarness.render("native-recording-setup", size: CGSize(width: 560, height: 420)) {
