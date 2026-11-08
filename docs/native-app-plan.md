@@ -118,6 +118,9 @@ tools; pull finished meeting recordings for scoring; optionally post a private n
       attachments, email lookup) and JobAdder (/interviews + /events merged). Read-only: neither has private notes.
       Shared ConnectorOAuth picks each vendor's endpoints and the fixed redirect port.
 
+- [x] E17 Opt-in automation: open the prepared interview's meeting a minute before it starts; save a PDF of
+      every finished report to a chosen folder (Settings › Privacy). "Ready" tag on the prepared interview.
+
 - [x] E10 Beta: mark questions automatically when the interviewer forgets the key (Settings ›
       Detector, off by default; question end + 12-word answer, tagged "Marked automatically").
 
@@ -171,3 +174,4 @@ tools; pull finished meeting recordings for scoring; optionally post a private n
 - 00:44 85c5593 E15 other calendars (Google, Outlook). 75 connector tests.
 - 00:54 621e491 E16 Bullhorn + JobAdder. 81 connector tests.
 - 01:01 review of tonight's connectors (11 findings) fixed: 380ff72 automatic Prepare (kept until the interview ends, no half-writes, manual Prepare respected), 11dfef0 mail (replies ignored, timeless cancels, IMAP literal crash, closed failed connections, VALARM text), 7ecc565 Webex fresh links at download, Cal.com past bookings, Outlook iCalUId dedupe + listing failure as a note. 85 connector + 321 app tests.
+- E17 auto-join + report PDFs to a folder + Ready tag.

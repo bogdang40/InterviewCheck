@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 import InterviewCheckConnectors
 
 /// Gets the next interview ready by itself a few minutes before it starts:
@@ -15,6 +15,18 @@ final class AutoPrepare {
         get { defaults.object(forKey: Self.enabledKey) as? Bool ?? true }
         set { defaults.set(newValue, forKey: Self.enabledKey) }
     }
+
+    static let joinKey = "interviewcheck.autoJoin"
+
+    /// Opens the prepared interview's meeting a minute before it starts. Off
+    /// unless turned on in Connections.
+    var joinsAutomatically: Bool {
+        get { defaults.object(forKey: Self.joinKey) as? Bool ?? false }
+        set { defaults.set(newValue, forKey: Self.joinKey) }
+    }
+    var openLink: (URL) -> Void = { NSWorkspace.shared.open($0) }
+    /// Interviews whose meeting was opened (by hand or automatically).
+    private(set) var joinedIDs: Set<String> = []
 
     /// The reminder's lead time, or 10 minutes with reminders off.
     var leadMinutes: () -> Int = { InterviewReminders.minutes > 0 ? InterviewReminders.minutes : 10 }
@@ -61,6 +73,7 @@ final class AutoPrepare {
     /// when its details were filled in.
     @discardableResult
     func tick() async -> ExternalInterview? {
+        joinIfDue()
         guard isEnabled, !isEditingRoles(),
               let next = Self.due(manager.upcoming, now: now(), leadMinutes: leadMinutes(), prepared: preparedIDs),
               setupIsFree else { return nil }
@@ -80,6 +93,25 @@ final class AutoPrepare {
         lastFill = fill
         lastPrepared = next
         return next
+    }
+
+    /// The Join button was used: the meeting is not opened a second time.
+    func markJoined(_ id: String) {
+        joinedIDs.insert(id)
+    }
+
+    /// Opens the meeting of the interview the setup holds, from 90 seconds
+    /// before its start until 10 minutes after; once per interview.
+    @discardableResult
+    func joinIfDue() -> URL? {
+        guard joinsAutomatically, controller.phase == .setup, controller.externalRef != nil,
+              let id = controller.preparedFrom, !joinedIDs.contains(id),
+              let interview = manager.upcoming.first(where: { $0.id == id }), let link = interview.meetingURL else { return nil }
+        let untilStart = interview.startsAt.timeIntervalSince(now())
+        guard untilStart <= 90, untilStart > -10 * 60 else { return nil }
+        joinedIDs.insert(id)
+        openLink(link)
+        return link
     }
 
     /// The first interview starting within the lead time (or started in the

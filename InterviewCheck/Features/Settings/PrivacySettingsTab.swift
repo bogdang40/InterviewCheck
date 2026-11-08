@@ -7,6 +7,7 @@ struct PrivacySettingsTab: View {
     @AppStorage("interviewcheck.diagnosticLogging") private var diagnostics = false
     @State private var confirmDeleteAll = false
     @State private var message: String?
+    @State private var reportFolder = ReportAutoSave.shared.folder
 
     var body: some View {
         Form {
@@ -28,6 +29,23 @@ struct PrivacySettingsTab: View {
                 Text("Interviews")
             } footer: {
                 Text("Older interviews, and meeting recordings found by connectors, are deleted when the app opens. Roles are kept.")
+            }
+
+            Section {
+                LabeledContent("Save a PDF of each report") {
+                    HStack {
+                        Text(reportFolder.map { FileManager.default.displayName(atPath: $0.path) } ?? "Off")
+                            .foregroundStyle(.secondary)
+                        Button(reportFolder == nil ? "Choose Folder\u{2026}" : "Change\u{2026}") { chooseReportFolder() }
+                        if reportFolder != nil {
+                            Button("Stop") { reportFolder = nil; ReportAutoSave.shared.folder = nil }
+                        }
+                    }
+                }
+            } header: {
+                Text("Reports")
+            } footer: {
+                Text("When an interview ends and its scores are final, or a recording is scored in the background, its report is saved there as a PDF. Those files are yours to manage: \u{201C}Keep interviews for\u{201D} does not delete them.")
             }
 
             Section("What is stored on this Mac") {
@@ -72,5 +90,16 @@ struct PrivacySettingsTab: View {
     static var dataFolder: URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent(AppBrand.storageFolder, isDirectory: true)
+    }
+
+    private func chooseReportFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.prompt = "Save Reports Here"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        reportFolder = url
+        ReportAutoSave.shared.folder = url
     }
 }

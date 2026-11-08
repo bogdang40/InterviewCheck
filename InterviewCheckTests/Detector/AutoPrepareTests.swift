@@ -9,9 +9,11 @@ private struct TwoInterviews: InterviewSource, CandidateSource {
     let first: Date
     var gap: TimeInterval = 3 * 3600
     var delay: UInt64 = 0
+    var withLink = false
     func verify() async throws -> String { "lee@acme.com" }
     func upcomingInterviews(from: Date, to: Date) async throws -> [ExternalInterview] {
         [ExternalInterview(source: .calendly, externalID: "a", title: "Phone Screen", startsAt: first,
+                           meetingURL: withLink ? URL(string: "https://acme.zoom.us/j/81234567890") : nil,
                            candidate: ExternalCandidate(externalID: "ca", name: "Jane Doe", email: "jane@example.com")),
          ExternalInterview(source: .calendly, externalID: "b", title: "Phone Screen", startsAt: first.addingTimeInterval(gap),
                            candidate: ExternalCandidate(externalID: "cb", name: "Max Roe", email: "max@example.com"))]
@@ -124,6 +126,35 @@ final class AutoPrepareTests: XCTestCase {
         XCTAssertNil(automatic, "the setup is being prepared by hand")
         _ = await manual.value
         XCTAssertEqual(controller.candidateName, "Max Roe")
+    }
+
+    func testThePreparedMeetingOpensOnceAMinuteBeforeItStarts() async {
+        source.withLink = true
+        await manager.sync(.calendly)
+        var opened: [URL] = []
+        auto.openLink = { opened.append($0) }
+        await auto.tick()                                   // prepared at T-8 min
+        XCTAssertTrue(opened.isEmpty, "off by default")
+        auto.joinsAutomatically = true
+        await auto.tick()
+        XCTAssertTrue(opened.isEmpty, "too early")
+        clock = clock.addingTimeInterval(7 * 60)            // 60 s before the start
+        await auto.tick()
+        await auto.tick()
+        XCTAssertEqual(opened.map(\.host), ["acme.zoom.us"], "once")
+    }
+
+    func testAManualJoinIsNotRepeated() async {
+        source.withLink = true
+        await manager.sync(.calendly)
+        var opened = 0
+        auto.openLink = { _ in opened += 1 }
+        auto.joinsAutomatically = true
+        await auto.tick()
+        auto.markJoined("calendly:a")
+        clock = clock.addingTimeInterval(7 * 60)
+        await auto.tick()
+        XCTAssertEqual(opened, 0)
     }
 
     func testOffOrWhileEditingRolesNothingHappens() async {

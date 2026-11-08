@@ -10,6 +10,7 @@ struct ConnectionsView: View {
     @State private var reminderMinutes = InterviewReminders.minutes
     @State private var autoScore = AutoScorer.shared.isEnabled
     @State private var autoPrepare = AutoPrepare.shared.isEnabled
+    @State private var autoJoin = AutoPrepare.shared.joinsAutomatically
     @State private var confirmAutoScore = false
     @State private var myEmails = ConnectorManager.shared.typedEmails
 
@@ -78,6 +79,7 @@ struct ConnectionsView: View {
             ToolbarItem(placement: .primaryAction) {
                 Menu {
                     Toggle("Get Next Interview Ready", isOn: $autoPrepare)
+                    Toggle("Open the Meeting When It Starts", isOn: $autoJoin)
                     Toggle("Score Recordings Automatically", isOn: Binding(get: { autoScore }, set: { on in
                         if on { confirmAutoScore = true } else { autoScore = false; AutoScorer.shared.isEnabled = false }
                     }))
@@ -90,7 +92,8 @@ struct ConnectionsView: View {
                 } label: {
                     Label("Automation", systemImage: "wand.and.stars")
                 }
-                .help("Get Next Interview Ready fills in the candidate, role and r\u{00E9}sum\u{00E9} at reminder time (never starts the interview). Score Recordings Automatically scores new Zoom, Teams, Meet and Webex recordings of scheduled interviews.")
+                .help("Get Next Interview Ready fills in the candidate, role and r\u{00E9}sum\u{00E9} at reminder time (never starts the interview). Open the Meeting When It Starts opens the prepared interview's Zoom, Teams, Meet or Webex link a minute before. Score Recordings Automatically scores new Zoom, Teams, Meet and Webex recordings of scheduled interviews.")
+                .onChange(of: autoJoin) { _, on in AutoPrepare.shared.joinsAutomatically = on }
                 .onChange(of: autoPrepare) { _, on in
                     AutoPrepare.shared.isEnabled = on
                     if on { Task { await AutoPrepare.shared.tick() } }

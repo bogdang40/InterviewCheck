@@ -194,7 +194,12 @@ its results.
   interview by itself at reminder time: candidate, role with job description, and résumé.
   It never starts the interview or ticks the consent box, never switches the window, waits
   while the Roles editor is open, and never replaces setup the interviewer typed. A setup it
-  filled and nobody touched moves on to the next interview.
+  filled and nobody touched moves on to the next interview once that interview has ended.
+- **Open the Meeting When It Starts** (off by default, same menu) opens the prepared
+  interview's meeting link about a minute before the start, once (not after a manual Join).
+- **Settings › Privacy › Save a PDF of each report** writes every finished report (live or
+  scored in the background) into a chosen folder. Those files are not removed by the
+  retention setting.
 - **Score recordings automatically** (off by default) scores new recordings of scheduled
   interviews in the background and sends a "Report ready" notification.
   Turn it on only if candidates are told interviews are recorded and checked.
