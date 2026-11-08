@@ -84,7 +84,7 @@ public enum JSONValue: Equatable, Sendable {
     public var url: URL? { string.flatMap(URL.init(string:)) }
 
     public func encoded() throws -> Data {
-        try JSONSerialization.data(withJSONObject: anyValue, options: [.sortedKeys, .fragmentsAllowed])
+        try JSONSerialization.data(withJSONObject: anyValue, options: [.sortedKeys, .fragmentsAllowed, .withoutEscapingSlashes])
     }
 
     var anyValue: Any {

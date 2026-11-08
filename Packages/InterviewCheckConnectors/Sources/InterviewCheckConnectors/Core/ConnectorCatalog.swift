@@ -20,7 +20,7 @@ public enum ConnectorKind: String, Codable, CaseIterable, Identifiable, Sendable
     case greenhouse, lever, ashby, workable, smartRecruiters, bambooHR, teamtailor, recruitee, jazzHR, breezyHR
     case personio, zohoRecruit, workday, icims
     case merge, kombo, apideck, unifiedTo
-    case mcp
+    case greenhouseMCP, ashbyMCP, workableMCP, mcp
 
     public var id: String { rawValue }
     public var descriptor: ConnectorDescriptor { ConnectorCatalog.descriptor(self) }
@@ -65,6 +65,8 @@ public struct CredentialField: Equatable, Sendable {
 }
 
 public enum ConnectorAuth: Equatable, Sendable {
+    /// MCP sign-in: the server's OAuth details are discovered at sign-in.
+    case mcp
     /// Fields typed in Settings (API keys, subdomains, account tokens).
     case fields([CredentialField])
     /// Browser sign-in; the fields are the OAuth app's client id/secret.

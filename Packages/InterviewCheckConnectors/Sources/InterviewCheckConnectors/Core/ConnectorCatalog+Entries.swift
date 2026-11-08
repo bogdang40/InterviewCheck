@@ -64,12 +64,25 @@ public enum ConnectorCatalog {
             return MoreATSCatalog.descriptor(kind)
         case .merge, .kombo, .apideck, .unifiedTo:
             return UnifiedCatalog.descriptor(kind)
+        case .greenhouseMCP:
+            return entry(kind, "Greenhouse (MCP sign-in)", .mcp, "Sign in as yourself through Greenhouse's MCP server: no API credentials or admin keys.",
+                         .mcp, [.upcomingInterviews],
+                         setup: "A Greenhouse Site Admin enables MCP and approves the client under Dev Center \u{203A} MCP Access \u{203A} Clients (allow redirect http://127.0.0.1/callback). Interview tools may need write scopes enabled by the admin.",
+                         docs: "https://support.greenhouse.io/")
+        case .ashbyMCP:
+            return entry(kind, "Ashby (MCP sign-in)", .mcp, "Your upcoming interviews through Ashby's MCP server, signed in as yourself.",
+                         .mcp, [.upcomingInterviews],
+                         setup: "An Ashby Admin turns on the MCP server under Admin \u{203A} Organization Setup \u{203A} Opt-In Features. Then Sign In.",
+                         docs: "https://mcp.ashbyhq.com/")
+        case .workableMCP:
+            return entry(kind, "Workable (MCP sign-in)", .mcp, "Interview events through Workable's MCP server, signed in as yourself.",
+                         .mcp, [.upcomingInterviews],
+                         setup: "Sign In with your Workable account; Workable's MCP server is on for all plans.",
+                         docs: "https://mcp.workable.com/")
         case .mcp:
-            return entry(kind, "MCP server", .mcp, "Any Model Context Protocol server your company runs or an HR vendor provides.",
-                         .fields([CredentialField("url", "Server URL", placeholder: "https://mcp.example.com/mcp"),
-                                  CredentialField("token", "Bearer token", secret: true, optional: true)]),
-                         [.upcomingInterviews, .candidates, .jobDescriptions],
-                         setup: "Paste the server's streamable HTTP URL and token. Its tools are listed; interviews are read through your AI provider.",
+            return entry(kind, "Other MCP server", .mcp, "Any Model Context Protocol server your company runs or an HR vendor provides.",
+                         .mcp, [.upcomingInterviews],
+                         setup: "Paste the server's streamable HTTP URL. Sign in with the browser, or paste a token if the server gives you one.",
                          docs: "https://modelcontextprotocol.io/")
         }
     }

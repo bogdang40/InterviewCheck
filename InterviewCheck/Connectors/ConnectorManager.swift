@@ -105,8 +105,13 @@ final class ConnectorManager: ObservableObject {
             throw ConnectorError.notConnected
         }
         var tokenProvider: AccessTokenProvider?
-        if case .oauth(var provider, _) = kind.descriptor.auth, let tokens = credentials.tokens {
-            if kind == .microsoft365 { provider = MicrosoftConnectorProvider.provider(credentials) }
+        var oauthProvider: OAuthProvider?
+        switch kind.descriptor.auth {
+        case .oauth(let provider, _): oauthProvider = kind == .microsoft365 ? MicrosoftConnectorProvider.provider(credentials) : provider
+        case .mcp: oauthProvider = Self.mcpProvider(credentials)
+        default: break
+        }
+        if let provider = oauthProvider, let tokens = credentials.tokens {
             let client = OAuthClient(provider: provider, clientID: credentials["clientID"] ?? "",
                                      clientSecret: credentials["clientSecret"], transport: transport)
             let store = self.store
@@ -179,7 +184,7 @@ final class ConnectorManager: ObservableObject {
         onUpcomingChanged?(upcoming)
     }
 
-    private func upsert(_ account: Account) {
+    func upsert(_ account: Account) {
         if let index = accounts.firstIndex(where: { $0.kind == account.kind }) {
             accounts[index] = account
         } else {

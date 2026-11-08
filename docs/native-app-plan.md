@@ -79,7 +79,9 @@ tools; pull finished meeting recordings for scoring; optionally post a private n
 - [x] E6 Meeting recordings in File › Analyze Recording (Zoom audio, Teams/Meet transcripts scored by
       speaker name, low confidence, schema v22 scored_from); reminders with Prepare; Send Summary to the
       ATS as a private note (explicit, editable; link kept in external_links).
-- [ ] E7 MCP client connector.
+- [x] E7 MCP: Swift streamable-HTTP client (JSON or SSE), MCP OAuth (resource metadata, AS metadata,
+      dynamic client registration, PKCE, RFC 8707 resource); presets for the official Greenhouse, Ashby
+      and Workable MCP servers plus any server; tolerant interview mapper; tools list in Connections.
 
 ## C. Verify every step
 - build; guarded tests; render native screens light/dark; launch the installed app,
@@ -115,3 +117,4 @@ tools; pull finished meeting recordings for scoring; optionally post a private n
 - 22:17 E5 Google / Microsoft Graph / Zoom connectors + WebVTT; public-client OAuth (no secret). 31 connector tests.
 - 22:23 E6 recordings → analysis, transcript scoring, reminders, Send Summary. 286 app + 31 connector tests.
 - 22:31 E3b remaining ATSs + CandidateLookup enrichment in Prepare. 37 connector tests.
+- 22:36 E7 MCP connectors. 42 connector tests.

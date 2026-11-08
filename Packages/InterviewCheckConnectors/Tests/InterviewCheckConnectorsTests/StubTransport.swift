@@ -9,6 +9,7 @@ final class StubTransport: HTTPTransport, @unchecked Sendable {
         let status: Int
         let body: Data
         let headers: [String: String]
+        var bodyContains: String?
     }
 
     private var routes: [Route] = []
@@ -17,16 +18,20 @@ final class StubTransport: HTTPTransport, @unchecked Sendable {
 
     /// Adds a route; earlier routes win, and a route with `once` is used once.
     func on(_ method: String = "GET", _ pathContains: String, status: Int = 200, json: String = "{}",
-            headers: [String: String] = [:]) {
+            headers: [String: String] = [:], bodyContains: String? = nil) {
         lock.lock(); defer { lock.unlock() }
-        routes.append(Route(method: method, pathContains: pathContains, status: status, body: Data(json.utf8), headers: headers))
+        routes.append(Route(method: method, pathContains: pathContains, status: status, body: Data(json.utf8), headers: headers,
+                            bodyContains: bodyContains))
     }
 
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         lock.lock(); defer { lock.unlock() }
         requests.append(request)
         let target = request.url?.absoluteString ?? ""
-        guard let index = routes.firstIndex(where: { $0.method == request.httpMethod && target.contains($0.pathContains) }) else {
+        let sent = String(decoding: request.httpBody ?? Data(), as: UTF8.self)
+        guard let index = routes.firstIndex(where: {
+            $0.method == request.httpMethod && target.contains($0.pathContains) && ($0.bodyContains.map { sent.contains($0) } ?? true)
+        }) else {
             return (Data("{\"error\":\"no stub for \(request.httpMethod ?? "") \(target)\"}".utf8),
                     HTTPURLResponse(url: request.url!, statusCode: 599, httpVersion: nil, headerFields: nil)!)
         }

@@ -33,9 +33,12 @@ public struct OAuthProvider: Equatable, Sendable {
     public var basicAuthOnTokenCall: Bool
     /// Microsoft wants the scopes again on the token calls.
     public var scopeOnTokenCalls: Bool
+    /// Extra form fields on token calls (MCP's `resource`).
+    public var extraTokenFields: [String: String]
 
     public init(authorizeURL: URL, tokenURL: URL, scopes: [String], extraParameters: [String: String] = [:],
-                basicAuthOnTokenCall: Bool = false, scopeOnTokenCalls: Bool = false) {
+                basicAuthOnTokenCall: Bool = false, scopeOnTokenCalls: Bool = false, extraTokenFields: [String: String] = [:]) {
+        self.extraTokenFields = extraTokenFields
         self.authorizeURL = authorizeURL
         self.tokenURL = tokenURL
         self.scopes = scopes
@@ -127,6 +130,7 @@ public struct OAuthClient: Sendable {
             if let clientSecret, !clientSecret.isEmpty { fields["client_secret"] = clientSecret }
         }
         if provider.scopeOnTokenCalls, !provider.scopes.isEmpty { fields["scope"] = provider.scopes.joined(separator: " ") }
+        fields.merge(provider.extraTokenFields) { current, _ in current }
         let json: JSONValue
         do {
             json = try await client.postForm(provider.tokenURL.absoluteString, fields: fields)

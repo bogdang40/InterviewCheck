@@ -12,6 +12,7 @@ struct ConnectorDetailView: View {
     @State private var failed = false
     @State private var isImportingInvite = false
     @State private var confirmDisconnect = false
+    @State private var tools: [MCPClient.Tool] = []
 
     private var descriptor: ConnectorDescriptor { kind.descriptor }
     private var account: ConnectorManager.Account? { connectors.account(kind) }
@@ -87,6 +88,19 @@ struct ConnectorDetailView: View {
             if descriptor.capabilities.contains(.upcomingInterviews) {
                 LabeledContent("Upcoming interviews", value: "\(count)")
             }
+            if descriptor.category == .mcp {
+                DisclosureGroup("Tools on this server (\(tools.count))") {
+                    ForEach(tools, id: \.name) { tool in
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(tool.name).font(.callout.monospaced())
+                            if !tool.description.isEmpty {
+                                Text(tool.description).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                            }
+                        }
+                    }
+                }
+                .task { tools = await connectors.mcpTools(kind) }
+            }
             HStack {
                 Button("Sync Now") { Task { await connectors.sync(kind) } }
                     .disabled(connectors.syncing.contains(kind))
@@ -114,6 +128,14 @@ struct ConnectorDetailView: View {
             case .oauth(_, let clientFields):
                 ForEach(clientFields, id: \.key) { field($0) }
                 actionButton("Sign In with Browser\u{2026}")
+            case .mcp:
+                if let preset = MCPPresets.url(for: kind) {
+                    LabeledContent("Server", value: preset)
+                } else {
+                    field(CredentialField("url", "Server URL", placeholder: "https://mcp.example.com/mcp"))
+                }
+                field(CredentialField("token", "Token", secret: true, optional: true))
+                actionButton((fields["token"] ?? "").isEmpty ? "Sign In with Browser\u{2026}" : "Connect")
             }
         } header: {
             Text("Set Up")
@@ -153,6 +175,7 @@ struct ConnectorDetailView: View {
         switch descriptor.auth {
         case .fields(let list): required = list.filter { !$0.isOptional }
         case .oauth(_, let list): required = list.filter { !$0.isOptional }
+        case .mcp: required = MCPPresets.url(for: kind) == nil ? [CredentialField("url", "Server URL")] : []
         case .system: required = []
         }
         return required.allSatisfy { !(fields[$0.key] ?? "").trimmingCharacters(in: .whitespaces).isEmpty }
@@ -167,6 +190,10 @@ struct ConnectorDetailView: View {
                     message = "Finish signing in in your browser\u{2026}"
                     failed = false
                     try await connectors.signIn(kind, fields: fields)
+                } else if case .mcp = descriptor.auth {
+                    if (fields["token"] ?? "").isEmpty { message = "Finish signing in in your browser\u{2026}" }
+                    failed = false
+                    try await connectors.signInMCP(kind, fields: fields)
                 } else {
                     try await connectors.connect(kind, fields: fields)
                 }
