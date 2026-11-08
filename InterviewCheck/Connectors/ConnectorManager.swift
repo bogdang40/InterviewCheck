@@ -93,6 +93,27 @@ final class ConnectorManager: ObservableObject {
         await sync(kind)
     }
 
+    /// Saved settings without secrets, to prefill a "Fix Connection" form.
+    func storedFields(_ kind: ConnectorKind) -> [String: String] {
+        guard let saved = store.load(kind.rawValue) else { return [:] }
+        let secrets: Set<String>
+        switch kind.descriptor.auth {
+        case .fields(let list): secrets = Set(list.filter(\.isSecret).map(\.key))
+        case .oauth(_, let list): secrets = Set(list.filter(\.isSecret).map(\.key))
+        case .mcp: secrets = ["token"]
+        case .system: secrets = []
+        }
+        return saved.fields.filter { !secrets.contains($0.key) }
+    }
+
+    /// Secret fields left empty in a fix-up form keep their saved value.
+    func mergedWithSavedSecrets(_ kind: ConnectorKind, _ fields: [String: String]) -> [String: String] {
+        guard let saved = store.load(kind.rawValue) else { return fields }
+        return saved.fields.merging(fields.filter { !$0.value.trimmingCharacters(in: .whitespaces).isEmpty }) { _, new in new }
+    }
+
+    var accountsNeedingAttention: Int { accounts.filter { $0.lastError != nil }.count }
+
     func disconnect(_ kind: ConnectorKind) {
         store.delete(kind.rawValue)
         accounts.removeAll { $0.kind == kind }

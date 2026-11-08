@@ -197,4 +197,17 @@ final class ConnectorManagerTests: XCTestCase {
         XCTAssertEqual(link.applicationID, "a3")
         XCTAssertEqual(link.meetingURL?.host, "zoom.us", "the meeting link from the invite is kept")
     }
+
+    func testFixConnectionKeepsSavedSecretsAndShowsNoSecrets() async throws {
+        let path = NSTemporaryDirectory() + "fix-\(UUID().uuidString).sqlite"
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let store = MemoryCredentialStore()
+        let manager = ConnectorManager(store: store, database: SessionDatabase(databasePath: path),
+                                       defaults: UserDefaults(suiteName: "fix.\(UUID().uuidString)")!)
+        try store.save(ConnectorCredentials(fields: ["subdomain": "acme", "apiKey": "old-secret", "memberID": "m1"]), for: "workable")
+        XCTAssertEqual(manager.storedFields(.workable), ["subdomain": "acme", "memberID": "m1"], "secrets are never shown")
+        let merged = manager.mergedWithSavedSecrets(.workable, ["subdomain": "acme2", "apiKey": "", "memberID": "m1"])
+        XCTAssertEqual(merged["apiKey"], "old-secret", "an empty secret keeps the saved one")
+        XCTAssertEqual(merged["subdomain"], "acme2")
+    }
 }

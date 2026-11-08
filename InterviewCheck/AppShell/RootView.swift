@@ -31,6 +31,7 @@ struct MainSplitView: View {
     @ObservedObject private var permissions = InterviewPermissions.shared
     @ObservedObject private var welcome = WelcomePresenter.shared
     @ObservedObject private var recording = RecordingAnalyzer.shared
+    @ObservedObject private var connectors = ConnectorManager.shared
     @Environment(\.openWindow) private var openWindow
     @State private var columnVisibility = NavigationSplitViewVisibility.all
 
@@ -77,6 +78,12 @@ struct MainSplitView: View {
     }
 
     private func badge(for item: SidebarItem) -> Text? {
-        item == .interview && interview.phase == .live ? Text("Live") : nil
+        switch item {
+        case .interview: return interview.phase == .live ? Text("Live") : nil
+        case .connections:
+            let failing = connectors.accountsNeedingAttention
+            return failing > 0 ? Text("\(failing)") : nil
+        default: return nil
+        }
     }
 }

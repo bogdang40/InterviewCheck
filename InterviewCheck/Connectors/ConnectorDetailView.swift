@@ -14,6 +14,7 @@ struct ConnectorDetailView: View {
     @State private var isImportingInvite = false
     @State private var confirmDisconnect = false
     @State private var tools: [MCPClient.Tool] = []
+    @State private var isFixing = false
 
     private var descriptor: ConnectorDescriptor { kind.descriptor }
     private var account: ConnectorManager.Account? { connectors.account(kind) }
@@ -32,7 +33,7 @@ struct ConnectorDetailView: View {
                 .padding(.vertical, 4)
             }
 
-            if let account {
+            if let account, !isFixing {
                 connectedSection(account)
             } else if !kind.routedThrough.isEmpty {
                 Section {
@@ -119,6 +120,13 @@ struct ConnectorDetailView: View {
             HStack {
                 Button("Sync Now") { Task { await connectors.sync(kind) } }
                     .disabled(connectors.syncing.contains(kind))
+                if account.lastError != nil, descriptor.auth != .system {
+                    Button("Fix Connection\u{2026}") {
+                        fields = connectors.storedFields(kind)
+                        isFixing = true
+                    }
+                    .help("Sign in again or replace the key; saved secrets you leave empty are kept")
+                }
                 Spacer()
                 Button("Disconnect\u{2026}", role: .destructive) { confirmDisconnect = true }
             }
@@ -210,11 +218,13 @@ struct ConnectorDetailView: View {
                     failed = false
                     try await connectors.signInMCP(kind, fields: fields)
                 } else {
-                    try await connectors.connect(kind, fields: fields)
+                    let values = isFixing ? connectors.mergedWithSavedSecrets(kind, fields) : fields
+                    try await connectors.connect(kind, fields: values)
                 }
                 failed = false
                 message = "Connected."
                 fields = [:]
+                isFixing = false
             } catch {
                 failed = true
                 message = error.localizedDescription
