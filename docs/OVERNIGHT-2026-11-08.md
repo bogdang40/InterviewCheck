@@ -52,13 +52,20 @@ for another Mac. It is not notarized yet, so macOS warns before opening it there
 
 ## Checks
 
-- **Tests:** about 330 app tests, 94 connector tests and 47 core tests. They run on
+- **Tests:** about 340 app tests, 98 connector tests and 47 core tests. They run on
   every step through a watchdog that stops at the first crash.
 - **Reviews:** independent reviews of the night's connector and automation code, run
   after each batch. They found real problems, all fixed and tested, including:
   - an IMAP command injection through a crafted name in a calendar invite;
   - a résumé match that could have picked another person's CV;
-  - automation that could swap an interview about to start for the next one.
+  - automation that could swap an interview about to start for the next one;
+  - background scoring that could switch the window away from a live interview;
+  - quitting while the last answers were being scored, which lost those scores;
+  - the MCP sign-in, which could have sent the sign-in code to another host.
+
+  A final review looked at how sync, automatic Prepare, reminders, Join Next,
+  auto-scoring and report PDFs work together over a whole day, and its findings were
+  fixed too.
 - **Installed app:** opens its window in about 2 seconds, uses about 113 MB, and sits
   at 0% CPU when idle. No crash reports after the early-evening fixes.
 
