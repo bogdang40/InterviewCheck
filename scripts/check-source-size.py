@@ -7,7 +7,7 @@ import sys
 ROOT = Path(__file__).resolve().parent.parent
 SOURCE_ROOTS = ("memanager", "memanagerTests", "server/src", "server/test", "scripts")
 EXTENSIONS = {".swift", ".ts", ".js", ".mjs", ".py", ".sh", ".metal", ".html", ".css"}
-VENDOR_FILES = {"memanager/Resources/mermaid.min.js"}
+VENDOR_FILES: set = set()
 
 
 def main():

@@ -101,11 +101,8 @@ extension AudioCaptureService {
             startPhase = .failed
             if reason == .resume {
                 shutdownActiveTranscriptionEngine(preserveTranscriptState: true)
-                voiceSignatureService?.pause()
-                isVoiceSignatureActive = false
             } else {
                 shutdownActiveTranscriptionEngine(preserveTranscriptState: false)
-                shutdownVoiceSignature()
             }
             return false
         }
@@ -148,8 +145,6 @@ extension AudioCaptureService {
 
         // Shutdown external services before audio engine
         shutdownActiveTranscriptionEngine(preserveTranscriptState: true)
-        voiceSignatureService?.pause()
-        isVoiceSignatureActive = false
 
         // Stop audio engine and remove tap
         audioEngine.stop()
@@ -186,7 +181,6 @@ extension AudioCaptureService {
 
         // Shutdown external services before audio engine
         shutdownActiveTranscriptionEngine(preserveTranscriptState: false)
-        shutdownVoiceSignature()
 
         // Stop audio engine and remove tap if needed
         if audioEngine.isRunning {

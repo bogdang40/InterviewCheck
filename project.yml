@@ -38,56 +38,15 @@ targets:
         COMBINE_HIDPI_IMAGES: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
-        HEADER_SEARCH_PATHS:
-          - "$(PROJECT_DIR)/third_party/picovoice/eagle/include"
-          - "$(inherited)"
-        LIBRARY_SEARCH_PATHS:
-          - "$(PROJECT_DIR)/third_party/picovoice/eagle/lib/$(CURRENT_ARCH)"
-          - "$(inherited)"
-        OTHER_LDFLAGS:
-          - "$(inherited)"
-        SWIFT_INCLUDE_PATHS:
-          - "$(PROJECT_DIR)/third_party/picovoice/eagle/include"
     preBuildScripts:
-      - name: Bootstrap Eagle SDK
-        script: |
-          "${SRCROOT}/scripts/bootstrap-eagle.sh"
-        basedOnDependencyAnalysis: false
       - name: Verify Entitlements
         script: |
           "${SRCROOT}/scripts/verify-entitlements.sh"
-    postCompileScripts:
-      - name: Copy Eagle dylib
-        script: |
-          set -eu
-          FRAMEWORKS_DIR="${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}"
-          EAGLE_LIB_DIR="${SRCROOT}/third_party/picovoice/eagle/lib"
-          DYLIB_DST="${FRAMEWORKS_DIR}/libpv_eagle.dylib"
-
-          for EAGLE_ARCH in arm64 x86_64; do
-            DYLIB_SRC="$EAGLE_LIB_DIR/$EAGLE_ARCH/libpv_eagle.dylib"
-            if [ ! -f "$DYLIB_SRC" ]; then
-              echo "error: Missing pinned Eagle dylib: $DYLIB_SRC" >&2
-              exit 1
-            fi
-            lipo "$DYLIB_SRC" -verify_arch "$EAGLE_ARCH"
-          done
-
-          mkdir -p "$FRAMEWORKS_DIR"
-          lipo -create "$EAGLE_LIB_DIR/arm64/libpv_eagle.dylib" \
-            "$EAGLE_LIB_DIR/x86_64/libpv_eagle.dylib" -output "$DYLIB_DST"
-          install_name_tool -id "@rpath/libpv_eagle.dylib" "$DYLIB_DST"
-          codesign --force --sign - --timestamp=none "$DYLIB_DST"
-          lipo "$DYLIB_DST" -verify_arch arm64
-          lipo "$DYLIB_DST" -verify_arch x86_64
-          echo "Embedded Eagle dylib for arm64 and x86_64"
-        basedOnDependencyAnalysis: false
     entitlements:
       path: memanager/memanager.entitlements
       properties:
         com.apple.security.app-sandbox: false
         com.apple.security.device.audio-input: true
-        com.apple.security.cs.disable-library-validation: true
 
   memanagerTests:
     type: bundle.unit-test

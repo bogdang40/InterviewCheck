@@ -52,3 +52,6 @@ Status key: [ ] todo · [~] in progress · [x] done (commit)
   Quick Assist, Solve/Design, practice, knowledge, workspaces, project tools, screenshots,
   hotkeys), candidate DB DAOs, provider classes; native access gate; slim SettingsManager.
   App 1,260 -> ~230 Swift files; 310 tests pass in 5 s; app launches.
+- 21:00 B3 round 2: removed Picovoice Eagle voice ID (Swift code, dylib, model, build steps,
+  disable-library-validation), old welcome frames (30 MB), Mermaid bundle. App 49 MB -> 10 MB;
+  no network needed to build; 281 tests pass; launches.

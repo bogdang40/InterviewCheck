@@ -15,11 +15,4 @@ if ! /usr/bin/plutil -p "$ENTITLEMENTS_FILE" | /usr/bin/grep -q "com.apple.secur
   exit 1
 fi
 
-# Check for library validation entitlement (required for Eagle dylib)
-if ! /usr/bin/plutil -p "$ENTITLEMENTS_FILE" | /usr/bin/grep -q "com.apple.security.cs.disable-library-validation"; then
-  echo "ERROR: Missing com.apple.security.cs.disable-library-validation in memanager.entitlements" >&2
-  echo "Hint: This is required for loading the Picovoice Eagle dylib" >&2
-  exit 1
-fi
-
 echo "Entitlements verified successfully"

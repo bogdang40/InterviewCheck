@@ -32,19 +32,6 @@ extension AudioCaptureService {
             isDeepgramActive = false
         }
 
-        // Initialize or resume voice signature if enabled and configured (only if Deepgram not active)
-        if activeTranscriptionMode == .appleSpeech {
-            if reason == .resume, let service = voiceSignatureService {
-                service.reset()
-                service.resume()
-                micStreamStartTime = 0
-                systemStreamStartTime = 0
-                isVoiceSignatureActive = true
-            } else {
-                initializeVoiceSignature()
-            }
-        }
-
         if activeTranscriptionMode == .appleSpeech {
             // Check if speech recognizer is available (only required when using Apple speech)
             guard let recognizer = speechRecognizer else {

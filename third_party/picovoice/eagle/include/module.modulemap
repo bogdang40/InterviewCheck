@@ -1,6 +1,0 @@
-module Eagle [system] {
-    header "picovoice.h"
-    header "pv_eagle.h"
-    link "pv_eagle"
-    export *
-}

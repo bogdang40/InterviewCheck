@@ -248,15 +248,9 @@ extension AudioCaptureService {
             case .deepgramSourceBased:
                 self.audioRouter?.routeMicAudio(buffer)
             case .deepgramLegacy:
-                // Process voice signature for auto speaker identification mode
-                if self.voiceSignatureStore.isAutoSpeakerIdentificationEnabled {
-                    let hostTime = mach_absolute_time()
-                    self.voiceSignatureService?.processMicAudio(buffer: buffer, hostTime: hostTime)
-                }
+                break // the unified mixer has its own tap
             case .appleSpeech:
                 self.recognitionRequest?.append(buffer)
-                let hostTime = mach_absolute_time()
-                self.voiceSignatureService?.processMicAudio(buffer: buffer, hostTime: hostTime)
             }
         }
         isInputTapInstalled = true

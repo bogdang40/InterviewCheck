@@ -31,44 +31,8 @@ extension AudioCaptureService {
                 self.rebuildTranscript()
 
                 if result.isFinal {
-                    // For final results, use segment-based labeling if voice signature is active
-                    if let labeler = self.transcriptionLabeler,
-                       let voiceService = self.voiceSignatureService,
-                       voiceService.isActive {
-                        let segments = result.bestTranscription.segments
-                        if source == .microphone && self.micStreamStartTime == 0 {
-                            self.micStreamStartTime = self.inferStreamStartTime(
-                                source: source,
-                                segments: segments,
-                                service: voiceService
-                            )
-                        } else if source == .systemAudio && self.systemStreamStartTime == 0 {
-                            self.systemStreamStartTime = self.inferStreamStartTime(
-                                source: source,
-                                segments: segments,
-                                service: voiceService
-                            )
-                        }
-
-                        let streamStart = source == .microphone ? self.micStreamStartTime : self.systemStreamStartTime
-                        let labeledEntries = labeler.labelFinal(segments: segments, source: source, streamStartTime: streamStart)
-                        let mergedEntries = labeler.mergeAdjacentEntries(labeledEntries)
-
-                        // Convert to TranscriptEntry (using SpeakerLabel -> TranscriptSpeaker)
-                        for entry in mergedEntries {
-                            let transcriptSpeaker: TranscriptSpeaker
-                            if entry.label == .me {
-                                transcriptSpeaker = .me
-                            } else {
-                                // For non-"me" speakers, use numbered speakers
-                                transcriptSpeaker = .speaker(0)
-                            }
-                            self.appendTranscriptEntry(entry.text, speaker: transcriptSpeaker)
-                        }
-                    } else {
-                        // Fallback: use source-based speaker
-                        self.appendTranscriptEntry(text, speaker: speaker)
-                    }
+                    // Fallback: use source-based speaker
+                    self.appendTranscriptEntry(text, speaker: speaker)
 
                     if source == .microphone {
                         self.partialMe = ""
@@ -85,38 +49,8 @@ extension AudioCaptureService {
 
     /// Determine speaker label based on voice signature or fallback to source
     func determineSpeaker(for source: AudioSource) -> TranscriptSpeaker {
-        // If voice signature is active, use current label
-        if let service = voiceSignatureService, service.isActive {
-            let label = service.currentLabel
-            if label == .me {
-                return .me
-            } else {
-                // For non-"me", use numbered speakers
-                return .speaker(0)
-            }
-        }
-
         // Fallback: mic = me, system = Speaker 1
         return source == .microphone ? .me : .speaker(0)
-    }
-
-    private func inferStreamStartTime(
-        source: AudioSource,
-        segments: [SFTranscriptionSegment],
-        service: VoiceSignatureRecognitionService
-    ) -> TimeInterval {
-        guard let latestScoreTimestamp = service.latestTimestamp(for: source),
-              let lastSegment = segments.last else {
-            return 0
-        }
-
-        let segmentEnd = lastSegment.timestamp + lastSegment.duration
-        let inferredStart = latestScoreTimestamp - segmentEnd
-
-        if inferredStart.isFinite, inferredStart >= 0, inferredStart < 10 {
-            return inferredStart
-        }
-        return 0
     }
 
     func handleDeepgramTranscript(

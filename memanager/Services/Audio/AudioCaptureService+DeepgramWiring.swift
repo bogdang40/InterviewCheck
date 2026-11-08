@@ -189,11 +189,6 @@ extension AudioCaptureService {
             }
         }
 
-        // Initialize voice signature for auto speaker identification
-        if voiceSignatureStore.isAutoSpeakerIdentificationEnabled {
-            initializeVoiceSignatureForLegacy()
-        }
-
         // Connect to Deepgram
         service.connect(apiKey: apiKey)
 
@@ -202,89 +197,6 @@ extension AudioCaptureService {
         isDeepgramActive = true
         print("[MIC-DEBUG] Legacy initialized, mixer set: \(unifiedAudioMixer != nil)")
         logDebug("Legacy Deepgram initialized with unified audio mixer")
-    }
-
-    /// Initialize voice signature for legacy mode auto speaker identification
-    /// When voice signature detects "me" speaking, auto-marks the current Deepgram speaker
-    private func initializeVoiceSignatureForLegacy() {
-        // Check if voice signature is enabled and configured
-        guard voiceSignatureStore.isEnabled else {
-            logDebug("Voice signature disabled - auto mode not available")
-            return
-        }
-
-        guard voiceSignatureStore.loadAccessKey() != nil else {
-            logDebug("Voice signature: no AccessKey configured for auto mode")
-            return
-        }
-
-        guard voiceSignatureStore.loadProfile() != nil else {
-            logDebug("Voice signature: no profile enrolled for auto mode")
-            return
-        }
-
-        // Create recognition service
-        let service = VoiceSignatureRecognitionService(
-            store: voiceSignatureStore,
-            config: SpeakerRecognitionConfig(
-                thresholdEnterMe: voiceSignatureStore.thresholdEnterMe,
-                thresholdExitMe: voiceSignatureStore.thresholdExitMe
-            )
-        )
-
-        // Set up auto-mark callback for when voice signature detects "me"
-        service.onLabelChanged = { [weak self] label in
-            guard let self = self else { return }
-            DispatchQueue.main.async {
-                self.currentSpeakerLabel = label
-                // When voice signature detects "me" speaking, auto-mark the current Deepgram speaker
-                if label == .me {
-                    self.autoMarkCurrentSpeakerAsMe()
-                }
-            }
-        }
-
-        service.onScoreSample = { [weak self] sample in
-            DispatchQueue.main.async {
-                self?.currentVoiceScore = sample.score
-            }
-        }
-
-        do {
-            try service.start()
-            voiceSignatureService = service
-            isVoiceSignatureActive = true
-            logDebug("Voice signature initialized for legacy auto mode")
-        } catch {
-            logDebug("Voice signature failed to start for legacy mode: \(error)")
-            voiceSignatureService = nil
-            isVoiceSignatureActive = false
-        }
-    }
-
-    /// Auto-mark the current/last Deepgram speaker as "me" when voice signature detects user's voice.
-    /// Only used in legacy diarization mode with auto speaker identification enabled.
-    private func autoMarkCurrentSpeakerAsMe() {
-        guard activeTranscriptionMode == .deepgramLegacy,
-              voiceSignatureStore.isAutoSpeakerIdentificationEnabled else {
-            return
-        }
-
-        // Find the most recent Deepgram speaker ID from partials or recent entries
-        // Use partialOtherDeepgramId first (current active speaker), then fall back to partialMeDeepgramId
-        if let speakerId = partialOtherDeepgramId ?? partialMeDeepgramId {
-            // Only mark if not already marked as "me"
-            if speakerMapper.currentMeSpeakerId != speakerId {
-                markSpeakerAsMe(speakerId)
-                logDebug("Auto-marked Deepgram speaker \(speakerId) as 'me' via voice signature")
-            }
-        } else if let lastEntry = transcriptEntries.last, let lastSpeakerId = lastEntry.deepgramSpeakerId {
-            // Fall back to the last transcript entry's speaker
-            if speakerMapper.currentMeSpeakerId != lastSpeakerId {
-                markSpeakerAsMe(lastSpeakerId)
-                logDebug("Auto-marked Deepgram speaker \(lastSpeakerId) as 'me' via voice signature (from last entry)")
-            }
-        }
     }
 
     func shutdownDeepgram(preserveTranscriptState: Bool) {
@@ -319,14 +231,6 @@ extension AudioCaptureService {
             deepgramService = nil
             DispatchQueue.main.async {
                 self.deepgramLegacyState = .disconnected
-            }
-
-            if voiceSignatureStore.isAutoSpeakerIdentificationEnabled {
-                voiceSignatureService?.stop()
-                voiceSignatureService = nil
-                isVoiceSignatureActive = false
-                currentSpeakerLabel = .unknown
-                currentVoiceScore = 0.0
             }
 
             logDebug("Legacy Deepgram service and unified mixer shut down")

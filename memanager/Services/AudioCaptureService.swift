@@ -70,8 +70,6 @@ final class AudioCaptureService: ObservableObject {
     // MARK: - Voice Signature Integration
 
     let voiceSignatureStore = VoiceSignatureStore.shared
-    var voiceSignatureService: VoiceSignatureRecognitionService?
-    var transcriptionLabeler: TranscriptionLabeler?
     var cancellables = Set<AnyCancellable>()
 
     // MARK: - Deepgram Integration (Unified Stream - Legacy Mode)

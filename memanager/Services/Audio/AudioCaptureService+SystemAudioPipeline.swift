@@ -97,12 +97,6 @@ extension AudioCaptureService {
                 // Use Apple Speech Recognition
                 guard let request = self.systemRecognitionRequest else { return }
                 self.appendSampleBuffer(sampleBuffer, to: request)
-
-                // Feed to voice signature recognition (Eagle)
-                if let pcmBuffer = self.convertSampleBuffer(sampleBuffer) {
-                    let hostTime = mach_absolute_time()
-                    self.voiceSignatureService?.processSystemAudio(buffer: pcmBuffer, hostTime: hostTime)
-                }
             }
         }
 

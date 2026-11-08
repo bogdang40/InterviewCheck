@@ -30,15 +30,6 @@ DerivedData/
 Pods/
 Carthage/
 
-# Third-party binaries (downloaded by bootstrap)
-third_party/picovoice/eagle/lib/
-third_party/picovoice/eagle/include/*.h
-third_party/picovoice/eagle/eagle_params.pv
-third_party/picovoice/eagle/CHECKSUMS.sha256
-third_party/picovoice/eagle/VERSION
-
-# Keep the modulemap
-!third_party/picovoice/eagle/include/module.modulemap
 
 # IDE
 .idea/
