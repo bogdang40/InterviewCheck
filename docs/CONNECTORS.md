@@ -207,25 +207,35 @@ its results.
 
 - Upcoming interviews refresh at launch, every 15 minutes, and when the app comes to the front.
 - Reminders arrive 10 minutes before each interview (adjustable or off in Connections), with **Prepare**.
-- **Get Next Interview Ready** (on by default, in the Connections toolbar) prepares the next
+- **Get Next Interview Ready** (on by default, in Connections › Automation) prepares the next
   interview by itself at reminder time: candidate, role with job description, and résumé.
   It never starts the interview or ticks the consent box, never switches the window, waits
   while the Roles editor is open, and never replaces setup the interviewer typed. A setup it
-  filled and nobody touched moves on to the next interview once that interview has ended.
+  filled and nobody touched moves on to the next interview once that interview has ended
+  (with no end time: an hour, or 5 minutes before the next one), or at once if it was
+  cancelled. After an interview is run and its scores are in, the next one comes in. The
+  prepared interview shows **Ready** in Upcoming; clicking its reminder keeps the setup.
+- Automation acts only on **your** interviews: **Show All** in Upcoming changes what the list
+  shows, not reminders, automatic Prepare and Join, or Prepare/Join Next.
+- In the 15 minutes before one of your interviews the app asks macOS not to nap, so these
+  checks run on time while its window is hidden.
 - **Open the Meeting When It Starts** (off by default, same menu) opens the prepared
   interview's meeting link about a minute before the start, once (not after a manual Join).
 - **Settings › Privacy › Save a PDF of each report** writes every finished report (live or
   scored in the background) into a chosen folder. Those files are not removed by the
   retention setting.
 - **Score recordings automatically** (off by default) scores new recordings of scheduled
-  interviews in the background and sends a "Report ready" notification.
-  Turn it on only if candidates are told interviews are recorded and checked.
+  interviews in the background and sends a "Report ready" notification. It never changes
+  the window, and skips a meeting that already has a report (run live, or an earlier part
+  of the same meeting). Turn it on only if candidates are told interviews are recorded and checked.
 - **Roles › Share › Import from ATS** turns open jobs (Greenhouse, Lever, Ashby, Workable, Recruitee,
   Teamtailor, SmartRecruiters, Merge, Kombo, Unified.to) into roles with their job descriptions.
 - When Prepare creates a role from an ATS job, the role's questions and tailored
   prompts are drafted in the background.
 - Shortcuts actions: Prepare Next Interview, Join Next Interview (prepares it if needed and opens the meeting), Sync Interview Connections, Open Latest Interview Report.
-- The Dock menu lists the next interviews.
+- The Dock menu lists the next interviews and has Join Next Interview.
+- Quitting while the last answers are still being scored waits for them (up to a minute),
+  so the report and its PDF are complete.
 - Links `interviewcheck://prepare-next`, `interviewcheck://join-next`, `interviewcheck://sync` and `interviewcheck://report/latest`.
 
 ## For the product owner: what needs a server later
