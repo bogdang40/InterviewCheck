@@ -41,6 +41,15 @@ for another Mac. It is not notarized yet, so macOS warns before opening it there
   - Optional: save a PDF of every report to a folder.
   - **Join Next Interview** from Shortcuts, the Dock or a link.
 
+## Screens
+
+| | |
+|---|---|
+| ![Connections](screenshots/2026-11-08/connections.png) | ![Upcoming interviews with Ready](screenshots/2026-11-08/upcoming-interviews-light.png) |
+| Connections (⌘4): calendars, mail, booking links, meetings, ATSs, MCP; the Automation menu at the top | Upcoming interviews: **Ready** on the one already prepared, Join and Prepare |
+| ![Mail setup](screenshots/2026-11-08/connector-imapMail-light.png) | ![Report PDFs setting](screenshots/2026-11-08/native-settings-privacy-light.png) |
+| Mail (IMAP) setup: app password, read-only | Settings › Privacy: save a PDF of each report |
+
 ## Checks
 
 - **Tests:** about 330 app tests, 94 connector tests and 47 core tests. They run on
