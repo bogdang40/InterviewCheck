@@ -53,3 +53,13 @@ every screen of the installed app and the demo.
   - The notes field was capped at 640 pt and the timing strip had no label. Notes are now full width, the strip is captioned "Timing", and the report runs score, timing, answer, AI answers, then verdict and notes.
   - Settings: the model pickers are aligned. "When I forget the key" is now "when I forget to press Question Asked". The audio rows show their icon on the left and their fix on the right, and the Deepgram row has "Open Keys", which switches to the Keys tab.
 - **N10 done.** The summary after End used to be one big overall %. It now leads with "N of M answers flagged" (red when any), with "63% overall · Some signs of AI help" below and a tooltip. The question chips open the report, and "What stood out" gives up to three flagged answers with their strongest evidence. "Open Report" is the default button. `InterviewSummary.flaggedLine` gives every place the same wording with the right plural ("1 of 1 answer flagged"): rail, report, summary, demo, PDF, Markdown, the "Report ready" notification and the note sent to the ATS. The chips' own count is hidden where the screen already says it. Full suite green (346).
+- **N11 done.**
+  - The live screen keeps the score above the growing answer, in the report's order: score, timing, answer, AI answers.
+  - The match reason reads "Matches the GPT 5.2 · Full answer word for word: 99 of 104 words".
+  - Connections rows no longer repeat "Upcoming interviews" on every row; they say what else each system adds.
+  - The README describes the new evidence, and LIVE-TEST-CHECKLIST lists what to confirm about it on the first real call.
+- **N12 done.**
+  - The welcome sheet makes "Watch a 90-Second Demo" the default button while keys are missing.
+  - The Live Companion window above the call shows "N of M words match an AI answer" with the marker swatch.
+  - Probe terms drop a verb tagged as a noun before an adverb ("teams ship safely"), and generic nouns (team, company, version …) are skipped.
+  - Seen in the real demo run: Q1 20%, Q2 95%, Q3 47%, "1 of 3 answers flagged · 55% overall".

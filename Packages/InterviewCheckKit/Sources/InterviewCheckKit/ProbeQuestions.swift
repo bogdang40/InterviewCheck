@@ -75,7 +75,8 @@ public enum ProbeQuestions {
         "parts", "point", "end", "fact", "idea", "stuff", "approach", "solution", "issue", "issues", "work", "job",
         "role", "place", "number", "kind", "sort", "minute", "minutes", "hour", "hours", "day", "days", "week",
         "weeks", "month", "months", "year", "years", "spring", "summer", "fall", "autumn", "winter", "morning",
-        "night", "today", "yesterday", "tomorrow",
+        "night", "today", "yesterday", "tomorrow", "team", "teams", "company", "companies", "people", "person",
+        "version", "versions", "customer", "customers", "user", "users",
     ]
 
     /// Leading words that make a phrase vaguer, not more specific.
@@ -96,6 +97,8 @@ public enum ProbeQuestions {
             if [.determiner, .pronoun].contains(tag), run.count >= 2, run.last?.word.hasSuffix("s") == true {
                 run.removeLast()
             }
+            // "teams ship safely": a verb before an adverb, taken for a noun.
+            if tag == .adverb, run.count >= 2 { run.removeLast() }
             while let last = run.last, !last.isNoun { run.removeLast() }
             if !run.isEmpty { phrases.append(run.map(\.word).joined(separator: " ")) }
             run = []

@@ -43,6 +43,14 @@ final class ProbeQuestionsTests: XCTestCase {
         XCTAssertTrue(motive.first?.hasSuffix("What have you actually done with it so far?") == true, "\(motive)")
     }
 
+    func testVerbsBeforeAdverbsAreNotTerms() {
+        let terms = ProbeQuestions.keyTerms(
+            in: "I want to keep growing toward reliability work and help teams ship safely at scale.",
+            questionText: "Why do you want to work on payments infrastructure?")
+        XCTAssertFalse(terms.contains { $0.lowercased().contains("ship") }, "\(terms)")
+        XCTAssertTrue(terms.contains { $0.lowercased() == "reliability work" }, "\(terms)")
+    }
+
     func testNothingToAskAboutGivesNoProbes() {
         XCTAssertTrue(ProbeQuestions.make(answerText: "Um, yes, I think so, honestly.", questionText: question).isEmpty)
         XCTAssertTrue(ProbeQuestions.make(answerText: "", questionText: question).isEmpty)

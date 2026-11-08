@@ -147,6 +147,9 @@ private struct ConnectorRow: View {
             return "Via " + ListFormatter.localizedString(byJoining: kind.routedThrough.map { $0.descriptor.name })
         }
         if !ConnectorFactory.implemented.contains(kind), kind != .icsFile { return "Coming soon" }
-        return kind.descriptor.capabilities.prefix(2).map(\.title).joined(separator: ", ")
+        // Nearly every system brings upcoming interviews; say what else this one adds.
+        let titles = kind.descriptor.capabilities.map(\.title)
+        let distinct = titles.count > 1 ? titles.filter { $0 != "Upcoming interviews" } : titles
+        return distinct.prefix(2).joined(separator: ", ")
     }
 }

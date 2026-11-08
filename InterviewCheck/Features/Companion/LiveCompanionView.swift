@@ -62,6 +62,17 @@ struct LiveCompanionView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
+    /// The current answer's words shared with any AI answer.
+    private var sharedWords: SharedWords? {
+        guard let question else { return nil }
+        let text = controller.activeQuestionID == question.id
+            ? (controller.liveWindow?.answerWords.map(\.text).joined(separator: " ") ?? "")
+            : question.answerText
+        let references = (controller.references[question.id] ?? []).filter { $0.error == nil && !$0.text.isEmpty }
+        guard !text.isEmpty, !references.isEmpty else { return nil }
+        return SharedWords.anyReference(answer: text, references: references.map(\.text), question: question.text)
+    }
+
     private func scoreSummary(_ score: AnswerScoreRecord) -> some View {
         let band = ScoreBand(percent: score.percent)
         return VStack(alignment: .leading, spacing: 6) {
@@ -78,6 +89,14 @@ struct LiveCompanionView: View {
             }
             if let reason = score.reasons.first {
                 Label(reason, systemImage: "exclamationmark.circle").font(.callout).lineLimit(3)
+            }
+            if let shared = sharedWords, shared.sharedCount > 0 {
+                Label {
+                    Text("\(shared.sharedCount) of \(shared.answerCount) words match an AI answer")
+                } icon: {
+                    RoundedRectangle(cornerRadius: 2).fill(Palette.marker).frame(width: 12, height: 9)
+                }
+                .font(.callout)
             }
             if let followUp = score.followUps.first {
                 Label("Ask: \(followUp)", systemImage: "arrow.turn.down.right").font(.callout).lineLimit(3)

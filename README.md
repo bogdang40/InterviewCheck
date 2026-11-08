@@ -11,8 +11,18 @@ InterviewCheck then:
    they would tell a candidate to say;
 2. times the candidate's answer word by word: the "Cluely pause" (silence or
    stalling, then a sudden fluent answer), fillers, restarts, pace;
-3. compares the answer with the AI answers (shared phrasing, meaning);
-4. shows a score from 0 to 95% with the reasons and two follow-up questions.
+3. compares the answer with the AI answers and **highlights every run of four
+   or more words said in the same order**, like a plagiarism checker ("99 of
+   104 words appear word for word in an AI answer");
+4. notices **model wording read aloud** ("furthermore", "it's worth noting",
+   spoken STAR labels) and **a change from the candidate's own other answers**
+   (much later start, far fewer hesitations), both without any AI key;
+5. shows a score from 0 to 95% with the reasons and follow-up questions; without
+   the AI review, follow-ups are made from the candidate's own words ("You
+   mentioned “token bucket algorithm”. Walk me through how that works.").
+
+After the call the summary leads with how many answers were flagged and what
+stood out; the report and PDF open with the same summary.
 
 A score is a signal to follow up on, never proof. The candidate is told the
 interview is transcribed and checked before it starts (the app requires the
@@ -35,9 +45,10 @@ interviewer to confirm this).
    and notes; export Markdown or PDF, or every interview as one CSV.
 6. **File › Analyze Recording** (⌘O): score a recorded interview (audio or
    video). Pick the candidate's voice; questions are found automatically.
-7. **Help › Demo Interview**: watch a scripted three-question interview run
-   through the real live screen and scorer. Needs no keys, microphone or
-   network; nothing is saved to your interviews.
+7. **Help › Demo Interview** (also on the welcome sheet and the New Interview
+   screen): watch a scripted 90-second, three-question interview run through
+   the real live screen and scorer, ending on its report. Needs no keys,
+   microphone or network; nothing is saved to your interviews.
 
 ### Connections (⌘4)
 

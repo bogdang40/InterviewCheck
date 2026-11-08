@@ -52,6 +52,20 @@ automatic Prepare would cover everyone's interviews. Add your full name to the "
 field in Connections ("lee@acme.com, Lee Park"): name-only interviewers are then matched
 by name. Check the count on the first sync; the names must be spelled as in the ATS.
 
+## The detector on the first real call (added 8 November, afternoon)
+
+The afternoon's evidence features were tested on scripted and recorded answers only:
+
+- **Highlighted words.** Read one answer straight from ChatGPT. Most of it should turn
+  yellow, with "N of M words appear word for word". Deepgram's punctuation and casing
+  should not break runs. Answer one question honestly: at most a few short highlights.
+- **Wording.** In a read answer full of "furthermore" or "it's worth noting", the score
+  card says "Sounds written, not spoken". An ordinary answer never does.
+- **Their own baseline.** After three or more answers, a read answer among honest ones
+  shows "Compared with their other answers". Check it never appears on the honest ones.
+- **Follow-ups without the AI review** (Settings › Detector › Review off). The "Ask next"
+  questions should name terms the candidate actually said. Note any that read oddly.
+
 ## After the first sync
 
 - **Prepare:** candidate, role with the job description and résumé fill in, with no

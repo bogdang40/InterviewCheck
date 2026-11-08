@@ -49,20 +49,33 @@ struct WelcomeView: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
 
+            // Without keys the demo is the best first step, so it is the default.
             HStack {
-                Button("Watch a Demo Interview") {
-                    openWindow(id: AppWindowID.demo)
-                    onDone()
+                if hasKeys {
+                    demoButton
+                    Spacer()
+                    Button("Get Started", action: onDone)
+                        .buttonStyle(.borderedProminent)
+                        .keyboardShortcut(.defaultAction)
+                } else {
+                    demoButton
+                        .buttonStyle(.borderedProminent)
+                        .keyboardShortcut(.defaultAction)
+                    Spacer()
+                    Button("Get Started", action: onDone)
                 }
-                .help("A scripted interview through the real detector. No keys or microphone needed.")
-                Spacer()
-                Button("Get Started", action: onDone)
-                    .buttonStyle(.borderedProminent)
-                    .keyboardShortcut(.defaultAction)
             }
         }
         .padding(28)
         .frame(width: 560)
+    }
+
+    private var demoButton: some View {
+        Button("Watch a 90-Second Demo") {
+            openWindow(id: AppWindowID.demo)
+            onDone()
+        }
+        .help("A scripted interview through the real detector, ending on its report. No keys or microphone needed.")
     }
 
     private func step<Action: View>(_ number: Int, done: Bool, title: String, detail: String,
