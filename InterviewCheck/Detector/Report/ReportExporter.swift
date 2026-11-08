@@ -1,6 +1,5 @@
 import AppKit
 import UniformTypeIdentifiers
-import WebKit
 
 /// Saves a report as Markdown or PDF where the interviewer chooses.
 @MainActor
@@ -12,11 +11,8 @@ enum ReportExporter {
 
     static func exportPDF(_ report: InterviewReportData) {
         guard let url = savePanel(report, type: .pdf, extension: "pdf") else { return }
-        let renderer = HTMLPDFRenderer()
-        Task { @MainActor in
-            if let data = await renderer.render(InterviewReportComposer.html(report)) {
-                try? data.write(to: url)
-            }
+        if let data = PaginatedPDF.data(html: InterviewReportComposer.html(report)) {
+            try? data.write(to: url)
         }
     }
 
@@ -29,32 +25,50 @@ enum ReportExporter {
     }
 }
 
-/// Renders HTML to a PDF with an offscreen web view.
+/// Lays HTML out on US Letter pages with margins, like printing it.
 @MainActor
-final class HTMLPDFRenderer: NSObject, WKNavigationDelegate {
-    private let webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 612, height: 792))
-    private var continuation: CheckedContinuation<Void, Never>?
+enum PaginatedPDF {
+    static let paperSize = NSSize(width: 612, height: 792)
+    static let margin: CGFloat = 54
 
-    func render(_ html: String) async -> Data? {
-        webView.navigationDelegate = self
-        await withCheckedContinuation { continuation in
-            self.continuation = continuation
-            webView.loadHTMLString(html, baseURL: nil)
-        }
-        return try? await webView.pdf(configuration: WKPDFConfiguration())
-    }
+    static func data(html: String) -> Data? {
+        guard let attributed = NSAttributedString(
+            html: Data(html.utf8),
+            options: [.documentType: NSAttributedString.DocumentType.html,
+                      .characterEncoding: String.Encoding.utf8.rawValue],
+            documentAttributes: nil
+        ) else { return nil }
 
-    nonisolated func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        MainActor.assumeIsolated {
-            continuation?.resume()
-            continuation = nil
-        }
-    }
+        let printInfo = NSPrintInfo()
+        printInfo.paperSize = paperSize
+        printInfo.topMargin = margin
+        printInfo.bottomMargin = margin
+        printInfo.leftMargin = margin
+        printInfo.rightMargin = margin
+        printInfo.horizontalPagination = .fit
+        printInfo.verticalPagination = .automatic
+        printInfo.isVerticallyCentered = false
 
-    nonisolated func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-        MainActor.assumeIsolated {
-            continuation?.resume()
-            continuation = nil
+        let width = paperSize.width - 2 * margin
+        let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: width, height: 100))
+        textView.textStorage?.setAttributedString(attributed)
+        textView.isVerticallyResizable = true
+        textView.textContainer?.widthTracksTextView = true
+        textView.layoutManager?.ensureLayout(for: textView.textContainer!)
+        if let used = textView.layoutManager?.usedRect(for: textView.textContainer!) {
+            textView.frame.size.height = max(used.height, 100)
         }
+
+        // A print job saved to a file paginates exactly like printing.
+        let output = FileManager.default.temporaryDirectory
+            .appendingPathComponent("interviewcheck-report-\(UUID().uuidString).pdf")
+        defer { try? FileManager.default.removeItem(at: output) }
+        printInfo.jobDisposition = .save
+        printInfo.dictionary()[NSPrintInfo.AttributeKey.jobSavingURL] = output
+        let operation = NSPrintOperation(view: textView, printInfo: printInfo)
+        operation.showsPrintPanel = false
+        operation.showsProgressPanel = false
+        guard operation.run() else { return nil }
+        return try? Data(contentsOf: output)
     }
 }
