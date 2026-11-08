@@ -21,7 +21,11 @@ extension ConnectorManager {
         if let job = interview.job {
             let role = await role(for: job, source: interview.source, connector: connector, roles: roles)
             roles.selectedRoleID = role.id
-            if role.jobDescription.isEmpty { missing.append("The job description was not available; paste it into the role.") }
+            if role.jobDescription.isEmpty {
+                missing.append("The job description was not available; paste it into the role.")
+            } else if role.plannedQuestions.isEmpty, draftRole(role.id, roles: roles) {
+                missing.append("Drafting questions and prompts for \(role.displayTitle) in the background.")
+            }
         } else {
             missing.append("No job was attached; pick the role.")
         }
@@ -63,6 +67,23 @@ extension ConnectorManager {
             return found
         }
         return interview
+    }
+
+    /// A new role from an ATS job gets its questions and tailored cheater
+    /// prompts drafted in the background with the AI key already set up.
+    /// Returns false when there is no usable AI key.
+    @discardableResult
+    func draftRole(_ roleID: String, roles: RoleStore, settings: DetectorSettings = .shared) -> Bool {
+        guard let entry = settings.usableJudge() ?? settings.usableLineup().first,
+              let client = try? DetectorTextClientFactory.make(provider: entry.provider, model: entry.model) else { return false }
+        Task { @MainActor in
+            guard let role = roles.role(id: roleID), role.jobDescription.count >= 40,
+                  let draft = try? await RoleDraftService.draft(roleTitle: role.displayTitle, jobDescription: role.jobDescription,
+                                                                using: client),
+                  let current = roles.role(id: roleID), current.plannedQuestions.isEmpty else { return }
+            roles.save(RoleDraftService.apply(draft, to: current))
+        }
+        return true
     }
 
     /// The role for a job: the one already made from it, one with the same

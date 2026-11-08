@@ -187,6 +187,14 @@ final class ConnectorManager: ObservableObject {
 
     func startAutoSync() {
         timer?.invalidate()
+        // Coming back to the app re-checks when the last sync is stale.
+        NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { _ in
+            Task { @MainActor in
+                let manager = ConnectorManager.shared
+                let stale = manager.accounts.contains { ($0.lastSync ?? .distantPast) < manager.now().addingTimeInterval(-5 * 60) }
+                if stale { await manager.syncAll() }
+            }
+        }
         timer = Timer.scheduledTimer(withTimeInterval: Self.syncInterval, repeats: true) { _ in
             Task { @MainActor in await ConnectorManager.shared.syncAll() }
         }

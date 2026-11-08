@@ -60,6 +60,19 @@ struct InterviewSetupForm: View {
 
             Section {
                 TextField("Name", text: $controller.candidateName, prompt: Text("Full name"))
+                if let earlier = PreviousInterviews.latest(for: controller.candidateName) {
+                    LabeledContent("Interviewed before") {
+                        Button {
+                            AppNavigation.shared.showReport(earlier.id)
+                        } label: {
+                            Text([earlier.startedAt.formatted(date: .abbreviated, time: .omitted), earlier.roleTitle,
+                                  earlier.overallPercent.map { "\($0)% overall" }]
+                                    .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " \u{00B7} "))
+                        }
+                        .buttonStyle(.link)
+                        .help("Open that interview's report")
+                    }
+                }
                 LabeledContent("Resume") {
                     HStack {
                         Text(controller.resumeFileName ?? "None")
