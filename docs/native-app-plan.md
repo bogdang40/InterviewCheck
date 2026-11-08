@@ -35,6 +35,18 @@ Status key: [ ] todo · [~] in progress · [x] done (commit)
       overlay window + glass/Metal shaders (drops the Metal toolchain need).
 - [x] B4 README + ARCHITECTURE docs; one `scripts/ci.sh`.
 
+## D. Polish and product (added during the loop)
+- [x] D1 Live audio status strip (mic / call audio / clock), also in the companion.
+- [x] D2 Paginated PDF reports built from formatted text.
+- [x] D3 Menu bar item while an interview is live.
+- [x] D4 First-launch welcome (Help › Welcome).
+- [x] D5 Release install, hardened runtime, `package-dmg.sh`.
+- [x] D6 Analyze Recording (File › Analyze Recording, ⌘O).
+- [ ] D7 Privacy: keep interviews N days, delete all data, what is stored where.
+- [ ] D8 Audio settings: choose the microphone, test both sides before an interview.
+- [ ] D9 Remove dead audio code (legacy unified stream, voice-ID leftovers).
+- [ ] D10 Report feedback: "this score was wrong" to calibrate weights locally.
+
 ## C. Verify every step
 - build; guarded tests; render native screens light/dark; launch the installed app,
   confirm it stays up, no new crash report, window screenshot.
@@ -52,3 +64,5 @@ Status key: [ ] todo · [~] in progress · [x] done (commit)
 - 20:36 f77cb14 B1: memanager -> InterviewCheck everywhere.
 - 20:42 B2: Packages/InterviewCheckKit (core, 34 tests via `swift test` in 0.03 s);
   app 247 tests pass. B4: README, ARCHITECTURE, scripts/ci.sh.
+- 20:46–21:00 D1–D6 (commits 2b?..07d691e): status strip, paginated PDF, menu bar item,
+  welcome, Release + DMG + hardened runtime, Analyze Recording. 263 app + 38 package tests.
