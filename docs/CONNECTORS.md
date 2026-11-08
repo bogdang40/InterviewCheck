@@ -13,6 +13,8 @@ server.
 All connectors were built from each vendor's published API documentation (November
 2026). They have been tested against those documented responses, not yet against
 live customer accounts. Check the first sync of each new system.
+[LIVE-TEST-CHECKLIST.md](LIVE-TEST-CHECKLIST.md) lists what to check on each first sync
+and which documented details are still unconfirmed.
 
 ## Start here: no setup
 
