@@ -46,6 +46,7 @@ struct ReportsView: View {
                 }
             }
             .searchable(text: $search, placement: .sidebar, prompt: "Candidate or role")
+            .onDeleteCommand { if selection != nil { confirmDelete = true } }
             .safeAreaInset(edge: .top, spacing: 0) {
                 if !interviews.isEmpty { filterBar }
             }
@@ -90,6 +91,8 @@ struct ReportsView: View {
                     Button("Markdown\u{2026}") { if let id = selection { export(id, pdf: false) } }
                         .disabled(report == nil)
                     Button("PDF\u{2026}") { if let id = selection { export(id, pdf: true) } }
+                        .disabled(report == nil)
+                    Button("Share PDF\u{2026}") { if let report { ReportExporter.share(report) } }
                         .disabled(report == nil)
                     Divider()
                     Button("All Interviews as CSV\u{2026}") {

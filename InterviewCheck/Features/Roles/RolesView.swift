@@ -33,6 +33,7 @@ struct RolesView: View {
                     }
                 }
             }
+            .onDeleteCommand { if let id = selection { confirmDelete = store.role(id: id) } }
             .frame(minWidth: 220, idealWidth: 260, maxWidth: 360)
             .overlay {
                 if store.roles.isEmpty {

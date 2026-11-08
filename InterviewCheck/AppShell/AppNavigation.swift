@@ -32,7 +32,11 @@ enum SidebarItem: String, CaseIterable, Identifiable, Hashable {
 final class AppNavigation: ObservableObject {
     static let shared = AppNavigation()
 
-    @Published var selection: SidebarItem? = .interview
+    @Published var selection: SidebarItem? = .interview {
+        // Reopening the app returns to the last section.
+        didSet { if let selection { AppDefaults.standard.set(selection.rawValue, forKey: Self.lastSectionKey) } }
+    }
+    static let lastSectionKey = "interviewcheck.lastSection"
     /// Asks the Roles screen to start a new role.
     @Published var newRoleRequest: UUID?
     /// Asks the Reports screen to show this interview.
@@ -47,6 +51,8 @@ final class AppNavigation: ObservableObject {
         // (used for screenshots and support).
         if let raw = UserDefaults.standard.string(forKey: "InterviewCheckStartSection"),
            let item = SidebarItem(rawValue: raw) {
+            selection = item
+        } else if let raw = AppDefaults.standard.string(forKey: Self.lastSectionKey), let item = SidebarItem(rawValue: raw) {
             selection = item
         }
     }

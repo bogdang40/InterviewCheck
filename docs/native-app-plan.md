@@ -136,3 +136,4 @@ tools; pull finished meeting recordings for scoring; optionally post a private n
 - 22:47 accessibility pass: score card one spoken summary, headings, labelled Join/Prepare, list rows combined.
 - 22:50 E9 Shortcuts / Dock menu / URL actions. 290 app tests; Metadata.appintents in the bundle.
 - 23:17 review fixes (independent review of the connectors, 15 findings): 2120ff2, 619ff83, fd988b0. Not done: forced refresh + retry on 401, surfacing truncated syncs as warnings, MCP protocol-version negotiation, data-protection keychain (needs a signed team ID). 298 app + 48 connector tests.
+- 23:28 native polish: last section remembered, Delete key in lists, Share PDF; Open in <ATS>; Import roles from ATS jobs; docs/CONNECTORS.md. 299 app + 49 connector tests.

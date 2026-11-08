@@ -25,6 +25,20 @@ enum ReportExporter {
         try? InterviewCSV.make(reports).write(to: url, atomically: true, encoding: .utf8)
     }
 
+    /// The macOS share sheet (Mail, Messages, AirDrop…) with the PDF.
+    static func share(_ report: InterviewReportData) {
+        guard let data = PaginatedPDF.data(ReportAttributedText.make(report)),
+              let window = NSApp.keyWindow, let view = window.contentView else { return }
+        let name = report.interview.candidateName.isEmpty ? "Interview" : report.interview.candidateName
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("interviewcheck-share", isDirectory: true)
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let file = folder.appendingPathComponent("\(name) interview report.pdf")
+        guard (try? data.write(to: file, options: .atomic)) != nil else { return }
+        let picker = NSSharingServicePicker(items: [file])
+        let anchor = NSRect(x: view.bounds.maxX - 220, y: view.bounds.maxY - 40, width: 1, height: 1)
+        picker.show(relativeTo: anchor, of: view, preferredEdge: .minY)
+    }
+
     /// File › Print: the same pages as the PDF, through the print panel.
     static func print(_ report: InterviewReportData) {
         let operation = NSPrintOperation(view: PaginatedPDF.textView(ReportAttributedText.make(report)),
