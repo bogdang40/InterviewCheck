@@ -31,6 +31,7 @@ struct MainSplitView: View {
     @ObservedObject private var permissions = InterviewPermissions.shared
     @ObservedObject private var welcome = WelcomePresenter.shared
     @ObservedObject private var recording = RecordingAnalyzer.shared
+    @Environment(\.openWindow) private var openWindow
     @State private var columnVisibility = NavigationSplitViewVisibility.all
 
     var body: some View {
@@ -51,6 +52,13 @@ struct MainSplitView: View {
                 RolesView()
             case .reports:
                 ReportsView()
+            }
+        }
+        .onAppear {
+            // `-InterviewCheckOpenDemo YES` opens the demo at launch (sales demos, screenshots).
+            if UserDefaults.standard.bool(forKey: "InterviewCheckOpenDemo") {
+                welcome.isPresented = false
+                openWindow(id: AppWindowID.demo)
             }
         }
         .sheet(isPresented: $recording.isPresented) {

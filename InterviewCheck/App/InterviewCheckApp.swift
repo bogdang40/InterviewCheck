@@ -23,6 +23,12 @@ struct InterviewCheckApp: App {
         .defaultSize(width: 380, height: 460)
         .defaultPosition(.topTrailing)
 
+        Window("Demo Interview", id: AppWindowID.demo) {
+            DemoInterviewView()
+                .frame(minWidth: 820, minHeight: 600)
+        }
+        .defaultSize(width: 1100, height: 800)
+
         Settings {
             AppSettingsView()
         }
@@ -38,4 +44,5 @@ struct InterviewCheckApp: App {
 enum AppWindowID {
     static let main = "main"
     static let companion = "companion"
+    static let demo = "demo"
 }

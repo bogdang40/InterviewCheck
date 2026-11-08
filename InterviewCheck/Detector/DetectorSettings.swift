@@ -34,6 +34,8 @@ final class DetectorSettings: ObservableObject {
     """
 
     private let defaults: UserDefaults
+    /// False only for the demo, whose AI answers are canned.
+    var requiresKeys = true
 
     private enum Keys {
         static let lineup = "interviewcheck.detector.lineup"
@@ -60,7 +62,7 @@ final class DetectorSettings: ObservableObject {
 
     /// Lineup entries whose provider has a saved key.
     func usableLineup(settings: SettingsManager = .shared) -> [LineupEntry] {
-        lineup.filter { $0.isEnabled && !settings.apiKey(for: $0.provider).isEmpty }
+        lineup.filter { $0.isEnabled && (!requiresKeys || !settings.apiKey(for: $0.provider).isEmpty) }
     }
 
     /// The judge, or the first usable lineup entry when the judge has no key.

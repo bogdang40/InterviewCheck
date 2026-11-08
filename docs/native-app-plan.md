@@ -47,6 +47,8 @@ Status key: [ ] todo · [~] in progress · [x] done (commit)
 - [~] D9 Remove dead audio code (legacy unified stream, voice-ID leftovers). DEFERRED: 142 references
       through the capture state machine; needs a live-call test after the change.
 - [x] D10 Report feedback: "this score was wrong" to calibrate weights locally.
+- [x] D11 Demo Interview (Help › Demo Interview, `-InterviewCheckOpenDemo YES`): a scripted
+      three-question interview through the real live screen and scorer; no keys, mic or network.
 
 ## C. Verify every step
 - build; guarded tests; render native screens light/dark; launch the installed app,
@@ -69,3 +71,4 @@ Status key: [ ] todo · [~] in progress · [x] done (commit)
   welcome, Release + DMG + hardened runtime, Analyze Recording. 263 app + 38 package tests.
 - 21:01–21:13 D7 privacy (810551e), D8 audio settings (c337c94), D10 calibration (verdicts + tuner,
   schema v18). D9 deferred. 268 app + 41 package tests.
+- 21:16 D11 demo interview (honest answer low, read-from-AI answer high). 270 app tests.

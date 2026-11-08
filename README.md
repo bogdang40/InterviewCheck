@@ -33,6 +33,9 @@ interviewer to confirm this).
    Markdown or PDF.
 6. **File › Analyze Recording** (⌘O): score a recorded interview (audio or
    video). Pick the candidate's voice; questions are found automatically.
+7. **Help › Demo Interview**: watch a scripted three-question interview run
+   through the real live screen and scorer. Needs no keys, microphone or
+   network; nothing is saved to your interviews.
 
 The first interview asks for the microphone (your questions) and for Screen
 & System Audio Recording (the candidate's side of the call).

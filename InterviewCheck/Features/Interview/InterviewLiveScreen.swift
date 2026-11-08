@@ -6,6 +6,8 @@ import InterviewCheckKit
 struct InterviewLiveScreen: View {
     @ObservedObject var controller: InterviewController
     @ObservedObject var timeline: InterviewTimeline
+    /// Off for the demo, which has no audio.
+    var showsAudioStatus = true
     @ObservedObject private var roles = RoleStore.shared
     @Environment(\.openWindow) private var openWindow
     @State private var editingID: String?
@@ -17,7 +19,7 @@ struct InterviewLiveScreen: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                AudioStatusStrip(startedAt: controller.interview?.startedAt)
+                if showsAudioStatus { AudioStatusStrip(startedAt: controller.interview?.startedAt) }
                 if let message = controller.errorMessage {
                     HStack {
                         Label(message, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange)
@@ -47,8 +49,10 @@ struct InterviewLiveScreen: View {
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 Button { controller.markQuestion() } label: { Label("Question Asked", systemImage: "questionmark.bubble") }
+                    .labelStyle(.titleAndIcon)
                     .help("Question asked (\u{21E7}\u{2318}\u{21A9})")
                 Button { controller.answerDone() } label: { Label("Answer Done", systemImage: "checkmark.circle") }
+                    .labelStyle(.titleAndIcon)
                     .help("Answer done (\u{21E7}\u{2318}E)")
                     .disabled(controller.activeQuestionID == nil)
                 Button { openWindow(id: AppWindowID.companion) } label: { Label("Live Companion", systemImage: "rectangle.on.rectangle") }

@@ -15,7 +15,7 @@ struct AppCommands: Commands {
             Divider()
         }
         CommandGroup(replacing: .help) {
-            Button("Welcome to \(AppBrand.name)") { WelcomePresenter.shared.show() }
+            HelpMenuItems()
         }
     }
 }
@@ -79,5 +79,14 @@ private struct CompanionMenuItem: View {
     var body: some View {
         Button("Live Companion") { openWindow(id: AppWindowID.companion) }
             .keyboardShortcut("l", modifiers: [.command, .option])
+    }
+}
+
+private struct HelpMenuItems: View {
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Button("Welcome to \(AppBrand.name)") { WelcomePresenter.shared.show() }
+        Button("Demo Interview") { openWindow(id: AppWindowID.demo) }
     }
 }
