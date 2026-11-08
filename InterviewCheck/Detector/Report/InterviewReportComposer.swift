@@ -18,6 +18,12 @@ enum InterviewReportComposer {
         }
         if interview.scoredFrom == .transcript { lines.append("- \(ScoredFrom.transcriptCaveat)") }
         lines += ["", "_Scores are signals to follow up on, not proof. A person should review the evidence before any decision._", ""]
+        let standouts = ReportStandout.make(report)
+        if !standouts.isEmpty {
+            lines += ["## What stood out", ""]
+            lines += standouts.map { "- **Q\($0.question.ordinal), \($0.score.percent)%**: \($0.evidence.joined(separator: "; "))" }
+            lines.append("")
+        }
 
         for question in report.questions {
             lines.append("## Q\(question.ordinal). \(question.text.isEmpty ? "(question not captured)" : question.text)")
@@ -26,6 +32,7 @@ enum InterviewReportComposer {
                 lines.append("**\(score.percent)%: \(ScoreBand(percent: score.percent).title)** (\(score.confidence.rawValue) confidence)")
                 lines.append("")
                 lines += score.reasons.map { "- \($0)" }
+                if let note = BaselineSignal.note(for: question.id, scores: report.scores) { lines.append("- \(note)") }
                 lines += score.counterpoints.map { "- In their favour: \($0)" }
                 lines.append(contentsOf: metricsLines(score.metrics))
                 if !score.followUps.isEmpty {
@@ -39,6 +46,11 @@ enum InterviewReportComposer {
                 lines += ["", "**Your notes**", ""] + note.components(separatedBy: .newlines).map { "> \($0)" }
             }
             lines += ["", "**Candidate's answer**", "", "> \(question.answerText.isEmpty ? "(nothing captured)" : question.answerText)", ""]
+            let shared = SharedWords.anyReference(
+                answer: question.answerText,
+                references: (report.references[question.id] ?? []).filter { $0.error == nil }.map(\.text),
+                question: question.text)
+            if let summary = shared.summary { lines += ["_\(summary)._", ""] }
             for answer in report.references[question.id] ?? [] where answer.error == nil && !answer.text.isEmpty {
                 lines.append("<details><summary>\(answer.label)\(answer.firstSentenceSeconds.map { ", first line after \(ScoreNotes.seconds($0))" } ?? "")</summary>")
                 lines += ["", answer.text, "", "</details>", ""]
@@ -75,3 +87,30 @@ enum InterviewReportComposer {
         return formatter
     }()
 }
+
+/// An answer at 70% or more with its strongest evidence: what a reader of
+/// the report should see first.
+struct ReportStandout: Identifiable {
+    let question: InterviewQuestionRecord
+    let score: AnswerScoreRecord
+    let evidence: [String]
+    var id: String { question.id }
+
+    /// Strongest first; up to three lines of evidence each.
+    static func make(_ report: InterviewReportData) -> [ReportStandout] {
+        report.questions.compactMap { question -> ReportStandout? in
+            guard let score = report.scores[question.id], score.percent >= 70 else { return nil }
+            let answers = (report.references[question.id] ?? []).filter { $0.error == nil && !$0.text.isEmpty }
+            let shared = SharedWords.anyReference(answer: question.answerText, references: answers.map(\.text),
+                                                  question: question.text)
+            var evidence = shared.coverage >= 0.2 ? [shared.summary].compactMap { $0 } : []
+            // The highlighted count already says what "Closely follows…" says.
+            let reasons = score.reasons.filter { !(!evidence.isEmpty && $0.hasPrefix("Closely follows")) }
+            evidence += reasons
+            if let note = BaselineSignal.note(for: question.id, scores: report.scores) { evidence.append(note) }
+            return ReportStandout(question: question, score: score, evidence: Array(evidence.prefix(3)))
+        }
+        .sorted { $0.score.percent > $1.score.percent }
+    }
+}
+

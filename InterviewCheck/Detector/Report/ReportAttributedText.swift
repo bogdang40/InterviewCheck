@@ -31,6 +31,15 @@ enum ReportAttributedText {
         }
         text.append(line("Scores are signals to follow up on, not proof.", font: .systemFont(ofSize: 11), color: muted, after: 14))
 
+        let standouts = ReportStandout.make(report)
+        if !standouts.isEmpty {
+            text.append(line("What stood out", font: .systemFont(ofSize: 13, weight: .semibold), after: 4))
+            for item in standouts {
+                text.append(bullet("Q\(item.question.ordinal), \(item.score.percent)%: \(item.evidence.joined(separator: "; "))"))
+            }
+            text.append(line("", font: .systemFont(ofSize: 6), after: 8))
+        }
+
         for question in report.questions {
             text.append(line("Q\(question.ordinal). \(question.text.isEmpty ? "(question not captured)" : question.text)",
                              font: .systemFont(ofSize: 14, weight: .semibold), before: 10, after: 6))

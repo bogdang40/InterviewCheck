@@ -229,9 +229,16 @@ struct ReportDetail: View {
     @State private var words: [TimedWord] = []
 
     var body: some View {
+        ScrollViewReader { proxy in
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 header
+                if report.questions.count > 1 {
+                    QuestionRail(questions: report.questions, scores: report.scores, activeID: nil, focusedID: nil) { id in
+                        withAnimation(.easeInOut(duration: 0.3)) { proxy.scrollTo(id, anchor: .top) }
+                    }
+                }
+                if !standouts.isEmpty { standoutBox }
                 ForEach(report.questions) { question in
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Q\(question.ordinal). \(question.text.isEmpty ? "(question not captured)" : question.text)")
@@ -260,11 +267,13 @@ struct ReportDetail: View {
                             }
                         }
                     }
+                    .id(question.id)
                     Divider()
                 }
             }
             .padding(24)
             .frame(maxWidth: .infinity, alignment: .leading)
+        }
         }
         .onAppear { load(report.interview.id) }
         .onChange(of: report.interview.id) { _, id in load(id) }
@@ -273,6 +282,35 @@ struct ReportDetail: View {
     private func load(_ interviewID: String) {
         labels = database.loadAnswerLabels(interviewID: interviewID)
         words = database.loadInterviewWords(interviewID: interviewID)
+    }
+
+    private var standouts: [ReportStandout] { ReportStandout.make(report) }
+
+    private var standoutBox: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 12) {
+                ForEach(standouts) { item in
+                    HStack(alignment: .firstTextBaseline, spacing: 12) {
+                        Text("\(item.score.percent)%")
+                            .font(.title2.weight(.semibold)).monospacedDigit()
+                            .foregroundStyle(ScoreBand(percent: item.score.percent).color)
+                            .frame(minWidth: 56, alignment: .leading)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Q\(item.question.ordinal). \(item.question.text)").fontWeight(.semibold)
+                                .fixedSize(horizontal: false, vertical: true)
+                            ForEach(item.evidence, id: \.self) { line in
+                                Text(line).font(.callout).foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(6)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } label: {
+            Label("What stood out", systemImage: "exclamationmark.triangle").foregroundStyle(.secondary)
+        }
     }
 
     /// Silence, stalling and the answer, rebuilt from the saved word timings.
