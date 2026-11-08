@@ -75,5 +75,5 @@ Status key: [ ] todo · [~] in progress · [x] done (commit)
 - 21:01–21:13 D7 privacy (810551e), D8 audio settings (c337c94), D10 calibration (verdicts + tuner,
   schema v18). D9 deferred. 268 app + 41 package tests.
 - 21:16 D11 demo interview (honest answer low, read-from-AI answer high). 270 app tests.
-- 21:36 D12 notes, report timing strip, CSV export. 272 app + 42 package tests.
-- 21:52 demo: one card per prompt style (Copilot / Talking points / STAR), bullets keep line breaks, demo + companion windows not restored at launch, Welcome › Watch a Demo Interview. 273 app tests.
+- 21:22 D12 notes, report timing strip, CSV export. 272 app + 42 package tests.
+- 21:28 demo: one card per prompt style (Copilot / Talking points / STAR), bullets keep line breaks, demo + companion windows not restored at launch, Welcome › Watch a Demo Interview. 273 app tests.
