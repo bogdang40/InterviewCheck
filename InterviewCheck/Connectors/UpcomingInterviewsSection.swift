@@ -60,8 +60,17 @@ struct UpcomingInterviewsSection: View {
             }
             Spacer(minLength: 8)
             if let link = interview.meetingURL {
-                Button("Join") { NSWorkspace.shared.open(link) }
-                    .help("Open the \(MeetingLinks.platform(of: link).title) link")
+                Button("Join") {
+                    NSWorkspace.shared.open(link)
+                    // Joining also prepares the interview, unless that is done.
+                    guard controller.externalRef != interview.id, preparingID == nil else { return }
+                    preparingID = interview.id
+                    Task {
+                        notes = await connectors.prepare(interview, controller: controller)
+                        preparingID = nil
+                    }
+                }
+                .help("Open the \(MeetingLinks.platform(of: link).title) link and prepare this interview")
             }
             Button(preparingID == interview.id ? "Preparing\u{2026}" : "Prepare") {
                 preparingID = interview.id

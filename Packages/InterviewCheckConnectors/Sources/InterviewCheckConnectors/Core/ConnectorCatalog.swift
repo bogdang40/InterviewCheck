@@ -8,7 +8,7 @@ public enum ConnectorCategory: String, Codable, CaseIterable, Sendable {
         switch self {
         case .ats: return "Applicant tracking"
         case .unified: return "Unified HR APIs (Workday, iCIMS, SuccessFactors and more)"
-        case .calendar: return "Calendar and mail"
+        case .calendar: return "Calendars"
         case .meetings: return "Meeting recordings"
         case .mcp: return "MCP servers"
         }
