@@ -46,6 +46,14 @@ Status key: [ ] todo · [~] in progress · [x] done (commit)
 - [x] D8 Audio settings: choose the microphone, test both sides before an interview.
 - [~] D9 Remove dead audio code (legacy unified stream, voice-ID leftovers). DEFERRED: 142 references
       through the capture state machine; needs a live-call test after the change.
+      Nov 7 23:05 finding: `.deepgramLegacy` is unreachable (resolveTranscriptionMode returns
+      `.deepgramSourceBased` whenever a Deepgram key exists, and InterviewPermissions blocks Start
+      without one). Dead: UnifiedAudioMixer(+3), DeepgramService(+Responses), DeepgramSpeakerMapper
+      (~1,600 lines), initializeLegacyDeepgram, the legacy branch of shutdownDeepgram, the
+      `.deepgramLegacy` cases in DeviceRouting/Diagnostics/BufferStats, legacy* state vars, and tests
+      DeepgramServiceLifecycleTests + the legacy rows of TranscriptionModeResolutionTests. Apple
+      Speech/Analyzer modes are likewise unreachable for interviews. Remove in one commit, then run a
+      real two-party call (mic + call audio) before shipping.
 - [x] D10 Report feedback: "this score was wrong" to calibrate weights locally.
 - [x] D11 Demo Interview (Help › Demo Interview, `-InterviewCheckOpenDemo YES`): a scripted
       three-question interview through the real live screen and scorer; no keys, mic or network.
