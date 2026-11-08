@@ -156,5 +156,8 @@ final class DetectorRenderTests: XCTestCase {
         try await RenderHarness.render("native-settings-privacy", size: CGSize(width: 640, height: 640)) {
             native { PrivacySettingsTab() }
         }
+        try await RenderHarness.render("native-settings-audio", size: CGSize(width: 640, height: 480)) {
+            native { AudioSettingsTab() }
+        }
     }
 }

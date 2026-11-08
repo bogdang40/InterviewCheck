@@ -35,9 +35,14 @@ extension AudioCaptureService {
 
         audioEngine = AVAudioEngine()
 
-        // 2. Use system default device - don't explicitly bind
-        // This improves reliability on AirPods and other Bluetooth devices
-        logDebug("Using system default input device")
+        // 2. Use the microphone chosen in Settings › Audio when connected;
+        // otherwise the system default (more reliable for AirPods).
+        if let preferred = AudioDeviceManager.preferredInputDeviceID(),
+           AudioDeviceManager.setInputDevice(preferred, on: audioEngine) {
+            logDebug("Using chosen input device \(preferred)")
+        } else {
+            logDebug("Using system default input device")
+        }
         DebugNDJSONLogger.shared.log(
             runId: ndjsonRunId,
             hypothesisId: "H1",

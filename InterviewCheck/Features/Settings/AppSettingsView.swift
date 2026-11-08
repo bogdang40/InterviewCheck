@@ -6,6 +6,8 @@ struct AppSettingsView: View {
         TabView {
             KeysSettingsTab()
                 .tabItem { Label("Keys", systemImage: "key") }
+            AudioSettingsTab()
+                .tabItem { Label("Audio", systemImage: "mic") }
             DetectorSettingsTab()
                 .tabItem { Label("Detector", systemImage: "checkmark.shield") }
             ShortcutsSettingsTab()

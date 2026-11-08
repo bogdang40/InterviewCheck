@@ -43,7 +43,7 @@ Status key: [ ] todo · [~] in progress · [x] done (commit)
 - [x] D5 Release install, hardened runtime, `package-dmg.sh`.
 - [x] D6 Analyze Recording (File › Analyze Recording, ⌘O).
 - [x] D7 Privacy: keep interviews N days, delete all data, what is stored where.
-- [ ] D8 Audio settings: choose the microphone, test both sides before an interview.
+- [x] D8 Audio settings: choose the microphone, test both sides before an interview.
 - [ ] D9 Remove dead audio code (legacy unified stream, voice-ID leftovers).
 - [ ] D10 Report feedback: "this score was wrong" to calibrate weights locally.
 

@@ -161,6 +161,9 @@ enum AudioDeviceManager {
     }
 
     static func resolvedInputDeviceID() -> AudioDeviceID? {
+        // The interviewer's chosen microphone wins when it is connected.
+        if let preferred = preferredInputDeviceID() { return preferred }
+
         // Use smart selection: matches input transport type to output
         if let smartID = smartInputDeviceID(),
            deviceIsAlive(smartID),
@@ -216,7 +219,7 @@ enum AudioDeviceManager {
         return deviceID
     }
 
-    private static func availableInputDeviceIDs() -> [AudioDeviceID] {
+    static func availableInputDeviceIDs() -> [AudioDeviceID] {
         var address = AudioObjectPropertyAddress(
             mSelector: kAudioHardwarePropertyDevices,
             mScope: kAudioObjectPropertyScopeGlobal,
@@ -252,7 +255,7 @@ enum AudioDeviceManager {
         return deviceIDs
     }
 
-    private static func deviceIsAlive(_ deviceID: AudioDeviceID) -> Bool {
+    static func deviceIsAlive(_ deviceID: AudioDeviceID) -> Bool {
         var address = AudioObjectPropertyAddress(
             mSelector: kAudioDevicePropertyDeviceIsAlive,
             mScope: kAudioObjectPropertyScopeGlobal,
@@ -273,7 +276,7 @@ enum AudioDeviceManager {
         return status == noErr && alive != 0
     }
 
-    private static func deviceHasInputChannels(_ deviceID: AudioDeviceID) -> Bool {
+    static func deviceHasInputChannels(_ deviceID: AudioDeviceID) -> Bool {
         var address = AudioObjectPropertyAddress(
             mSelector: kAudioDevicePropertyStreamConfiguration,
             mScope: kAudioDevicePropertyScopeInput,
