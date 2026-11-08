@@ -30,7 +30,9 @@ summary note then goes to that ATS.
 
 Interviews from an ATS or unified API show only when **you** are one of the
 interviewers. Your email comes from a connected Google, Microsoft 365 or Zoom
-account, or from the "Your work email" field at the top of Connections.
+account, or from the "Your work email" field at the top of Connections. Systems that list
+interviewers by name only (Workable, Zoho Recruit, SmartRecruiters, Unified.to, MCP) are
+matched by the full name you add to that field ("lee@acme.com, Lee Park").
 
 ## Mail (any mailbox, over IMAP)
 

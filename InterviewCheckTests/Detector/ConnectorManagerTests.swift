@@ -175,6 +175,24 @@ final class ConnectorManagerTests: XCTestCase {
         XCTAssertTrue(manager.accounts.isEmpty)
     }
 
+    func testNameOnlyInterviewersMatchATypedName() throws {
+        let path = NSTemporaryDirectory() + "connectors-\(UUID().uuidString).sqlite"
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let manager = ConnectorManager(store: MemoryCredentialStore(), database: SessionDatabase(databasePath: path),
+                                       defaults: UserDefaults(suiteName: "connectors.\(UUID().uuidString)")!)
+        let mine = ExternalInterview(source: .workable, externalID: "w1", title: "Interview", startsAt: Date(),
+                                     interviewers: [ExternalPerson(name: "Lee Park")])
+        let theirs = ExternalInterview(source: .workable, externalID: "w2", title: "Interview", startsAt: Date(),
+                                       interviewers: [ExternalPerson(name: "Sam Roe")])
+        XCTAssertTrue(manager.isMine(theirs), "nothing typed: every interview counts, as before")
+        manager.typedEmails = "lee@acme.com, Lee Park"
+        XCTAssertEqual(manager.myNames, ["lee park"], "the email is not taken as a name")
+        XCTAssertTrue(manager.isMine(mine))
+        XCTAssertFalse(manager.isMine(theirs))
+        let unnamed = ExternalInterview(source: .workable, externalID: "w3", title: "Interview", startsAt: Date())
+        XCTAssertTrue(manager.isMine(unnamed), "no interviewers listed: nothing to check against")
+    }
+
     func testADroppedCancellationRemovesTheInterview() throws {
         let path = NSTemporaryDirectory() + "connectors-\(UUID().uuidString).sqlite"
         defer { try? FileManager.default.removeItem(atPath: path) }

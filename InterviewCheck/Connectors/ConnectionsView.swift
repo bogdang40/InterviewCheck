@@ -27,12 +27,12 @@ struct ConnectionsView: View {
         HSplitView {
             List(selection: $selection) {
                 Section {
-                    TextField("Your work email", text: $myEmails, prompt: Text("Your work email"))
+                    TextField("Your work email", text: $myEmails, prompt: Text("Your work email (and name)"))
                         .textFieldStyle(.roundedBorder)
                         .onChange(of: myEmails) { _, value in connectors.typedEmails = value }
-                        .help("Only interviews you are on are shown. Separate several addresses with commas.")
+                        .help("Only interviews you are on are shown. Separate several addresses with commas. Add your full name too (\u{201C}you@acme.com, Lee Park\u{201D}) for systems that list interviewers by name only.")
                     if !connectors.myEmails.isEmpty {
-                        Text("Showing interviews for \(connectors.myEmails.sorted().joined(separator: ", "))")
+                        Text("Showing interviews for \((connectors.myEmails.sorted() + connectors.myNames.sorted()).joined(separator: ", "))")
                             .font(.caption).foregroundStyle(.secondary).lineLimit(2)
                     }
                 } header: {

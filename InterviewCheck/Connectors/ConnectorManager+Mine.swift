@@ -26,6 +26,15 @@ extension ConnectorManager {
             .filter { $0.contains("@") && $0.contains(".") })
     }
 
+    /// Names typed in Connections (entries without "@"), for sources that list
+    /// interviewers by name only (Workable, Zoho Recruit, SmartRecruiters …).
+    var myNames: Set<String> {
+        Set((defaults.string(forKey: Self.myEmailsKey) ?? "").components(separatedBy: CharacterSet(charactersIn: ",;\n"))
+            .filter { !$0.contains("@") }
+            .map { InterviewMerger.normalized($0) }
+            .filter { $0.split(separator: " ").count >= 2 })
+    }
+
     var typedEmails: String {
         get { defaults.string(forKey: Self.myEmailsKey) ?? "" }
         set {
@@ -35,13 +44,17 @@ extension ConnectorManager {
     }
 
     /// Calendar and meeting interviews are the user's own. From an ATS, an
-    /// interview counts when one of its interviewers is the user, or when it
-    /// names no interviewer emails (nothing to check against).
+    /// interview counts when one of its interviewers is the user: by email, or
+    /// by full name when the source gives names only and a name was typed in
+    /// Connections. With nothing to check against, it counts.
     func isMine(_ interview: ExternalInterview) -> Bool {
         guard !showsAllInterviews, [.ats, .unified, .mcp].contains(interview.source.descriptor.category) else { return true }
         let mine = myEmails
         let listed = interview.interviewers.compactMap { $0.email?.lowercased() }
-        guard !mine.isEmpty, !listed.isEmpty else { return true }
-        return listed.contains(where: mine.contains)
+        if !mine.isEmpty, !listed.isEmpty { return listed.contains(where: mine.contains) }
+        let names = myNames
+        let listedNames = interview.interviewers.map { InterviewMerger.normalized($0.name) }.filter { !$0.isEmpty }
+        if listed.isEmpty, !names.isEmpty, !listedNames.isEmpty { return listedNames.contains(where: names.contains) }
+        return true
     }
 }

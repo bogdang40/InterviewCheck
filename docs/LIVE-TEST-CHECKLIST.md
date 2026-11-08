@@ -48,9 +48,9 @@ Order suggested by how many customers each reaches and how little setup it needs
 Some sources give interviewers by name only (Workable without a member ID, Zoho Recruit,
 SmartRecruiters, Unified.to, MCP servers). "Only interviews you are on" matches by email,
 so their interviews all count as yours: in a large company Upcoming, reminders and
-automatic Prepare would cover everyone's interviews. On the first sync of such a source,
-check the count. If it is the whole company, set Workable's member ID, or use a calendar
-connection instead for that team.
+automatic Prepare would cover everyone's interviews. Add your full name to the "You"
+field in Connections ("lee@acme.com, Lee Park"): name-only interviewers are then matched
+by name. Check the count on the first sync; the names must be spelled as in the ATS.
 
 ## After the first sync
 

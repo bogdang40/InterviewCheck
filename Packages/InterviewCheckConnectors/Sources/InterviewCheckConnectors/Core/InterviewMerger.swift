@@ -56,7 +56,7 @@ public enum InterviewMerger {
         "\(url.host?.lowercased() ?? "")\(url.path.lowercased())"
     }
 
-    static func normalized(_ name: String) -> String {
+    public static func normalized(_ name: String) -> String {
         name.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
             .components(separatedBy: CharacterSet.letters.inverted).filter { !$0.isEmpty }.joined(separator: " ")
     }
