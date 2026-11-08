@@ -124,7 +124,7 @@ extension InterviewController {
             return
         }
         let prompts = roleProvider()?.enabledPrompts ?? CheaterPromptLibrary.defaults
-        let runs = ReferenceAnswerRunner.plan(lineup: lineup, prompts: prompts)
+        let runs = ReferenceAnswerRunner.plan(lineup: lineup, prompts: prompts, limit: maxReferenceRuns)
         let generation = (referenceGeneration[questionID] ?? 0) + 1
         referenceGeneration[questionID] = generation
         references[questionID] = []

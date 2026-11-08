@@ -28,7 +28,8 @@ enum DemoScript {
             wordSeconds: 0.33,
             aiAnswers: [
                 "At my previous company I owned a Sev-1 incident where checkout latency spiked. I coordinated the response, identified a misconfigured retry policy through distributed tracing, implemented exponential backoff with jitter, and led a blameless postmortem that introduced circuit breakers across services.",
-                "Say first: \"I owned a checkout outage caused by aggressive retries.\" - Traced it with distributed tracing - Added backoff with jitter - Ran a blameless postmortem - Added circuit breakers",
+                "Say first: \"I owned a checkout outage caused by aggressive retries.\"\n- Traced it with distributed tracing\n- Added backoff with jitter\n- Ran a blameless postmortem\n- Added circuit breakers",
+                "Situation: checkout requests began timing out during a holiday sale while I was on call. Task: restore checkout fast and stop it recurring. Action: I used distributed tracing to find a retry storm in the payment client, shipped exponential backoff with jitter, and ran the postmortem. Result: errors fell to zero within an hour and circuit breakers became standard.",
             ]),
         Exchange(
             question: "How would you design a rate limiter for a public API?",
@@ -42,7 +43,8 @@ enum DemoScript {
             wordSeconds: 0.27,
             aiAnswers: [
                 "I would implement a token bucket algorithm for each API key, stored in Redis so that every gateway node shares the same state. Each bucket refills at a fixed rate and allows short bursts up to its capacity. When a request arrives, the gateway atomically decrements the bucket using a Lua script; if the bucket is empty, we return HTTP 429 with a Retry-After header.",
-                "Say first: \"A token bucket per API key, shared in Redis.\" - Refill at a fixed rate, allow bursts - Atomic decrement with a Lua script - 429 with Retry-After when empty",
+                "Say first: \"A token bucket per API key, shared in Redis.\"\n- Refill at a fixed rate, allow bursts\n- Atomic decrement with a Lua script\n- 429 with Retry-After when empty",
+                "Situation: a partner's retry loop was overwhelming our public API. Task: protect every customer without blocking good traffic. Action: I built a Redis-backed token bucket per API key at the gateway, with a Lua script for an atomic check-and-decrement. Result: the API stayed up and the partner got clear 429 responses with Retry-After.",
             ]),
         Exchange(
             question: "Why do you want to work on payments infrastructure?",
@@ -54,6 +56,8 @@ enum DemoScript {
             wordSeconds: 0.3,
             aiAnswers: [
                 "I'm drawn to payments infrastructure because correctness and reliability matter enormously. I want to grow toward reliability engineering and help teams ship safely at scale while working on systems that directly affect customers' trust.",
+                "Say first: \"Payments is where correctness matters most.\"\n- Every bug costs real money and trust\n- Reliability work is what I want to grow in\n- Helping teams ship safely at scale",
+                "Situation: at my last job a double-charge bug reached customers. Task: I joined the fix. Action: I added idempotency keys and reconciliation alerts. Result: it never recurred, and I realised payments reliability is the work I want to keep doing.",
             ]),
     ]
 

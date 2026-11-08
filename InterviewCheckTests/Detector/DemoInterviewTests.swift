@@ -31,4 +31,17 @@ final class DemoInterviewTests: XCTestCase {
         XCTAssertLessThan(scores[0], 40, "the honest, halting answer")
         XCTAssertGreaterThanOrEqual(scores[1], 70, "the answer read from the AI")
     }
+
+    func testEachPromptStyleGetsItsOwnCannedAnswer() async throws {
+        let question = DemoScript.exchanges[1].question
+        var answers: [String] = []
+        for prompt in CheaterPromptLibrary.defaults {
+            let request = CheaterPromptLibrary.request(for: prompt, question: question,
+                                                       context: RoleContext(roleTitle: "", jobDescription: "", resume: ""))
+            let client = DemoTextClient(provider: .openai, model: "gpt-5.2", chunkPause: 0)
+            answers.append(try await client.streamText(system: request.system, user: request.user) { _ in })
+        }
+        XCTAssertEqual(Set(answers).count, 3, "Copilot, Talking points and STAR differ")
+        XCTAssertTrue(answers[1].contains("\n- "), "talking points keep their line breaks")
+    }
 }

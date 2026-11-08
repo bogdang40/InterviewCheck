@@ -21,6 +21,12 @@ extension View {
     /// Keeps this view's window above other apps' windows (for the Live
     /// Companion beside a video call). The window keeps its title bar and
     /// close button and shows in screen sharing like any other window.
+    /// Windows that only make sense on request (the demo, the companion)
+    /// are left closed when the app next opens.
+    func notRestoredAtLaunch() -> some View {
+        background(WindowAccessor { $0.isRestorable = false })
+    }
+
     func floatingWindow() -> some View {
         background(WindowAccessor { window in
             window.level = .floating

@@ -41,6 +41,8 @@ final class InterviewController: ObservableObject {
     var savedWordCount = 0
     /// Wait after a keypress so the interviewer's last words are final.
     var questionSettleDelay: UInt64 = 900_000_000
+    /// At most this many AI answers per question.
+    var maxReferenceRuns = ReferenceAnswerRunner.maxRuns
     var tickTimer: Timer?
     var lastLiveScore: TimeInterval = 0
     var scoringTasks: [String: Task<Void, Never>] = [:]

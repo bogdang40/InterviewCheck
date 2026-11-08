@@ -19,6 +19,7 @@ struct InterviewCheckApp: App {
         Window("Live Companion", id: AppWindowID.companion) {
             LiveCompanionView()
                 .frame(minWidth: 320, minHeight: 260)
+                .notRestoredAtLaunch()
         }
         .defaultSize(width: 380, height: 460)
         .defaultPosition(.topTrailing)
@@ -26,6 +27,7 @@ struct InterviewCheckApp: App {
         Window("Demo Interview", id: AppWindowID.demo) {
             DemoInterviewView()
                 .frame(minWidth: 820, minHeight: 600)
+                .notRestoredAtLaunch()
         }
         .defaultSize(width: 1100, height: 800)
 

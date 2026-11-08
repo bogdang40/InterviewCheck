@@ -6,6 +6,7 @@ import SwiftUI
 struct WelcomeView: View {
     @ObservedObject private var roles = RoleStore.shared
     @ObservedObject private var keys = SettingsManager.shared
+    @Environment(\.openWindow) private var openWindow
     let onDone: () -> Void
 
     private var hasKeys: Bool { DetectorReadiness.current().problems.isEmpty }
@@ -42,6 +43,11 @@ struct WelcomeView: View {
                 .foregroundStyle(.secondary)
 
             HStack {
+                Button("Watch a Demo Interview") {
+                    openWindow(id: AppWindowID.demo)
+                    onDone()
+                }
+                .help("A scripted interview through the real detector. No keys or microphone needed.")
                 Spacer()
                 Button("Get Started", action: onDone)
                     .buttonStyle(.borderedProminent)

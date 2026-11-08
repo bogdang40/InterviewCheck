@@ -17,20 +17,21 @@ final class DemoInterview: ObservableObject {
         settings.judgeEnabled = false
         settings.useEmbeddings = false
         settings.lineup = [LineupEntry(provider: .openai, model: "gpt-5.2"),
-                           LineupEntry(provider: .claude, model: "claude-sonnet-5")]
+                           LineupEntry(provider: .claude, model: "claude-sonnet-5"),
+                           LineupEntry(provider: .openai, model: "gpt-4o-mini")]
         controller = InterviewController(timeline: timeline, database: SessionDatabase(databasePath: databasePath),
                                          settings: settings)
         controller.startAudio = {}
         controller.stopAudio = {}
         controller.questionSettleDelay = 300_000_000
+        // One card per prompt style: Copilot, Talking points, STAR story.
+        controller.maxReferenceRuns = 3
         controller.roleProvider = {
             RoleProfile(name: "Senior Backend Engineer", company: "Demo Co",
                          jobDescription: "Payments API in Go and Postgres; owns reliability and rate limiting.")
         }
-        var runIndex = 0
         controller.runner = ReferenceAnswerRunner(makeClient: { provider, model in
-            defer { runIndex += 1 }
-            return DemoTextClient(provider: provider, model: model, runIndex: runIndex)
+            DemoTextClient(provider: provider, model: model)
         })
     }
 
@@ -79,13 +80,12 @@ final class DemoInterview: ObservableObject {
 struct DemoTextClient: DetectorTextGenerating {
     let provider: AIProviderType
     let model: String
-    let runIndex: Int
+    var chunkPause: UInt64 = 120_000_000
     var label: String { DetectorModelNames.providerShort(provider, model: model) }
 
     func streamText(system: String, user: String, onChunk: @escaping (String) -> Void) async throws -> String {
         let question = user.components(separatedBy: "\n").last { !$0.isEmpty && $0 != "Respond now." } ?? user
-        // Talking-points prompts get the bullet answer, the others the full one.
-        let style = system.lowercased().contains("talking points") ? 1 : 0
+        let style = Self.style(system: system)
         let answer = DemoScript.aiAnswer(question: user.contains("Speaker 1:") ? user : question, runIndex: style)
         let words = answer.split(separator: " ")
         var sent = ""
@@ -93,8 +93,17 @@ struct DemoTextClient: DetectorTextGenerating {
             let chunk = (index == 0 ? "" : " ") + word
             sent += chunk
             onChunk(chunk)
-            if index % 6 == 5 { try await Task.sleep(nanoseconds: 120_000_000) }
+            if index % 6 == 5, chunkPause > 0 { try await Task.sleep(nanoseconds: chunkPause) }
         }
         return sent
+    }
+
+    /// Which canned answer fits the prompt: 0 full answer (Copilot),
+    /// 1 talking points, 2 STAR story.
+    static func style(system: String) -> Int {
+        let prompt = system.lowercased()
+        if prompt.contains("talking points") { return 1 }
+        if prompt.contains("situation, task") { return 2 }
+        return 0
     }
 }

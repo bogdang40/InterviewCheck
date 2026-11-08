@@ -76,3 +76,4 @@ Status key: [ ] todo · [~] in progress · [x] done (commit)
   schema v18). D9 deferred. 268 app + 41 package tests.
 - 21:16 D11 demo interview (honest answer low, read-from-AI answer high). 270 app tests.
 - 21:36 D12 notes, report timing strip, CSV export. 272 app + 42 package tests.
+- 21:52 demo: one card per prompt style (Copilot / Talking points / STAR), bullets keep line breaks, demo + companion windows not restored at launch, Welcome › Watch a Demo Interview. 273 app tests.
