@@ -99,4 +99,4 @@ Detection gained three signals that need no AI key: model wording read aloud, a 
   Totals: 88 core tests, 347 app tests.
 - **N16 done.** Reports list rows lead with a red "N flagged" tag, with the overall % in grey, matching every other screen.
 
-**Ended 14:20.** About 21 commits since 4a9d7f8. Release installed and DMG rebuilt. No crash reports since 12:40.
+**Ended 14:17.** 21 commits since 4a9d7f8 (counting this one). Release installed and DMG rebuilt. No crash reports since 12:40.
