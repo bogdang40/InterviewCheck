@@ -139,3 +139,23 @@ func XCTAssertThrowsAsync<T>(_ expression: @autoclosure () async throws -> T, _ 
         XCTAssertEqual(error as? ConnectorError, expected, file: file, line: line)
     }
 }
+
+final class FileDownloadTests: XCTestCase {
+    func testKeysGoOnlyToFilesThatNeedThem() async throws {
+        let stub = StubTransport()
+        stub.on("GET", "s3.amazonaws.com", json: "resume")
+        stub.on("GET", "api.example.com/files/1", json: "resume")
+        let api = APIClient(baseURL: URL(string: "https://api.example.com")!, headers: ["Authorization": "Bearer secret"], transport: stub)
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("dl-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let signed = ExternalFile(kind: .resume, filename: "cv.pdf",
+                                  url: URL(string: "https://bucket.s3.amazonaws.com/cv.pdf?X-Amz-Signature=abc")!, needsAuth: false)
+        let private_ = ExternalFile(kind: .resume, filename: "cv2.pdf", url: URL(string: "https://api.example.com/files/1")!, needsAuth: true)
+        _ = try await FileDownload.save(signed, into: folder, client: api, transport: stub)
+        _ = try await FileDownload.save(private_, into: folder, client: api, transport: stub)
+        XCTAssertNil(stub.requests(containing: "s3.amazonaws.com").first?.value(forHTTPHeaderField: "Authorization"),
+                     "a pre-signed link never receives the API key")
+        XCTAssertEqual(stub.requests(containing: "api.example.com/files/1").first?.value(forHTTPHeaderField: "Authorization"), "Bearer secret")
+    }
+}

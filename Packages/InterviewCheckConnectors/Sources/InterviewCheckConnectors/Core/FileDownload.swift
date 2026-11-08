@@ -7,7 +7,12 @@ public enum FileDownload {
                             transport: HTTPTransport) async throws -> URL {
         var request = URLRequest(url: file.url)
         request.timeoutInterval = 60 * 30
-        for (field, value) in client?.headers ?? [:] where field != "Accept" { request.setValue(value, forHTTPHeaderField: field) }
+        // Only files that need the API's sign-in get its headers: a pre-signed
+        // link (S3, a CDN) must never receive the key, and S3 refuses a second
+        // form of authorization anyway.
+        if file.needsAuth {
+            for (field, value) in client?.headers ?? [:] where field != "Accept" { request.setValue(value, forHTTPHeaderField: field) }
+        }
         let (temporary, response) = try await (client?.transport ?? transport).download(request)
         defer { try? FileManager.default.removeItem(at: temporary) }
         guard (200..<300).contains(response.statusCode) else {
