@@ -6,6 +6,8 @@ public struct CheatScoreWeights: Equatable, Codable {
     public var fluency = 0.20
     public var similarity = 0.25
     public var judge = 0.20
+    /// Wording language models use and people rarely say; only counted when found.
+    public var phrasing = 0.10
     /// Answers shorter than this get low confidence.
     public var minimumWordsForConfidence = 40
     /// Answers at least this long, with references and the judge, can be high confidence.
@@ -31,6 +33,7 @@ extension CheatScoreWeights {
         fluency = try container.decodeIfPresent(Double.self, forKey: .fluency) ?? fallback.fluency
         similarity = try container.decodeIfPresent(Double.self, forKey: .similarity) ?? fallback.similarity
         judge = try container.decodeIfPresent(Double.self, forKey: .judge) ?? fallback.judge
+        phrasing = try container.decodeIfPresent(Double.self, forKey: .phrasing) ?? fallback.phrasing
         minimumWordsForConfidence = try container.decodeIfPresent(Int.self, forKey: .minimumWordsForConfidence)
             ?? fallback.minimumWordsForConfidence
         wordsForHighConfidence = try container.decodeIfPresent(Int.self, forKey: .wordsForHighConfidence)
@@ -53,12 +56,16 @@ public struct ScoreComponents: Codable, Equatable {
     public var fluency: Double?
     public var similarity: Double?
     public var judge: Double?
+    /// Present only when AI wording was found (see PhrasingSignal).
+    public var phrasing: Double?
 
-    public init(timing: Double? = nil, fluency: Double? = nil, similarity: Double? = nil, judge: Double? = nil) {
+    public init(timing: Double? = nil, fluency: Double? = nil, similarity: Double? = nil, judge: Double? = nil,
+                phrasing: Double? = nil) {
         self.timing = timing
         self.fluency = fluency
         self.similarity = similarity
         self.judge = judge
+        self.phrasing = phrasing
     }
 }
 
@@ -76,6 +83,7 @@ public struct AnswerScore: Equatable {
     public let fluency: FluencyResult
     public let similarity: SimilarityResult?
     public let judge: JudgeResult?
+    public let phrasing: PhrasingResult?
     public let components: ScoreComponents
 }
 
@@ -88,6 +96,7 @@ public enum CheatScorer {
         fluency: FluencyResult,
         similarity: SimilarityResult?,
         judge: JudgeResult?,
+        phrasing: PhrasingResult? = nil,
         hasTimingGap: Bool,
         weights: CheatScoreWeights = .default,
         measuresFluency: Bool = true
@@ -95,9 +104,11 @@ public enum CheatScorer {
         // A meeting transcript spreads words evenly over each line: its pace
         // and fillers say nothing, so fluency is left out entirely.
         let fluencyResult = measuresFluency ? fluency : fluency.unmeasured
-        let components = Self.components(timing: timing, fluency: fluencyResult, similarity: similarity, judge: judge)
+        let components = Self.components(timing: timing, fluency: fluencyResult, similarity: similarity, judge: judge,
+                                         phrasing: phrasing)
         var percent = Int((blend(components, weights: weights) * 100).rounded())
         let onlyTiming = components.fluency == nil && components.similarity == nil && components.judge == nil
+            && components.phrasing == nil
         let tooShort = fluency.wordCount < weights.shortAnswerWords
         if onlyTiming || tooShort { percent = min(percent, weights.timingOnlyMaximumPercent) }
 
@@ -111,7 +122,8 @@ public enum CheatScorer {
             confidence = .medium
         }
 
-        var notes = ScoreNotes.build(timing: timing, fluency: fluencyResult, similarity: similarity, judge: judge)
+        var notes = ScoreNotes.build(timing: timing, fluency: fluencyResult, similarity: similarity, judge: judge,
+                                     phrasing: phrasing)
         if tooShort {
             notes.counterpoints.insert("Too short to judge: \(fluency.wordCount) word\(fluency.wordCount == 1 ? "" : "s")", at: 0)
         } else if onlyTiming {
@@ -127,26 +139,31 @@ public enum CheatScorer {
             fluency: fluencyResult,
             similarity: similarity,
             judge: judge,
+            phrasing: phrasing,
             components: components
         )
     }
 
     /// Each signal's contribution before weighting.
     public static func components(timing: TimingResult, fluency: FluencyResult,
-                                  similarity: SimilarityResult?, judge: JudgeResult?) -> ScoreComponents {
+                                  similarity: SimilarityResult?, judge: JudgeResult?,
+                                  phrasing: PhrasingResult? = nil) -> ScoreComponents {
         let fluencyValue = fluency.isReliable ? fluency.score : 0.5
         return ScoreComponents(
             timing: timing.firstWordLatency == nil ? nil : timing.score * (0.5 + 0.5 * fluencyValue),
             fluency: fluency.isReliable ? fluency.score : nil,
             similarity: similarity?.best == nil ? nil : similarity?.score,
-            judge: judge?.score
+            judge: judge?.score,
+            // Wording only speaks up when it finds something: its absence is no evidence.
+            phrasing: (phrasing?.score ?? 0) >= PhrasingSignal.countsFrom ? phrasing?.score : nil
         )
     }
 
     /// Weighted average of the signals that applied (0...1).
     public static func blend(_ components: ScoreComponents, weights: CheatScoreWeights) -> Double {
         let parts: [(Double, Double?)] = [(weights.timing, components.timing), (weights.fluency, components.fluency),
-                                          (weights.similarity, components.similarity), (weights.judge, components.judge)]
+                                          (weights.similarity, components.similarity), (weights.judge, components.judge),
+                                          (weights.phrasing, components.phrasing)]
         let present = parts.compactMap { weight, value in value.map { (weight, $0) } }
         let total = present.reduce(0) { $0 + $1.0 }
         return total > 0 ? present.reduce(0) { $0 + $1.0 * $1.1 } / total : 0
@@ -160,7 +177,8 @@ public enum ScoreNotes {
         timing: TimingResult,
         fluency: FluencyResult,
         similarity: SimilarityResult?,
-        judge: JudgeResult?
+        judge: JudgeResult?,
+        phrasing: PhrasingResult? = nil
     ) -> (reasons: [String], counterpoints: [String]) {
         var reasons: [(Double, String)] = []
         var counterpoints: [String] = []
@@ -198,6 +216,11 @@ public enum ScoreNotes {
             for line in judge.evidence.prefix(2) {
                 reasons.append((judge.score * 0.9, line))
             }
+        }
+
+        if let phrasing, phrasing.score >= PhrasingSignal.countsFrom, !phrasing.tells.isEmpty {
+            let said = phrasing.tells.prefix(3).map { "\u{201C}\($0)\u{201D}" }.joined(separator: ", ")
+            reasons.append((phrasing.score * 0.8, "Sounds written, not spoken: \(said)"))
         }
 
         let ordered = reasons.sorted { $0.0 > $1.0 }.map(\.1)

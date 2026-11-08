@@ -24,12 +24,15 @@ struct AnswerEvaluator {
         let texts = finished.map {
             ReferenceText(id: UUID(), label: $0.label, text: $0.text, embedding: referenceEmbeddings[$0.id])
         }
+        let answerText = window.answerWords.map(\.text).joined(separator: " ")
         let similarity = texts.isEmpty ? nil : SimilaritySignal.evaluate(
-            answerText: window.answerWords.map(\.text).joined(separator: " "),
-            answerEmbedding: answerEmbedding, questionText: questionText, references: texts
+            answerText: answerText, answerEmbedding: answerEmbedding, questionText: questionText, references: texts
         )
+        // Wording needs no keys: it works even before any AI answer exists.
+        let phrasing = PhrasingSignal.evaluate(answerText: answerText)
         return CheatScorer.score(timing: timing, fluency: fluency, similarity: similarity, judge: judge,
-                                 hasTimingGap: hasTimingGap, weights: weights, measuresFluency: measuresFluency)
+                                 phrasing: phrasing, hasTimingGap: hasTimingGap, weights: weights,
+                                 measuresFluency: measuresFluency)
     }
 }
 
