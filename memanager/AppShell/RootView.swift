@@ -18,7 +18,6 @@ struct RootView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 case .signedOut, .paywall, .unreachable:
                     AccessGateView(controller: access)
-                        .background(OverlayPalette.backdropBase)
                 }
             }
         }

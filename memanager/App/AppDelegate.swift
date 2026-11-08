@@ -8,17 +8,10 @@ import SwiftUI
 /// an interview is recording.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private var appearanceProfileSession: AppearanceProfileSession?
-    private let databaseMaintenance = DatabaseMaintenanceService()
     private let accessController = AccessController.shared
     private var phaseSubscription: AnyCancellable?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        if AppearanceProfileSession.isRequested {
-            appearanceProfileSession = AppearanceProfileSession()
-            return
-        }
-
         // Under XCTest this process is only the test host: no services, and
         // the main window SwiftUI opens is put away so it cannot take focus.
         guard !TestRuntime.isRunningUnitTests else {
@@ -31,7 +24,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             SessionDatabase.shared.warmUp()
         }
         accessController.startPeriodicVerification()
-        databaseMaintenance.start()
         Task { @MainActor [weak self] in
             await self?.accessController.evaluate()
         }
@@ -79,12 +71,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        if let appearanceProfileSession {
-            appearanceProfileSession.finish()
-            return
-        }
         GlobalShortcuts.shared.deactivate()
         AudioCaptureService.shared.stopCapture()
-        databaseMaintenance.stop()
     }
 }

@@ -1,5 +1,12 @@
 import Foundation
 
+/// Where a Quick Assist question came from (used by the question classifier).
+enum QuickAssistQuestionSource: String, Codable, Equatable {
+    case none
+    case manual
+    case auto
+}
+
 enum QuickAssistContextMode: String, Codable {
     case conversation
     case implementationContext

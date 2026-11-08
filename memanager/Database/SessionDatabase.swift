@@ -4,11 +4,8 @@ import SQLite3
 /// SQLite-based database for storing session history, API calls, and analytics
 final class SessionDatabase {
     static let shared = SessionDatabase()
-    let knowledgeGraphGeneration = KnowledgeGraphGeneration()
     // Queue confined: active request ownership is consumed or invalidated in
     // the same database queue operation as its terminal write or deletion.
-    var quickAssistCallOwners: [UUID: QuickAssistCallOwnership] = [:]
-    var apiCallOwners: [UUID: String] = [:]
     
     private var db: OpaquePointer?
     private let dbQueue = DispatchQueue(label: "com.memanager.SessionDatabase", qos: .utility)

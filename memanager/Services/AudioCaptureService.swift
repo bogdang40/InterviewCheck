@@ -12,11 +12,6 @@ import CoreAudio
 final class AudioCaptureService: ObservableObject {
     static let shared = AudioCaptureService()
 
-    /// Identity seam: evaluates the current session id at call time without
-    /// this service depending on the whole SessionController. Tests can swap
-    /// in a fixed id.
-    var sessionIdentityProvider: () -> UUID = { SessionController.shared.session.id }
-    let transcriptLogger: SessionLogger
     var restoredSessionTranscript: RestoredSessionTranscript?
 
     @Published var isRecording = false
@@ -176,8 +171,7 @@ final class AudioCaptureService: ObservableObject {
     var isHandlingConfigurationChange = false
     var bufferHealthTimer: Timer?
 
-    init(transcriptLogger: SessionLogger = .shared) {
-        self.transcriptLogger = transcriptLogger
+    init() {
         speechRecognizer = TestRuntime.isRunningUnitTests ? nil : SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
         systemSpeechRecognizer = TestRuntime.isRunningUnitTests ? nil : SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
 

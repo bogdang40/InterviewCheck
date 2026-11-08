@@ -113,16 +113,8 @@ extension AudioCaptureService {
             transcriptEntries.append(newEntry)
             
         }
-        // Persist each accepted segment. UI consolidation must not discard
-        // subsequent words from the same speaker in Review or Summary.
-        let sessionId = self.sessionIdentityProvider().uuidString
-        let source = speaker == .me ? "microphone" : "system_audio"
-        transcriptLogger.logTranscriptEntry(
-            sessionId: sessionId,
-            speaker: speaker.displayName,
-            text: trimmed,
-            source: source
-        )
+        // Interviews persist their own timed words (InterviewTimeline);
+        // these display entries are not stored.
     }
 
     /// Consolidates transcript entries by merging consecutive entries with the same speaker.

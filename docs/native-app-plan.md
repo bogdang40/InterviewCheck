@@ -48,3 +48,7 @@ Status key: [ ] todo · [~] in progress · [x] done (commit)
   launch option for screenshots. Window screenshots of Interview / Roles / Reports OK.
 - 20:30 A8: Start checks Deepgram key, asks microphone, checks Screen \& System Audio
   Recording with System Settings link; interview drives AudioCaptureService directly.
+- 20:45 B3 round 1: deleted overlay UI (Views/, Rendering/), candidate services (session hub,
+  Quick Assist, Solve/Design, practice, knowledge, workspaces, project tools, screenshots,
+  hotkeys), candidate DB DAOs, provider classes; native access gate; slim SettingsManager.
+  App 1,260 -> ~230 Swift files; 310 tests pass in 5 s; app launches.

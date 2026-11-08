@@ -50,25 +50,6 @@ struct ContextEnvelope: Codable {
     }
 }
 
-struct SessionContext {
-    let transcript: String
-    let screenshots: [String] // Base64 encoded images
-    let previousResponse: MentorResponse?
-    let contextEnvelope: ContextEnvelope?
-
-    init(
-        transcript: String,
-        screenshots: [String],
-        previousResponse: MentorResponse?,
-        contextEnvelope: ContextEnvelope? = nil
-    ) {
-        self.transcript = transcript
-        self.screenshots = screenshots
-        self.previousResponse = previousResponse
-        self.contextEnvelope = contextEnvelope
-    }
-}
-
 struct QuickAssistContext {
     let transcript: String
     let screenshots: [String] // Base64 encoded images
@@ -143,33 +124,5 @@ struct QuickAssistContext {
         self.capabilityPromptAddendum = capabilityPromptAddendum
         self.answerPlaybookContract = answerPlaybookContract
         self.retrievedMemorySnippets = retrievedMemorySnippets
-    }
-}
-
-struct MLGuideContext {
-    let transcript: String
-    let screenshots: [String] // Base64 encoded images
-    let question: String
-    let extraContext: String
-    let realtimePrompt: String  // ML Guide's own persistent prompt
-    let previousResponse: String?  // For follow-up continuations (Cmd+Shift+')
-    let datasetSummary: String?  // Auto-generated profile from Interview/data folder
-    
-    init(
-        transcript: String,
-        screenshots: [String],
-        question: String,
-        extraContext: String,
-        realtimePrompt: String,
-        previousResponse: String? = nil,
-        datasetSummary: String? = nil
-    ) {
-        self.transcript = transcript
-        self.screenshots = screenshots
-        self.question = question
-        self.extraContext = extraContext
-        self.realtimePrompt = realtimePrompt
-        self.previousResponse = previousResponse
-        self.datasetSummary = datasetSummary
     }
 }

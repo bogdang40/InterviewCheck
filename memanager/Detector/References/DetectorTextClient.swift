@@ -58,37 +58,60 @@ struct ClaudeTextClient: DetectorTextGenerating {
     }
 }
 
-/// OpenAI Chat Completions, streamed, through the existing provider's
-/// request plumbing (which passes the system prompt through unchanged).
+/// OpenAI Chat Completions, streamed.
 struct OpenAITextClient: DetectorTextGenerating {
-    let provider: OpenAIProvider
-    var label: String { "GPT \(DetectorModelNames.short(provider.model))" }
-
-    init(apiKey: String, model: String) {
-        provider = OpenAIProvider(apiKey: apiKey, model: model)
-    }
+    let apiKey: String
+    let model: String
+    var executor = AIRequestExecutor()
+    var label: String { "GPT \(DetectorModelNames.short(model))" }
 
     func streamText(system: String, user: String, onChunk: @escaping (String) -> Void) async throws -> String {
-        try await provider.executeChatCompletionsStreaming(
-            model: provider.model, systemPrompt: system,
-            userContent: [OpenAIContentBlock(type: "text", text: user)],
-            profile: .quickAssist, onChunk: onChunk
+        var request = URLRequest(url: URL(string: "https://api.openai.com/v1/chat/completions")!)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.httpBody = try JSONEncoder().encode(OpenAIStreamRequest(
+            model: model, max_completion_tokens: nil, stream: true,
+            messages: [
+                OpenAIMessage(role: "system", content: [OpenAIContentBlock(type: "text", text: system)]),
+                OpenAIMessage(role: "user", content: [OpenAIContentBlock(type: "text", text: user)]),
+            ]
+        ))
+        return try await executor.executeStreamingTextRequest(
+            request, profile: .quickAssist, chunkPolicy: .batched(),
+            lineParser: ChatCompletionsDelta.parse, onChunk: onChunk
         )
     }
 }
 
 /// Azure OpenAI chat deployment, streamed.
 struct AzureTextClient: DetectorTextGenerating {
-    let provider: AzureOpenAIProvider
+    let apiKey: String
+    let config: AzureOpenAIConfig
     let deployment: String
     var executor = AIRequestExecutor()
     var label: String { "Azure \(deployment)" }
 
+    /// `https://name.openai.azure.com/openai/deployments/<d>/chat/completions?api-version=<v>`,
+    /// tolerating an endpoint pasted with a path or query.
+    static func requestURL(endpoint: String, deployment: String, apiVersion: String) -> URL? {
+        let trimmed = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        var base = trimmed.hasSuffix("/") ? String(trimmed.dropLast()) : trimmed
+        if let url = URL(string: trimmed), let scheme = url.scheme, let host = url.host {
+            base = "\(scheme)://\(host)" + (url.port.map { ":\($0)" } ?? "")
+        }
+        let name = deployment.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? deployment
+        return URL(string: "\(base)/openai/deployments/\(name)/chat/completions?api-version=\(apiVersion)")
+    }
+
     func streamText(system: String, user: String, onChunk: @escaping (String) -> Void) async throws -> String {
-        var request = URLRequest(url: try provider.makeRequestURL(deployment: deployment))
+        guard let url = Self.requestURL(endpoint: config.endpoint, deployment: deployment, apiVersion: config.apiVersion) else {
+            throw DetectorClientError.missingKey(.azureOpenAI)
+        }
+        var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(provider.apiKey, forHTTPHeaderField: "api-key")
+        request.setValue(apiKey, forHTTPHeaderField: "api-key")
         request.httpBody = try JSONEncoder().encode(AzureOpenAIStreamRequest(
             max_completion_tokens: nil, stream: true,
             messages: [
@@ -98,8 +121,18 @@ struct AzureTextClient: DetectorTextGenerating {
         ))
         return try await executor.executeStreamingTextRequest(
             request, profile: .quickAssist, chunkPolicy: .batched(),
-            lineParser: AzureOpenAIProvider.parseStreamDelta, onChunk: onChunk
+            lineParser: ChatCompletionsDelta.parse, onChunk: onChunk
         )
+    }
+}
+
+/// Text from one Chat Completions stream line (OpenAI and Azure share it).
+enum ChatCompletionsDelta {
+    static func parse(_ data: Data) -> String? {
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let choices = root["choices"] as? [[String: Any]],
+              let delta = choices.first?["delta"] as? [String: Any] else { return nil }
+        return delta["content"] as? String
     }
 }
 
@@ -114,10 +147,9 @@ enum DetectorTextClientFactory {
         case .openai:
             return OpenAITextClient(apiKey: key, model: model)
         case .azureOpenAI:
-            let azure = try AIProviderFactory.create(type: .azureOpenAI, apiKey: key,
-                                                     azureConfig: settings.azureOpenAIConfig())
-            guard let azure = azure as? AzureOpenAIProvider else { throw DetectorClientError.missingKey(provider) }
-            return AzureTextClient(provider: azure, deployment: model.isEmpty ? azure.config.deploymentName : model)
+            let config = settings.azureOpenAIConfig()
+            return AzureTextClient(apiKey: key, config: config,
+                                   deployment: model.isEmpty ? config.deploymentName : model)
         }
     }
 }

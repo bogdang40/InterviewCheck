@@ -11,7 +11,7 @@ final class DetectorRenderTests: XCTestCase {
 
     override func setUpWithError() throws {
         try super.setUpWithError()
-        try OverlayRenderHarness.skipUnlessEnabled()
+        try RenderHarness.skipUnlessEnabled()
     }
 
     /// A controller mid-interview with one answered, flagged question.
@@ -85,7 +85,7 @@ final class DetectorRenderTests: XCTestCase {
     func testRenderLiveInterview() async throws {
         let (controller, timeline) = try liveController()
         for width: CGFloat in [1000, 700] {
-            try await OverlayRenderHarness.render("native-live-\(Int(width))", size: CGSize(width: width, height: 1200), settle: 0.6) {
+            try await RenderHarness.render("native-live-\(Int(width))", size: CGSize(width: width, height: 1200), settle: 0.6) {
                 native { InterviewLiveScreen(controller: controller, timeline: timeline) }
             }
         }
@@ -94,7 +94,7 @@ final class DetectorRenderTests: XCTestCase {
     func testRenderSetupAndSummary() async throws {
         let setup = InterviewController()
         setup.candidateName = "Jordan Rivera"
-        try await OverlayRenderHarness.render("native-setup", size: CGSize(width: 820, height: 900)) {
+        try await RenderHarness.render("native-setup", size: CGSize(width: 820, height: 900)) {
             native {
                 InterviewSetupForm(controller: setup,
                                    readiness: DetectorReadiness(hasDeepgramKey: false, usableLineupCount: 2))
@@ -102,11 +102,11 @@ final class DetectorRenderTests: XCTestCase {
         }
         let (controller, _) = try liveController()
         controller.end()
-        try await OverlayRenderHarness.render("native-summary", size: CGSize(width: 820, height: 560)) {
+        try await RenderHarness.render("native-summary", size: CGSize(width: 820, height: 560)) {
             native { InterviewSummaryView(controller: controller) }
         }
         let report = try XCTUnwrap(controller.database.loadInterviewReport(id: controller.interview!.id))
-        try await OverlayRenderHarness.render("native-report", size: CGSize(width: 820, height: 1300)) {
+        try await RenderHarness.render("native-report", size: CGSize(width: 820, height: 1300)) {
             native { ReportDetail(report: report) }
         }
     }
@@ -118,16 +118,16 @@ final class DetectorRenderTests: XCTestCase {
             PlannedQuestion(text: F.question, family: "System design", strongAnswer: "Token bucket or sliding window; shared state; 429s"),
             PlannedQuestion(text: "Tell me about the hardest outage you owned end to end.", family: "Behavioral", strongAnswer: ""),
         ]
-        try await OverlayRenderHarness.render("native-role-editor", size: CGSize(width: 760, height: 1100)) {
+        try await RenderHarness.render("native-role-editor", size: CGSize(width: 760, height: 1100)) {
             native { RoleEditor(role: role) }
         }
-        try await OverlayRenderHarness.render("native-settings-keys", size: CGSize(width: 640, height: 560)) {
+        try await RenderHarness.render("native-settings-keys", size: CGSize(width: 640, height: 560)) {
             native { KeysSettingsTab() }
         }
-        try await OverlayRenderHarness.render("native-settings-detector", size: CGSize(width: 640, height: 560)) {
+        try await RenderHarness.render("native-settings-detector", size: CGSize(width: 640, height: 560)) {
             native { DetectorSettingsTab() }
         }
-        try await OverlayRenderHarness.render("native-settings-shortcuts", size: CGSize(width: 640, height: 560)) {
+        try await RenderHarness.render("native-settings-shortcuts", size: CGSize(width: 640, height: 560)) {
             native { ShortcutsSettingsTab() }
         }
     }

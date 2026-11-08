@@ -23,10 +23,6 @@ struct VoiceNormalizationResult {
 
 protocol ResponseVoiceGuarding {
     func normalizeText(_ text: String, surface: VoiceGuardSurface) -> VoiceNormalizationResult
-    func normalizeMentorResponse(
-        _ response: MentorResponse,
-        systemDesignMode: Bool
-    ) -> (response: MentorResponse, report: VoiceNormalizationReport)
 }
 
 final class ResponseVoiceGuard: ResponseVoiceGuarding {
@@ -71,49 +67,6 @@ final class ResponseVoiceGuard: ResponseVoiceGuarding {
                 leadInjected: leadInjected
             )
         )
-    }
-
-    func normalizeMentorResponse(
-        _ response: MentorResponse,
-        systemDesignMode: Bool
-    ) -> (response: MentorResponse, report: VoiceNormalizationReport) {
-        var rewritten = response
-        var accumulator = ReportAccumulator()
-
-        rewritten.problem = normalizedSection(
-            response.problem,
-            surface: .solve,
-            accumulator: &accumulator
-        )
-        rewritten.clarifyingQuestions = normalizedSection(
-            response.clarifyingQuestions,
-            surface: .solve,
-            accumulator: &accumulator
-        )
-        rewritten.implementation = normalizedSection(
-            response.implementation,
-            surface: .solve,
-            accumulator: &accumulator
-        )
-        rewritten.tests = normalizedSection(
-            response.tests,
-            surface: .solve,
-            accumulator: &accumulator
-        )
-        rewritten.complexity = normalizedSection(
-            response.complexity,
-            surface: .solve,
-            accumulator: &accumulator
-        )
-        if !rewritten.systemDesign.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            rewritten.systemDesign = normalizedSection(
-                response.systemDesign,
-                surface: systemDesignMode ? .systemDesign : .solve,
-                accumulator: &accumulator
-            )
-        }
-
-        return (rewritten, accumulator.snapshot())
     }
 
     /// Accumulator for per-section reports. Extracted from the old inout
