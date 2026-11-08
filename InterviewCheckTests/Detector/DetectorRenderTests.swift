@@ -210,9 +210,19 @@ final class ConnectionsRenderTests: XCTestCase {
                               meetingURL: URL(string: "https://meet.google.com/abc-defg-hij"),
                               candidate: ExternalCandidate(name: "Marcus O'Connell-Whitfield"), job: ExternalJob(externalID: "k", title: "Staff Platform Engineer")),
         ], source: .greenhouse)
+        database.replaceExternalInterviews([
+            ExternalInterview(source: .imapMail, externalID: "m1", title: "Interview: Ana Pop - Payroll Officer", startsAt: now.addingTimeInterval(3 * 3600),
+                              candidate: ExternalCandidate(name: "Ana Pop", email: "ana@example.com"), job: ExternalJob(externalID: "", title: "Payroll Officer")),
+        ], source: .imapMail)
+        database.replaceExternalInterviews([
+            ExternalInterview(source: .calendly, externalID: "c1", title: "Phone Screen", startsAt: now.addingTimeInterval(50 * 3600),
+                              meetingURL: URL(string: "https://acme.zoom.us/j/2"), candidate: ExternalCandidate(name: "Max Roe", email: "max@example.com")),
+        ], source: .calendly)
         manager.reloadCache()
         let controller = InterviewController(timeline: InterviewTimeline(), database: database, settings: DetectorSettings(defaults: defaults))
-        try await RenderHarness.render("upcoming-interviews", size: CGSize(width: 820, height: 420), settle: 0.4) {
+        controller.preparedFrom = "greenhouse:1"
+        controller.externalRef = "greenhouse:1"
+        try await RenderHarness.render("upcoming-interviews", size: CGSize(width: 820, height: 560), settle: 0.4) {
             Form { UpcomingInterviewsSection(controller: controller, connectors: manager) }
                 .formStyle(.grouped)
                 .background(Color(nsColor: .windowBackgroundColor))

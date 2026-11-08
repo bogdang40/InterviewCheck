@@ -71,6 +71,10 @@ struct UpcomingInterviewsSection: View {
                 HStack(spacing: 6) {
                     Text(interview.candidate?.name ?? interview.title).lineLimit(1)
                     if UpcomingTime.isSoon(interview.startsAt) { Tag(text: "Soon", color: .orange) }
+                    // The setup already holds this interview (prepared by hand or automatically).
+                    if controller.preparedFrom == interview.id, controller.externalRef != nil, controller.phase == .setup {
+                        Tag(text: "Ready", color: .green)
+                    }
                 }
                 Text([UpcomingTime.label(interview.startsAt), interview.job?.title, interview.source.descriptor.vendorName]
                         .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " \u{00B7} "))
