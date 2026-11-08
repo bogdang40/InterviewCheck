@@ -207,9 +207,9 @@ its results.
   Teamtailor, SmartRecruiters, Merge, Kombo, Unified.to) into roles with their job descriptions.
 - When Prepare creates a role from an ATS job, the role's questions and tailored
   prompts are drafted in the background.
-- Shortcuts actions: Prepare Next Interview, Sync Interview Connections, Open Latest Interview Report.
+- Shortcuts actions: Prepare Next Interview, Join Next Interview (prepares it if needed and opens the meeting), Sync Interview Connections, Open Latest Interview Report.
 - The Dock menu lists the next interviews.
-- Links `interviewcheck://prepare-next`, `interviewcheck://sync` and `interviewcheck://report/latest`.
+- Links `interviewcheck://prepare-next`, `interviewcheck://join-next`, `interviewcheck://sync` and `interviewcheck://report/latest`.
 
 ## For the product owner: what needs a server later
 

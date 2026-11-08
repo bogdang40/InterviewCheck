@@ -10,7 +10,7 @@ private struct OneInterview: InterviewSource {
         [ExternalInterview(source: .appleCalendar, externalID: "past", title: "Interview: Old", startsAt: start.addingTimeInterval(-7200),
                            endsAt: start.addingTimeInterval(-5400), candidate: ExternalCandidate(name: "Old Candidate")),
          ExternalInterview(source: .appleCalendar, externalID: "next", title: "Interview: Lee Park", startsAt: start,
-                           candidate: ExternalCandidate(name: "Lee Park"))]
+                           meetingURL: URL(string: "https://acme.zoom.us/j/81234567890"), candidate: ExternalCandidate(name: "Lee Park"))]
     }
 }
 
@@ -33,6 +33,30 @@ final class InterviewAutomationTests: XCTestCase {
         let message = await InterviewAutomation.prepareNext(manager: manager, controller: controller)
         XCTAssertTrue(message.hasPrefix("Prepared Lee Park at "), message)
         XCTAssertEqual(controller.candidateName, "Lee Park")
+    }
+
+    func testJoinNextPreparesOnceAndOpensTheMeeting() async throws {
+        let path = NSTemporaryDirectory() + "automation-\(UUID().uuidString).sqlite"
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let database = SessionDatabase(databasePath: path)
+        let defaults = UserDefaults(suiteName: "automation.\(UUID().uuidString)")!
+        let manager = ConnectorManager(store: MemoryCredentialStore(), database: database, defaults: defaults)
+        let controller = InterviewController(timeline: InterviewTimeline(), database: database, settings: DetectorSettings(defaults: defaults))
+        manager.factory = { _, _, _, _ in OneInterview(start: Date().addingTimeInterval(1800)) }
+        try await manager.connect(.appleCalendar, fields: [:])
+        var opened: [URL] = []
+        var joined: [String] = []
+        let first = await InterviewAutomation.joinNext(manager: manager, controller: controller, open: { opened.append($0) },
+                                                       joined: { joined.append($0) })
+        XCTAssertTrue(first.hasPrefix("Prepared Lee Park") && first.hasSuffix("Opened the Zoom link."), first)
+        XCTAssertEqual(controller.candidateName, "Lee Park")
+        controller.resumeText = "Pasted"
+        let second = await InterviewAutomation.joinNext(manager: manager, controller: controller, open: { opened.append($0) },
+                                                        joined: { joined.append($0) })
+        XCTAssertEqual(second, "Opened the Zoom link.", "already prepared: the setup is left as it is")
+        XCTAssertEqual(controller.resumeText, "Pasted")
+        XCTAssertEqual(opened.count, 2)
+        XCTAssertEqual(joined, ["appleCalendar:next", "appleCalendar:next"])
     }
 
     func testOnlyOwnURLsAreHandled() {

@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 import InterviewCheckConnectors
 
 /// The few actions other apps and the system can trigger: the Dock menu,
@@ -29,18 +29,40 @@ enum InterviewAutomation {
         return (["Prepared \(who) at \(when)."] + missing).joined(separator: " ")
     }
 
+    /// Prepares the next interview (unless the setup already holds it) and
+    /// opens its meeting link.
+    @discardableResult
+    static func joinNext(manager: ConnectorManager = .shared, controller: InterviewController = .shared,
+                         open: (URL) -> Void = { NSWorkspace.shared.open($0) },
+                         joined: @MainActor (String) -> Void = { AutoPrepare.shared.markJoined($0) }) async -> String {
+        guard controller.phase != .live else { return "An interview is live." }
+        guard let interview = nextInterview(manager: manager) else {
+            return manager.accounts.isEmpty ? "Connect a calendar, mailbox or ATS in Connections first." : "No upcoming interviews."
+        }
+        var said: [String] = []
+        if controller.preparedFrom != interview.id || controller.externalRef == nil {
+            said.append(await prepare(interview, manager: manager, controller: controller))
+        }
+        guard let link = interview.meetingURL else { return (said + ["This interview has no meeting link."]).joined(separator: " ") }
+        open(link)
+        joined(interview.id)
+        return (said + ["Opened the \(MeetingLinks.platform(of: link).title) link."]).joined(separator: " ")
+    }
+
     static func openLatestReport(database: SessionDatabase = .shared) -> String {
         guard let latest = database.loadInterviews(limit: 1).first else { return "No reports yet." }
         AppNavigation.shared.showReport(latest.id)
         return "Opened \(latest.candidateName.isEmpty ? "the latest report" : latest.candidateName)."
     }
 
-    /// interviewcheck://prepare-next, interviewcheck://sync, interviewcheck://report/latest
+    /// interviewcheck://prepare-next, interviewcheck://join-next, interviewcheck://sync, interviewcheck://report/latest
     static func handle(_ url: URL) -> Bool {
         guard url.scheme == AppBrand.urlScheme else { return false }
         switch url.host {
         case "prepare-next":
             Task { await prepareNext() }
+        case "join-next":
+            Task { await joinNext() }
         case "sync":
             Task { await ConnectorManager.shared.syncAll() }
         case "report" where url.path == "/latest":

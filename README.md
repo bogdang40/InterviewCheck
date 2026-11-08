@@ -70,9 +70,9 @@ default). **Settings › Privacy** can save a PDF of every finished report to a
 folder. **File › Analyze Recording** offers recent Zoom, Webex, Teams and Meet
 recordings; a report prepared from an ATS that keeps private notes has
 **Send to <ATS>** (an editable note, sent only when you press Send). Shortcuts
-has **Prepare Next Interview**, **Sync Interview Connections** and **Open Latest
-Interview Report**; the Dock icon's menu lists the next interviews; links
-`interviewcheck://prepare-next`, `interviewcheck://sync` and `interviewcheck://report/latest`
+has **Prepare Next Interview**, **Join Next Interview**, **Sync Interview Connections**
+and **Open Latest Interview Report**; the Dock icon's menu lists the next interviews; links
+`interviewcheck://prepare-next`, `interviewcheck://join-next`, `interviewcheck://sync` and `interviewcheck://report/latest`
 work from anywhere. Keys stay in the Keychain; synced data stays on this Mac.
 Connector code and tests live in `Packages/InterviewCheckConnectors`
 (`swift test`). Setup steps for every system: [docs/CONNECTORS.md](docs/CONNECTORS.md).

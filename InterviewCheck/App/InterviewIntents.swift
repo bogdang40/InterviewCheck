@@ -1,6 +1,6 @@
 import AppIntents
 
-/// Shortcuts actions: prepare the next interview, sync, open the latest report.
+/// Shortcuts actions: prepare or join the next interview, sync, open the latest report.
 struct PrepareNextInterviewIntent: AppIntent {
     static let title: LocalizedStringResource = "Prepare Next Interview"
     static let description = IntentDescription("Fills in the next interview's candidate, role, job description and résumé from your connected calendar or ATS.")
@@ -9,6 +9,17 @@ struct PrepareNextInterviewIntent: AppIntent {
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
         .result(dialog: IntentDialog(stringLiteral: await InterviewAutomation.prepareNext()))
+    }
+}
+
+struct JoinNextInterviewIntent: AppIntent {
+    static let title: LocalizedStringResource = "Join Next Interview"
+    static let description = IntentDescription("Prepares the next interview if needed and opens its Zoom, Teams, Meet or Webex link.")
+    static let openAppWhenRun = true
+
+    @MainActor
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        .result(dialog: IntentDialog(stringLiteral: await InterviewAutomation.joinNext()))
     }
 }
 
@@ -38,6 +49,8 @@ struct InterviewShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(intent: PrepareNextInterviewIntent(), phrases: ["Prepare my next interview in \(.applicationName)"],
                     shortTitle: "Prepare Next Interview", systemImageName: "person.badge.clock")
+        AppShortcut(intent: JoinNextInterviewIntent(), phrases: ["Join my next interview in \(.applicationName)"],
+                    shortTitle: "Join Next Interview", systemImageName: "video")
         AppShortcut(intent: SyncConnectionsIntent(), phrases: ["Sync \(.applicationName)"],
                     shortTitle: "Sync Connections", systemImageName: "arrow.clockwise")
         AppShortcut(intent: OpenLatestReportIntent(), phrases: ["Open my latest \(.applicationName) report"],
