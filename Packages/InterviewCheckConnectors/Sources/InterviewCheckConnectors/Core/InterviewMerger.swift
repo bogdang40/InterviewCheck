@@ -22,7 +22,7 @@ public enum InterviewMerger {
         let order = { (interview: ExternalInterview) -> Int in
             switch interview.source.descriptor.category {
             case .ats, .unified, .mcp: return 0
-            case .meetings: return 1
+            case .meetings, .scheduling: return 1
             case .calendar: return 2
             case .mail: return 3
             }

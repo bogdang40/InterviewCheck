@@ -57,6 +57,21 @@ How it reads:
 - Proton Mail works through Proton Mail Bridge on the Mac (`127.0.0.1:1143` is not TLS,
   so it is not supported yet).
 
+## Booking links (Calendly, Cal.com)
+
+Many first-round screens are booked through a scheduling link. The person who booked
+is the candidate; their email lets Prepare find them in a connected ATS.
+
+| Tool | Credential | What comes in |
+|---|---|---|
+| **Calendly** | Personal access token (Integrations & apps › API and webhooks) with `scheduled_events:read` and `users:read` | Your active bookings, the invitee's name and email, a LinkedIn or GitHub link typed into a booking question, the meeting link |
+| **Cal.com** | API key (Settings › Developer › API Keys); self-hosted instances add their `https://…/api/v2` address | Upcoming accepted bookings, the attendee's name and email, the meeting link (Cal Video included) |
+
+Only bookings whose name reads like an interview are used ("Phone Screen",
+"Technical Interview"). Turn on **Every booking is an interview** when the account is
+used only for hiring. A job title is taken from the booking name only when it names a
+job ("Phone Screen - Backend Engineer").
+
 ## Calendars and meeting tools (browser sign-in)
 
 Each company registers its own OAuth app once and pastes the client ID. Each

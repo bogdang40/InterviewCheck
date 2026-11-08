@@ -25,6 +25,20 @@ public enum ConnectorCatalog {
                          [.upcomingInterviews, .emailInvites],
                          setup: "Make an app password for InterviewCheck: Google Account \u{203A} Security \u{203A} App passwords (needs 2-Step Verification); Apple Account \u{203A} Sign-In and Security \u{203A} App-Specific Passwords; Yahoo \u{203A} Account security \u{203A} App passwords; Fastmail \u{203A} Settings \u{203A} Privacy & Security \u{203A} App passwords. The mailbox is only read: nothing is sent, moved or marked as read. For Outlook and Microsoft 365 mailboxes use the Microsoft 365 connector (their invites are already in Outlook\u{2019}s calendar).",
                          docs: "https://support.google.com/accounts/answer/185833")
+        case .calendly:
+            return entry(kind, "Calendly", .scheduling, "Screens and interviews booked through your Calendly links: the candidate\u{2019}s name, email and LinkedIn link, and the meeting link.",
+                         .fields([CredentialField("apiKey", "Personal access token", secret: true), keywords, everyBooking]),
+                         [.upcomingInterviews, .candidates],
+                         setup: "In Calendly open Integrations & apps \u{203A} API and webhooks \u{203A} Personal access tokens, create a token with the scheduled_events:read and users:read scopes, and paste it here. Bookings whose event name reads like an interview are used (\u{201C}Phone Screen\u{201D}, \u{201C}Technical Interview\u{201D}); turn on the switch if this Calendly is only for interviews.",
+                         docs: "https://developer.calendly.com/docs/authentication/how-to-authenticate-with-personal-access-tokens")
+        case .calCom:
+            return entry(kind, "Cal.com", .scheduling, "Screens and interviews booked through your Cal.com links (cal.com or self-hosted): the candidate\u{2019}s name and email, and the meeting link.",
+                         .fields([CredentialField("apiKey", "API key", placeholder: "cal_live_\u{2026}", secret: true),
+                                  CredentialField("url", "API address", placeholder: "Optional, for self-hosted: https://cal.example.com/api/v2", optional: true),
+                                  keywords, everyBooking]),
+                         [.upcomingInterviews, .candidates],
+                         setup: "In Cal.com open Settings \u{203A} Developer \u{203A} API Keys, create a key and paste it here. Bookings whose title reads like an interview are used; turn on the switch if this account is only for interviews.",
+                         docs: "https://cal.com/docs/api-reference/v2/bookings/get-all-bookings")
         case .google:
             return entry(kind, "Google Workspace", .calendar, "Interviews from Google Calendar (including invites from Gmail) and Google Meet transcripts with speakers and timing.",
                          .oauth(GoogleConnectorProvider.provider, clientFields: oauthClient + [keywords]), [.upcomingInterviews, .transcripts],
@@ -100,6 +114,7 @@ public enum ConnectorCatalog {
         }
     }
 
+    static let everyBooking = CredentialField("everyBooking", "Every booking is an interview", toggle: true)
     static let keywords = CredentialField("keywords", "Extra title words", placeholder: "Optional, e.g. pairing, debrief", optional: true)
     static let oauthClient = [CredentialField("clientID", "OAuth client ID"),
                               CredentialField("clientSecret", "OAuth client secret", secret: true, optional: true)]

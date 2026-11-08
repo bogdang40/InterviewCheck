@@ -51,6 +51,8 @@ public enum ConnectorFactory {
         case .jazzHR: return try JazzHRConnector(credentials: credentials, transport: transport)
         case .breezyHR: return try BreezyConnector(credentials: credentials, transport: transport)
         case .personio: return try PersonioConnector(credentials: credentials, transport: transport)
+        case .calendly: return try CalendlyConnector(credentials: credentials, transport: transport)
+        case .calCom: return try CalComConnector(credentials: credentials, transport: transport)
         case .greenhouseMCP, .ashbyMCP, .workableMCP, .mcp:
             return try MCPConnector(kind: kind, credentials: credentials, transport: transport, accessToken: accessToken)
         case .google: return try GoogleWorkspaceConnector(credentials: credentials, transport: transport, accessToken: accessToken)
