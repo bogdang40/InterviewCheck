@@ -22,7 +22,7 @@ every screen of the installed app and the demo.
 | # | Item | Status |
 |---|---|---|
 | N1 | **Shared words highlighted.** Words the answer shares, in the same order, with an AI answer are highlighted in both texts, like a plagiarism checker, with "41 of 63 words appear word for word in an AI answer". Live screen, report and PDF. | Done |
-| N2 | **The interview at a glance.** A rail of question chips (Q1 12% · Q2 86% …) at the top of the live screen; click one to look back; the timing strip stays after the answer ends. | |
+| N2 | **The interview at a glance.** A rail of question chips (Q1 12% · Q2 86% …) at the top of the live screen; click one to look back; the timing strip stays after the answer ends. | Done |
 | N3 | **A demo that tells the story.** AI answers take as long as real ones; the demo ends on its report. | |
 | N4 | **First run.** "Watch a 2-minute demo" on the welcome sheet and on the setup screen while keys are missing. | |
 | N5 | **AI phrasing.** A signal that works without keys: read-aloud LLM wording ("furthermore", "it's worth noting", spoken "Situation: … Task: …", announced lists). | |
@@ -31,3 +31,4 @@ every screen of the installed app and the demo.
 ## Log
 
 - **N1 done.** `SharedWords` in the core package finds runs of 4+ words (two of them not small words, not the question said back) shared in order, using greedy string tiling. The live screen, report and PDF highlight them in the candidate's answer and in each AI answer, with "N of M words appear word for word in an AI answer" and an "N words match" tag on each AI card. 10 new core tests.
+- **N2 done.** `QuestionRail` replaces the "Earlier questions" box: one chip per question with its score colour (an orange dot while it is being answered) and "63% overall · 1 of 2 flagged" from final scores. Clicking a chip looks back at that question, with "Back to Q3" (Esc); a new question returns to live. A finished answer keeps its timing strip, rebuilt from the timeline. New render `native-live-rail`.

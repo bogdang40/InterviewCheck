@@ -94,6 +94,33 @@ final class DetectorRenderTests: XCTestCase {
         }
     }
 
+    /// Three questions: the flagged one, an honest one, and one being asked.
+    func testRenderLiveRail() async throws {
+        let (controller, timeline) = try liveController()
+        let second = F.words("Tell me about a production incident you owned.", side: .interviewer, start: now + 1)
+        timeline.append(second)
+        now = try XCTUnwrap(second.last).end + 0.3
+        controller.markQuestion()
+        let honest = F.honestAnswer(after: try XCTUnwrap(second.last).end)
+        timeline.append(honest)
+        now = try XCTUnwrap(honest.last).end + 0.5
+        controller.tick()
+        let record = try XCTUnwrap(controller.questions.last)
+        let window = controller.window(for: record)
+        let base = controller.evaluate(question: record, window: window)
+        controller.store(CheatScorer.score(timing: base.timing, fluency: base.fluency, similarity: base.similarity,
+                                           judge: nil, hasTimingGap: false),
+                         questionID: record.id, window: window, isFinal: true)
+        let third = F.words("Why do you want to work on payments?", side: .interviewer, start: now + 1)
+        timeline.append(third)
+        now = try XCTUnwrap(third.last).end + 0.3
+        controller.markQuestion()
+        controller.errorMessage = nil
+        try await RenderHarness.render("native-live-rail", size: CGSize(width: 1000, height: 700), settle: 0.6) {
+            native { InterviewLiveScreen(controller: controller, timeline: timeline, showsAudioStatus: false) }
+        }
+    }
+
     func testRenderSetupAndSummary() async throws {
         let setup = InterviewController()
         setup.candidateName = "Jordan Rivera"

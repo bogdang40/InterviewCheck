@@ -12,9 +12,14 @@ struct InterviewLiveScreen: View {
     @Environment(\.openWindow) private var openWindow
     @State private var editingID: String?
     @State private var editedText = ""
+    /// An earlier question picked in the rail; nil follows the live one.
+    @State private var selectedID: String?
 
     private var planned: [PlannedQuestion] { roles.role(id: controller.interview?.workspaceID)?.plannedQuestions ?? [] }
-    private var focusQuestion: InterviewQuestionRecord? { controller.activeQuestion ?? controller.questions.last }
+    private var liveQuestion: InterviewQuestionRecord? { controller.activeQuestion ?? controller.questions.last }
+    private var focusQuestion: InterviewQuestionRecord? {
+        selectedID.flatMap { id in controller.questions.first { $0.id == id } } ?? liveQuestion
+    }
 
     var body: some View {
         ScrollView {
@@ -33,8 +38,14 @@ struct InterviewLiveScreen: View {
                         .font(.callout).foregroundStyle(.orange)
                 }
                 if timeline.remoteSpeakers.count > 1 { speakerPicker }
+                if !controller.questions.isEmpty {
+                    QuestionRail(questions: controller.questions, scores: controller.scores,
+                                 activeID: controller.activeQuestionID, focusedID: focusQuestion?.id,
+                                 select: { id in selectedID = id == liveQuestion?.id ? nil : id })
+                }
                 if !planned.isEmpty { plannedStrip }
                 if let question = focusQuestion {
+                    if let live = liveQuestion, live.id != question.id { lookingBack(at: question, live: live) }
                     questionSection(question)
                 } else {
                     ContentUnavailableView {
@@ -44,11 +55,12 @@ struct InterviewLiveScreen: View {
                     }
                     .padding(.top, 40)
                 }
-                if controller.questions.count > 1 { earlierQuestions }
             }
             .padding(24)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        // A new question brings the screen back to it.
+        .onChange(of: controller.questions.count) { _, _ in selectedID = nil }
         .navigationTitle(controller.interview.map { $0.candidateName.isEmpty ? "Candidate" : $0.candidateName } ?? "Interview")
         .navigationSubtitle(controller.interview?.roleTitle ?? "")
         .toolbar {
@@ -97,9 +109,23 @@ struct InterviewLiveScreen: View {
         }
     }
 
+    private func lookingBack(at question: InterviewQuestionRecord, live: InterviewQuestionRecord) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "clock.arrow.circlepath").foregroundStyle(.secondary)
+            Text("Looking back at Q\(question.ordinal).")
+            if live.closedAt == nil { Text("Q\(live.ordinal) is being answered.").foregroundStyle(.secondary) }
+            Spacer()
+            Button("Back to Q\(live.ordinal)") { selectedID = nil }
+                .keyboardShortcut(.escape, modifiers: [])
+        }
+        .font(.callout)
+    }
+
     @ViewBuilder
     private func questionSection(_ question: InterviewQuestionRecord) -> some View {
         let window = controller.activeQuestionID == question.id ? controller.liveWindow : nil
+        // A finished answer keeps its strip, rebuilt from the words on the timeline.
+        let finished = window == nil ? controller.window(for: question) : nil
         questionCard(question)
         QuestionNoteField(questionID: question.id, database: controller.database)
             .id(question.id)
@@ -113,6 +139,12 @@ struct InterviewLiveScreen: View {
                 timing: TimingSignal.evaluate(answerWords: window.answerWords, questionEnd: window.questionEnd,
                                               questionText: question.text),
                 now: timeline.now))
+        } else if let finished, !finished.answerWords.isEmpty {
+            TimingStrip(model: TimingStripModel(
+                window: finished,
+                timing: TimingSignal.evaluate(answerWords: finished.answerWords, questionEnd: finished.questionEnd,
+                                              questionText: question.text),
+                now: finished.answerEnd ?? finished.questionEnd))
         }
         if window != nil || !answerText.isEmpty {
             CandidateAnswerBlock(text: answerText, references: answers, question: question.text)
@@ -164,25 +196,6 @@ struct InterviewLiveScreen: View {
                 }
             }
             .padding(6)
-        }
-    }
-
-    private var earlierQuestions: some View {
-        GroupBox("Earlier questions") {
-            VStack(alignment: .leading, spacing: 6) {
-                ForEach(controller.questions.reversed().filter { $0.id != focusQuestion?.id }) { question in
-                    HStack {
-                        Text("Q\(question.ordinal)").monospacedDigit().foregroundStyle(.secondary)
-                        Text(question.text.isEmpty ? "(no question text)" : question.text).lineLimit(1)
-                        Spacer()
-                        if let score = controller.scores[question.id] {
-                            Tag(text: "\(score.percent)%", color: ScoreBand(percent: score.percent).color)
-                        }
-                    }
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(4)
         }
     }
 }
