@@ -6,6 +6,7 @@ import SwiftUI
 @main
 struct InterviewCheckApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    @StateObject private var interview = InterviewController.shared
 
     var body: some Scene {
         WindowGroup(AppBrand.name, id: AppWindowID.main) {
@@ -24,6 +25,12 @@ struct InterviewCheckApp: App {
 
         Settings {
             AppSettingsView()
+        }
+
+        MenuBarExtra(isInserted: Binding(get: { interview.phase == .live }, set: { _ in })) {
+            LiveMenuBarContent(controller: interview)
+        } label: {
+            LiveMenuBarLabel(controller: interview)
         }
     }
 }
