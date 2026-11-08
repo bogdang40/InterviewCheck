@@ -220,7 +220,7 @@ final class ConnectionsRenderTests: XCTestCase {
     }
 
     func testRenderConnectorDetails() async throws {
-        for kind in [ConnectorKind.greenhouse, .microsoft365, .greenhouseMCP, .workday, .imapMail] {
+        for kind in [ConnectorKind.greenhouse, .microsoft365, .greenhouseMCP, .workday, .imapMail, .calendly, .webex, .bullhorn] {
             try await RenderHarness.render("connector-\(kind.rawValue)", size: CGSize(width: 720, height: 760), settle: 0.4) {
                 ConnectorDetailView(kind: kind).background(Color(nsColor: .windowBackgroundColor))
             }
