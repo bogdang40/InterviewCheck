@@ -2,11 +2,18 @@
 
 ```
 Packages/InterviewCheckKit/   pure detector core (Swift package, `swift test`)
+Packages/InterviewCheckConnectors/
+                              ATS, unified HR APIs, calendars, meeting tools,
+                              MCP: one set of types (`swift test`, stub HTTP)
 InterviewCheck/               the Mac app
   App/                        @main App scenes, AppDelegate, AppBrand
   AppShell/                   root view, sidebar, menus, shortcuts, permissions
   Features/                   SwiftUI screens: Interview, Roles, Reports,
-                              Companion, Settings, Access (sign in / subscribe)
+                              Companion, Settings, Access (sign in / subscribe),
+                              Demo, Recording
+  Connectors/                 ConnectorManager (accounts, sync, Prepare,
+                              recordings, notes), Connections screen,
+                              reminders, auto-scoring, Shortcuts/Dock/URL actions
   Detector/                   app-side detector: live controller, timeline,
                               roles, AI clients and prompts, reports
   Services/                   audio capture and transcription (Deepgram, Apple)
@@ -48,9 +55,38 @@ call ┘   (StreamClock maps   └─ candidate words ───┘          │
   square so a capped list still covers every provider and prompt) and streams
   them concurrently.
 - **Storage**: `interviews`, `interview_words`, `interview_questions`,
-  `reference_answers`, `answer_scores`, `role_profiles` (migration v17).
+  `reference_answers`, `answer_scores`, `role_profiles` (v17), `answer_labels`
+  (v18), `answer_notes` (v19), interrupted flag (v20), `external_interviews`,
+  `external_recordings` and `interviews.external_ref` (v21), `scored_from` and
+  `external_links` (v22).
   Older tables from the original app remain in the schema so existing
   databases migrate cleanly.
+
+## Connectors
+
+```
+EventKit / .ics / Google / Microsoft / Zoom ─┐                  ┌─ Upcoming Interviews (Prepare, Join)
+ATS (12 direct) / Merge · Kombo · Unified.to ─┼─ ConnectorManager ┼─ reminders · Dock · Shortcuts
+MCP (Greenhouse · Ashby · Workable · any)    ─┘  (sync every 15m,  ├─ Analyze Recording / AutoScorer
+                                                  cache in SQLite) └─ Send Summary (NoteDestination)
+```
+
+- Every connector maps its API onto the same types (`ExternalInterview`,
+  `ExternalCandidate`, `ExternalJob`, `ExternalRecording`) through small
+  protocols: `InterviewSource`, `JobSource`, `CandidateSource`,
+  `RecordingSource`, `NoteDestination`, `CandidateLookup`. Adding a system is
+  one file plus a catalog entry and a factory line.
+- `APIClient` handles auth headers, Retry-After, errors and Link paging;
+  `JSONValue` reads vendors' JSON without a struct per endpoint.
+- Sign-in: API keys and client-credentials tokens; OAuth 2.0 public clients
+  with PKCE and a loopback redirect (`LoopbackReceiver`); MCP sign-in with
+  discovery, dynamic client registration and the RFC 8707 resource.
+  Credentials live in the Keychain (`KeychainCredentialStore`).
+- Prepare fills the interview from the source; a calendar invite is matched
+  to an ATS candidate by email (`CandidateLookup`) for the job description,
+  résumé and the note target.
+- Built from the vendors' published documentation (Nov 2026); not yet run
+  against live accounts.
 
 ## Conventions
 
