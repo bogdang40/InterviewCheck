@@ -20,6 +20,9 @@ final class ReportAutoSave {
     /// scores change later (Save and Regenerate) is written again in place.
     private var saved: [String: (url: URL, scores: String)] = [:]
     private var watching: AnyCancellable?
+    /// The interview that ended last: saved once its scores and AI answers are
+    /// done, even if New Interview was pressed meanwhile.
+    private var ended: String?
     /// The last file written or the last failure, for Settings.
     private(set) var lastResult: String?
 
@@ -31,11 +34,15 @@ final class ReportAutoSave {
     /// Saves each live interview once it has ended, every score is final and
     /// no AI answers are still being generated; again if its scores change.
     func watch(_ controller: InterviewController) {
-        watching = controller.$phase.combineLatest(controller.$pendingScoring, controller.$referencesInFlight)
+        // The interview's id is read when it ends, not later: New Interview
+        // may clear it before the delivery on the main queue.
+        let endedIDs = controller.$phase.map { [weak controller] phase in phase == .ended ? controller?.interview?.id : nil }
+        watching = endedIDs.combineLatest(controller.$pendingScoring, controller.$referencesInFlight)
             .receive(on: DispatchQueue.main)
-            .sink { [weak self, weak controller] phase, pending, inFlight in
-                guard let self, let controller, phase == .ended, pending.isEmpty, inFlight.isEmpty,
-                      let id = controller.interview?.id else { return }
+            .sink { [weak self] endedID, pending, inFlight in
+                guard let self else { return }
+                if let endedID { self.ended = endedID }
+                guard let id = self.ended, pending.isEmpty, inFlight.isEmpty else { return }
                 self.save(id: id)
             }
     }

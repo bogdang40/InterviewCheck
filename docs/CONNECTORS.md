@@ -22,7 +22,7 @@ and which documented details are still unconfirmed.
 |---|---|---|
 | **Calendar on this Mac** | Interviews from every calendar macOS syncs (iCloud, Google, Exchange, Outlook) | Allow Calendar access. Events with "interview", "screen" or "onsite" in the title are used. Add extra title words if your team uses others. |
 | **Invite files (.ics)** | One interview per dropped invite | Drag the invite from any email. Outlook's Windows time zones are understood. |
-| **Calendar feed (iCal link)** | Interviews from any calendar's secret iCal address (Google, Outlook, iCloud, Fastmail, scheduling tools) | Paste the address (`https://…` or `webcal://…`, several one per line). It is a secret: anyone with it can read the calendar. Feeds refresh every few hours on the provider's side. |
+| **Calendar feed (iCal link)** | Interviews from any calendar's secret iCal address (Google, Outlook, iCloud, Fastmail, scheduling tools) | Paste the address (`https://…` or `webcal://…`, several one per line). It is a secret: anyone with it can read the calendar. Feeds refresh every few hours on the provider's side. If a feed cannot be read, the sync reports it and keeps the last good list. |
 
 A calendar invite rarely contains a job description or résumé. When an ATS is also
 connected, Prepare looks the candidate up there by email and fills those in. Any
@@ -55,11 +55,13 @@ How it reads:
   last 60 days are downloaded, up to the newest 500 messages and 150 invites per sync.
 - When an invite is updated, the version with the highest SEQUENCE (then the newest
   message) wins. A cancellation (METHOD:CANCEL or STATUS:CANCELLED) removes the interview.
-- **Résumés from mail:** when no ATS has the candidate's résumé, Prepare asks the mailbox
-  server to search the last 90 days for the candidate's name or email and takes a PDF,
-  Word, RTF or ODT attachment only if its file name names the candidate, or it looks like a
-  CV and the subject names them. Prepare says which file and sender it used. Turn it off
-  with "Don't look for résumés in mail".
+- **Résumés from mail:** when you press Prepare and no ATS has the candidate's résumé, the
+  mailbox server is searched (last 90 days) for the candidate's name or email. A PDF, Word,
+  RTF or ODT attachment is taken only if its file name has every word of the candidate's
+  full name, or it looks like a CV and the subject has every word of the name. A surname
+  alone or a one-word name never matches. Prepare says which file and sender it used.
+  Automatic Prepare does not use mail résumés (it has nowhere to show that note). Turn it
+  off with "Don't look for résumés in mail".
 - Outlook and Microsoft 365 mailboxes no longer accept app passwords. Use the Microsoft
   365 connector; their invites are already in the Outlook calendar.
 - Proton Mail works through Proton Mail Bridge on the Mac (`127.0.0.1:1143` is not TLS,

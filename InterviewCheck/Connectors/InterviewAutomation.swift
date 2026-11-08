@@ -24,6 +24,11 @@ enum InterviewAutomation {
     static func prepare(_ interview: ExternalInterview, manager: ConnectorManager = .shared,
                         controller: InterviewController = .shared) async -> String {
         let missing = await manager.prepare(interview, controller: controller)
+        // Refused or stopped: say only that, not "Prepared …".
+        if let first = missing.first, first == ConnectorManager.waitForScores || first.hasPrefix("Preparation stopped")
+            || first == "An interview is live." {
+            return first
+        }
         let who = interview.candidate?.name ?? interview.title
         let when = interview.startsAt.formatted(date: .omitted, time: .shortened)
         return (["Prepared \(who) at \(when)."] + missing).joined(separator: " ")

@@ -15,8 +15,11 @@ extension ConnectorManager {
                  roles: RoleStore = .shared, navigate: Bool = true, canApply: ((String?) -> Bool)? = nil) async -> [String] {
         guard controller.phase != .live else { return ["An interview is live."] }
         guard controller.pendingScoring.isEmpty else {
-            return ["The last interview\u{2019}s scores are still being worked out. Try again in a moment."]
+            let wait = Self.waitForScores
+            controller.errorMessage = wait
+            return [wait]
         }
+        if controller.errorMessage == Self.waitForScores { controller.errorMessage = nil }
         prepareGeneration += 1
         let generation = prepareGeneration
         // Each await is a chance for the interview to start or another Prepare
@@ -29,7 +32,9 @@ extension ConnectorManager {
         controller.preparedFrom = original.id
         // Stopping leaves no half-made setup marked as this interview's.
         let stop = { () -> [String] in
-            if controller.preparedFrom == original.id, controller.externalRef == nil { controller.preparedFrom = nil }
+            if generation == self.prepareGeneration, controller.preparedFrom == original.id, controller.externalRef == nil {
+                controller.preparedFrom = nil
+            }
             return stopped
         }
         // A calendar invite knows little: find the candidate in a connected ATS.
@@ -89,7 +94,9 @@ extension ConnectorManager {
         }
 
         // No résumé from an ATS: one a recruiter emailed (connected mailbox).
-        if resume == nil, let candidate = interview.candidate,
+        // Only when the interviewer asked (the "check it" note is shown to them);
+        // an automatic Prepare has nowhere to show it.
+        if resume == nil, !staged, let candidate = interview.candidate,
            let found = await emailedResume(for: candidate, current: current) {
             guard current() else { return stop() }
             resume = (found.text, found.filename)
@@ -98,17 +105,24 @@ extension ConnectorManager {
         }
 
         guard current(), canApply?(roleID) ?? true else { return stop() }
-        controller.candidateName = interview.candidate?.name ?? ""
-        controller.externalRef = interview.id
+        // A manual Prepare already wrote the candidate and role; anything the
+        // interviewer changed during the downloads stays. The résumé goes in
+        // only if the field is still empty.
+        if staged {
+            controller.candidateName = interview.candidate?.name ?? ""
+            controller.externalRef = interview.id
+            if let roleID { roles.selectedRoleID = roleID }
+        }
         controller.preparedFrom = original.id
-        if let roleID { roles.selectedRoleID = roleID }
-        if let resume {
+        if let resume, staged || controller.resumeText.isEmpty {
             controller.resumeText = resume.text
             controller.resumeFileName = resume.fileName
         }
         if navigate { AppNavigation.shared.show(.interview) }
         return missing
     }
+
+    static let waitForScores = "The last interview\u{2019}s scores are still being worked out. Prepare again in a moment."
 
     /// For interviews from calendars and meeting tools: the same interview as
     /// the connected ATS sees it (candidate, job, application), found by the

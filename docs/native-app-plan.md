@@ -186,3 +186,4 @@ tools; pull finished meeting recordings for scoring; optionally post a private n
 - 01:36 second review (10 findings) fixed: c21a953 Prepare (stop clears preparedFrom, first-run role, manual parts written at once, keep until 5 min before the next), 10e55fa report PDFs (rewrite on score change, retry, recovered), 5f6152f Bullhorn invitees, transcript fallback, JobAdder paging. 89 connector + 331 app tests.
 - 01:42 bcc2407 E19 résumés from mail. 93 connector tests.
 - 01:44 9892978 E19b Outlook résumés via Graph (opt-in Mail.Read); matching shared in ResumeMatching. 94 connector tests.
+- third review (12 findings) fixed: 30c05ea IMAP search injection via names (control chars refused), full-name-only résumé matching, forwarded parts, feed failure keeps the last list, Bullhorn stable paging; app fixes (manual Prepare keeps edits, mail résumés manual-only, refusal shown, stop() by generation, PDF after New Interview, keep window). 96 connector tests.

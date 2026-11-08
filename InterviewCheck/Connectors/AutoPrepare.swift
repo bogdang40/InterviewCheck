@@ -134,8 +134,16 @@ final class AutoPrepare {
         if controller.candidateName.isEmpty, controller.resumeText.isEmpty, controller.externalRef == nil,
            controller.preparedFrom == nil { return true }
         guard let lastFill, lastFill == fill, let lastPrepared else { return false }
-        let end = lastPrepared.endsAt ?? lastPrepared.startsAt.addingTimeInterval(3600)
-        let keepUntil = max(min(end, next.startsAt.addingTimeInterval(-5 * 60)), lastPrepared.startsAt)
+        let keepUntil: Date
+        if let end = lastPrepared.endsAt {
+            // A known end: kept until then, even if the next one overlaps.
+            keepUntil = end
+        } else {
+            // No end given: an hour, but released 5 minutes before the next
+            // interview, and never in its first 15 minutes.
+            keepUntil = max(min(lastPrepared.startsAt.addingTimeInterval(3600), next.startsAt.addingTimeInterval(-5 * 60)),
+                            lastPrepared.startsAt.addingTimeInterval(15 * 60))
+        }
         return now() >= keepUntil
     }
 

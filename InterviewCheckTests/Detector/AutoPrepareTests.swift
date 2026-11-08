@@ -192,6 +192,25 @@ final class AutoPrepareTests: XCTestCase {
         XCTAssertEqual(next?.externalID, "b")
     }
 
+    func testWhatIsTypedDuringAManualPrepareIsKept() async throws {
+        source.delay = 300_000_000
+        let a = manager.upcoming[0]
+        let manual = Task { await self.manager.prepare(a, controller: self.controller, roles: self.roles, navigate: false) }
+        try await Task.sleep(nanoseconds: 80_000_000)
+        XCTAssertEqual(controller.candidateName, "Jane Doe", "a manual Prepare shows the candidate at once")
+        controller.candidateName = "Jane Q. Doe"
+        _ = await manual.value
+        XCTAssertEqual(controller.candidateName, "Jane Q. Doe", "the interviewer's correction stays")
+    }
+
+    func testARefusalIsSaidOnItsOwn() async {
+        controller.pendingScoring = ["q1"]
+        let said = await InterviewAutomation.prepare(manager.upcoming[0], manager: manager, controller: controller)
+        XCTAssertEqual(said, ConnectorManager.waitForScores, "not \"Prepared …\"")
+        XCTAssertEqual(controller.errorMessage, ConnectorManager.waitForScores, "shown in the setup too")
+        controller.pendingScoring = []
+    }
+
     func testOffOrWhileEditingRolesNothingHappens() async {
         editingRoles = true
         let whileEditing = await auto.tick()

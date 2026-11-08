@@ -98,4 +98,39 @@ final class ReportAutoSaveTests: XCTestCase {
         XCTAssertEqual(rewritten, first, "in place, not a second file")
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: first.deletingLastPathComponent().path).count, 1)
     }
+
+    func testSavedAfterSlowAIAnswersEvenIfANewInterviewWasStarted() async throws {
+        let path = NSTemporaryDirectory() + "autosave-\(UUID().uuidString).sqlite"
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("reports-\(UUID().uuidString)", isDirectory: true)
+        defer {
+            try? FileManager.default.removeItem(atPath: path)
+            try? FileManager.default.removeItem(at: folder)
+        }
+        let database = SessionDatabase(databasePath: path)
+        let defaults = UserDefaults(suiteName: "autosave.\(UUID().uuidString)")!
+        let controller = InterviewController(timeline: InterviewTimeline(), database: database, settings: DetectorSettings(defaults: defaults))
+        controller.startAudio = {}
+        controller.stopAudio = {}
+        controller.roleProvider = { nil }
+        let autosave = ReportAutoSave(defaults: defaults, database: database)
+        autosave.folder = folder
+        autosave.watch(controller)
+        controller.consentConfirmed = true
+        controller.candidateName = "Slow Answers"
+        controller.start()
+        controller.referencesInFlight = ["q1"]          // an AI answer still coming after scoring gave up
+        controller.end()
+        controller.reset()                              // New Interview
+        try await Task.sleep(nanoseconds: 150_000_000)
+        XCTAssertTrue(((try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []).isEmpty, "not before the answers are in")
+        controller.referencesInFlight = []
+        var files: [String] = []
+        let deadline = Date().addingTimeInterval(3)
+        while files.isEmpty, Date() < deadline {
+            try await Task.sleep(nanoseconds: 50_000_000)
+            files = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
+        }
+        XCTAssertEqual(files.count, 1)
+        controller.stopTicking()
+    }
 }
