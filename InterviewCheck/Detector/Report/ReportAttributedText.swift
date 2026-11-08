@@ -53,14 +53,23 @@ enum ReportAttributedText {
                                  before: 4, after: 2))
                 text.append(line(note, font: .systemFont(ofSize: 11), indent: 8, after: 4))
             }
+            let references = (report.references[question.id] ?? []).filter { $0.error == nil && !$0.text.isEmpty }
+            let shared = SharedWords.anyReference(answer: question.answerText, references: references.map(\.text),
+                                                  question: question.text)
             text.append(line("Candidate's answer", font: .systemFont(ofSize: 10, weight: .semibold), color: muted,
                              before: 6, after: 2))
-            text.append(line(question.answerText.isEmpty ? "(nothing captured)" : question.answerText,
-                             font: .systemFont(ofSize: 11), background: answerFill, indent: 8, after: 6))
-            for answer in report.references[question.id] ?? [] where answer.error == nil && !answer.text.isEmpty {
+            text.append(highlighted(line(question.answerText.isEmpty ? "(nothing captured)" : question.answerText,
+                                         font: .systemFont(ofSize: 11), background: answerFill, indent: 8, after: 2),
+                                    words: shared.answer))
+            if let summary = shared.summary {
+                text.append(line("Highlighted: \(summary).", font: .systemFont(ofSize: 10), color: muted, indent: 8, after: 6))
+            }
+            for answer in references {
+                let match = SharedWords.find(answer: question.answerText, reference: answer.text, question: question.text)
                 text.append(line(answer.label, font: .systemFont(ofSize: 10, weight: .semibold), color: accent,
                                  before: 4, after: 1))
-                text.append(line(answer.text, font: .systemFont(ofSize: 10), color: muted, after: 4))
+                text.append(highlighted(line(answer.text, font: .systemFont(ofSize: 10), color: muted, after: 4),
+                                        words: match.reference))
             }
         }
         return text
@@ -78,6 +87,19 @@ enum ReportAttributedText {
         var attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color, .paragraphStyle: paragraph]
         if let background { attributes[.backgroundColor] = background }
         return NSAttributedString(string: string + "\n", attributes: attributes)
+    }
+
+    /// Marks shared words the way the app does (the line's text starts at 0).
+    static let highlightFill = NSColor(srgbRed: 1.0, green: 0.80, blue: 0.45, alpha: 1)
+
+    private static func highlighted(_ line: NSAttributedString, words: Set<Int>) -> NSAttributedString {
+        guard !words.isEmpty else { return line }
+        let result = NSMutableAttributedString(attributedString: line)
+        let string = line.string
+        for range in SharedWords.highlightRanges(string, words: words) {
+            result.addAttribute(.backgroundColor, value: highlightFill, range: NSRange(range, in: string))
+        }
+        return result
     }
 
     private static func bullet(_ string: String) -> NSAttributedString {

@@ -151,16 +151,22 @@ struct TimingStrip: View {
     }
 }
 
-/// One AI answer, streaming in.
+/// One AI answer, streaming in, with the words the candidate also said
+/// highlighted.
 struct ReferenceCard: View {
     let answer: ReferenceAnswerRecord
     var isBestMatch = false
+    var shared: SharedWords = .none
 
     var body: some View {
         GroupBox {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     Tag(text: answer.promptName, color: .accentColor)
+                    if shared.sharedCount > 0 {
+                        Tag(text: "\(shared.sharedCount) words match", color: .orange)
+                            .help("The candidate said \(shared.sharedCount) of these words in the same order (highlighted).")
+                    }
                     Spacer(minLength: 0)
                     if answer.isStreaming {
                         ProgressView().controlSize(.small)
@@ -171,8 +177,13 @@ struct ReferenceCard: View {
                     }
                 }
                 ScrollView {
-                    Text(answer.text.isEmpty ? (answer.error == nil ? "Writing\u{2026}" : "No answer") : answer.text)
-                        .foregroundStyle(answer.text.isEmpty ? .secondary : .primary)
+                    Group {
+                        if answer.text.isEmpty {
+                            Text(answer.error == nil ? "Writing\u{2026}" : "No answer").foregroundStyle(.secondary)
+                        } else {
+                            HighlightedText(text: answer.text, words: shared.reference)
+                        }
+                    }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .textSelection(.enabled)
                 }
@@ -197,12 +208,73 @@ struct ReferenceCard: View {
 struct ReferenceGrid: View {
     let answers: [ReferenceAnswerRecord]
     var bestMatchLabel: String?
+    /// The candidate's answer and the question, to highlight shared words.
+    var candidateAnswer = ""
+    var question = ""
 
     var body: some View {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 12, alignment: .top)],
                   alignment: .leading, spacing: 12) {
             ForEach(answers) { answer in
-                ReferenceCard(answer: answer, isBestMatch: bestMatchLabel == answer.label)
+                ReferenceCard(answer: answer, isBestMatch: bestMatchLabel == answer.label,
+                              shared: candidateAnswer.isEmpty ? .none
+                                  : SharedWords.find(answer: candidateAnswer, reference: answer.text, question: question))
+            }
+        }
+    }
+}
+
+/// Text with some of its words highlighted, the way a plagiarism checker
+/// marks copied passages.
+struct HighlightedText: View {
+    let text: String
+    let words: Set<Int>
+
+    var body: some View {
+        Text(Self.attributed(text, words: words))
+    }
+
+    static let fill = Color.orange.opacity(0.3)
+
+    static func attributed(_ text: String, words: Set<Int>) -> AttributedString {
+        var result = AttributedString(text)
+        for range in SharedWords.highlightRanges(text, words: words) {
+            guard let target = Range(range, in: result) else { continue }
+            result[target].backgroundColor = fill
+        }
+        return result
+    }
+}
+
+/// The candidate's answer with the words an AI answer also has highlighted,
+/// and how many there are.
+struct CandidateAnswerBlock: View {
+    let text: String
+    var references: [ReferenceAnswerRecord] = []
+    var question = ""
+    var placeholder = "Waiting for the candidate\u{2026}"
+
+    var body: some View {
+        let usable = references.filter { $0.error == nil && !$0.text.isEmpty }.map(\.text)
+        let shared = SharedWords.anyReference(answer: text, references: usable, question: question)
+        VStack(alignment: .leading, spacing: 6) {
+            SectionCaption("Candidate's answer")
+            if text.isEmpty {
+                Text(placeholder).foregroundStyle(.secondary)
+            } else {
+                HighlightedText(text: text, words: shared.answer)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+            }
+            if let summary = shared.summary {
+                Label {
+                    Text(summary)
+                } icon: {
+                    RoundedRectangle(cornerRadius: 2).fill(HighlightedText.fill).frame(width: 14, height: 10)
+                }
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .help("Runs of four or more words, in the same order, that also appear in one of the AI answers below.")
             }
         }
     }

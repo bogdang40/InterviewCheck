@@ -104,25 +104,28 @@ struct InterviewLiveScreen: View {
         QuestionNoteField(questionID: question.id, database: controller.database)
             .id(question.id)
             .frame(maxWidth: 640)
+        let answers = controller.references[question.id] ?? []
+        let answerText = window.map { $0.answerWords.map { $0.isFiller ? "(\($0.normalized))" : $0.text }.joined(separator: " ") }
+            ?? question.answerText
         if let window {
             TimingStrip(model: TimingStripModel(
                 window: window,
                 timing: TimingSignal.evaluate(answerWords: window.answerWords, questionEnd: window.questionEnd,
                                               questionText: question.text),
                 now: timeline.now))
-            answerBlock(window.answerWords.map { $0.isFiller ? "(\($0.normalized))" : $0.text }.joined(separator: " "))
-        } else if !question.answerText.isEmpty {
-            answerBlock(question.answerText)
+        }
+        if window != nil || !answerText.isEmpty {
+            CandidateAnswerBlock(text: answerText, references: answers, question: question.text)
         }
         if let score = controller.scores[question.id] {
             ScoreCard(score: score)
         } else if question.closedAt != nil, !question.answerText.isEmpty {
             HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Scoring the answer\u{2026}").foregroundStyle(.secondary) }
         }
-        let answers = controller.references[question.id] ?? []
         if !answers.isEmpty || controller.referencesInFlight.contains(question.id) {
             SectionCaption("What AI tools would have said")
-            ReferenceGrid(answers: answers, bestMatchLabel: controller.scores[question.id]?.metrics.bestMatchLabel)
+            ReferenceGrid(answers: answers, bestMatchLabel: controller.scores[question.id]?.metrics.bestMatchLabel,
+                          candidateAnswer: answerText, question: question.text)
         }
     }
 
@@ -161,17 +164,6 @@ struct InterviewLiveScreen: View {
                 }
             }
             .padding(6)
-        }
-    }
-
-    private func answerBlock(_ text: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            SectionCaption("Candidate's answer")
-            Text(text.isEmpty ? "Waiting for the candidate\u{2026}" : text)
-                .font(.body)
-                .foregroundStyle(text.isEmpty ? .secondary : .primary)
-                .fixedSize(horizontal: false, vertical: true)
-                .textSelection(.enabled)
         }
     }
 

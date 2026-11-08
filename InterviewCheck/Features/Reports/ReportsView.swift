@@ -243,13 +243,13 @@ struct ReportDetail: View {
                         if let strip = timingStrip(question) {
                             TimingStrip(model: strip)
                         }
-                        SectionCaption("Candidate's answer")
-                        Text(question.answerText.isEmpty ? "(nothing captured)" : question.answerText)
-                            .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
                         let answers = (report.references[question.id] ?? []).filter { $0.error == nil }
+                        CandidateAnswerBlock(text: question.answerText, references: answers, question: question.text,
+                                             placeholder: "(nothing captured)")
                         if !answers.isEmpty {
                             DisclosureGroup("What AI tools would have said (\(answers.count))") {
-                                ReferenceGrid(answers: answers, bestMatchLabel: report.scores[question.id]?.metrics.bestMatchLabel)
+                                ReferenceGrid(answers: answers, bestMatchLabel: report.scores[question.id]?.metrics.bestMatchLabel,
+                                              candidateAnswer: question.answerText, question: question.text)
                                     .padding(.top, 6)
                             }
                         }
