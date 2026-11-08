@@ -16,6 +16,7 @@ enum InterviewReportComposer {
         if interview.wasInterrupted {
             lines.append("- Interrupted: the app closed before the interview was ended; the last answer may be cut short.")
         }
+        if interview.scoredFrom == .transcript { lines.append("- \(ScoredFrom.transcriptCaveat)") }
         lines += ["", "_Scores are signals to follow up on, not proof. A person should review the evidence before any decision._", ""]
 
         for question in report.questions {

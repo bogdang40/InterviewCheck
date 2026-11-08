@@ -1,3 +1,4 @@
+import InterviewCheckConnectors
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -5,6 +6,9 @@ import UniformTypeIdentifiers
 struct AnalyzeRecordingView: View {
     @ObservedObject var analyzer: RecordingAnalyzer
     @ObservedObject private var roles = RoleStore.shared
+    @ObservedObject private var connectors = ConnectorManager.shared
+    @State private var meeting: ExternalRecording?
+    @State private var meetingError: String?
     @State private var file: URL?
     @State private var duration: TimeInterval?
     @State private var candidateName = ""
@@ -40,6 +44,7 @@ struct AnalyzeRecordingView: View {
         .frame(width: 560)
         .fileImporter(isPresented: $isImporting, allowedContentTypes: [.audio, .movie]) { result in
             if case .success(let url) = result {
+                meeting = nil
                 file = url
                 Task { duration = await RecordingAudio.duration(of: url) }
             }
@@ -48,9 +53,17 @@ struct AnalyzeRecordingView: View {
 
     private var setup: some View {
         Form {
+            if !connectors.recordings.isEmpty {
+                Section("From your meetings") {
+                    ForEach(connectors.recordings.prefix(6), id: \.recording.id) { item in
+                        meetingRow(item.recording, analyzed: item.interviewID != nil)
+                    }
+                }
+            }
             LabeledContent("Recording") {
                 HStack {
-                    Text(file?.lastPathComponent ?? "None").lineLimit(1).foregroundStyle(file == nil ? .secondary : .primary)
+                    Text(meeting?.title ?? file?.lastPathComponent ?? "None").lineLimit(1)
+                        .foregroundStyle(file == nil && meeting == nil ? .secondary : .primary)
                     if let duration {
                         Text(Duration.seconds(duration).formatted(.time(pattern: .hourMinuteSecond))).foregroundStyle(.secondary)
                     }
@@ -68,11 +81,57 @@ struct AnalyzeRecordingView: View {
         }
         .formStyle(.grouped)
         .safeAreaInset(edge: .bottom) {
-            footer(primary: "Analyze", disabled: file == nil || !consent) {
-                guard let file else { return }
-                analyzer.start(file: file, candidateName: candidateName, role: roles.role(id: roleID))
+            VStack(alignment: .leading, spacing: 6) {
+                if let meetingError { Text(meetingError).font(.callout).foregroundStyle(.orange) }
+                footer(primary: "Analyze", disabled: (file == nil && meeting == nil) || !consent) {
+                    let role = roles.role(id: roleID)
+                    if let meeting {
+                        meetingError = nil
+                        Task {
+                            do {
+                                try await connectors.analyze(meeting, with: analyzer, candidateName: candidateName, role: role)
+                            } catch {
+                                meetingError = error.localizedDescription
+                            }
+                        }
+                    } else if let file {
+                        analyzer.start(file: file, candidateName: candidateName, role: role)
+                    }
+                }
             }
         }
+    }
+
+    private func meetingRow(_ recording: ExternalRecording, analyzed: Bool) -> some View {
+        Button {
+            meeting = recording
+            file = nil
+            duration = recording.duration
+            if let match = connectors.interview(for: recording) {
+                if candidateName.isEmpty { candidateName = match.candidate?.name ?? "" }
+                if let title = match.job?.title,
+                   let role = roles.roles.first(where: { $0.name.caseInsensitiveCompare(title) == .orderedSame }) {
+                    roleID = role.id
+                }
+            }
+        } label: {
+            HStack {
+                Image(systemName: meeting?.id == recording.id ? "largecircle.fill.circle" : "circle")
+                    .foregroundStyle(meeting?.id == recording.id ? Color.accentColor : .secondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(recording.title).lineLimit(1)
+                    Text([recording.source.descriptor.name,
+                          recording.startedAt.formatted(date: .abbreviated, time: .shortened),
+                          recording.bestMediaFile != nil ? "audio" : "transcript only"]
+                            .joined(separator: " \u{00B7} "))
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                if analyzed { Tag(text: "Scored", color: .green) }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     private var speakerChoice: some View {
@@ -82,7 +141,7 @@ struct AnalyzeRecordingView: View {
             Picker("Candidate", selection: $analyzer.candidateSpeaker) {
                 ForEach(analyzer.speakers) { speaker in
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Voice \(speaker.id + 1) \u{00B7} \(speaker.wordCount) words").font(.body.weight(.medium))
+                        Text("\(speaker.name ?? "Voice \(speaker.id + 1)") \u{00B7} \(speaker.wordCount) words").font(.body.weight(.medium))
                         Text("\u{201C}\(speaker.sample)\u{2026}\u{201D}").font(.caption).foregroundStyle(.secondary).lineLimit(2)
                     }
                     .tag(Optional(speaker.id))

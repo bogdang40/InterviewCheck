@@ -28,7 +28,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             InterviewRecovery.finishUnended(database: .shared, weights: weights)
         }
         accessController.startPeriodicVerification()
-        // Connected ATS, calendars and meeting tools sync now and every 15 minutes.
+        // Connected ATS, calendars and meeting tools sync now and every 15
+        // minutes; each change reschedules the reminders before interviews.
+        InterviewReminders.shared.install()
+        ConnectorManager.shared.onUpcomingChanged = { InterviewReminders.shared.schedule($0) }
         ConnectorManager.shared.startAutoSync()
         Task { @MainActor [weak self] in
             await self?.accessController.evaluate()

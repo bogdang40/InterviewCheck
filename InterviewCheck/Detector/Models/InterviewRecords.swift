@@ -21,6 +21,14 @@ struct InterviewRecord: Equatable, Identifiable {
     var wasInterrupted = false
     /// "greenhouse:123" when the interview was prepared from a connector.
     var externalRef: String?
+    /// nil for a live interview, otherwise how it was scored afterwards.
+    var scoredFrom: ScoredFrom?
+}
+
+enum ScoredFrom: String, Codable, Equatable {
+    case recording
+    /// A meeting tool's transcript: sentence-level timing, fillers often missing.
+    case transcript
 }
 
 enum QuestionSource: String, Codable, Equatable {

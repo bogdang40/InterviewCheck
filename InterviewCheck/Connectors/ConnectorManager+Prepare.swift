@@ -12,6 +12,7 @@ extension ConnectorManager {
         controller.reset()
         controller.candidateName = interview.candidate?.name ?? ""
         controller.externalRef = interview.id
+        database.saveExternalLink(interview)
         var missing: [String] = []
         let connector = try? makeConnector(interview.source)
 

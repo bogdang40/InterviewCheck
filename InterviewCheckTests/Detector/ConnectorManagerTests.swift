@@ -3,9 +3,14 @@ import InterviewCheckConnectors
 @testable import InterviewCheck
 
 /// An ATS stand-in: one interview, its job and a résumé file.
-private struct FakeATS: InterviewSource, JobSource, CandidateSource {
+final class NoteLog: @unchecked Sendable { var notes: [String] = [] }
+
+private struct FakeATS: InterviewSource, JobSource, CandidateSource, NoteDestination {
     let kind = ConnectorKind.greenhouse
     let start: Date
+    var log = NoteLog()
+
+    func addNote(_ text: String, to interview: ExternalInterview) async throws { log.notes.append(text) }
 
     func verify() async throws -> String { "acme.greenhouse.io" }
 
@@ -94,5 +99,55 @@ final class ConnectorManagerTests: XCTestCase {
         }
         try await manager.connect(.greenhouse, fields: ["apiKey": "k"])
         XCTAssertEqual(manager.account(.greenhouse)?.lastError, ConnectorError.unauthorized.localizedDescription)
+    }
+
+    func testSummaryNoteGoesBackToTheATSOnlyWhenSent() async throws {
+        let path = NSTemporaryDirectory() + "summary-\(UUID().uuidString).sqlite"
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let database = SessionDatabase(databasePath: path)
+        let defaults = UserDefaults(suiteName: "summary.\(UUID().uuidString)")!
+        let manager = ConnectorManager(store: MemoryCredentialStore(), database: database, defaults: defaults)
+        let log = NoteLog()
+        let ats = FakeATS(start: Date().addingTimeInterval(3600), log: log)
+        manager.factory = { _, _, _, _ in ats }
+        try await manager.connect(.greenhouse, fields: ["clientID": "c", "clientSecret": "s"])
+
+        let controller = InterviewController(timeline: InterviewTimeline(), database: database,
+                                             settings: DetectorSettings(defaults: defaults))
+        await manager.prepare(manager.upcoming[0], controller: controller,
+                              roles: RoleStore(database: database, defaults: defaults))
+        // The interview ran; its record keeps the link to the ATS.
+        database.saveInterview(InterviewRecord(id: "i1", workspaceID: nil, roleTitle: "Backend Engineer", candidateName: "Jane Doe",
+                                               consentConfirmedAt: Date(), startedAt: Date(), overallPercent: 81, flaggedCount: 1,
+                                               questionCount: 1, externalRef: controller.externalRef))
+        database.saveInterviewQuestion(InterviewQuestionRecord(id: "q1", interviewID: "i1", ordinal: 1, text: "Design a rate limiter",
+                                                               source: .live, markedAt: 0))
+        database.saveAnswerLabel(.aiAssisted, questionID: "q1")
+        // Later syncs drop the interview from the window; the saved link remains.
+        database.replaceExternalInterviews([], source: .greenhouse)
+
+        let report = try XCTUnwrap(database.loadInterviewReport(id: "i1"))
+        let (interview, kind) = try XCTUnwrap(manager.noteDestination(for: report))
+        XCTAssertEqual(kind, .greenhouse)
+        XCTAssertEqual(interview.candidate?.externalID, "c7")
+        let text = SummaryNote.make(report)
+        XCTAssertTrue(text.contains("81% overall"))
+        XCTAssertTrue(text.contains("Interviewer: AI-assisted."))
+        XCTAssertTrue(text.contains("not proof"))
+        XCTAssertTrue(log.notes.isEmpty, "nothing is sent before the interviewer presses Send")
+        try await manager.sendNote(text, to: interview)
+        XCTAssertEqual(log.notes, [text])
+    }
+
+    func testRemindersOnlyForInterviewsStillAhead() {
+        let now = Date()
+        let soon = ExternalInterview(source: .appleCalendar, externalID: "a", title: "Interview", startsAt: now.addingTimeInterval(5 * 60),
+                                     candidate: ExternalCandidate(name: "Jane Doe"))
+        let later = ExternalInterview(source: .appleCalendar, externalID: "b", title: "Interview", startsAt: now.addingTimeInterval(3600),
+                                      candidate: ExternalCandidate(name: "Ana Silva"), job: ExternalJob(externalID: "", title: "Designer"))
+        let requests = InterviewReminders.requests(for: [soon, later], minutes: 10, now: now)
+        XCTAssertEqual(requests.map(\.identifier), ["interview.appleCalendar:b"], "too late to remind about the first")
+        XCTAssertEqual(requests.first?.content.body, "Ana Silva \u{00B7} Designer")
+        XCTAssertEqual(requests.first?.content.userInfo["interviewID"] as? String, "appleCalendar:b")
     }
 }

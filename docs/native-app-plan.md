@@ -75,8 +75,9 @@ tools; pull finished meeting recordings for scoring; optionally post a private n
 - [x] E4 Unified: Merge, Kombo, Unified.to (interviews + notes), Apideck (jobs + applicants only).
 - [x] E5 Google (Calendar + Meet transcripts; Gmail/Drive skipped: restricted scopes), Microsoft 365 (Outlook, Teams
       recordings/transcripts), Zoom (meetings, cloud recordings).
-- [ ] E6 Recordings inbox → Analyze; reminders before interviews; summary note back to the ATS
-      (explicit button, opt-in).
+- [x] E6 Meeting recordings in File › Analyze Recording (Zoom audio, Teams/Meet transcripts scored by
+      speaker name, low confidence, schema v22 scored_from); reminders with Prepare; Send Summary to the
+      ATS as a private note (explicit, editable; link kept in external_links).
 - [ ] E7 MCP client connector.
 
 ## C. Verify every step
@@ -111,3 +112,4 @@ tools; pull finished meeting recordings for scoring; optionally post a private n
 - 22:09 E3a Greenhouse v3 / Lever / Ashby / Workable connectors from the vendors' docs (research in session scratchpad). 21 connector tests.
 - 22:11 E4 unified APIs (Merge, Kombo, Unified.to, Apideck). 25 connector tests.
 - 22:17 E5 Google / Microsoft Graph / Zoom connectors + WebVTT; public-client OAuth (no secret). 31 connector tests.
+- 22:23 E6 recordings → analysis, transcript scoring, reminders, Send Summary. 286 app + 31 connector tests.

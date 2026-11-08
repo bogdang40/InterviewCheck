@@ -1,3 +1,4 @@
+import InterviewCheckConnectors
 import SwiftUI
 import InterviewCheckKit
 
@@ -14,6 +15,14 @@ struct ReportsView: View {
     @AppStorage("interviewcheck.reports.sort") private var sort = ReportSort.newest
     @AppStorage("interviewcheck.reports.flaggedOnly") private var flaggedOnly = false
     @State private var roleFilter: String?
+    @State private var summaryTarget: SummaryTarget?
+    @ObservedObject private var connectors = ConnectorManager.shared
+
+    private struct SummaryTarget: Identifiable {
+        let report: InterviewReportData
+        let interview: ExternalInterview
+        var id: String { interview.id }
+    }
 
     private var filtered: [InterviewRecord] {
         ReportFilter(search: search, flaggedOnly: flaggedOnly, roleTitle: roleFilter, sort: sort).apply(interviews)
@@ -91,6 +100,12 @@ struct ReportsView: View {
                     Label("Export", systemImage: "square.and.arrow.up")
                 }
                 .disabled(interviews.isEmpty)
+                if let report, let (interview, kind) = connectors.noteDestination(for: report) {
+                    Button { summaryTarget = SummaryTarget(report: report, interview: interview) } label: {
+                        Label("Send to \(kind.descriptor.name)", systemImage: "paperplane")
+                    }
+                    .help("Review a summary and add it as a private note in \(kind.descriptor.name)")
+                }
                 Button { confirmDelete = true } label: { Label("Delete", systemImage: "trash") }
                     .disabled(report == nil)
             }
@@ -102,6 +117,9 @@ struct ReportsView: View {
         .onChange(of: selection) { _, id in
             report = id.flatMap { database.loadInterviewReport(id: $0) }
             navigation.selectedReportID = report?.interview.id
+        }
+        .sheet(item: $summaryTarget) { target in
+            SendSummarySheet(report: target.report, interview: target.interview)
         }
         .confirmationDialog("Delete this interview and its report?", isPresented: $confirmDelete) {
             Button("Delete", role: .destructive) {
@@ -299,6 +317,10 @@ struct ReportDetail: View {
                 Label("The app closed before this interview was ended. The last answer may be cut short.",
                       systemImage: "exclamationmark.triangle")
                     .font(.callout).foregroundStyle(.orange)
+            }
+            if interview.scoredFrom == .transcript {
+                Label(ScoredFrom.transcriptCaveat, systemImage: "text.bubble")
+                    .font(.callout).foregroundStyle(.secondary)
             }
             Text("Scores are signals to follow up on, not proof. A person should review the evidence before any decision.")
                 .font(.caption).foregroundStyle(.secondary)

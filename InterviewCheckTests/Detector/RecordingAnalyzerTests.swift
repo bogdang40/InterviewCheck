@@ -1,4 +1,5 @@
 import XCTest
+import InterviewCheckConnectors
 import InterviewCheckKit
 @testable import InterviewCheck
 
@@ -57,6 +58,68 @@ final class RecordingAnalyzerTests: XCTestCase {
         XCTAssertEqual(database.loadInterviewWords(interviewID: id).count, words.count)
     }
 
+    func testMeetingTranscriptIsScoredByNameWithLowConfidence() async throws {
+        let path = NSTemporaryDirectory() + "transcript-\(UUID().uuidString).sqlite"
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let database = SessionDatabase(databasePath: path)
+        let settings = DetectorSettings(defaults: UserDefaults(suiteName: "vtt.\(UUID().uuidString)")!)
+        settings.judgeEnabled = false
+        settings.useEmbeddings = false
+        database.addExternalRecordings([ExternalRecordingFixture.zoom])
+
+        let vtt = """
+        WEBVTT
+
+        00:00:01.000 --> 00:00:04.000
+        <v Sam Lead>Tell me about a hard bug you fixed recently.</v>
+
+        00:00:09.500 --> 00:00:16.000
+        <v Ana Diaz>Sure, we had a race condition in the billing service where two workers charged the same invoice.</v>
+
+        00:00:18.000 --> 00:00:20.000
+        <v Sam Lead>How did you find it?</v>
+
+        00:00:21.000 --> 00:00:27.000
+        <v Ana Diaz>I added tracing around the charge path and saw two workers pick up the same message.</v>
+        """
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let file = folder.appendingPathComponent("meeting.vtt")
+        try vtt.write(to: file, atomically: true, encoding: .utf8)
+
+        let analyzer = RecordingAnalyzer()
+        analyzer.database = database
+        analyzer.settings = settings
+        analyzer.meetingStart = Date(timeIntervalSince1970: 1_794_000_000)
+        analyzer.startTranscript(file: file, candidateName: "Ana Diaz", role: nil,
+                                 recordingID: ExternalRecordingFixture.zoom.id, cleanup: folder)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: folder.path), "the download folder is removed")
+        XCTAssertEqual(analyzer.step, .chooseSpeaker)
+        XCTAssertEqual(analyzer.speakers.map(\.name), ["Sam Lead", "Ana Diaz"])
+        XCTAssertEqual(analyzer.candidateSpeaker, 1, "the candidate is picked by name")
+
+        analyzer.analyze()
+        try await waitUntil { if case .finished = analyzer.step { return true } else { return false } }
+        guard case .finished(let id, let questions) = analyzer.step else { return XCTFail("not finished") }
+        XCTAssertEqual(questions, 2)
+        let report = try XCTUnwrap(database.loadInterviewReport(id: id))
+        XCTAssertEqual(report.interview.scoredFrom, .transcript)
+        XCTAssertEqual(report.interview.startedAt, Date(timeIntervalSince1970: 1_794_000_000))
+        XCTAssertTrue(report.scores.values.allSatisfy { $0.confidence == .low })
+        XCTAssertEqual(database.loadExternalRecordings().first?.interviewID, id)
+        XCTAssertTrue(InterviewReportComposer.markdown(report).contains("meeting's own transcript"))
+    }
+
+    func testTranscriptWithoutSpeakersIsRefused() throws {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).vtt")
+        defer { try? FileManager.default.removeItem(at: file) }
+        try "WEBVTT\n\n00:00:01.000 --> 00:00:03.000\nHello there.\n".write(to: file, atomically: true, encoding: .utf8)
+        let analyzer = RecordingAnalyzer()
+        analyzer.startTranscript(file: file, candidateName: "", role: nil)
+        guard case .failed(let message) = analyzer.step else { return XCTFail("should fail") }
+        XCTAssertTrue(message.contains("no speaker names"))
+    }
+
     private func waitUntil(timeout: TimeInterval = 5, _ condition: @escaping () -> Bool) async throws {
         let deadline = Date().addingTimeInterval(timeout)
         while !condition() {
@@ -64,4 +127,11 @@ final class RecordingAnalyzerTests: XCTestCase {
             try await Task.sleep(nanoseconds: 20_000_000)
         }
     }
+}
+
+enum ExternalRecordingFixture {
+    static let zoom = ExternalRecording(source: .zoom, externalID: "BOKX==", title: "Interview: Ana Diaz",
+                                        startedAt: Date(timeIntervalSince1970: 1_794_000_000), duration: 1800,
+                                        files: [ExternalFile(kind: .transcript, filename: "a.vtt",
+                                                             url: URL(string: "https://zoom.us/rec/t")!, needsAuth: true)])
 }

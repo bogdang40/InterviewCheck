@@ -148,5 +148,12 @@ extension SessionDatabaseMigrationSteps {
             """,
             "ALTER TABLE interviews ADD COLUMN external_ref TEXT",
         ]),
+        // How an interview was scored: live (nil), a recording, or a transcript.
+        MigrationStep(version: 22, statements: [
+            "ALTER TABLE interviews ADD COLUMN scored_from TEXT",
+            // The connector record an interview was prepared from, kept so a
+            // summary can be sent back after the sync window moves on.
+            "CREATE TABLE IF NOT EXISTS external_links (ref TEXT PRIMARY KEY, payload TEXT NOT NULL)",
+        ]),
     ]
 }

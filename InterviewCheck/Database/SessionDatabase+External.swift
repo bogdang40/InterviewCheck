@@ -78,6 +78,21 @@ extension SessionDatabase {
         }
     }
 
+    func saveExternalLink(_ interview: ExternalInterview) {
+        guard let payload = try? Self.encoder.encode(interview) else { return }
+        interviewWrite("saveExternalLink", "INSERT OR REPLACE INTO external_links (ref, payload) VALUES (?, ?)") {
+            $0.bindText(interview.id, at: 1)
+            $0.bindText(String(decoding: payload, as: UTF8.self), at: 2)
+        }
+    }
+
+    func loadExternalLink(_ ref: String) -> ExternalInterview? {
+        interviewRead("loadExternalLink", "SELECT payload FROM external_links WHERE ref = ?",
+                      bind: { $0.bindText(ref, at: 1) }) { row in
+            row.columnText(0).flatMap { try? Self.decoder.decode(ExternalInterview.self, from: Data($0.utf8)) }
+        }.first ?? nil
+    }
+
     /// Forgets everything a source brought in (when it is disconnected).
     func deleteExternalData(source: ConnectorKind) {
         for table in ["external_interviews", "external_recordings"] {

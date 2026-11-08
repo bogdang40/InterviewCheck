@@ -7,6 +7,7 @@ struct ConnectionsView: View {
     @ObservedObject private var connectors = ConnectorManager.shared
     @State private var selection: ConnectorKind? = .appleCalendar
     @State private var search = ""
+    @State private var reminderMinutes = InterviewReminders.minutes
 
     private func kinds(in category: ConnectorCategory) -> [ConnectorKind] {
         let query = search.trimmingCharacters(in: .whitespaces).lowercased()
@@ -49,6 +50,20 @@ struct ConnectionsView: View {
         .navigationTitle("Connections")
         .navigationSubtitle(connectors.accounts.isEmpty ? "" : "\(connectors.accounts.count) connected")
         .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Picker(selection: $reminderMinutes) {
+                    ForEach(InterviewReminders.choices, id: \.self) { minutes in
+                        Text(minutes == 0 ? "No reminders" : "Remind \(minutes) min before").tag(minutes)
+                    }
+                } label: {
+                    Label("Reminders", systemImage: "bell")
+                }
+                .help("A notification before each upcoming interview, with Prepare")
+                .onChange(of: reminderMinutes) { _, minutes in
+                    InterviewReminders.minutes = minutes
+                    InterviewReminders.shared.schedule(connectors.upcoming)
+                }
+            }
             ToolbarItem(placement: .primaryAction) {
                 Button { Task { await connectors.syncAll() } } label: {
                     Label("Sync All", systemImage: "arrow.clockwise")

@@ -35,6 +35,8 @@ final class ConnectorManager: ObservableObject {
     }
     var now: () -> Date = { Date() }
     private var timer: Timer?
+    /// Called with the upcoming list after every change (reminders).
+    var onUpcomingChanged: (([ExternalInterview]) -> Void)?
     private static let accountsKey = "interviewcheck.connectors.accounts"
     static let syncInterval: TimeInterval = 15 * 60
 
@@ -133,7 +135,8 @@ final class ConnectorManager: ObservableObject {
         var failure: String?
         do {
             let connector = try makeConnector(kind)
-            let start = now().addingTimeInterval(-2 * 3600)
+            // A week back too, so finished interviews can be matched to recordings.
+            let start = now().addingTimeInterval(-7 * 86_400)
             if let source = connector as? InterviewSource {
                 let found = try await source.upcomingInterviews(from: start, to: now().addingTimeInterval(14 * 86_400))
                 database.replaceExternalInterviews(found, source: kind)
@@ -173,6 +176,7 @@ final class ConnectorManager: ObservableObject {
     func reloadCache() {
         upcoming = InterviewMerger.merge(database.loadExternalInterviews(startingAfter: now().addingTimeInterval(-2 * 3600)))
         recordings = database.loadExternalRecordings()
+        onUpcomingChanged?(upcoming)
     }
 
     private func upsert(_ account: Account) {
