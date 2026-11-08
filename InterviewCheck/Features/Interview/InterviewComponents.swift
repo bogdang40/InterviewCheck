@@ -130,7 +130,8 @@ struct Tag: View {
     }
 }
 
-/// Silence, stalling, then the answer, on a time axis.
+/// Silence, stalling, then the answer, on a time axis, with a tick where
+/// the fastest AI answer had its first line.
 struct TimingStrip: View {
     let model: TimingStripModel
 
@@ -139,16 +140,22 @@ struct TimingStrip: View {
             GeometryReader { proxy in
                 let scale = proxy.size.width / model.duration
                 ZStack(alignment: .leading) {
-                    Capsule().fill(.quaternary)
+                    Capsule().fill(.quaternary).frame(height: 10)
                     ForEach(Array(model.segments.enumerated()), id: \.offset) { _, segment in
                         RoundedRectangle(cornerRadius: 3, style: .continuous)
                             .fill(color(segment.kind))
-                            .frame(width: max(2, CGFloat(min(segment.end, model.duration) - segment.start) * scale))
+                            .frame(width: max(2, CGFloat(min(segment.end, model.duration) - segment.start) * scale), height: 10)
                             .offset(x: CGFloat(segment.start) * scale)
                     }
+                    if let ai = model.aiFirstLine {
+                        Capsule().fill(Color.primary.opacity(0.85))
+                            .frame(width: 3, height: 20)
+                            .offset(x: max(0, CGFloat(ai) * scale - 1.5))
+                    }
                 }
+                .frame(maxHeight: .infinity)
             }
-            .frame(height: 10)
+            .frame(height: 20)
             .accessibilityHidden(true)
             HStack(spacing: 12) {
                 Text(model.summary).font(.callout).foregroundStyle(.secondary)
@@ -157,6 +164,13 @@ struct TimingStrip: View {
                     legend("Silence", .silence)
                     legend("Stalling", .stall)
                     legend("Answer", .speech)
+                    if model.aiFirstLine != nil {
+                        HStack(spacing: 4) {
+                            Capsule().fill(Color.primary.opacity(0.85)).frame(width: 2.5, height: 10)
+                            Text("AI's first line").font(.caption).foregroundStyle(.secondary)
+                        }
+                        .help("When the fastest AI answer had its first line: the earliest a candidate reading from a tool could start.")
+                    }
                 }
                 .accessibilityHidden(true)
             }

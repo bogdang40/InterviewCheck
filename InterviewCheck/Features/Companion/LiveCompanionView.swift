@@ -40,7 +40,8 @@ struct LiveCompanionView: View {
                         window: window,
                         timing: TimingSignal.evaluate(answerWords: window.answerWords, questionEnd: window.questionEnd,
                                                       questionText: question.text),
-                        now: timeline.now))
+                        now: timeline.now,
+                        aiFirstLine: InterviewLiveScreen.fastestFirstLine(controller.references[question.id] ?? [])))
                 }
                 if let score = controller.scores[question.id] {
                     scoreSummary(score)

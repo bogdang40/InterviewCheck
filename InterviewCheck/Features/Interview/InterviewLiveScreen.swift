@@ -144,13 +144,13 @@ struct InterviewLiveScreen: View {
                 window: window,
                 timing: TimingSignal.evaluate(answerWords: window.answerWords, questionEnd: window.questionEnd,
                                               questionText: question.text),
-                now: timeline.now))
+                now: timeline.now, aiFirstLine: Self.fastestFirstLine(answers)))
         } else if let finished, !finished.answerWords.isEmpty {
             TimingStrip(model: TimingStripModel(
                 window: finished,
                 timing: TimingSignal.evaluate(answerWords: finished.answerWords, questionEnd: finished.questionEnd,
                                               questionText: question.text),
-                now: finished.answerEnd ?? finished.questionEnd))
+                now: finished.answerEnd ?? finished.questionEnd, aiFirstLine: Self.fastestFirstLine(answers)))
         }
         if window != nil || !answerText.isEmpty {
             CandidateAnswerBlock(text: answerText, references: answers, question: question.text)
@@ -160,6 +160,11 @@ struct InterviewLiveScreen: View {
             ReferenceGrid(answers: answers, bestMatchLabel: controller.scores[question.id]?.metrics.bestMatchLabel,
                           candidateAnswer: answerText, question: question.text)
         }
+    }
+
+    /// When the fastest finished AI answer had its first line (seconds).
+    static func fastestFirstLine(_ answers: [ReferenceAnswerRecord]) -> TimeInterval? {
+        answers.filter { $0.error == nil }.compactMap(\.firstSentenceSeconds).min()
     }
 
     private func questionCard(_ question: InterviewQuestionRecord) -> some View {

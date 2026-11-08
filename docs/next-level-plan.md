@@ -63,3 +63,4 @@ every screen of the installed app and the demo.
   - The Live Companion window above the call shows "N of M words match an AI answer" with the marker swatch.
   - Probe terms drop a verb tagged as a noun before an adverb ("teams ship safely"), and generic nouns (team, company, version …) are skipped.
   - Seen in the real demo run: Q1 20%, Q2 95%, Q3 47%, "1 of 3 answers flagged · 55% overall".
+- **N13 done.** The timing strip marks with a tick where the fastest AI answer had its first line, with an "AI's first line" legend and a tooltip. When the real answer began 2.5 s or more after the question and within 5 s of that line, the line under the strip adds "…, 4.0 s after the fastest AI's first line", the same window `TimingSignal.pacedToAI` scores. It appears in the live screen, report and companion. 3 core tests.

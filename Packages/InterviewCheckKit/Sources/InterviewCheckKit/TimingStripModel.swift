@@ -13,10 +13,14 @@ public struct TimingStripModel: Equatable {
     public let segments: [Segment]
     public let duration: TimeInterval
     public let summary: String
+    /// Seconds after the question when the fastest AI answer had its first
+    /// line: where a candidate reading from a tool could start at the earliest.
+    public let aiFirstLine: TimeInterval?
 
     /// Builds the strip from the question end to the end of the answer's
     /// first `span` seconds.
-    public init(window: QuestionWindow, timing: TimingResult, now: TimeInterval, span: TimeInterval = 20) {
+    public init(window: QuestionWindow, timing: TimingResult, now: TimeInterval, span: TimeInterval = 20,
+                aiFirstLine: TimeInterval? = nil) {
         let origin = window.questionEnd
         var segments: [Segment] = []
         var cursor = origin
@@ -39,11 +43,17 @@ public struct TimingStripModel: Equatable {
             segments.append(Segment(kind: .silence, start: 0, end: now - origin))
         }
         self.segments = segments
-        duration = max(min(max(segments.last?.end ?? 0, now - origin), span), 5)
+        self.aiFirstLine = aiFirstLine.flatMap { $0 > 0 && $0 < span ? $0 : nil }
+        duration = max(min(max(segments.last?.end ?? 0, now - origin, (self.aiFirstLine ?? 0) + 1), span), 5)
 
         if let latency = timing.substantiveLatency {
             let stall = timing.stallWordCount > 0 ? ", \(timing.stallWordCount) stalling word\(timing.stallWordCount == 1 ? "" : "s")" : ""
-            summary = "Real answer began \(ScoreNotes.seconds(latency)) after the question\(stall)"
+            // Starting just after an AI could have shown its first line is how reading looks.
+            var paced = ""
+            if let ai = self.aiFirstLine, latency >= ai, latency - ai <= 5, latency >= 2.5 {
+                paced = ", \(ScoreNotes.seconds(latency - ai)) after the fastest AI's first line"
+            }
+            summary = "Real answer began \(ScoreNotes.seconds(latency)) after the question\(stall)\(paced)"
         } else if let first = timing.firstWordLatency {
             summary = "First word \(ScoreNotes.seconds(first)) after the question"
         } else {

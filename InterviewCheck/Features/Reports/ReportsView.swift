@@ -323,7 +323,8 @@ struct ReportDetail: View {
         guard !window.answerWords.isEmpty else { return nil }
         let timing = TimingSignal.evaluate(answerWords: window.answerWords, questionEnd: questionEnd,
                                            questionText: question.text)
-        return TimingStripModel(window: window, timing: timing, now: window.answerEnd ?? questionEnd)
+        return TimingStripModel(window: window, timing: timing, now: window.answerEnd ?? questionEnd,
+                                aiFirstLine: InterviewLiveScreen.fastestFirstLine(report.references[question.id] ?? []))
     }
 
     /// The interviewer's own verdict, used to tune the weights.
