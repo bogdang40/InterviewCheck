@@ -5,16 +5,24 @@ import Foundation
 public enum FileDownload {
     public static func save(_ file: ExternalFile, into folder: URL, client: APIClient?,
                             transport: HTTPTransport) async throws -> URL {
-        let (data, response): (Data, HTTPURLResponse)
-        if let client {
-            (data, response) = try await client.send(method: "GET", url: file.url, body: nil)
-        } else {
-            (data, response) = try await APIClient(baseURL: file.url, transport: transport)
-                .send(method: "GET", url: file.url, body: nil)
+        var request = URLRequest(url: file.url)
+        request.timeoutInterval = 60 * 30
+        for (field, value) in client?.headers ?? [:] where field != "Accept" { request.setValue(value, forHTTPHeaderField: field) }
+        let (temporary, response) = try await (client?.transport ?? transport).download(request)
+        defer { try? FileManager.default.removeItem(at: temporary) }
+        guard (200..<300).contains(response.statusCode) else {
+            let body = (try? Data(contentsOf: temporary)).map { String(decoding: $0.prefix(300), as: UTF8.self) } ?? ""
+            switch response.statusCode {
+            case 401: throw ConnectorError.unauthorized
+            case 403: throw ConnectorError.forbidden(body)
+            case 404: throw ConnectorError.notFound
+            default: throw ConnectorError.http(response.statusCode, body)
+            }
         }
         let name = safeName(file.filename, fallbackExtension: suggestedExtension(response))
         let destination = folder.appendingPathComponent(name)
-        try data.write(to: destination, options: .atomic)
+        try? FileManager.default.removeItem(at: destination)
+        try FileManager.default.moveItem(at: temporary, to: destination)
         return destination
     }
 

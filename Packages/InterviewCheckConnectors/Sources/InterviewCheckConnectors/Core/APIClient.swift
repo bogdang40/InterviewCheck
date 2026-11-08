@@ -3,6 +3,18 @@ import Foundation
 /// Sends requests; URLSession in the app, a stub in tests.
 public protocol HTTPTransport: Sendable {
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse)
+    /// Streams a body to a temporary file (large recordings never sit in memory).
+    func download(_ request: URLRequest) async throws -> (URL, HTTPURLResponse)
+}
+
+extension HTTPTransport {
+    /// Transports without streaming (test stubs) write what they received.
+    public func download(_ request: URLRequest) async throws -> (URL, HTTPURLResponse) {
+        let (data, response) = try await send(request)
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("interviewcheck-\(UUID().uuidString)")
+        try data.write(to: file)
+        return (file, response)
+    }
 }
 
 extension URLSession: HTTPTransport {
@@ -10,6 +22,12 @@ extension URLSession: HTTPTransport {
         let (data, response) = try await data(for: request)
         guard let http = response as? HTTPURLResponse else { throw ConnectorError.invalidResponse("not HTTP") }
         return (data, http)
+    }
+
+    public func download(_ request: URLRequest) async throws -> (URL, HTTPURLResponse) {
+        let (url, response) = try await download(for: request)
+        guard let http = response as? HTTPURLResponse else { throw ConnectorError.invalidResponse("not HTTP") }
+        return (url, http)
     }
 }
 
