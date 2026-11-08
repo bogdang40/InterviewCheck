@@ -54,6 +54,8 @@ Status key: [ ] todo · [~] in progress · [x] done (commit)
       Export › All Interviews as CSV (formula cells defused).
 - [x] D13 Crash recovery: an interview left open is finished and scored at the next launch,
       marked "ended unexpectedly" in the report and exports.
+- [x] D14 Mac conventions: one main window (re-opening brings it forward, no copies), View ›
+      Interview/Roles/Reports ⌘1–⌘3, Show/Hide Sidebar, File › Print Report ⌘P, "Live" Dock badge.
 
 ## C. Verify every step
 - build; guarded tests; render native screens light/dark; launch the installed app,
@@ -80,3 +82,4 @@ Status key: [ ] todo · [~] in progress · [x] done (commit)
 - 21:22 D12 notes, report timing strip, CSV export. 272 app + 42 package tests.
 - 21:28 demo: one card per prompt style (Copilot / Talking points / STAR), bullets keep line breaks, demo + companion windows not restored at launch, Welcome › Watch a Demo Interview. 273 app tests.
 - 21:31 D13 crash recovery: interviews left open by a quit/crash are closed, scored offline (low confidence) and marked interrupted at next launch (schema v20).
+- 21:37 D14: fixed File/View commands opening a second main window (WindowGroup → Window); ⌘1–3, ⌘P, Dock badge, sidebar commands. Checked in the installed app via System Events.

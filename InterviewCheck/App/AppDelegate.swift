@@ -32,7 +32,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             await self?.accessController.evaluate()
         }
 
-        // The two interview shortcuts exist only while an interview is live.
+        // The two interview shortcuts exist only while an interview is live,
+        // and the Dock icon says when one is.
         phaseSubscription = InterviewController.shared.$phase
             .removeDuplicates()
             .sink { phase in
@@ -41,6 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 } else {
                     GlobalShortcuts.shared.deactivate()
                 }
+                NSApp.dockTile.badgeLabel = phase == .live ? "Live" : nil
             }
     }
 

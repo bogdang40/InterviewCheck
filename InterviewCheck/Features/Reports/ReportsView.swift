@@ -79,7 +79,10 @@ struct ReportsView: View {
         .onChange(of: navigation.reportToShow) { _, id in reload(select: id) }
         .onChange(of: interview.phase) { _, _ in reload(select: selection) }
         .onChange(of: interview.interview?.overallPercent) { _, _ in reload(select: selection) }
-        .onChange(of: selection) { _, id in report = id.flatMap { database.loadInterviewReport(id: $0) } }
+        .onChange(of: selection) { _, id in
+            report = id.flatMap { database.loadInterviewReport(id: $0) }
+            navigation.selectedReportID = report?.interview.id
+        }
         .confirmationDialog("Delete this interview and its report?", isPresented: $confirmDelete) {
             Button("Delete", role: .destructive) {
                 if let id = selection { database.deleteInterview(id: id) }
@@ -97,6 +100,7 @@ struct ReportsView: View {
         let target = id ?? selection ?? interviews.first?.id
         selection = interviews.contains { $0.id == target } ? target : interviews.first?.id
         report = selection.flatMap { database.loadInterviewReport(id: $0) }
+        navigation.selectedReportID = report?.interview.id
     }
 
     private func export(_ id: String, pdf: Bool) {

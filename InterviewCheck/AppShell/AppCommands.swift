@@ -4,8 +4,16 @@ import SwiftUI
 /// live actions, and Window > Live Companion.
 struct AppCommands: Commands {
     var body: some Commands {
+        SidebarCommands()
         CommandGroup(replacing: .newItem) {
             NewItemCommands()
+        }
+        CommandGroup(replacing: .printItem) {
+            PrintReportItem()
+        }
+        CommandGroup(before: .sidebar) {
+            SectionMenuItems()
+            Divider()
         }
         CommandMenu("Interview") {
             InterviewMenuItems()
@@ -46,6 +54,36 @@ private struct NewItemCommands: View {
         }
         .keyboardShortcut("o")
         .disabled(interview.phase == .live)
+    }
+}
+
+/// View › Interview / Roles / Reports with ⌘1–⌘3, like other Mac apps.
+private struct SectionMenuItems: View {
+    @ObservedObject private var navigation = AppNavigation.shared
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        ForEach(Array(SidebarItem.allCases.enumerated()), id: \.element) { index, item in
+            Button(item.title) {
+                openWindow(id: AppWindowID.main)
+                navigation.show(item)
+            }
+            .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")))
+        }
+    }
+}
+
+private struct PrintReportItem: View {
+    @ObservedObject private var navigation = AppNavigation.shared
+
+    var body: some View {
+        Button("Print Report\u{2026}") {
+            guard let id = navigation.selectedReportID,
+                  let report = SessionDatabase.shared.loadInterviewReport(id: id) else { return }
+            ReportExporter.print(report)
+        }
+        .keyboardShortcut("p")
+        .disabled(navigation.selection != .reports || navigation.selectedReportID == nil)
     }
 }
 

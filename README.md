@@ -37,6 +37,10 @@ interviewer to confirm this).
    through the real live screen and scorer. Needs no keys, microphone or
    network; nothing is saved to your interviews.
 
+Keyboard: ⌘1 Interview, ⌘2 Roles, ⌘3 Reports, ⌘N new interview, ⇧⌘N new
+role, ⌘O analyze a recording, ⌘R start, ⇧⌘↩ question asked, ⇧⌘E answer done,
+⌘P print the open report, ⌥⌘L Live Companion, ⌘, Settings.
+
 The first interview asks for the microphone (your questions) and for Screen
 & System Audio Recording (the candidate's side of the call).
 

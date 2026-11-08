@@ -9,7 +9,9 @@ struct InterviewCheckApp: App {
     @StateObject private var interview = InterviewController.shared
 
     var body: some Scene {
-        WindowGroup(AppBrand.name, id: AppWindowID.main) {
+        // One main window: opening it again brings it to the front instead of
+        // making a copy (every screen shares the same navigation state).
+        Window(AppBrand.name, id: AppWindowID.main) {
             RootView()
                 .frame(minWidth: 900, minHeight: 600)
         }

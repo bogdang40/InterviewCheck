@@ -25,6 +25,16 @@ enum ReportExporter {
         try? InterviewCSV.make(reports).write(to: url, atomically: true, encoding: .utf8)
     }
 
+    /// File › Print: the same pages as the PDF, through the print panel.
+    static func print(_ report: InterviewReportData) {
+        let operation = NSPrintOperation(view: PaginatedPDF.textView(ReportAttributedText.make(report)),
+                                         printInfo: PaginatedPDF.printInfo())
+        operation.jobTitle = "\(report.interview.candidateName.isEmpty ? "Interview" : report.interview.candidateName) interview report"
+        operation.showsPrintPanel = true
+        operation.showsProgressPanel = true
+        operation.run()
+    }
+
     private static func savePanel(_ report: InterviewReportData, type: UTType, extension ext: String) -> URL? {
         let panel = NSSavePanel()
         panel.allowedContentTypes = [type]
@@ -40,8 +50,7 @@ enum PaginatedPDF {
     static let paperSize = NSSize(width: 612, height: 792)
     static let margin: CGFloat = 54
 
-    static func data(_ attributed: NSAttributedString) -> Data? {
-
+    static func printInfo() -> NSPrintInfo {
         let printInfo = NSPrintInfo()
         printInfo.paperSize = paperSize
         printInfo.topMargin = margin
@@ -51,7 +60,11 @@ enum PaginatedPDF {
         printInfo.horizontalPagination = .fit
         printInfo.verticalPagination = .automatic
         printInfo.isVerticallyCentered = false
+        return printInfo
+    }
 
+    /// The text laid out at the printable width.
+    static func textView(_ attributed: NSAttributedString) -> NSTextView {
         let width = paperSize.width - 2 * margin
         let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: width, height: 100))
         textView.textStorage?.setAttributedString(attributed)
@@ -61,6 +74,12 @@ enum PaginatedPDF {
         if let used = textView.layoutManager?.usedRect(for: textView.textContainer!) {
             textView.frame.size.height = max(used.height, 100)
         }
+        return textView
+    }
+
+    static func data(_ attributed: NSAttributedString) -> Data? {
+        let printInfo = printInfo()
+        let textView = textView(attributed)
 
         // A print job saved to a file paginates exactly like printing.
         let output = FileManager.default.temporaryDirectory

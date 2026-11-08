@@ -35,6 +35,8 @@ final class AppNavigation: ObservableObject {
     @Published var newRoleRequest: UUID?
     /// Asks the Reports screen to show this interview.
     @Published var reportToShow: String?
+    /// The interview open in Reports, for File › Print.
+    @Published var selectedReportID: String?
 
     init() {
         // `-InterviewCheckStartSection roles` opens a section at launch
