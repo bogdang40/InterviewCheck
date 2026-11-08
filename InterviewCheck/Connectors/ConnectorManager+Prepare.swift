@@ -4,10 +4,12 @@ import InterviewCheckConnectors
 extension ConnectorManager {
     /// Fills the interview setup from an upcoming interview: the candidate,
     /// a role with the job description, and the résumé. Returns what could
-    /// not be filled, in plain words.
+    /// not be filled, in plain words. Everything is gathered first and written
+    /// at once after the last wait; `canApply` can still refuse then (an
+    /// automatic Prepare checks nothing was typed meanwhile).
     @discardableResult
     func prepare(_ interview: ExternalInterview, controller: InterviewController,
-                 roles: RoleStore = .shared, navigate: Bool = true) async -> [String] {
+                 roles: RoleStore = .shared, navigate: Bool = true, canApply: (() -> Bool)? = nil) async -> [String] {
         guard controller.phase != .live else { return ["An interview is live."] }
         prepareGeneration += 1
         let generation = prepareGeneration
@@ -21,17 +23,16 @@ extension ConnectorManager {
         // A calendar invite knows little: find the candidate in a connected ATS.
         let interview = await enriched(interview)
         guard current() else { return stopped }
-        controller.candidateName = interview.candidate?.name ?? ""
-        controller.externalRef = interview.id
-        controller.preparedFrom = original.id
         database.saveExternalLink(interview)
         var missing: [String] = []
+        var roleID: String?
+        var resume: (text: String, fileName: String)?
         let connector = try? makeConnector(interview.source)
 
         if let job = interview.job {
             let role = await role(for: job, source: interview.source, connector: connector, roles: roles)
             guard current() else { return stopped }
-            roles.selectedRoleID = role.id
+            roleID = role.id
             if role.jobDescription.isEmpty {
                 missing.append("The job description was not available; paste it into the role.")
             } else if role.plannedQuestions.isEmpty, draftRole(role.id, roles: roles) {
@@ -58,17 +59,26 @@ extension ConnectorManager {
                     linked.candidate = candidate
                     database.saveExternalLink(linked)
                 }
-                if let resume = candidate?.resume {
-                    let text = try await resumeText(resume, from: sourceConnector)
+                if let file = candidate?.resume {
+                    let text = try await resumeText(file, from: sourceConnector)
                     guard current() else { return stopped }
-                    controller.resumeText = text
-                    controller.resumeFileName = resume.filename
+                    resume = (text, file.filename)
                 } else {
                     missing.append("No r\u{00E9}sum\u{00E9} on file.")
                 }
             } catch {
                 missing.append("The r\u{00E9}sum\u{00E9} could not be downloaded: \(error.localizedDescription)")
             }
+        }
+
+        guard current(), canApply?() ?? true else { return stopped }
+        controller.candidateName = interview.candidate?.name ?? ""
+        controller.externalRef = interview.id
+        controller.preparedFrom = original.id
+        if let roleID { roles.selectedRoleID = roleID }
+        if let resume {
+            controller.resumeText = resume.text
+            controller.resumeFileName = resume.fileName
         }
         if navigate { AppNavigation.shared.show(.interview) }
         return missing

@@ -2,16 +2,25 @@ import XCTest
 import InterviewCheckConnectors
 @testable import InterviewCheck
 
-private struct TwoInterviews: InterviewSource {
+/// Two interviews (the second `gap` after the first); candidate records
+/// arrive after `delay`, so a test can act while Prepare is waiting.
+private struct TwoInterviews: InterviewSource, CandidateSource {
     let kind = ConnectorKind.calendly
     let first: Date
+    var gap: TimeInterval = 3 * 3600
+    var delay: UInt64 = 0
     func verify() async throws -> String { "lee@acme.com" }
     func upcomingInterviews(from: Date, to: Date) async throws -> [ExternalInterview] {
         [ExternalInterview(source: .calendly, externalID: "a", title: "Phone Screen", startsAt: first,
-                           candidate: ExternalCandidate(name: "Jane Doe", email: "jane@example.com")),
-         ExternalInterview(source: .calendly, externalID: "b", title: "Phone Screen", startsAt: first.addingTimeInterval(3600),
-                           candidate: ExternalCandidate(name: "Max Roe", email: "max@example.com"))]
+                           candidate: ExternalCandidate(externalID: "ca", name: "Jane Doe", email: "jane@example.com")),
+         ExternalInterview(source: .calendly, externalID: "b", title: "Phone Screen", startsAt: first.addingTimeInterval(gap),
+                           candidate: ExternalCandidate(externalID: "cb", name: "Max Roe", email: "max@example.com"))]
     }
+    func candidate(id: String) async throws -> ExternalCandidate {
+        try await Task.sleep(nanoseconds: delay)
+        return ExternalCandidate(externalID: id, name: id == "ca" ? "Jane Doe" : "Max Roe")
+    }
+    func download(_ file: ExternalFile, into folder: URL) async throws -> URL { throw ConnectorError.notFound }
 }
 
 @MainActor
@@ -22,17 +31,20 @@ final class AutoPrepareTests: XCTestCase {
     private var auto: AutoPrepare!
     private var clock = Date()
     private var editingRoles = false
+    private var source: TwoInterviews!
+    private var roles: RoleStore!
 
     override func setUp() async throws {
         path = NSTemporaryDirectory() + "autoprepare-\(UUID().uuidString).sqlite"
         let database = SessionDatabase(databasePath: path)
         let defaults = UserDefaults(suiteName: "autoprepare.\(UUID().uuidString)")!
         manager = ConnectorManager(store: MemoryCredentialStore(), database: database, defaults: defaults)
-        let first = clock.addingTimeInterval(8 * 60)
-        manager.factory = { _, _, _, _ in TwoInterviews(first: first) }
+        source = TwoInterviews(first: clock.addingTimeInterval(8 * 60))
+        manager.factory = { [unowned self] _, _, _, _ in self.source }
         try await manager.connect(.calendly, fields: ["apiKey": "k"])
         controller = InterviewController(timeline: InterviewTimeline(), database: database, settings: DetectorSettings(defaults: defaults))
-        auto = AutoPrepare(manager: manager, controller: controller, roles: RoleStore(database: database, defaults: defaults),
+        roles = RoleStore(database: database, defaults: defaults)
+        auto = AutoPrepare(manager: manager, controller: controller, roles: roles,
                            defaults: defaults)
         auto.now = { [unowned self] in self.clock }
         auto.leadMinutes = { 10 }
@@ -64,7 +76,7 @@ final class AutoPrepareTests: XCTestCase {
 
     func testAnUntouchedAutomaticSetupMovesOnToTheNextInterview() async {
         await auto.tick()
-        clock = clock.addingTimeInterval(3600)
+        clock = clock.addingTimeInterval(3 * 3600)
         let next = await auto.tick()
         XCTAssertEqual(next?.externalID, "b")
         XCTAssertEqual(controller.candidateName, "Max Roe")
@@ -73,10 +85,45 @@ final class AutoPrepareTests: XCTestCase {
     func testAnEditedAutomaticSetupIsKept() async {
         await auto.tick()
         controller.resumeText = "Pasted by the interviewer"
-        clock = clock.addingTimeInterval(3600)
+        clock = clock.addingTimeInterval(3 * 3600)
         let next = await auto.tick()
         XCTAssertNil(next)
         XCTAssertEqual(controller.candidateName, "Jane Doe")
+    }
+
+    func testAnInterviewAboutToStartIsNotSwappedForTheNextOne() async throws {
+        // Back to back with a 30-minute lead: at A's start, B is already "due".
+        source.gap = 30 * 60
+        await manager.sync(.calendly)
+        auto.leadMinutes = { 30 }
+        let first = await auto.tick()
+        XCTAssertEqual(first?.externalID, "a")
+        clock = clock.addingTimeInterval(9 * 60)    // A started a minute ago; the candidate is late
+        let next = await auto.tick()
+        XCTAssertNil(next)
+        XCTAssertEqual(controller.candidateName, "Jane Doe", "A stays until it has ended")
+    }
+
+    func testTypingDuringTheDownloadWins() async throws {
+        source.delay = 300_000_000
+        let run = Task { await self.auto.tick() }
+        try await Task.sleep(nanoseconds: 80_000_000)
+        controller.resumeText = "Pasted by the interviewer"
+        let prepared = await run.value
+        XCTAssertNil(prepared)
+        XCTAssertEqual(controller.resumeText, "Pasted by the interviewer")
+        XCTAssertTrue(controller.candidateName.isEmpty, "nothing half-written")
+    }
+
+    func testAManualPrepareInProgressIsLeftAlone() async throws {
+        source.delay = 300_000_000
+        let b = manager.upcoming[1]
+        let manual = Task { await self.manager.prepare(b, controller: self.controller, roles: self.roles, navigate: false) }
+        try await Task.sleep(nanoseconds: 80_000_000)
+        let automatic = await auto.tick()
+        XCTAssertNil(automatic, "the setup is being prepared by hand")
+        _ = await manual.value
+        XCTAssertEqual(controller.candidateName, "Max Roe")
     }
 
     func testOffOrWhileEditingRolesNothingHappens() async {

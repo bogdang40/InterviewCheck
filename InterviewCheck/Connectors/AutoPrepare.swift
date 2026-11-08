@@ -29,14 +29,16 @@ final class AutoPrepare {
     private var timer: Timer?
     /// Interviews already prepared automatically (each only once).
     private(set) var preparedIDs: Set<String> = []
-    /// The setup as the last automatic Prepare left it.
+    /// The setup as the last automatic Prepare left it, and for which interview.
     private var lastFill: Fill?
+    private var lastPrepared: ExternalInterview?
 
     struct Fill: Equatable {
         var preparedFrom: String?
         var candidate: String
         var resume: Int
         var consent: Bool
+        var role: String?
     }
 
     init(manager: ConnectorManager = .shared, controller: InterviewController = .shared, roles: RoleStore = .shared,
@@ -55,15 +57,28 @@ final class AutoPrepare {
         Task { await tick() }
     }
 
-    /// Prepares the interview that is due, if the setup is free. Returns it.
+    /// Prepares the interview that is due, if the setup is free. Returns it
+    /// when its details were filled in.
     @discardableResult
     func tick() async -> ExternalInterview? {
         guard isEnabled, !isEditingRoles(),
               let next = Self.due(manager.upcoming, now: now(), leadMinutes: leadMinutes(), prepared: preparedIDs),
               setupIsFree else { return nil }
         preparedIDs.insert(next.id)
-        await manager.prepare(next, controller: controller, roles: roles, navigate: false)
+        let role = roles.selectedRoleID
+        let generation = manager.prepareGeneration
+        // Written only if, after the downloads, the setup is still as Prepare
+        // left it: nothing typed, consent not ticked, Roles not opened.
+        await manager.prepare(next, controller: controller, roles: roles, navigate: false, canApply: { [weak self] in
+            guard let self else { return false }
+            return self.controller.phase == .setup && !self.controller.consentConfirmed
+                && self.controller.candidateName.isEmpty && self.controller.resumeText.isEmpty
+                && self.controller.preparedFrom == next.id && !self.isEditingRoles() && self.roles.selectedRoleID == role
+        })
+        guard manager.prepareGeneration == generation + 1, controller.preparedFrom == next.id,
+              controller.externalRef != nil else { return nil }
         lastFill = fill
+        lastPrepared = next
         return next
     }
 
@@ -76,15 +91,19 @@ final class AutoPrepare {
         }
     }
 
-    /// Empty, or still exactly what the last automatic Prepare filled in.
+    /// Empty, or still exactly what the last automatic Prepare filled in for
+    /// an interview that has ended (an interview about to start, or under
+    /// way while the interviewer waits, is kept).
     var setupIsFree: Bool {
         guard controller.phase == .setup, controller.pendingScoring.isEmpty, !controller.consentConfirmed else { return false }
-        if controller.candidateName.isEmpty, controller.resumeText.isEmpty, controller.externalRef == nil { return true }
-        return lastFill != nil && lastFill == fill
+        if controller.candidateName.isEmpty, controller.resumeText.isEmpty, controller.externalRef == nil,
+           controller.preparedFrom == nil { return true }
+        guard let lastFill, lastFill == fill, let lastPrepared else { return false }
+        return now() >= lastPrepared.endsAt ?? lastPrepared.startsAt.addingTimeInterval(3600)
     }
 
     private var fill: Fill {
         Fill(preparedFrom: controller.preparedFrom, candidate: controller.candidateName, resume: controller.resumeText.count,
-             consent: controller.consentConfirmed)
+             consent: controller.consentConfirmed, role: roles.selectedRoleID)
     }
 }
