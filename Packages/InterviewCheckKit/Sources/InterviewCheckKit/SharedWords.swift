@@ -36,6 +36,11 @@ public struct SharedWords: Equatable {
 
     /// The words shared with one AI answer.
     public static func find(answer: String, reference: String, question: String = "") -> SharedWords {
+        // Screens redraw often with the same texts (the clock ticks during a live answer).
+        cache.value(for: [answer, reference, question]) { compute(answer: answer, reference: reference, question: question) }
+    }
+
+    static func compute(answer: String, reference: String, question: String) -> SharedWords {
         let answerTokens = tokens(answer)
         let referenceTokens = tokens(reference)
         let tiles = tiles(answerTokens.map(\.text), referenceTokens.map(\.text), question: question)
@@ -48,6 +53,12 @@ public struct SharedWords: Equatable {
 
     /// The answer's words shared with any of the AI answers.
     public static func anyReference(answer: String, references: [String], question: String = "") -> SharedWords {
+        cache.value(for: [answer, question, "\u{1}"] + references) {
+            computeAny(answer: answer, references: references, question: question)
+        }
+    }
+
+    static func computeAny(answer: String, references: [String], question: String) -> SharedWords {
         let answerTokens = tokens(answer)
         var covered = Set<Int>()
         for reference in references {
@@ -133,19 +144,25 @@ public struct SharedWords: Equatable {
         guard answer.count >= minimum, reference.count >= minimum else { return [] }
         let questionGrams = Set(SimilaritySignal.ngrams(FillerLexicon.tokens(question), 3))
 
+        // Words as numbers: the comparison below runs answer × reference times.
+        var ids: [String: Int] = [:]
+        let a = answer.map { word in ids[word] ?? { ids[word] = ids.count; return ids.count - 1 }() }
+        let b = reference.map { word in ids[word] ?? { ids[word] = ids.count; return ids.count - 1 }() }
+
         var candidates: [Tile] = []
-        var previous = [Int](repeating: 0, count: reference.count + 1)
-        for i in 1...answer.count {
-            var current = [Int](repeating: 0, count: reference.count + 1)
-            for j in 1...reference.count where answer[i - 1] == reference[j - 1] {
+        var previous = [Int](repeating: 0, count: b.count + 1)
+        var current = previous
+        for i in 1...a.count {
+            for j in 0...b.count { current[j] = 0 }
+            for j in 1...b.count where a[i - 1] == b[j - 1] {
                 current[j] = previous[j - 1] + 1
                 let length = current[j]
-                let extends = i < answer.count && j < reference.count && answer[i] == reference[j]
+                let extends = i < a.count && j < b.count && a[i] == b[j]
                 if !extends, length >= minimum {
                     candidates.append(Tile(answer: i - length, reference: j - length, length: length))
                 }
             }
-            previous = current
+            swap(&previous, &current)
         }
 
         var usedAnswer = Set<Int>()
@@ -166,3 +183,29 @@ public struct SharedWords: Equatable {
         return accepted.sorted { $0.answer < $1.answer }
     }
 }
+
+/// Remembers recent results by their input texts; safe from any thread.
+final class SharedWordsCache: @unchecked Sendable {
+    private var entries: [[String]: SharedWords] = [:]
+    private let lock = NSLock()
+    private let limit: Int
+
+    init(limit: Int = 128) { self.limit = limit }
+
+    func value(for key: [String], compute: () -> SharedWords) -> SharedWords {
+        lock.lock()
+        if let hit = entries[key] { lock.unlock(); return hit }
+        lock.unlock()
+        let result = compute()
+        lock.lock()
+        if entries.count >= limit { entries.removeAll(keepingCapacity: true) }
+        entries[key] = result
+        lock.unlock()
+        return result
+    }
+}
+
+extension SharedWords {
+    static let cache = SharedWordsCache()
+}
+
