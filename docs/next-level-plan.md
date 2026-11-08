@@ -3,6 +3,17 @@
 The owner's verdict on the overnight build: "still mid". These notes come from screenshots of
 every screen of the installed app and the demo.
 
+## Where it got to (afternoon summary)
+
+| | |
+|---|---|
+| ![Live screen, flagged answer](screenshots/2026-11-08-afternoon/live-flagged-answer-dark.png) | ![Demo report](screenshots/2026-11-08-afternoon/demo-report.png) |
+| The live screen. A chip for each question with "N of M answers flagged", then the score with its evidence, the timing (with a tick at the AI's first line), the answer with the words it shares with an AI answer in yellow, and the AI answers with the same words marked. | The demo ends on its report: "1 of 3 answers flagged" first, chips that jump to each answer, and "What stood out". |
+| ![After the call](screenshots/2026-11-08-afternoon/summary-after-call-dark.png) | ![New interview](screenshots/2026-11-08-afternoon/new-interview-dark.png) |
+| Right after End: the flagged count, the chips and what stood out. | First run: a checklist instead of warnings, "Watch the Demo", and a start bar that says what it is waiting for. |
+
+Detection gained three signals that need no AI key: model wording read aloud, a change from the candidate's own other answers, and follow-up questions made from the answer's own words. Exact shared wording is now shown as highlighted evidence instead of being described in a sentence.
+
 ## What makes it feel mid today
 
 1. **The evidence is only words.** A score says "Closely follows the GPT 5.2 answer", but nothing

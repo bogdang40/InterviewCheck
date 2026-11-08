@@ -5,6 +5,9 @@ was pushed or sent anywhere. The installed app (`~/Applications/InterviewCheck.a
 the latest Release build (installed 03:10), and `build/InterviewCheck-1.0.0.dmg` (about 8 MB) packages it
 for another Mac. It is not notarized yet, so macOS warns before opening it there. The full step-by-step log is in [native-app-plan.md](native-app-plan.md).
 
+**Afternoon update (12:40–14:40):** a second pass on the evidence, the demo and first impressions. See
+[next-level-plan.md](next-level-plan.md) for what changed, with screenshots.
+
 ## What it is now
 
 - **A normal Mac app.** It has one main window with the standard close, minimize and
