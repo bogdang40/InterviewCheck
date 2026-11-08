@@ -59,6 +59,7 @@ final class MicLevelMeter: ObservableObject {
 
 /// Choose and test the microphone; see whether both sides can be recorded.
 struct AudioSettingsTab: View {
+    @AppStorage(SettingsTab.storageKey) private var settingsTab = SettingsTab.audio
     @StateObject private var meter = MicLevelMeter()
     @State private var devices = AudioDeviceManager.inputDevices()
     @State private var selection = AudioDeviceManager.preferredInputUID ?? ""
@@ -94,12 +95,17 @@ struct AudioSettingsTab: View {
 
             Section("Before an interview") {
                 if micStatus == .notDetermined {
-                    LabeledContent("Microphone access") {
+                    LabeledContent {
                         Button("Allow Microphone\u{2026}") {
                             Task {
                                 _ = await AVCaptureDevice.requestAccess(for: .audio)
                                 micStatus = AVCaptureDevice.authorizationStatus(for: .audio)
                             }
+                        }
+                    } label: {
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Image(systemName: "circle.dashed").foregroundStyle(.secondary).accessibilityHidden(true)
+                            Text("Microphone access")
                         }
                     }
                 } else {
@@ -111,7 +117,7 @@ struct AudioSettingsTab: View {
                           detail: callAudioAllowed ? nil : "Needed to hear the candidate; reopen the app after allowing",
                           settings: "Privacy_ScreenCapture")
                 statusRow("Deepgram key", ok: VoiceSignatureStore.shared.hasDeepgramApiKey,
-                          detail: "Settings \u{203A} Keys", settings: nil)
+                          detail: "Times every word of the candidate's answers", settings: nil, opensKeys: true)
             }
         }
         .formStyle(.grouped)
@@ -123,21 +129,24 @@ struct AudioSettingsTab: View {
         .onDisappear { meter.stop() }
     }
 
-    private func statusRow(_ title: String, ok: Bool, detail: String?, settings pane: String?) -> some View {
+    /// Status icon first, then what it is; the fix, if any, on the right.
+    private func statusRow(_ title: String, ok: Bool, detail: String?, settings pane: String?,
+                           opensKeys: Bool = false) -> some View {
         LabeledContent {
-            HStack {
-                if !ok, let pane {
-                    Button("Open System Settings") {
-                        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)")!)
-                    }
-                }
-                Image(systemName: ok ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
-                    .foregroundStyle(ok ? .green : .orange)
+            if !ok, let pane, let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)") {
+                Button("Open System Settings") { NSWorkspace.shared.open(url) }
+            } else if !ok, opensKeys {
+                Button("Open Keys") { settingsTab = SettingsTab.keys }
             }
         } label: {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                if !ok, let detail { Text(detail).font(.caption).foregroundStyle(.secondary) }
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Image(systemName: ok ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+                    .foregroundStyle(ok ? .green : .orange)
+                    .accessibilityLabel(ok ? "Ready" : "Needs attention")
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                    if !ok, let detail { Text(detail).font(.caption).foregroundStyle(.secondary) }
+                }
             }
         }
     }

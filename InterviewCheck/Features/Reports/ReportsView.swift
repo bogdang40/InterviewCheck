@@ -247,13 +247,9 @@ struct ReportDetail: View {
                             .textSelection(.enabled)
                         if let score = report.scores[question.id] {
                             ScoreCard(score: score, baselineNote: BaselineSignal.note(for: question.id, scores: report.scores))
-                            verdictPicker(question.id)
                         }
-                        SectionCaption("Your notes")
-                        QuestionNoteField(questionID: question.id, database: database)
-                            .id(question.id)
-                            .frame(maxWidth: 640)
                         if let strip = timingStrip(question) {
+                            SectionCaption("Timing")
                             TimingStrip(model: strip)
                         }
                         let answers = (report.references[question.id] ?? []).filter { $0.error == nil }
@@ -266,6 +262,10 @@ struct ReportDetail: View {
                                     .padding(.top, 6)
                             }
                         }
+                        if report.scores[question.id] != nil { verdictPicker(question.id) }
+                        SectionCaption("Your notes")
+                        QuestionNoteField(questionID: question.id, database: database)
+                            .id("note-\(question.id)")
                     }
                     .id(question.id)
                     Divider()
@@ -357,9 +357,11 @@ struct ReportDetail: View {
                 .foregroundStyle(.secondary)
             if let overall = interview.overallPercent {
                 HStack(spacing: 8) {
-                    Tag(text: "\(overall)% overall", color: ScoreBand(percent: overall).color)
-                    Text("\(interview.flaggedCount) of \(interview.questionCount) answers at 70% or more")
-                        .foregroundStyle(.secondary)
+                    Text("\(interview.flaggedCount) of \(interview.questionCount) answers flagged")
+                        .fontWeight(.semibold)
+                        .foregroundStyle(interview.flaggedCount > 0 ? ScoreBand.flagged.color : .primary)
+                    Text("\u{00B7} \(overall)% overall").foregroundStyle(.secondary).monospacedDigit()
+                        .help(InterviewSummary.overallHelp)
                 }
             }
             if let ref = interview.externalRef, let link = database.loadExternalLink(ref),

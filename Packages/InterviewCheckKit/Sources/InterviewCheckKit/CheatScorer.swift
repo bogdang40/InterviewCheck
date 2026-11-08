@@ -206,9 +206,13 @@ public enum ScoreNotes {
 
         if let similarity, let best = similarity.best {
             if similarity.score >= 0.4 {
-                let phrases = best.sharedPhrases.prefix(2).map { "\u{201C}\($0)\u{201D}" }.joined(separator: ", ")
-                let detail = phrases.isEmpty ? "" : " (shared: \(phrases))"
-                reasons.append((similarity.score, "Closely follows the \(best.label) answer\(detail)"))
+                // The highlighted words show which; the line says how many.
+                if let shared = similarity.bestShared, shared.sharedCount >= SharedWords.minimumRun {
+                    reasons.append((similarity.score,
+                                    "Matches the \(best.label) answer word for word: \(shared.sharedCount) of \(shared.answerCount) words"))
+                } else {
+                    reasons.append((similarity.score, "Closely follows the \(best.label) answer in meaning and order"))
+                }
             } else if similarity.score < 0.15 {
                 counterpoints.append("Wording is their own, not close to any AI answer")
             }

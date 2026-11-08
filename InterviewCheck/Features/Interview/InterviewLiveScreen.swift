@@ -129,10 +129,10 @@ struct InterviewLiveScreen: View {
         questionCard(question)
         QuestionNoteField(questionID: question.id, database: controller.database)
             .id(question.id)
-            .frame(maxWidth: 640)
         let answers = controller.references[question.id] ?? []
         let answerText = window.map { $0.answerWords.map { $0.isFiller ? "(\($0.normalized))" : $0.text }.joined(separator: " ") }
             ?? question.answerText
+        if window != nil || !(finished?.answerWords.isEmpty ?? true) { SectionCaption("Timing") }
         if let window {
             TimingStrip(model: TimingStripModel(
                 window: window,
@@ -165,12 +165,12 @@ struct InterviewLiveScreen: View {
         GroupBox {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Tag(text: "Q\(question.ordinal)", color: .accentColor)
+                    Tag(text: "Q\(question.ordinal)")
                     if controller.autoMarkedIDs.contains(question.id) {
                         Tag(text: "Marked automatically", color: .secondary)
                             .help("You didn't press Question Asked; the app found this question when the answer began.")
                     }
-                    if question.closedAt == nil { Tag(text: "Answering", color: .orange) }
+                    if question.closedAt == nil { Tag(text: "Answering", color: Palette.live) }
                     Spacer()
                     if editingID == question.id {
                         Button("Cancel") { editingID = nil }

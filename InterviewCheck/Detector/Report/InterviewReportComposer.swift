@@ -11,7 +11,7 @@ enum InterviewReportComposer {
         lines.append("- Candidate notified: \(interview.consentConfirmedAt.map { "yes, \(timeFormatter.string(from: $0))" } ?? "not recorded")")
         if let overall = interview.overallPercent {
             lines.append("- Overall: **\(overall)%** (\(ScoreBand(percent: overall).title.lowercased())); " +
-                         "\(interview.flaggedCount) of \(interview.questionCount) answers at 70% or more")
+                         "\(interview.flaggedCount) of \(interview.questionCount) answers flagged (70% or more)")
         }
         if interview.wasInterrupted {
             lines.append("- Interrupted: the app closed before the interview was ended; the last answer may be cut short.")
@@ -104,8 +104,10 @@ struct ReportStandout: Identifiable {
             let shared = SharedWords.anyReference(answer: question.answerText, references: answers.map(\.text),
                                                   question: question.text)
             var evidence = shared.coverage >= 0.2 ? [shared.summary].compactMap { $0 } : []
-            // The highlighted count already says what "Closely follows…" says.
-            let reasons = score.reasons.filter { !(!evidence.isEmpty && $0.hasPrefix("Closely follows")) }
+            // The highlighted count already says what the match reason says.
+            let reasons = score.reasons.filter {
+                evidence.isEmpty || !($0.hasPrefix("Closely follows") || $0.hasPrefix("Matches the"))
+            }
             evidence += reasons
             if let note = BaselineSignal.note(for: question.id, scores: report.scores) { evidence.append(note) }
             return ReportStandout(question: question, score: score, evidence: Array(evidence.prefix(3)))

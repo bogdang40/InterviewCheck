@@ -17,6 +17,8 @@ public struct ReferenceMatch: Equatable {
 
 public struct SimilarityResult: Equatable {
     public let best: ReferenceMatch?
+    /// Words the answer shares in order with the best match, for the evidence line.
+    public var bestShared: SharedWords?
     /// How much the AI answers agree with each other (0...1). When every
     /// model says the same thing, any correct answer matches them.
     public let referenceAgreement: Double
@@ -65,7 +67,11 @@ public enum SimilaritySignal {
         let agreement = referenceAgreement(usable, questionGrams: questionGrams)
         // Discount up to half when the references agree closely.
         let discount = 1 - 0.5 * clamp((agreement - 0.15) / 0.35)
-        return SimilarityResult(best: best, referenceAgreement: agreement, score: (best?.score ?? 0) * discount)
+        var result = SimilarityResult(best: best, referenceAgreement: agreement, score: (best?.score ?? 0) * discount)
+        if let best, let reference = usable.first(where: { $0.id == best.referenceID }) {
+            result.bestShared = SharedWords.find(answer: answerText, reference: reference.text, question: questionText)
+        }
+        return result
     }
 
     public static func match(

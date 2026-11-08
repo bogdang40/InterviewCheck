@@ -7,9 +7,25 @@ struct CheaterPrompt: Codable, Equatable, Identifiable {
     var name: String
     var instructions: String
     var isEnabled: Bool = true
-    /// The built-in "Copilot" prompt is the original app's own answer
+    /// The built-in "Full answer" prompt is the original app's own answer
     /// prompt; its instructions are generated, not edited.
     var isBuiltIn: Bool = false
+}
+
+extension CheaterPrompt {
+    /// Roles saved before the built-in answer prompt was renamed ("Copilot"
+    /// read as Microsoft Copilot) show its current name.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(String.self, forKey: .id) ?? UUID().uuidString
+        name = try container.decode(String.self, forKey: .name)
+        instructions = try container.decode(String.self, forKey: .instructions)
+        isEnabled = try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? true
+        isBuiltIn = try container.decodeIfPresent(Bool.self, forKey: .isBuiltIn) ?? false
+        if isBuiltIn, id == CheaterPromptLibrary.copilotID, name == "Copilot" {
+            name = CheaterPromptLibrary.copilot.name
+        }
+    }
 }
 
 /// A question the interviewer plans to ask, drafted from the job description.

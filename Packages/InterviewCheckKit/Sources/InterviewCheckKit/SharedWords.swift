@@ -9,9 +9,9 @@ public struct SharedWords: Equatable {
     public let answer: Set<Int>
     /// Display words of the AI answer inside a shared run.
     public let reference: Set<Int>
-    /// Answer words inside a shared run (fillers not counted).
+    /// Words of the answer, as shown, inside a shared run (fillers not counted).
     public let sharedCount: Int
-    /// Answer words, fillers not counted.
+    /// Words of the answer as shown, fillers not counted.
     public let answerCount: Int
 
     public init(answer: Set<Int>, reference: Set<Int>, sharedCount: Int, answerCount: Int) {
@@ -41,9 +41,9 @@ public struct SharedWords: Equatable {
         let tiles = tiles(answerTokens.map(\.text), referenceTokens.map(\.text), question: question)
         let answerCovered = Set(tiles.flatMap { $0.answer..<($0.answer + $0.length) })
         let referenceCovered = Set(tiles.flatMap { $0.reference..<($0.reference + $0.length) })
-        return SharedWords(answer: Set(answerCovered.map { answerTokens[$0].word }),
-                           reference: Set(referenceCovered.map { referenceTokens[$0].word }),
-                           sharedCount: answerCovered.count, answerCount: answerTokens.count)
+        let words = Set(answerCovered.map { answerTokens[$0].word })
+        return SharedWords(answer: words, reference: Set(referenceCovered.map { referenceTokens[$0].word }),
+                           sharedCount: words.count, answerCount: Set(answerTokens.map(\.word)).count)
     }
 
     /// The answer's words shared with any of the AI answers.
@@ -54,8 +54,9 @@ public struct SharedWords: Equatable {
             let tiles = tiles(answerTokens.map(\.text), tokens(reference).map(\.text), question: question)
             tiles.forEach { covered.formUnion($0.answer..<($0.answer + $0.length)) }
         }
-        return SharedWords(answer: Set(covered.map { answerTokens[$0].word }), reference: [],
-                           sharedCount: covered.count, answerCount: answerTokens.count)
+        let words = Set(covered.map { answerTokens[$0].word })
+        return SharedWords(answer: words, reference: [], sharedCount: words.count,
+                           answerCount: Set(answerTokens.map(\.word)).count)
     }
 
     /// Where each display word sits in the text.

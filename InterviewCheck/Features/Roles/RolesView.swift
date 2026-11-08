@@ -40,7 +40,7 @@ struct RolesView: View {
                     ContentUnavailableView {
                         Label("No Roles", systemImage: "briefcase")
                     } description: {
-                        Text("A role holds the job description, your planned questions and the cheater prompts.")
+                        Text("A role holds the job description, your planned questions and the AI-tool prompts.")
                     } actions: {
                         Button("New Role") { newRole() }
                     }

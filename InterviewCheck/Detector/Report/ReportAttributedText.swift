@@ -100,7 +100,7 @@ enum ReportAttributedText {
     }
 
     /// Marks shared words the way the app does (the line's text starts at 0).
-    static let highlightFill = NSColor(srgbRed: 1.0, green: 0.80, blue: 0.45, alpha: 1)
+    static let highlightFill = NSColor(srgbRed: 1.0, green: 0.86, blue: 0.35, alpha: 1)
 
     private static func highlighted(_ line: NSAttributedString, words: Set<Int>) -> NSAttributedString {
         guard !words.isEmpty else { return line }

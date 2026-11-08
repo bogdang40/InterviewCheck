@@ -30,7 +30,7 @@ enum CheaterPromptLibrary {
     /// a real cheating tool, because it is one.
     static let copilot = CheaterPrompt(
         id: copilotID,
-        name: "Copilot",
+        name: "Full answer",
         instructions: "Built in: the answer prompt from a real interview copilot, loaded with the job description and resume.",
         isBuiltIn: true
     )

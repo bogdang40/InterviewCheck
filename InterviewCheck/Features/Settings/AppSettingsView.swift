@@ -2,22 +2,25 @@ import SwiftUI
 
 /// The Settings window (Cmd+,).
 struct AppSettingsView: View {
+    /// The open tab; other tabs can switch it ("Open Keys").
+    @AppStorage(SettingsTab.storageKey) private var tab = SettingsTab.keys
+
     var body: some View {
-        TabView {
+        TabView(selection: $tab) {
             KeysSettingsTab()
-                .tabItem { Label("Keys", systemImage: "key") }
+                .tabItem { Label("Keys", systemImage: "key") }.tag(SettingsTab.keys)
             AudioSettingsTab()
-                .tabItem { Label("Audio", systemImage: "mic") }
+                .tabItem { Label("Audio", systemImage: "mic") }.tag(SettingsTab.audio)
             DetectorSettingsTab()
-                .tabItem { Label("Detector", systemImage: "checkmark.shield") }
+                .tabItem { Label("Detector", systemImage: "checkmark.shield") }.tag(SettingsTab.detector)
             ShortcutsSettingsTab()
-                .tabItem { Label("Shortcuts", systemImage: "keyboard") }
+                .tabItem { Label("Shortcuts", systemImage: "keyboard") }.tag(SettingsTab.shortcuts)
             PrivacySettingsTab()
-                .tabItem { Label("Privacy", systemImage: "hand.raised") }
+                .tabItem { Label("Privacy", systemImage: "hand.raised") }.tag(SettingsTab.privacy)
             LicenseSettingsTab()
-                .tabItem { Label("License", systemImage: "person.badge.key") }
+                .tabItem { Label("License", systemImage: "person.badge.key") }.tag(SettingsTab.license)
             AboutSettingsTab()
-                .tabItem { Label("About", systemImage: "info.circle") }
+                .tabItem { Label("About", systemImage: "info.circle") }.tag(SettingsTab.about)
         }
         .frame(width: 640, height: 560)
     }
@@ -109,6 +112,13 @@ struct KeysSettingsTab: View {
     }
 }
 
+/// The Settings tabs, by name.
+enum SettingsTab {
+    static let storageKey = "interviewcheck.settings.tab"
+    static let keys = "keys", audio = "audio", detector = "detector", shortcuts = "shortcuts"
+    static let privacy = "privacy", license = "license", about = "about"
+}
+
 /// Which AIs answer each question, the AI review, meaning comparison, notice.
 struct DetectorSettingsTab: View {
     @ObservedObject private var settings = DetectorSettings.shared
@@ -123,7 +133,7 @@ struct DetectorSettingsTab: View {
                         Picker("", selection: $entry.provider) {
                             ForEach(AIProviderType.allCases, id: \.self) { Text($0.displayName).tag($0) }
                         }
-                        .labelsHidden().frame(width: 130)
+                        .labelsHidden().frame(width: 130, alignment: .leading)
                         ModelField(provider: entry.provider, model: $entry.model)
                         if providers.apiKey(for: entry.provider).isEmpty { Tag(text: "No key", color: .orange) }
                         Spacer()
@@ -137,17 +147,20 @@ struct DetectorSettingsTab: View {
             } header: {
                 Text("AI answers to compare against")
             } footer: {
-                Text("Each row answers every question with each enabled cheater prompt, up to 6 answers per question.")
+                Text("Each row answers every question with each enabled AI-tool prompt, up to 6 answers per question.")
             }
 
             Section {
                 Toggle("Review each answer with AI", isOn: $settings.judgeEnabled)
-                HStack {
-                    Picker("Model", selection: $settings.judge.provider) {
-                        ForEach(AIProviderType.allCases, id: \.self) { Text($0.displayName).tag($0) }
+                LabeledContent("Model") {
+                    HStack {
+                        Picker("", selection: $settings.judge.provider) {
+                            ForEach(AIProviderType.allCases, id: \.self) { Text($0.displayName).tag($0) }
+                        }
+                        .labelsHidden()
+                        .frame(width: 130, alignment: .leading)
+                        ModelField(provider: settings.judge.provider, model: $settings.judge.model)
                     }
-                    .frame(width: 220)
-                    ModelField(provider: settings.judge.provider, model: $settings.judge.model)
                 }
                 .disabled(!settings.judgeEnabled)
                 Toggle("Compare meaning, not just wording (OpenAI embeddings)", isOn: $settings.useEmbeddings)
@@ -158,7 +171,7 @@ struct DetectorSettingsTab: View {
             }
 
             Section {
-                Toggle("Mark questions automatically when I forget the key (beta)", isOn: $settings.autoMarkQuestions)
+                Toggle("Mark questions automatically when I forget to press Question Asked (beta)", isOn: $settings.autoMarkQuestions)
             } footer: {
                 Text("A question followed by an answer of a dozen words or more is marked at the end of the question. Pressing Question Asked yourself is still more precise.")
             }
@@ -191,13 +204,13 @@ struct ModelField: View {
 
     var body: some View {
         if provider == .azureOpenAI || options.isEmpty {
-            TextField("Deployment", text: $model).frame(width: 200)
+            TextField("Deployment", text: $model).frame(width: 200, alignment: .leading)
         } else {
             Picker("", selection: $model) {
                 ForEach(options, id: \.self) { Text($0).tag($0) }
             }
             .labelsHidden()
-            .frame(width: 200)
+            .frame(width: 200, alignment: .leading)
         }
     }
 }

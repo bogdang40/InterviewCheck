@@ -29,6 +29,7 @@ every screen of the installed app and the demo.
 | N6 | **Their own baseline.** An answer that starts much later and runs much cleaner than the same candidate's other answers is called out. | Done |
 | N7 | **Follow-ups without keys.** "Ask next" questions made from the answer's own terms (those an AI answer also used first) when there is no AI review. | Done |
 | N8 | **The report leads with its payoff.** Question chips that jump to each answer, and "What stood out": every answer at 70%+ with its strongest evidence, in the app, PDF and Markdown. | Done |
+| N9 | **Fixes from an independent design review** (screenshots of every screen). | Done |
 
 ## Log
 
@@ -40,3 +41,13 @@ every screen of the installed app and the demo.
 - **N6 done.** `BaselineSignal` (core package) compares an answer with the same candidate's other finished answers (20+ words, at least two of them). It is called out when the answer has a third or less of their usual hesitations (fillers and restarts per 100 words, when they usually have 3+), and more strongly when it also starts much later than usual (2.5× and 2.5 s more). It appears on the score card under "Compared with their other answers", in the report and in the PDF. It is evidence only and does not change the %, so the calibration stays as it is. 6 core tests and 1 app test.
 - **N7 done.** `ProbeQuestions` (core package) tags the answer's noun phrases with Apple's on-device NaturalLanguage tagger. It skips the question's own terms, vague leads ("many", "great") and time words, and ranks terms an AI answer also used first, then longer terms. Technical questions get "You mentioned “token bucket algorithm”. Walk me through how that works, step by step." and "What would go wrong with “gateway node” here…". Questions about their past get "What exactly was your part in that?", and questions about motives get "What have you actually done with it so far?". These are used as "Ask next" whenever the AI review is off or fails. 5 core tests. The empty Reports list also offers the demo now.
 - **N8 done.** The finished demo opened on Q1 (honest, 20%), and the caught answer was below the fold. Reports now have question chips under the header (click to scroll) and a "What stood out" box. `ReportStandout` is shared by the report view, PDF and Markdown. Markdown also gains the shared-word line and the baseline note.
+- **N9 done.** An independent design review of every screen found these, now fixed:
+  - In dark mode white button text on the green accent had 2.2:1 contrast; the accent is now #2B8552 (4.6:1).
+  - AI answer cards were cut off mid-line inside a hidden inner scroll view. They now show 9 lines with "Show All", and every card says "N words match" or "No overlap".
+  - The evidence read like debug output (lowercased quotes with punctuation stripped). It now reads "Matches the GPT 5.2 answer word for word: 99 of 104 words", and the word counts agree because shared words are counted as shown.
+  - The "Copilot" prompt read as Microsoft Copilot; it is now "Full answer", and saved roles are migrated on load. "Cheater prompts" is now "AI-tool prompts" everywhere in the UI.
+  - Colours had too many meanings. Green, orange and red are now only score bands. Matched words get a yellow marker with black text, like Find. Silence and stalling are two greys, the answer is blue, live activity is blue, and tags and chips are neutral.
+  - "Overall" was an unexplained number with three wordings. Every screen now leads with "N of M answers flagged", with the overall % second and a tooltip explaining it.
+  - Start Interview was greyed out at the bottom of a long form with no reason given. It now sits in a bottom bar that says what it is waiting for (the consent confirmation) or "Ready: name · role".
+  - The notes field was capped at 640 pt and the timing strip had no label. Notes are now full width, the strip is captioned "Timing", and the report runs score, timing, answer, AI answers, then verdict and notes.
+  - Settings: the model pickers are aligned. "When I forget the key" is now "when I forget to press Question Asked". The audio rows show their icon on the left and their fix on the right, and the Deepgram row has "Open Keys", which switches to the Keys tab.

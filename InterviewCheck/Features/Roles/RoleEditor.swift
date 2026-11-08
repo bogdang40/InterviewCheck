@@ -65,7 +65,7 @@ struct RoleEditor: View {
             } header: {
                 Text("Job Description")
             } footer: {
-                Text("Paste the posting. Draft writes about ten interview questions and tailors the cheater prompts to this job.")
+                Text("Paste the posting. Draft writes about ten interview questions and tailors the AI-tool prompts to this job.")
             }
 
             Section {
@@ -112,7 +112,7 @@ struct RoleEditor: View {
                 }
                 Button("Restore Default Prompts") { draft.cheaterPrompts = CheaterPromptLibrary.defaults }
             } header: {
-                Text("Cheater Prompts")
+                Text("AI-Tool Prompts")
             } footer: {
                 Text("Each enabled prompt runs on every AI in Settings \u{203A} Detector, so you see what different cheating tools would show the candidate.")
             }

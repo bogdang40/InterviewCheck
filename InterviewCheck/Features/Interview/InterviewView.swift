@@ -59,13 +59,13 @@ struct InterviewSetupForm: View {
                 }
                 if let role = roles.selectedRole {
                     LabeledContent("Planned questions", value: "\(role.plannedQuestions.count)")
-                    LabeledContent("Cheater prompts", value: "\(role.enabledPrompts.count) enabled")
+                    LabeledContent("AI-tool prompts", value: "\(role.enabledPrompts.count) enabled")
                 }
                 Button("New Role\u{2026}") { AppNavigation.shared.requestNewRole() }
             } header: {
                 Text("Role")
             } footer: {
-                Text("The job description and cheater prompts come from the role.")
+                Text("The job description and AI-tool prompts come from the role.")
             }
 
             Section {
@@ -122,25 +122,51 @@ struct InterviewSetupForm: View {
                 Text("Recording laws differ by place; some require everyone on the call to agree.")
             }
 
-            Section {
-                HStack {
-                    if let message = controller.errorMessage {
-                        Text(message).foregroundStyle(.red)
-                    }
-                    Spacer()
-                    Button("Start Interview") { Task { await InterviewPermissions.shared.startInterview(controller) } }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.large)
-                        .disabled(!controller.consentConfirmed)
-                        .keyboardShortcut(.defaultAction)
-                }
-            }
         }
         .formStyle(.grouped)
+        // Start stays in view, and says what it is waiting for.
+        .safeAreaInset(edge: .bottom, spacing: 0) { startBar }
         .navigationTitle("New Interview")
         .fileImporter(isPresented: $isImportingResume, allowedContentTypes: DocumentText.contentTypes) { result in
             if case .success(let url) = result { importResume(url) }
         }
+    }
+
+    private var startBar: some View {
+        VStack(spacing: 0) {
+            Divider()
+            HStack(spacing: 12) {
+                Group {
+                    if let message = controller.errorMessage {
+                        Label(message, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.red)
+                    } else if !controller.consentConfirmed {
+                        Label("Tell the candidate the interview is transcribed and checked, then switch on the confirmation above.",
+                              systemImage: "hand.raised")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Label(readyLine, systemImage: "checkmark.circle").foregroundStyle(.secondary)
+                    }
+                }
+                .font(.callout)
+                .lineLimit(2)
+                Spacer(minLength: 12)
+                Button("Start Interview") { Task { await InterviewPermissions.shared.startInterview(controller) } }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .disabled(!controller.consentConfirmed)
+                    .keyboardShortcut(.defaultAction)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+        }
+        .background(.bar)
+    }
+
+    /// "Ready: Jordan Rivera · Senior Backend Engineer"
+    private var readyLine: String {
+        let parts = [controller.candidateName.trimmingCharacters(in: .whitespaces), roles.selectedRole?.displayTitle ?? ""]
+            .filter { !$0.isEmpty }
+        return parts.isEmpty ? "Ready to start" : "Ready: " + parts.joined(separator: " \u{00B7} ")
     }
 
     private func importResume(_ url: URL) {

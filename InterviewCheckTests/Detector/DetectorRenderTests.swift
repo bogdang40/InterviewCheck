@@ -68,7 +68,7 @@ final class DetectorRenderTests: XCTestCase {
     }
 
     static let samples: [(AIProviderType, String, String, String)] = [
-        (.openai, "gpt-5.2", "Copilot", F.aiAnswer),
+        (.openai, "gpt-5.2", "Full answer", F.aiAnswer),
         (.claude, "claude-sonnet-5", "Talking points", """
         Say first: "I'd put a token bucket in front of every API key."
         - Keep bucket state in Redis so all gateway nodes agree

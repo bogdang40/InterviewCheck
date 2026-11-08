@@ -64,7 +64,7 @@ struct ImportJobsSheet: View {
                     if isLoading { ProgressView("Loading open jobs\u{2026}") }
                     else if jobs.isEmpty, error == nil { Text("No open jobs.").foregroundStyle(.secondary) }
                 }
-                Text("Each job becomes a role with its job description; questions and cheater prompts are drafted in the background.")
+                Text("Each job becomes a role with its job description; questions and AI-tool prompts are drafted in the background.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             if let error { Label(error, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange) }

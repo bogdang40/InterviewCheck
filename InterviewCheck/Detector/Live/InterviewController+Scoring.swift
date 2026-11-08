@@ -180,6 +180,9 @@ extension InterviewController {
 
 /// The interview's overall line.
 enum InterviewSummary {
+    /// What "overall" means, wherever it is shown.
+    static let overallHelp = "The average of the answer scores, weighted by confidence, so a strong signal counts more than a weak one. Look at the flagged answers first."
+
     /// Average of final scores weighted by confidence; nil with no scores.
     static func overall(_ scores: [AnswerScoreRecord]) -> Int? {
         let weighted = scores.map { score -> (Double, Double) in
