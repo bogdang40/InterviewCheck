@@ -47,8 +47,9 @@ extension ConnectorManager {
     /// interview counts when one of its interviewers is the user: by email, or
     /// by full name when the source gives names only and a name was typed in
     /// Connections. With nothing to check against, it counts.
-    func isMine(_ interview: ExternalInterview) -> Bool {
-        guard !showsAllInterviews, [.ats, .unified, .mcp].contains(interview.source.descriptor.category) else { return true }
+    func isMine(_ interview: ExternalInterview, ignoringShowAll: Bool = false) -> Bool {
+        guard ignoringShowAll || !showsAllInterviews else { return true }
+        guard [.ats, .unified, .mcp].contains(interview.source.descriptor.category) else { return true }
         let mine = myEmails
         let listed = interview.interviewers.compactMap { $0.email?.lowercased() }
         if !mine.isEmpty, !listed.isEmpty { return listed.contains(where: mine.contains) }
@@ -56,5 +57,14 @@ extension ConnectorManager {
         let listedNames = interview.interviewers.map { InterviewMerger.normalized($0.name) }.filter { !$0.isEmpty }
         if listed.isEmpty, !names.isEmpty, !listedNames.isEmpty { return listedNames.contains(where: names.contains) }
         return true
+    }
+
+    /// The setup holds this interview: prepared from it, or from another copy
+    /// of the same meeting (its id can change when an ATS copy comes or goes).
+    func holds(_ interview: ExternalInterview, in controller: InterviewController) -> Bool {
+        guard let prepared = controller.preparedFrom, controller.externalRef != nil else { return false }
+        if prepared == interview.id { return true }
+        guard let ref = controller.externalRef, let saved = database.loadExternalLink(ref) else { return false }
+        return InterviewMerger.isSame(saved, interview, window: 15 * 60)
     }
 }

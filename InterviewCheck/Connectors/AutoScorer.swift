@@ -35,7 +35,7 @@ final class AutoScorer {
         let seen = attempted
         // Reports with answers, from a live interview or an earlier part of the
         // same meeting: that interview is not scored a second time.
-        let reports = manager.database.loadInterviews(limit: 300).filter { $0.questionCount > 0 && $0.externalRef != nil }
+        let reports = manager.database.loadInterviews(limit: 300).filter { $0.questionCount > 0 }
         var claimed: Set<String> = []
         return manager.recordings.compactMap { item -> (ExternalRecording, ExternalInterview)? in
             let recording = item.recording
@@ -53,7 +53,12 @@ final class AutoScorer {
     /// Prepare may have saved it under the ATS's id.
     private func alreadyReported(_ interview: ExternalInterview, near start: Date, in reports: [InterviewRecord]) -> Bool {
         reports.contains { report in
-            guard let ref = report.externalRef, abs(report.startedAt.timeIntervalSince(start)) < 3 * 3600 else { return false }
+            guard abs(report.startedAt.timeIntervalSince(start)) < 3 * 3600 else { return false }
+            guard let ref = report.externalRef else {
+                // Run live without Prepare: the same candidate's name near that time.
+                let name = InterviewMerger.normalized(interview.candidate?.name ?? "")
+                return !name.isEmpty && InterviewMerger.normalized(report.candidateName) == name
+            }
             if ref == interview.id { return true }
             return manager.database.loadExternalLink(ref).map { InterviewMerger.isSame($0, interview, window: 15 * 60) } ?? false
         }
@@ -72,6 +77,8 @@ final class AutoScorer {
 
     func score(_ recording: ExternalRecording, interview: ExternalInterview) async -> InterviewReportData? {
         let analyzer = makeAnalyzer()
+        // In the background: never switch the window (a live interview may be on).
+        analyzer.showsReportWhenDone = false
         let role = interview.job.flatMap { job in
             roles.roles.first { $0.externalJobKey == "\(interview.source.rawValue):\(job.externalID)" }
                 ?? roles.roles.first { $0.name.caseInsensitiveCompare(job.title) == .orderedSame }

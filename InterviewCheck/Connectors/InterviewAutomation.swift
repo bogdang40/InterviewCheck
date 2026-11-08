@@ -6,8 +6,13 @@ import InterviewCheckConnectors
 @MainActor
 enum InterviewAutomation {
     /// The next interview that has not ended yet.
-    static func nextInterview(manager: ConnectorManager = .shared, now: Date = Date()) -> ExternalInterview? {
-        manager.upcoming.first { ($0.endsAt ?? $0.startsAt.addingTimeInterval(3600)) > now }
+    /// The next of the user's interviews not over yet, skipping the one just run.
+    static func nextInterview(manager: ConnectorManager = .shared, controller: InterviewController = .shared,
+                              now: Date = Date()) -> ExternalInterview? {
+        manager.mine.first { interview in
+            (interview.endsAt ?? interview.startsAt.addingTimeInterval(3600)) > now
+                && !(controller.phase == .ended && manager.holds(interview, in: controller))
+        }
     }
 
     /// Prepares the next interview; returns a sentence for the caller to show.
@@ -15,7 +20,7 @@ enum InterviewAutomation {
     static func prepareNext(manager: ConnectorManager = .shared, controller: InterviewController = .shared,
                             mailResumes: Bool = false) async -> String {
         guard controller.phase != .live else { return "An interview is live." }
-        guard let interview = nextInterview(manager: manager) else {
+        guard let interview = nextInterview(manager: manager, controller: controller) else {
             return manager.accounts.isEmpty ? "Connect a calendar, mailbox or ATS in Connections first." : "No upcoming interviews."
         }
         return await prepare(interview, manager: manager, controller: controller, mailResumes: mailResumes)
@@ -43,11 +48,11 @@ enum InterviewAutomation {
                          joined: @MainActor (String) -> Void = { AutoPrepare.shared.markJoined($0) },
                          mailResumes: Bool = false) async -> String {
         guard controller.phase != .live else { return "An interview is live." }
-        guard let interview = nextInterview(manager: manager) else {
+        guard let interview = nextInterview(manager: manager, controller: controller) else {
             return manager.accounts.isEmpty ? "Connect a calendar, mailbox or ATS in Connections first." : "No upcoming interviews."
         }
         var said: [String] = []
-        if controller.preparedFrom != interview.id || controller.externalRef == nil {
+        if !manager.holds(interview, in: controller) {
             said.append(await prepare(interview, manager: manager, controller: controller, mailResumes: mailResumes))
         }
         guard let link = interview.meetingURL else { return (said + ["This interview has no meeting link."]).joined(separator: " ") }

@@ -168,13 +168,17 @@ final class RecordingAnalyzer: ObservableObject {
         return (words, Dictionary(uniqueKeysWithValues: indexes.map { ($0.value, $0.key) }))
     }
 
+    /// Opens the report when done (Analyze Recording); background scoring
+    /// turns this off so the window never switches under the interviewer.
+    var showsReportWhenDone = true
+
     /// Step 2: with the candidate's voice chosen, analyse every answer.
     func analyze() {
         guard let candidate = candidateSpeaker else { return }
         task = Task { @MainActor in
             do {
                 let id = try await runAnalysis(candidate: candidate)
-                AppNavigation.shared.showReport(id.interviewID)
+                if showsReportWhenDone { AppNavigation.shared.showReport(id.interviewID) }
                 step = .finished(interviewID: id.interviewID, questions: id.questions)
             } catch {
                 step = .failed(error.localizedDescription)

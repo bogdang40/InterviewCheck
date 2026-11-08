@@ -20,6 +20,8 @@ final class InterviewReminders: NSObject, UNUserNotificationCenterDelegate {
     }
 
     private var center: UNUserNotificationCenter { .current() }
+    /// Each call supersedes the ones before (several syncs finish together).
+    private var generation = 0
 
     func install() {
         center.delegate = self
@@ -31,19 +33,24 @@ final class InterviewReminders: NSObject, UNUserNotificationCenterDelegate {
     /// Replaces the pending reminders with ones for these interviews.
     func schedule(_ interviews: [ExternalInterview], now: Date = Date()) {
         let minutes = Self.minutes
+        generation += 1
+        let mine = generation
         Task {
-            let pending = await center.pendingNotificationRequests().map(\.identifier).filter { $0.hasPrefix(Self.prefix) }
-            center.removePendingNotificationRequests(withIdentifiers: pending)
-            guard minutes > 0 else { return }
-            let due = Self.requests(for: interviews, minutes: minutes, now: now)
-            guard !due.isEmpty else { return }
+            // Only the latest call changes anything: an older one that resumes
+            // later must not add its (stale) reminders back.
             let settings = await center.notificationSettings()
-            if settings.authorizationStatus == .notDetermined {
-                guard (try? await center.requestAuthorization(options: [.alert, .sound])) == true else { return }
-            } else if settings.authorizationStatus == .denied {
-                return
+            guard mine == generation else { return }
+            if minutes > 0, settings.authorizationStatus == .notDetermined {
+                guard (try? await center.requestAuthorization(options: [.alert, .sound])) == true, mine == generation else { return }
             }
-            for request in due { try? await center.add(request) }
+            let pending = await center.pendingNotificationRequests().map(\.identifier).filter { $0.hasPrefix(Self.prefix) }
+            guard mine == generation else { return }
+            center.removePendingNotificationRequests(withIdentifiers: pending)
+            guard minutes > 0, settings.authorizationStatus != .denied else { return }
+            for request in Self.requests(for: interviews, minutes: minutes, now: now) {
+                guard mine == generation else { return }
+                try? await center.add(request)
+            }
         }
     }
 
@@ -100,7 +107,12 @@ final class InterviewReminders: NSObject, UNUserNotificationCenterDelegate {
             if !NSApp.windows.contains(where: { $0.isVisible && $0.canBecomeMain }) {
                 NSWorkspace.shared.open(Bundle.main.bundleURL)
             }
-            guard let interview = ConnectorManager.shared.upcoming.first(where: { $0.id == id }) else { return }
+            guard let interview = ConnectorManager.shared.mine.first(where: { $0.id == id }) else { return }
+            // Already prepared (automatically, most likely): keep consent and choices.
+            if ConnectorManager.shared.holds(interview, in: .shared) {
+                AppNavigation.shared.show(.interview)
+                return
+            }
             Task { await ConnectorManager.shared.prepare(interview, controller: .shared) }
         }
     }

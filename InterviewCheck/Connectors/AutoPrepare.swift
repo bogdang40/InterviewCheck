@@ -75,9 +75,9 @@ final class AutoPrepare {
     func tick() async -> ExternalInterview? {
         joinIfDue()
         guard isEnabled, !isEditingRoles(),
-              let next = Self.due(manager.upcoming, now: now(), leadMinutes: leadMinutes(), prepared: preparedIDs),
+              let next = Self.due(manager.mine, now: now(), leadMinutes: leadMinutes(), prepared: preparedIDs),
               setupIsFree(for: next) else { return nil }
-        preparedIDs.insert(next.id)
+        preparedIDs.insert(Self.key(next))
         let role = roles.selectedRoleID
         let generation = manager.prepareGeneration
         // Written only if, after the downloads, the setup is still as Prepare
@@ -106,9 +106,10 @@ final class AutoPrepare {
     /// before its start until 10 minutes after; once per interview.
     @discardableResult
     func joinIfDue() -> URL? {
-        guard joinsAutomatically, controller.phase == .setup, controller.externalRef != nil,
-              let id = controller.preparedFrom, !joinedIDs.contains(id),
-              let interview = manager.upcoming.first(where: { $0.id == id }), let link = interview.meetingURL else { return nil }
+        guard joinsAutomatically, controller.phase == .setup, controller.externalRef != nil, let prepared = controller.preparedFrom,
+              let interview = manager.mine.first(where: { manager.holds($0, in: controller) }),
+              !joinedIDs.contains(interview.id), !joinedIDs.contains(prepared), let link = interview.meetingURL else { return nil }
+        let id = interview.id
         let untilStart = interview.startsAt.timeIntervalSince(now())
         guard untilStart <= 90, untilStart > -10 * 60 else { return nil }
         joinedIDs.insert(id)
@@ -118,9 +119,14 @@ final class AutoPrepare {
 
     /// The first interview starting within the lead time (or started in the
     /// last five minutes) that was not prepared automatically yet.
+    /// Id and start: an interview moved to another time is prepared again then.
+    static func key(_ interview: ExternalInterview) -> String {
+        "\(interview.id)@\(Int(interview.startsAt.timeIntervalSince1970))"
+    }
+
     static func due(_ upcoming: [ExternalInterview], now: Date, leadMinutes: Int, prepared: Set<String>) -> ExternalInterview? {
         upcoming.first {
-            !prepared.contains($0.id) && $0.startsAt > now.addingTimeInterval(-5 * 60)
+            !prepared.contains(key($0)) && $0.startsAt > now.addingTimeInterval(-5 * 60)
                 && $0.startsAt <= now.addingTimeInterval(Double(leadMinutes) * 60)
         }
     }
@@ -129,10 +135,15 @@ final class AutoPrepare {
     /// an interview that is over: kept until its end when known; with no end,
     /// an hour but released 5 minutes before `next`, never in its first 15 minutes.
     func setupIsFree(for next: ExternalInterview) -> Bool {
+        // A finished interview whose scores are all in is saved: the next may come in.
+        if controller.phase == .ended { return controller.pendingScoring.isEmpty && controller.referencesInFlight.isEmpty }
         guard controller.phase == .setup, controller.pendingScoring.isEmpty, !controller.consentConfirmed else { return false }
         if controller.candidateName.isEmpty, controller.resumeText.isEmpty, controller.externalRef == nil,
            controller.preparedFrom == nil { return true }
         guard let lastFill, lastFill == fill, let lastPrepared else { return false }
+        // Cancelled or moved since (no longer among the user's interviews): let it go.
+        guard manager.mine.contains(where: { $0.id == lastPrepared.id && $0.startsAt == lastPrepared.startsAt
+            || InterviewMerger.isSame($0, lastPrepared, window: 0) }) else { return true }
         let keepUntil: Date
         if let end = lastPrepared.endsAt {
             // A known end: kept until then, even if the next one overlaps.

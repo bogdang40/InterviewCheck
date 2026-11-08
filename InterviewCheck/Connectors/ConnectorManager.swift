@@ -24,7 +24,11 @@ final class ConnectorManager: ObservableObject {
     }
 
     @Published private(set) var accounts: [Account] = []
+    /// What Upcoming Interviews shows (everyone's with Show All on).
     @Published private(set) var upcoming: [ExternalInterview] = []
+    /// The user's own interviews, whatever Show All says: reminders, automatic
+    /// Prepare and Join, Prepare/Join Next and the Dock act on these only.
+    @Published private(set) var mine: [ExternalInterview] = []
     @Published private(set) var recordings: [(recording: ExternalRecording, interviewID: String?)] = []
     @Published private(set) var syncing: Set<ConnectorKind> = []
     /// Upcoming ATS interviews left out because the user is not on them.
@@ -284,10 +288,11 @@ final class ConnectorManager: ObservableObject {
 
     func reloadCache() {
         let all = database.loadExternalInterviews(startingAfter: now().addingTimeInterval(-2 * 3600))
-        upcoming = InterviewMerger.merge(all.filter(isMine))
+        upcoming = InterviewMerger.merge(all.filter { isMine($0) })
+        mine = showsAllInterviews ? InterviewMerger.merge(all.filter { isMine($0, ignoringShowAll: true) }) : upcoming
         hiddenForOthers = InterviewMerger.merge(all.filter { !isMine($0) && $0.startsAt > now() }).count
         recordings = database.loadExternalRecordings()
-        onUpcomingChanged?(upcoming)
+        onUpcomingChanged?(mine)
     }
 
     func upsert(_ account: Account) {

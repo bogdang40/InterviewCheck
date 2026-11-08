@@ -72,7 +72,7 @@ struct UpcomingInterviewsSection: View {
                     Text(interview.candidate?.name ?? interview.title).lineLimit(1)
                     if UpcomingTime.isSoon(interview.startsAt) { Tag(text: "Soon", color: .orange) }
                     // The setup already holds this interview (prepared by hand or automatically).
-                    if controller.preparedFrom == interview.id, controller.externalRef != nil, controller.phase == .setup {
+                    if controller.phase == .setup, connectors.holds(interview, in: controller) {
                         Tag(text: "Ready", color: .green)
                     }
                 }
@@ -86,8 +86,7 @@ struct UpcomingInterviewsSection: View {
                     NSWorkspace.shared.open(link)
                     AutoPrepare.shared.markJoined(interview.id)
                     // Joining also prepares the interview, unless that is done.
-                    let ready = controller.preparedFrom == interview.id && controller.externalRef != nil
-                    guard !ready, preparingID == nil else { return }
+                    guard !connectors.holds(interview, in: controller), preparingID == nil else { return }
                     preparingID = interview.id
                     Task {
                         notes = await connectors.prepare(interview, controller: controller, mailResumes: true)

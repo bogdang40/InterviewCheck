@@ -74,7 +74,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Right-click on the Dock icon: the next interviews, each with Prepare.
     func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
         let menu = NSMenu()
-        let upcoming = ConnectorManager.shared.upcoming.filter { ($0.endsAt ?? $0.startsAt.addingTimeInterval(3600)) > Date() }
+        let upcoming = ConnectorManager.shared.mine.filter { ($0.endsAt ?? $0.startsAt.addingTimeInterval(3600)) > Date() }
         if !upcoming.isEmpty {
             menu.addItem(withTitle: "Prepare", action: nil, keyEquivalent: "").isEnabled = false
             for interview in upcoming.prefix(5) {
@@ -108,7 +108,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func prepareFromDock(_ item: NSMenuItem) {
         guard let id = item.representedObject as? String,
-              let interview = ConnectorManager.shared.upcoming.first(where: { $0.id == id }) else { return }
+              let interview = ConnectorManager.shared.mine.first(where: { $0.id == id }) else { return }
         NSApp.activate(ignoringOtherApps: true)
         Task { await InterviewAutomation.prepare(interview) }
     }
@@ -129,15 +129,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard InterviewController.shared.phase == .live else { return .terminateNow }
-        let alert = NSAlert()
-        alert.messageText = "End the interview and quit?"
-        alert.informativeText = "The interview is still recording. Ending it saves the report so far."
-        alert.addButton(withTitle: "End and Quit")
-        alert.addButton(withTitle: "Cancel")
-        guard alert.runModal() == .alertFirstButtonReturn else { return .terminateCancel }
-        InterviewController.shared.end()
-        return .terminateNow
+        let controller = InterviewController.shared
+        if controller.phase == .live {
+            let alert = NSAlert()
+            alert.messageText = "End the interview and quit?"
+            alert.informativeText = "The interview is still recording. Ending it saves the report; the last scores take a few seconds."
+            alert.addButton(withTitle: "End and Quit")
+            alert.addButton(withTitle: "Cancel")
+            guard alert.runModal() == .alertFirstButtonReturn else { return .terminateCancel }
+            controller.end()
+        }
+        // The last answers are still being scored: quit once they are saved
+        // (and the report PDF written), at most a minute later.
+        guard !controller.pendingScoring.isEmpty || !controller.referencesInFlight.isEmpty else { return .terminateNow }
+        Task { @MainActor in
+            let deadline = Date().addingTimeInterval(60)
+            while !controller.pendingScoring.isEmpty || !controller.referencesInFlight.isEmpty, Date() < deadline {
+                try? await Task.sleep(nanoseconds: 200_000_000)
+            }
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            NSApp.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
     }
 
     func applicationWillTerminate(_ notification: Notification) {

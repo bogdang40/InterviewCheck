@@ -11,8 +11,12 @@ private struct TwoInterviews: InterviewSource, CandidateSource {
     var delay: UInt64 = 0
     var withLink = false
     var withJob = false
+    var cancelledFirst = false
     func verify() async throws -> String { "lee@acme.com" }
     func upcomingInterviews(from: Date, to: Date) async throws -> [ExternalInterview] {
+        Array(all.dropFirst(cancelledFirst ? 1 : 0))
+    }
+    private var all: [ExternalInterview] {
         [ExternalInterview(source: .calendly, externalID: "a", title: "Phone Screen", startsAt: first,
                            meetingURL: withLink ? URL(string: "https://acme.zoom.us/j/81234567890") : nil,
                            candidate: ExternalCandidate(externalID: "ca", name: "Jane Doe", email: "jane@example.com"),
@@ -223,6 +227,45 @@ final class AutoPrepareTests: XCTestCase {
         controller.pendingScoring = []
     }
 
+    func testACancelledInterviewLetsTheNextOneIn() async throws {
+        source.gap = 20 * 60
+        await manager.sync(.calendly)
+        await auto.tick()                                   // A (T+8) prepared
+        source.cancelledFirst = true                        // A is cancelled; B at T+28
+        await manager.sync(.calendly)
+        clock = clock.addingTimeInterval(20 * 60)           // B in 8 minutes
+        let next = await auto.tick()
+        XCTAssertEqual(next?.externalID, "b", "A's setup is let go once A is gone")
+        XCTAssertEqual(controller.candidateName, "Max Roe")
+    }
+
+    func testAFinishedInterviewLetsTheNextOneIn() async throws {
+        controller.startAudio = {}
+        controller.stopAudio = {}
+        controller.roleProvider = { nil }
+        await auto.tick()
+        controller.consentConfirmed = true
+        controller.start()
+        controller.end()
+        controller.stopTicking()
+        XCTAssertEqual(controller.phase, .ended)
+        clock = clock.addingTimeInterval(3 * 3600)
+        let next = await auto.tick()
+        XCTAssertEqual(next?.externalID, "b", "a saved, fully scored interview frees the setup")
+        XCTAssertEqual(controller.phase, .setup)
+    }
+
+    func testShowAllDoesNotWidenWhatAutomationActsOn() async throws {
+        manager.showsAllInterviews = true
+        XCTAssertEqual(manager.mine.map(\.externalID), manager.upcoming.map(\.externalID), "booking links are all the user's own")
+        let ats = ExternalInterview(source: .greenhouse, externalID: "g1", title: "Interview", startsAt: clock.addingTimeInterval(600),
+                                    interviewers: [ExternalPerson(name: "Sam Roe", email: "sam@acme.com")])
+        manager.typedEmails = "lee@acme.com"
+        XCTAssertTrue(manager.isMine(ats), "shown with Show All")
+        XCTAssertFalse(manager.isMine(ats, ignoringShowAll: true), "but not the user's own for reminders and automation")
+        manager.showsAllInterviews = false
+    }
+
     func testOffOrWhileEditingRolesNothingHappens() async {
         editingRoles = true
         let whileEditing = await auto.tick()
@@ -241,7 +284,11 @@ final class AutoPrepareTests: XCTestCase {
         let late = ExternalInterview(source: .calendly, externalID: "x", title: "Interview", startsAt: now.addingTimeInterval(-3 * 60))
         XCTAssertEqual(AutoPrepare.due([late, soon, later], now: now, leadMinutes: 10, prepared: [])?.externalID, "x",
                        "a few minutes late still counts")
-        XCTAssertEqual(AutoPrepare.due([late, soon, later], now: now, leadMinutes: 10, prepared: [late.id])?.externalID, "s")
+        XCTAssertEqual(AutoPrepare.due([late, soon, later], now: now, leadMinutes: 10, prepared: [AutoPrepare.key(late)])?.externalID, "s")
+        var moved = late
+        moved.startsAt = now.addingTimeInterval(8 * 60)
+        XCTAssertEqual(AutoPrepare.due([moved], now: now, leadMinutes: 10, prepared: [AutoPrepare.key(late)])?.externalID, "x",
+                       "moved to another time: prepared again")
         XCTAssertNil(AutoPrepare.due([later], now: now, leadMinutes: 10, prepared: []))
     }
 }

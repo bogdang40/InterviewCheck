@@ -27,7 +27,10 @@ public enum InterviewMerger {
             case .mail: return 3
             }
         }
-        return order(a) != order(b) ? order(a) < order(b) : a.startsAt < b.startsAt
+        if order(a) != order(b) { return order(a) < order(b) }
+        if a.startsAt != b.startsAt { return a.startsAt < b.startsAt }
+        // A stable choice, so the merged interview keeps its id from sync to sync.
+        return (a.source.rawValue, a.externalID) < (b.source.rawValue, b.externalID)
     }
 
     public static func isSame(_ a: ExternalInterview, _ b: ExternalInterview, window: TimeInterval) -> Bool {
