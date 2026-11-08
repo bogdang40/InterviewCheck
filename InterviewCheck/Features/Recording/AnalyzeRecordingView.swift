@@ -83,7 +83,9 @@ struct AnalyzeRecordingView: View {
         .safeAreaInset(edge: .bottom) {
             VStack(alignment: .leading, spacing: 6) {
                 if let meetingError { Text(meetingError).font(.callout).foregroundStyle(.orange) }
-                footer(primary: "Analyze", disabled: (file == nil && meeting == nil) || !consent) {
+                footer(primary: "Analyze", disabled: (file == nil && meeting == nil) || !consent,
+                       waitingFor: file == nil && meeting == nil ? "Choose a recording"
+                           : (!consent ? "Confirm the candidate agreed to the recording" : nil)) {
                     let role = roles.role(id: roleID)
                     if let meeting {
                         meetingError = nil
@@ -161,7 +163,7 @@ struct AnalyzeRecordingView: View {
         }
     }
 
-    private func footer(primary: String, disabled: Bool = false, cancel: Bool = true,
+    private func footer(primary: String, disabled: Bool = false, waitingFor: String? = nil, cancel: Bool = true,
                         action: @escaping () -> Void) -> some View {
         HStack {
             if cancel {
@@ -172,6 +174,10 @@ struct AnalyzeRecordingView: View {
                 .keyboardShortcut(.cancelAction)
             }
             Spacer()
+            // A greyed-out button says what it is waiting for.
+            if disabled, let waitingFor {
+                Text(waitingFor).font(.callout).foregroundStyle(.secondary)
+            }
             Button(primary, action: action)
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
