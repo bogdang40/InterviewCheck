@@ -12,6 +12,16 @@ public enum ConnectorCatalog {
         case .icsFile:
             return entry(kind, "Invite files (.ics)", .calendar, "Drop an interview invite from any email into the app.",
                          .system, [.upcomingInterviews, .emailInvites], setup: "Drag a .ics invite onto the Interview screen, or use File \u{203A} Import Invite.", tested: true)
+        case .icsFeed:
+            return entry(kind, "Calendar feed (iCal link)", .calendar, "Interviews from a calendar\u{2019}s secret iCal address: Google Calendar, Outlook, iCloud, Fastmail or a scheduling tool. No sign-in or admin needed.",
+                         .fields([
+                             CredentialField("url", "Feed address", placeholder: "https://\u{2026}.ics or webcal://\u{2026} (several: one per line)", secret: true),
+                             keywords,
+                             CredentialField("everyEvent", "Every event in this calendar is an interview", toggle: true),
+                         ]),
+                         [.upcomingInterviews],
+                         setup: "Copy the calendar\u{2019}s private iCal address: Google Calendar \u{203A} Settings \u{203A} (calendar) \u{203A} Integrate calendar \u{203A} Secret address in iCal format; Outlook \u{203A} Settings \u{203A} Calendar \u{203A} Shared calendars \u{203A} Publish a calendar (ICS link); iCloud \u{203A} Calendar \u{203A} Share \u{203A} Public Calendar. Treat the address like a password: anyone with it can read the calendar. Feeds usually refresh every few hours, so a calendar connection is quicker for last-minute changes.",
+                         docs: "https://support.google.com/calendar/answer/37648")
         case .imapMail:
             return entry(kind, "Mail (IMAP)", .mail, "Interview invites from any mailbox: Gmail, iCloud, Yahoo, Fastmail, Zoho or your company\u{2019}s mail server. Updates and cancellations are followed.",
                          .fields([

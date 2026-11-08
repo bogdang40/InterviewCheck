@@ -20,6 +20,7 @@ live customer accounts. Check the first sync of each new system.
 |---|---|---|
 | **Calendar on this Mac** | Interviews from every calendar macOS syncs (iCloud, Google, Exchange, Outlook) | Allow Calendar access. Events with "interview", "screen" or "onsite" in the title are used. Add extra title words if your team uses others. |
 | **Invite files (.ics)** | One interview per dropped invite | Drag the invite from any email. Outlook's Windows time zones are understood. |
+| **Calendar feed (iCal link)** | Interviews from any calendar's secret iCal address (Google, Outlook, iCloud, Fastmail, scheduling tools) | Paste the address (`https://…` or `webcal://…`, several one per line). It is a secret: anyone with it can read the calendar. Feeds refresh every few hours on the provider's side. |
 
 A calendar invite rarely contains a job description or résumé. When an ATS is also
 connected, Prepare looks the candidate up there by email and fills those in. Any

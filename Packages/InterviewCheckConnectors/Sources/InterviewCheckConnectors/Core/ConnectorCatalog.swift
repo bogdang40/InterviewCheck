@@ -18,7 +18,7 @@ public enum ConnectorCategory: String, Codable, CaseIterable, Sendable {
 }
 
 public enum ConnectorKind: String, Codable, CaseIterable, Identifiable, Sendable {
-    case appleCalendar, icsFile, imapMail, calendly, calCom
+    case appleCalendar, icsFile, icsFeed, imapMail, calendly, calCom
     case google, microsoft365, zoom, webex
     case greenhouse, lever, ashby, workable, smartRecruiters, bambooHR, teamtailor, recruitee, jazzHR, breezyHR
     case personio, zohoRecruit, workday, icims, bullhorn, jobAdder

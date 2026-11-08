@@ -71,6 +71,8 @@ struct ConnectorDetailView: View {
                 if descriptor.isUntestedAgainstLiveAccount {
                     Text(descriptor.category == .mail
                          ? "Beta: built on the IMAP mail standard. Check that the first sync's interviews look right."
+                         : kind == .icsFeed
+                         ? "Beta: built on the iCalendar standard. Check that the first sync's interviews look right."
                          : "Beta: built from \(descriptor.vendorName)'s published documentation. Check that the first sync's interviews look right.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
@@ -264,6 +266,7 @@ struct ConnectorDetailView: View {
         switch descriptor.category {
         case .mcp: return "About \(descriptor.vendorName)'s MCP server"
         case .mail: return "How to make a Gmail app password"
+        case .calendar where kind == .icsFeed: return "How to find Google Calendar's secret address"
         default: return "\(descriptor.vendorName) API documentation"
         }
     }
@@ -273,6 +276,8 @@ struct ConnectorDetailView: View {
         case .system: return "Read on this Mac only."
         case .fields where descriptor.category == .mail:
             return "The app password is kept in the macOS Keychain. Invites are read from your mailbox and kept on this Mac."
+        case .fields where kind == .icsFeed:
+            return "The feed address is kept in the macOS Keychain. Interviews are read from the feed and kept on this Mac."
         default: return "The key or sign-in is kept in the macOS Keychain. Interview data is read from \(descriptor.vendorName) and kept on this Mac."
         }
     }
