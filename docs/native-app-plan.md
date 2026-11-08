@@ -184,4 +184,4 @@ tools; pull finished meeting recordings for scoring; optionally post a private n
 - 01:14 3042e2a mail cache across syncs (UIDVALIDITY). 86 connector + 325 app tests.
 - 01:23 d11752c E18 calendar feeds + Join Next. 89 connector tests.
 - 01:36 second review (10 findings) fixed: c21a953 Prepare (stop clears preparedFrom, first-run role, manual parts written at once, keep until 5 min before the next), 10e55fa report PDFs (rewrite on score change, retry, recovered), 5f6152f Bullhorn invitees, transcript fallback, JobAdder paging. 89 connector + 331 app tests.
-- E19 résumés from mail. 93 connector tests.
+- 01:42 bcc2407 E19 résumés from mail. 93 connector tests.
