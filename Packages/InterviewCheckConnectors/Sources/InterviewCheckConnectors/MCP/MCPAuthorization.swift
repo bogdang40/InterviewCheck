@@ -29,19 +29,22 @@ public enum MCPAuthorization {
             if let first = json["authorization_servers"][0].string { authorizationServer = first }
             scopes = json["scopes_supported"].array.compactMap(\.string)
         }
+        var rejected = false
         for candidate in metadataURLs(for: authorizationServer) {
             guard let (data, response) = try? await probe.send(method: "GET", url: candidate, body: nil), response.statusCode == 200,
                   let json = try? JSONValue.parse(data), let authorize = json["authorization_endpoint"].url,
                   let token = json["token_endpoint"].url else { continue }
-            // The sign-in page, the token exchange and registration must all be
-            // https on the authorization server's own host (and its issuer):
-            // otherwise a server could send the code and PKCE verifier elsewhere,
-            // or have the app open a non-web link.
+            // Every address must be https (the sign-in page is opened in the
+            // browser). The code and PKCE verifier go only to the token endpoint,
+            // so it and registration must be on the authorization server's own
+            // host, as must the issuer; the sign-in page may be elsewhere (RFC 8414).
             let host = URL(string: authorizationServer)?.host?.lowercased()
-            let onServer = { (url: URL) in url.scheme?.lowercased() == "https" && url.host?.lowercased() == host }
+            let https = { (url: URL) in url.scheme?.lowercased() == "https" }
+            let onServer = { (url: URL) in https(url) && url.host?.lowercased() == host }
             let issuerHost = json["issuer"].url?.host?.lowercased()
-            guard host != nil, onServer(authorize), onServer(token), issuerHost == nil || issuerHost == host else {
-                throw ConnectorError.unsupported("This MCP server's sign-in addresses are not https on its authorization server. Paste a token instead.")
+            guard host != nil, https(authorize), onServer(token), issuerHost == nil || issuerHost == host else {
+                rejected = true
+                continue
             }
             // Only the scopes the MCP resource asks for: requesting everything the
             // authorization server knows can be refused (invalid_scope).
@@ -49,7 +52,9 @@ public enum MCPAuthorization {
                              registrationURL: json["registration_endpoint"].url.flatMap { onServer($0) ? $0 : nil },
                              scopes: scopes)
         }
-        throw ConnectorError.unsupported("This MCP server does not publish OAuth sign-in details. Paste a token instead.")
+        throw ConnectorError.unsupported(rejected
+            ? "This MCP server's sign-in addresses are not https on its authorization server. Paste a token instead."
+            : "This MCP server does not publish OAuth sign-in details. Paste a token instead.")
     }
 
     /// Registers a public client for this redirect; returns its client id.

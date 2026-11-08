@@ -95,4 +95,38 @@ final class AutoScorerTests: XCTestCase {
         manager.reloadCache()
         XCTAssertTrue(scorer.pending().isEmpty, "the interview already has a report")
     }
+
+    func testOnlyARealReportOfTheSameMeetingBlocksScoring() async throws {
+        let path = NSTemporaryDirectory() + "auto-\(UUID().uuidString).sqlite"
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let database = SessionDatabase(databasePath: path)
+        let defaults = UserDefaults(suiteName: "auto.\(UUID().uuidString)")!
+        let manager = ConnectorManager(store: MemoryCredentialStore(), database: database, defaults: defaults)
+        let start = Date().addingTimeInterval(-3 * 3600)
+        manager.factory = { _, _, _, _ in FakeZoom(start: start) }
+        try await manager.connect(.zoom, fields: ["clientID": "z"])
+        let scorer = AutoScorer()
+        scorer.manager = manager
+        scorer.defaults = defaults
+        scorer.isEnabled = true
+        let recording = try XCTUnwrap(manager.recordings.first?.recording)
+        let scheduled = try XCTUnwrap(manager.interview(for: recording))
+
+        // Started, but the candidate never came: an empty report does not count.
+        var noShow = InterviewRecord(id: "r0", workspaceID: nil, roleTitle: "", candidateName: "Ana Diaz",
+                                     consentConfirmedAt: Date(), startedAt: recording.startedAt, externalRef: scheduled.id)
+        noShow.questionCount = 0
+        database.saveInterview(noShow)
+        XCTAssertEqual(scorer.pending().count, 1)
+
+        // Run live after Prepare matched it in the ATS: saved under the ATS id, same meeting link.
+        var atsCopy = scheduled
+        atsCopy.source = .lever
+        database.saveExternalLink(atsCopy)
+        var live = InterviewRecord(id: "r1", workspaceID: nil, roleTitle: "", candidateName: "Ana Diaz",
+                                   consentConfirmedAt: Date(), startedAt: recording.startedAt.addingTimeInterval(60), externalRef: atsCopy.id)
+        live.questionCount = 3
+        database.saveInterview(live)
+        XCTAssertTrue(scorer.pending().isEmpty, "the live report covers this meeting")
+    }
 }

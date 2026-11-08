@@ -30,7 +30,7 @@ public enum InterviewMerger {
         return order(a) != order(b) ? order(a) < order(b) : a.startsAt < b.startsAt
     }
 
-    static func isSame(_ a: ExternalInterview, _ b: ExternalInterview, window: TimeInterval) -> Bool {
+    public static func isSame(_ a: ExternalInterview, _ b: ExternalInterview, window: TimeInterval) -> Bool {
         guard abs(a.startsAt.timeIntervalSince(b.startsAt)) <= window else { return false }
         if let left = a.meetingURL.map(meetingKey), let right = b.meetingURL.map(meetingKey), left == right { return true }
         if let left = a.candidate?.email?.lowercased(), let right = b.candidate?.email?.lowercased() { return left == right }

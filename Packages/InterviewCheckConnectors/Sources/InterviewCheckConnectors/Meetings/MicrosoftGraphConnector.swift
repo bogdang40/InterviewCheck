@@ -132,7 +132,7 @@ public struct MicrosoftGraphConnector: InterviewSource, RecordingSource {
             var files: [ExternalFile] = []
             // A recurring meeting (one join link every week) keeps every week's
             // transcripts and recordings: only those made during this occurrence.
-            let window = event.startsAt.addingTimeInterval(-15 * 60)...(event.endsAt ?? event.startsAt.addingTimeInterval(3600))
+            let window = event.startsAt.addingTimeInterval(-60 * 60)...(event.endsAt ?? event.startsAt.addingTimeInterval(3600))
                 .addingTimeInterval(3 * 3600)
             let during = { (item: JSONValue) -> Bool in
                 guard let created = item["createdDateTime"].date else { return false }

@@ -33,17 +33,29 @@ final class AutoScorer {
     /// Recordings worth scoring now: new, recent, matched to an interview.
     func pending() -> [(ExternalRecording, ExternalInterview)] {
         let seen = attempted
-        // An interview already reported on (live, or from another part of the
-        // same meeting) is not scored a second time.
-        var reported = Set(manager.database.loadInterviews(limit: 500).compactMap(\.externalRef))
+        // Reports with answers, from a live interview or an earlier part of the
+        // same meeting: that interview is not scored a second time.
+        let reports = manager.database.loadInterviews(limit: 300).filter { $0.questionCount > 0 && $0.externalRef != nil }
+        var claimed: Set<String> = []
         return manager.recordings.compactMap { item -> (ExternalRecording, ExternalInterview)? in
             let recording = item.recording
             guard item.interviewID == nil, !seen.contains(recording.id),
                   recording.startedAt > now().addingTimeInterval(-2 * 86_400),
                   let interview = manager.interview(for: recording), interview.candidate != nil,
-                  !reported.contains(interview.id) else { return nil }
-            reported.insert(interview.id)
+                  !claimed.contains(interview.id), !alreadyReported(interview, near: recording.startedAt, in: reports) else { return nil }
+            claimed.insert(interview.id)
             return (recording, interview)
+        }
+    }
+
+    /// A report near this time for the same meeting: the same id, or the same
+    /// interview as the merger sees it (link, candidate email or name), since
+    /// Prepare may have saved it under the ATS's id.
+    private func alreadyReported(_ interview: ExternalInterview, near start: Date, in reports: [InterviewRecord]) -> Bool {
+        reports.contains { report in
+            guard let ref = report.externalRef, abs(report.startedAt.timeIntervalSince(start)) < 3 * 3600 else { return false }
+            if ref == interview.id { return true }
+            return manager.database.loadExternalLink(ref).map { InterviewMerger.isSame($0, interview, window: 15 * 60) } ?? false
         }
     }
 

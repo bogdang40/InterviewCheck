@@ -109,15 +109,4 @@ extension SessionDatabase {
         }
     }
 
-    /// Candidate links (from Prepare) that no saved interview refers to.
-    func deleteUnusedExternalLinks() {
-        interviewWrite("deleteUnusedLinks",
-                       "DELETE FROM external_links WHERE ref NOT IN (SELECT external_ref FROM interviews WHERE external_ref IS NOT NULL)") { _ in }
-    }
-
-    func deleteExternalLinks(_ refs: [String]) {
-        for ref in Set(refs) {
-            interviewWrite("deleteLink", "DELETE FROM external_links WHERE ref = ?") { $0.bindText(ref, at: 1) }
-        }
-    }
 }

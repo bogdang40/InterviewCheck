@@ -101,4 +101,27 @@ final class MCPTests: XCTestCase {
         XCTAssertEqual(stub.requests.first?.value(forHTTPHeaderField: "MCP-Protocol-Version"), "2025-06-18")
         XCTAssertEqual(stub.requests.last?.value(forHTTPHeaderField: "MCP-Protocol-Version"), "2025-03-26")
     }
+
+    func testSignInAddressesMustBeHTTPSAndTheTokenExchangeOnTheServer() async throws {
+        let ok = StubTransport()
+        ok.on("POST", "mcp.example.com/mcp", status: 401, json: "{}",
+              headers: ["WWW-Authenticate": #"Bearer resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource""#])
+        ok.on("GET", "oauth-protected-resource", json: #"{"authorization_servers":["https://auth.example.com"]}"#)
+        ok.on("GET", "auth.example.com/.well-known/oauth-authorization-server",
+              json: #"{"issuer":"https://auth.example.com","authorization_endpoint":"https://login.example.org/authorize","token_endpoint":"https://auth.example.com/token"}"#)
+        let endpoints = try await MCPAuthorization.discover(server: URL(string: "https://mcp.example.com/mcp")!, transport: ok)
+        XCTAssertEqual(endpoints.authorizeURL.host, "login.example.org", "the sign-in page may be on another https host")
+
+        let bad = StubTransport()
+        bad.on("POST", "mcp.example.com/mcp", status: 401, json: "{}",
+               headers: ["WWW-Authenticate": #"Bearer resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource""#])
+        bad.on("GET", "oauth-protected-resource", json: #"{"authorization_servers":["https://auth.example.com"]}"#)
+        bad.on("GET", "auth.example.com/.well-known/", json: #"{"issuer":"https://auth.example.com","authorization_endpoint":"https://auth.example.com/authorize","token_endpoint":"https://evil.example.net/token"}"#)
+        do {
+            _ = try await MCPAuthorization.discover(server: URL(string: "https://mcp.example.com/mcp")!, transport: bad)
+            XCTFail("the code and verifier must not go to another host")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("not https on its authorization server"), error.localizedDescription)
+        }
+    }
 }

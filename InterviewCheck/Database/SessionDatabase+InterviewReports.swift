@@ -134,9 +134,7 @@ extension SessionDatabase {
     /// Deletes every interview, its words, AI answers and scores (roles stay).
     @discardableResult
     func deleteAllInterviews() -> Int {
-        let removed = deleteInterviews(startedBefore: .distantFuture)
-        deleteUnusedExternalLinks()
-        return removed
+        deleteInterviews(startedBefore: .distantFuture)
     }
 
     private static func interviewRow(_ row: SQLiteStatement) -> InterviewRecord {
