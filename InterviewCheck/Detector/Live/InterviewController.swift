@@ -14,6 +14,8 @@ final class InterviewController: ObservableObject {
     @Published var consentConfirmed = false
     @Published var resumeText = ""
     @Published var resumeFileName: String?
+    /// The connector record this interview was prepared from ("greenhouse:123").
+    @Published var externalRef: String?
 
     // Live state
     @Published private(set) var phase: Phase = .setup
@@ -77,7 +79,7 @@ final class InterviewController: ObservableObject {
         let record = InterviewRecord(
             id: UUID().uuidString, workspaceID: role?.id,
             roleTitle: role?.displayTitle ?? "", candidateName: candidateName.trimmingCharacters(in: .whitespaces),
-            consentConfirmedAt: Date(), startedAt: Date()
+            consentConfirmedAt: Date(), startedAt: Date(), externalRef: externalRef
         )
         timeline.reset()
         origin = timeline.now
@@ -119,6 +121,7 @@ final class InterviewController: ObservableObject {
         consentConfirmed = false
         resumeText = ""
         resumeFileName = nil
+        externalRef = nil
     }
 
     // MARK: - Questions

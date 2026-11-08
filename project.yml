@@ -23,6 +23,8 @@ settings:
 packages:
   InterviewCheckKit:
     path: Packages/InterviewCheckKit
+  InterviewCheckConnectors:
+    path: Packages/InterviewCheckConnectors
 
 targets:
   InterviewCheck:
@@ -30,6 +32,7 @@ targets:
     platform: macOS
     dependencies:
       - package: InterviewCheckKit
+      - package: InterviewCheckConnectors
     sources:
       - path: InterviewCheck
         excludes:
@@ -53,6 +56,7 @@ targets:
       properties:
         com.apple.security.app-sandbox: false
         com.apple.security.device.audio-input: true
+        com.apple.security.personal-information.calendars: true
 
   InterviewCheckTests:
     type: bundle.unit-test
@@ -67,6 +71,7 @@ targets:
     dependencies:
       - target: InterviewCheck
       - package: InterviewCheckKit
+      - package: InterviewCheckConnectors
 
 schemes:
   InterviewCheck:

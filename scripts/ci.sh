@@ -14,6 +14,9 @@ python3 scripts/check-source-size.py
 echo "=== InterviewCheckKit (swift test) ==="
 (cd Packages/InterviewCheckKit && swift test 2>&1 | tail -3)
 
+echo "=== InterviewCheckConnectors (swift test) ==="
+(cd Packages/InterviewCheckConnectors && swift test 2>&1 | tail -3)
+
 echo "=== App tests ==="
 ./scripts/test.sh
 

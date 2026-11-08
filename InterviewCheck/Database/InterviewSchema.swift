@@ -123,5 +123,30 @@ extension SessionDatabaseMigrationSteps {
         MigrationStep(version: 20, statements: [
             "ALTER TABLE interviews ADD COLUMN interrupted INTEGER NOT NULL DEFAULT 0",
         ]),
+        // Interviews and recordings synced from connectors, and the link
+        // from an interview back to its record in the source system.
+        MigrationStep(version: 21, statements: [
+            """
+            CREATE TABLE IF NOT EXISTS external_interviews (
+                id TEXT PRIMARY KEY,
+                source TEXT NOT NULL,
+                starts_at INTEGER NOT NULL,
+                payload TEXT NOT NULL,
+                synced_at INTEGER NOT NULL
+            )
+            """,
+            "CREATE INDEX IF NOT EXISTS idx_external_interviews_start ON external_interviews(starts_at)",
+            """
+            CREATE TABLE IF NOT EXISTS external_recordings (
+                id TEXT PRIMARY KEY,
+                source TEXT NOT NULL,
+                started_at INTEGER NOT NULL,
+                payload TEXT NOT NULL,
+                synced_at INTEGER NOT NULL,
+                interview_id TEXT
+            )
+            """,
+            "ALTER TABLE interviews ADD COLUMN external_ref TEXT",
+        ]),
     ]
 }

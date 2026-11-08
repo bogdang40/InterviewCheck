@@ -2,64 +2,58 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleDevelopmentRegion</key>
-    <string>en</string>
-    <key>CFBundleExecutable</key>
-    <string>$(EXECUTABLE_NAME)</string>
-    <key>CFBundleIdentifier</key>
-    <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
-    <key>CFBundleInfoDictionaryVersion</key>
-    <string>6.0</string>
-    <key>CFBundleName</key>
-    <string>InterviewCheck</string>
-    <key>CFBundleDisplayName</key>
-    <string>InterviewCheck</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-    <key>CFBundleShortVersionString</key>
-    <string>1.0.0</string>
-    <key>CFBundleVersion</key>
-    <string>1</string>
-    <key>LSMinimumSystemVersion</key>
-    <string>$(MACOSX_DEPLOYMENT_TARGET)</string>
-    <key>NSPrincipalClass</key>
-    <string>NSApplication</string>
-
-    <!-- A normal app with a Dock icon, visible in screen sharing. -->
-    <key>LSUIElement</key>
-    <false/>
-
-    <!-- Privacy permissions -->
-    <key>NSMicrophoneUsageDescription</key>
-    <string>InterviewCheck transcribes your side of the interview so it knows when you asked each question.</string>
-    <key>NSSpeechRecognitionUsageDescription</key>
-    <string>InterviewCheck uses speech recognition when no Deepgram key is set.</string>
-    <key>NSAppleEventsUsageDescription</key>
-    <string>InterviewCheck uses keyboard shortcuts such as Question asked while you are in your video call.</string>
-    <key>NSScreenCaptureUsageDescription</key>
-    <string>InterviewCheck records the call's audio (the candidate's side) to time and compare their answers.</string>
-
-    <!-- High resolution support -->
-    <key>NSHighResolutionCapable</key>
-    <true/>
-
-    <!-- Supports secure state restoration -->
-    <key>NSSupportsSecureStateRestoration</key>
-    <true/>
-
-    <!-- Deep link back from Stripe Checkout and the Billing Portal -->
-    <key>CFBundleURLTypes</key>
-    <array>
-        <dict>
-            <key>CFBundleURLName</key>
-            <string>com.interviewcheck.app.billing</string>
-            <key>CFBundleURLSchemes</key>
-            <array>
-                <string>interviewcheck</string>
-            </array>
-            <key>CFBundleTypeRole</key>
-            <string>Viewer</string>
-        </dict>
-    </array>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>InterviewCheck</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>InterviewCheck</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0.0</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>CFBundleURLName</key>
+			<string>com.interviewcheck.app.billing</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>interviewcheck</string>
+			</array>
+		</dict>
+	</array>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
+	<key>LSUIElement</key>
+	<false/>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>InterviewCheck uses keyboard shortcuts such as Question asked while you are in your video call.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>InterviewCheck lists your upcoming interviews from your calendars so you can prepare each one in a click. Events stay on this Mac.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>InterviewCheck lists your upcoming interviews from your calendars so you can prepare each one in a click. Events stay on this Mac.</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>InterviewCheck transcribes your side of the interview so it knows when you asked each question.</string>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
+	<key>NSScreenCaptureUsageDescription</key>
+	<string>InterviewCheck records the call's audio (the candidate's side) to time and compare their answers.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>InterviewCheck uses speech recognition when no Deepgram key is set.</string>
+	<key>NSSupportsSecureStateRestoration</key>
+	<true/>
 </dict>
 </plist>

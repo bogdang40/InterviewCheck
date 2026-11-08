@@ -61,6 +61,24 @@ Status key: [ ] todo · [~] in progress · [x] done (commit)
 - [x] D16 Reports list: sort (newest, oldest, highest score, candidate), role filter, flagged-only,
       "No Matches" with Clear Filters; interrupted interviews marked in the list.
 
+## E. Connectors (added Nov 7 ~22:00 at the owner's request)
+Goal: automate the interviewer's day. Pull upcoming interviews, candidates, résumés and job
+descriptions from ATS / HR systems (direct and through unified APIs), calendars, mail and meeting
+tools; pull finished meeting recordings for scoring; optionally post a private note back.
+- [x] E1 Packages/InterviewCheckConnectors: shared types, API client, Keychain credentials, OAuth +
+      PKCE + loopback receiver, meeting links, HTML job posts, .ics parser, interview classifier.
+- [x] E2 App: Connections sidebar section (⌘4), ConnectorManager (connect, browser sign-in, sync
+      every 15 min, cache in schema v21), Upcoming Interviews with Prepare (candidate, role + JD,
+      résumé) and Join, Calendar on this Mac, .ics invites.
+- [ ] E3 ATS direct: Greenhouse, Lever, Ashby, Workable, SmartRecruiters, BambooHR, Teamtailor,
+      Recruitee, JazzHR, Breezy, Personio, Zoho Recruit.
+- [ ] E4 Unified: Merge, Kombo, Apideck, Unified.to (Workday, iCIMS, SuccessFactors, Taleo...).
+- [ ] E5 Google (Calendar, Gmail invites, Meet recordings), Microsoft 365 (Outlook, Teams
+      recordings/transcripts), Zoom (meetings, cloud recordings).
+- [ ] E6 Recordings inbox → Analyze; reminders before interviews; summary note back to the ATS
+      (explicit button, opt-in).
+- [ ] E7 MCP client connector.
+
 ## C. Verify every step
 - build; guarded tests; render native screens light/dark; launch the installed app,
   confirm it stays up, no new crash report, window screenshot.
@@ -89,3 +107,4 @@ Status key: [ ] todo · [~] in progress · [x] done (commit)
 - 21:37 D14: fixed File/View commands opening a second main window (WindowGroup → Window); ⌘1–3, ⌘P, Dock badge, sidebar commands. Checked in the installed app via System Events.
 - 21:43 D15 documents in (DocumentText replaces the candidate-app extractor), role duplicate/export/import. 278 app tests.
 - 21:46 D16 reports sort/filter; fixed list centring (frame applied before the inset). 280 app tests.
+- 22:04 E1–E2 connectors core + app wiring. 282 app + 12 connector tests.

@@ -52,6 +52,8 @@ struct MainSplitView: View {
                 RolesView()
             case .reports:
                 ReportsView()
+            case .connections:
+                ConnectionsView()
             }
         }
         .onAppear {

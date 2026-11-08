@@ -16,7 +16,7 @@ extension SessionDatabase {
     func loadInterviews(limit: Int = 200) -> [InterviewRecord] {
         interviewRead("loadInterviews", """
             SELECT id, workspace_id, role_title, candidate_name, consent_confirmed_at, started_at, ended_at,
-                   overall_percent, flagged_count, question_count, interrupted
+                   overall_percent, flagged_count, question_count, interrupted, external_ref
             FROM interviews ORDER BY started_at DESC LIMIT ?
             """, bind: { $0.bindInt(limit, at: 1) }, row: Self.interviewRow)
     }
@@ -24,7 +24,7 @@ extension SessionDatabase {
     func loadInterviewReport(id: String) -> InterviewReportData? {
         guard let interview = interviewRead("loadInterview", """
             SELECT id, workspace_id, role_title, candidate_name, consent_confirmed_at, started_at, ended_at,
-                   overall_percent, flagged_count, question_count, interrupted
+                   overall_percent, flagged_count, question_count, interrupted, external_ref
             FROM interviews WHERE id = ?
             """, bind: { $0.bindText(id, at: 1) }, row: Self.interviewRow).first else { return nil }
 
@@ -142,7 +142,7 @@ extension SessionDatabase {
             startedAt: row.columnDate(5), endedAt: row.columnOptionalDate(6),
             overallPercent: row.columnIsNull(7) ? nil : row.columnInt(7),
             flaggedCount: row.columnInt(8), questionCount: row.columnInt(9),
-            wasInterrupted: row.columnBool(10)
+            wasInterrupted: row.columnBool(10), externalRef: row.columnText(11)
         )
     }
 

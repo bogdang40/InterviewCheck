@@ -34,6 +34,8 @@ struct RoleProfile: Codable, Equatable, Identifiable {
     var plannedQuestions: [PlannedQuestion] = []
     var createdAt = Date()
     var updatedAt = Date()
+    /// "greenhouse:4012" when the role came from a job in a connected system.
+    var externalJobKey: String?
 
     var id: String { workspaceID }
     var enabledPrompts: [CheaterPrompt] { cheaterPrompts.filter(\.isEnabled) }
@@ -70,6 +72,7 @@ struct RoleProfile: Codable, Equatable, Identifiable {
         plannedQuestions = try container.decodeIfPresent([PlannedQuestion].self, forKey: .plannedQuestions) ?? []
         createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
         updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date()
+        externalJobKey = try container.decodeIfPresent(String.self, forKey: .externalJobKey)
     }
 }
 

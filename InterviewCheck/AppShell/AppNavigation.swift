@@ -3,7 +3,7 @@ import Foundation
 
 /// The main window's sidebar sections.
 enum SidebarItem: String, CaseIterable, Identifiable, Hashable {
-    case interview, roles, reports
+    case interview, roles, reports, connections
 
     var id: String { rawValue }
 
@@ -12,6 +12,7 @@ enum SidebarItem: String, CaseIterable, Identifiable, Hashable {
         case .interview: return "Interview"
         case .roles: return "Roles"
         case .reports: return "Reports"
+        case .connections: return "Connections"
         }
     }
 
@@ -20,6 +21,7 @@ enum SidebarItem: String, CaseIterable, Identifiable, Hashable {
         case .interview: return "waveform"
         case .roles: return "briefcase"
         case .reports: return "doc.text.magnifyingglass"
+        case .connections: return "point.3.connected.trianglepath.dotted"
         }
     }
 }

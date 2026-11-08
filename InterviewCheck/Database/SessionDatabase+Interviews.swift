@@ -8,8 +8,8 @@ extension SessionDatabase {
         interviewWrite("saveInterview", """
             INSERT OR REPLACE INTO interviews
             (id, workspace_id, role_title, candidate_name, consent_confirmed_at, started_at, ended_at,
-             overall_percent, flagged_count, question_count, interrupted)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             overall_percent, flagged_count, question_count, interrupted, external_ref)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """) { statement in
             statement.bindText(interview.id, at: 1)
             statement.bindOptionalText(interview.workspaceID, at: 2)
@@ -22,6 +22,7 @@ extension SessionDatabase {
             statement.bindInt(interview.flaggedCount, at: 9)
             statement.bindInt(interview.questionCount, at: 10)
             statement.bindInt(interview.wasInterrupted ? 1 : 0, at: 11)
+            statement.bindOptionalText(interview.externalRef, at: 12)
         }
     }
 

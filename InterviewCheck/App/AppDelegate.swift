@@ -28,6 +28,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             InterviewRecovery.finishUnended(database: .shared, weights: weights)
         }
         accessController.startPeriodicVerification()
+        // Connected ATS, calendars and meeting tools sync now and every 15 minutes.
+        ConnectorManager.shared.startAutoSync()
         Task { @MainActor [weak self] in
             await self?.accessController.evaluate()
         }

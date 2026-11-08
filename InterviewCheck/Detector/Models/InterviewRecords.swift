@@ -19,6 +19,8 @@ struct InterviewRecord: Equatable, Identifiable {
     /// The app quit or crashed before the interview was ended; it was
     /// finished from the saved words at the next launch.
     var wasInterrupted = false
+    /// "greenhouse:123" when the interview was prepared from a connector.
+    var externalRef: String?
 }
 
 enum QuestionSource: String, Codable, Equatable {

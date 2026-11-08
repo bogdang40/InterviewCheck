@@ -28,6 +28,8 @@ struct InterviewSetupForm: View {
 
     var body: some View {
         Form {
+            UpcomingInterviewsSection(controller: controller)
+
             if !readiness.problems.isEmpty {
                 Section {
                     ForEach(readiness.problems, id: \.self) { problem in

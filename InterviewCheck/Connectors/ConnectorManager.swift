@@ -1,0 +1,192 @@
+import AppKit
+import Combine
+import Foundation
+import InterviewCheckConnectors
+
+/// The connected systems, their sync state, and the upcoming interviews and
+/// recordings they bring in. Credentials live in the Keychain; synced items
+/// in the app database.
+@MainActor
+final class ConnectorManager: ObservableObject {
+    static let shared = ConnectorManager()
+
+    struct Account: Codable, Equatable, Identifiable {
+        let kind: ConnectorKind
+        var label: String
+        var connectedAt: Date
+        var lastSync: Date?
+        var lastError: String?
+        var id: String { kind.rawValue }
+    }
+
+    @Published private(set) var accounts: [Account] = []
+    @Published private(set) var upcoming: [ExternalInterview] = []
+    @Published private(set) var recordings: [(recording: ExternalRecording, interviewID: String?)] = []
+    @Published private(set) var syncing: Set<ConnectorKind> = []
+
+    let store: CredentialStore
+    let database: SessionDatabase
+    private let defaults: UserDefaults
+    var transport: HTTPTransport = URLSession.shared
+    var openURL: (URL) -> Void = { NSWorkspace.shared.open($0) }
+    /// Builds connectors; tests swap in fakes.
+    var factory: (ConnectorKind, ConnectorCredentials, HTTPTransport, AccessTokenProvider?) throws -> Connector = {
+        try ConnectorFactory.make($0, credentials: $1, transport: $2, accessToken: $3)
+    }
+    var now: () -> Date = { Date() }
+    private var timer: Timer?
+    private static let accountsKey = "interviewcheck.connectors.accounts"
+    static let syncInterval: TimeInterval = 15 * 60
+
+    init(store: CredentialStore = KeychainCredentialStore(service: "com.interviewcheck.connectors"),
+         database: SessionDatabase = .shared, defaults: UserDefaults = AppDefaults.standard) {
+        self.store = store
+        self.database = database
+        self.defaults = defaults
+        if let data = defaults.data(forKey: Self.accountsKey),
+           let saved = try? JSONDecoder().decode([Account].self, from: data) {
+            accounts = saved
+        }
+        reloadCache()
+    }
+
+    func account(_ kind: ConnectorKind) -> Account? { accounts.first { $0.kind == kind } }
+    var isSyncing: Bool { !syncing.isEmpty }
+
+    // MARK: - Connecting
+
+    /// Saves typed credentials, checks them with one call, then syncs.
+    func connect(_ kind: ConnectorKind, fields: [String: String]) async throws {
+        let credentials = ConnectorCredentials(fields: fields)
+        let connector = try factory(kind, credentials, transport, nil)
+        let label = try await connector.verify()
+        try store.save(credentials, for: kind.rawValue)
+        upsert(Account(kind: kind, label: label, connectedAt: now()))
+        await sync(kind)
+    }
+
+    /// Browser sign-in for OAuth connectors (Google, Microsoft, Zoom).
+    func signIn(_ kind: ConnectorKind, fields: [String: String]) async throws {
+        guard case .oauth(var provider, _) = kind.descriptor.auth else { return }
+        let clientID = fields["clientID"]?.trimmingCharacters(in: .whitespaces) ?? ""
+        guard !clientID.isEmpty else { throw ConnectorError.missingCredential("client ID") }
+        if kind == .microsoft365 {
+            provider = MicrosoftConnector.provider(tenant: fields["tenant"].flatMap { $0.isEmpty ? nil : $0 } ?? "organizations")
+        }
+        let client = OAuthClient(provider: provider, clientID: clientID, clientSecret: fields["clientSecret"], transport: transport)
+        let receiver = try LoopbackReceiver()
+        defer { receiver.stop() }
+        let redirect = try await receiver.start(host: kind == .microsoft365 ? "localhost" : "127.0.0.1")
+        let verifier = PKCE.verifier()
+        let state = UUID().uuidString
+        openURL(client.authorizationURL(redirectURI: redirect, state: state, codeChallenge: PKCE.challenge(for: verifier)))
+        let callback = try await receiver.waitForCallback()
+        let code = try LoopbackReceiver.code(from: callback, expectedState: state)
+        let tokens = try await client.exchange(code: code, verifier: verifier, redirectURI: redirect)
+        let credentials = ConnectorCredentials(fields: fields, tokens: tokens)
+        try store.save(credentials, for: kind.rawValue)
+        let connector = try makeConnector(kind)
+        let label = try await connector.verify()
+        upsert(Account(kind: kind, label: label, connectedAt: now()))
+        await sync(kind)
+    }
+
+    func disconnect(_ kind: ConnectorKind) {
+        store.delete(kind.rawValue)
+        accounts.removeAll { $0.kind == kind }
+        saveAccounts()
+        database.deleteExternalData(source: kind)
+        reloadCache()
+    }
+
+    /// The live connector for a connected account, with token refresh.
+    func makeConnector(_ kind: ConnectorKind) throws -> Connector {
+        guard let credentials = store.load(kind.rawValue) ?? (kind == .appleCalendar ? ConnectorCredentials() : nil) else {
+            throw ConnectorError.notConnected
+        }
+        var tokenProvider: AccessTokenProvider?
+        if case .oauth(var provider, _) = kind.descriptor.auth, let tokens = credentials.tokens {
+            if kind == .microsoft365 { provider = MicrosoftConnector.provider(tenant: credentials["tenant"] ?? "organizations") }
+            let client = OAuthClient(provider: provider, clientID: credentials["clientID"] ?? "",
+                                     clientSecret: credentials["clientSecret"], transport: transport)
+            let store = self.store
+            let session = OAuthSession(tokens: tokens, client: client) { updated in
+                var saved = credentials
+                saved.tokens = updated
+                try? store.save(saved, for: kind.rawValue)
+            }
+            tokenProvider = { try await session.accessToken() }
+        }
+        return try factory(kind, credentials, transport, tokenProvider)
+    }
+
+    // MARK: - Syncing
+
+    func syncAll() async {
+        await withTaskGroup(of: Void.self) { group in
+            for account in accounts { group.addTask { await self.sync(account.kind) } }
+        }
+    }
+
+    func sync(_ kind: ConnectorKind) async {
+        guard account(kind) != nil, !syncing.contains(kind) else { return }
+        syncing.insert(kind)
+        defer { syncing.remove(kind) }
+        var failure: String?
+        do {
+            let connector = try makeConnector(kind)
+            let start = now().addingTimeInterval(-2 * 3600)
+            if let source = connector as? InterviewSource {
+                let found = try await source.upcomingInterviews(from: start, to: now().addingTimeInterval(14 * 86_400))
+                database.replaceExternalInterviews(found, source: kind)
+            }
+            if let source = connector as? RecordingSource {
+                let since = account(kind)?.lastSync?.addingTimeInterval(-86_400) ?? now().addingTimeInterval(-7 * 86_400)
+                database.addExternalRecordings(try await source.recordings(since: since))
+            }
+        } catch {
+            failure = error.localizedDescription
+        }
+        if var updated = account(kind) {
+            updated.lastSync = now()
+            updated.lastError = failure
+            upsert(updated)
+        }
+        reloadCache()
+    }
+
+    func startAutoSync() {
+        timer?.invalidate()
+        timer = Timer.scheduledTimer(withTimeInterval: Self.syncInterval, repeats: true) { _ in
+            Task { @MainActor in await ConnectorManager.shared.syncAll() }
+        }
+        if !accounts.isEmpty { Task { await syncAll() } }
+    }
+
+    /// Adds the interviews in a dropped .ics invite.
+    func importInvite(_ url: URL) throws -> [ExternalInterview] {
+        let found = try InviteFileImporter.interviews(from: url)
+        let existing = database.loadExternalInterviews(startingAfter: .distantPast).filter { $0.source == .icsFile }
+        database.replaceExternalInterviews(existing + found, source: .icsFile)
+        reloadCache()
+        return found
+    }
+
+    func reloadCache() {
+        upcoming = InterviewMerger.merge(database.loadExternalInterviews(startingAfter: now().addingTimeInterval(-2 * 3600)))
+        recordings = database.loadExternalRecordings()
+    }
+
+    private func upsert(_ account: Account) {
+        if let index = accounts.firstIndex(where: { $0.kind == account.kind }) {
+            accounts[index] = account
+        } else {
+            accounts.append(account)
+        }
+        saveAccounts()
+    }
+
+    private func saveAccounts() {
+        if let data = try? JSONEncoder().encode(accounts) { defaults.set(data, forKey: Self.accountsKey) }
+    }
+}

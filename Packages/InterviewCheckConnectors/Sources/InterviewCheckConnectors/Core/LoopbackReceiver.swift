@@ -17,7 +17,9 @@ public final class LoopbackReceiver: @unchecked Sendable {
     }
 
     /// Starts listening and returns the redirect URI to register/use.
-    public func start() async throws -> URL {
+    /// `host` is what the URI says ("localhost" for Microsoft); the listener
+    /// is always on 127.0.0.1.
+    public func start(host: String = "127.0.0.1") async throws -> URL {
         try await withCheckedThrowingContinuation { (ready: CheckedContinuation<URL, Error>) in
             var resumed = false
             listener.stateUpdateHandler = { [weak self] state in
@@ -25,7 +27,7 @@ public final class LoopbackReceiver: @unchecked Sendable {
                 switch state {
                 case .ready:
                     resumed = true
-                    ready.resume(returning: URL(string: "http://127.0.0.1:\(self.listener.port?.rawValue ?? 0)/callback")!)
+                    ready.resume(returning: URL(string: "http://\(host):\(self.listener.port?.rawValue ?? 0)/callback")!)
                 case .failed(let error):
                     resumed = true
                     ready.resume(throwing: error)
