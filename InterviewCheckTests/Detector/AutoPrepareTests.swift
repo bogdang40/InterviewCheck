@@ -278,6 +278,10 @@ final class AutoPrepareTests: XCTestCase {
         var close = b
         close.startsAt = clock.addingTimeInterval(5 * 60)
         XCTAssertFalse(ConnectorManager.sameInterview(a, close), "5 minutes apart in one room, two different people")
+        var guessedA = a, guessedB = close
+        guessedA.candidate = ExternalCandidate(name: "Acme Labs")
+        guessedB.candidate = ExternalCandidate(name: "Acme Labs")
+        XCTAssertFalse(ConnectorManager.sameInterview(guessedA, guessedB), "one calendar, two events: never copies, whatever the guessed names")
         var copy = a
         copy.source = .greenhouse
         copy.candidate = ExternalCandidate(name: "Doe, Jane A.", email: "jane.doe@personal.example")
@@ -286,6 +290,11 @@ final class AutoPrepareTests: XCTestCase {
         calendar.source = .google
         calendar.candidate = ExternalCandidate(name: "Jane Doe")
         XCTAssertTrue(ConnectorManager.sameInterview(calendar, copy))
+        var linkSaved = copy                                   // Prepare's link: the ATS's name, the calendar event's id
+        linkSaved.externalID = "google-event-1"
+        var atsRow = copy
+        atsRow.externalID = "lever-interview-9"
+        XCTAssertTrue(ConnectorManager.sameInterview(linkSaved, atsRow), "the ATS's own copy of the prepared interview")
     }
 
     func testTheInterviewJustRunIsNotPreparedAgain() async throws {
@@ -301,6 +310,22 @@ final class AutoPrepareTests: XCTestCase {
         let next = await auto.tick()
         XCTAssertNil(next, "A is not prepared again over its own summary")
         XCTAssertEqual(controller.phase, .ended)
+    }
+
+    func testABackToBackNextInterviewIsPreparedAfterTheLastOneRan() async throws {
+        controller.startAudio = {}
+        controller.stopAudio = {}
+        controller.roleProvider = { nil }
+        source.gap = 15 * 60                                  // A at T+8, B (Max Roe) at T+23
+        await manager.sync(.calendly)
+        _ = await auto.tick()                                 // A prepared automatically
+        controller.consentConfirmed = true
+        controller.start()
+        controller.end()
+        controller.stopTicking()
+        clock = clock.addingTimeInterval(15 * 60)             // B starts in 8 minutes
+        let next = await auto.tick()
+        XCTAssertEqual(next?.externalID, "b", "the next candidate comes in after the last one's summary")
     }
 
     func testOffOrWhileEditingRolesNothingHappens() async {

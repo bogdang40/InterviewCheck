@@ -154,14 +154,16 @@ final class AutoPrepare {
     /// an hour but released 5 minutes before `next`, never in its first 15 minutes.
     func setupIsFree(for next: ExternalInterview) -> Bool {
         // A finished interview whose scores are all in is saved: the next may come in.
-        // Not if `next` is the interview just run: prepared from it, or (typed in
-        // by hand) run during its slot.
+        // Not if `next` is the interview just run: prepared from it, or typed in
+        // by hand during its slot for a candidate who could be next's.
         if controller.phase == .ended {
             guard controller.pendingScoring.isEmpty, controller.referencesInFlight.isEmpty,
                   !manager.holds(next, in: controller) else { return false }
-            if let ran = controller.interview?.startedAt,
-               (next.startsAt.addingTimeInterval(-15 * 60)...(next.endsAt ?? next.startsAt.addingTimeInterval(3600))).contains(ran) {
-                return false
+            if let run = controller.interview, run.externalRef == nil,
+               (next.startsAt.addingTimeInterval(-15 * 60)...(next.endsAt ?? next.startsAt.addingTimeInterval(3600))).contains(run.startedAt) {
+                let typed = ConnectorManager.nameWords(run.candidateName), booked = ConnectorManager.nameWords(next.candidate?.name)
+                let couldBeNext = typed.isEmpty || booked.isEmpty || typed.isSubset(of: booked) || booked.isSubset(of: typed)
+                if couldBeNext { return false }
             }
             return true
         }

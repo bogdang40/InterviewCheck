@@ -74,11 +74,21 @@ extension ConnectorManager {
     /// person ("Jane Doe" vs "Max Roe") rule it out even in a shared meeting
     /// room, while "Jane Doe", "Jane A. Doe" and "Doe, Jane" are compatible.
     static func sameInterview(_ a: ExternalInterview, _ b: ExternalInterview) -> Bool {
+        if a.source == b.source, a.externalID == b.externalID { return true }
+        // Two events from one calendar, mailbox or booking tool are two
+        // interviews, whatever names were guessed for them. (Not for ATSs: a
+        // prepared link keeps the calendar event's id under the ATS's name.)
+        if a.source == b.source, ![.ats, .unified, .mcp].contains(a.source.descriptor.category) { return false }
         guard abs(a.startsAt.timeIntervalSince(b.startsAt)) <= 10 * 60 else { return false }
         if let left = a.candidate?.email?.lowercased(), let right = b.candidate?.email?.lowercased(), left == right { return true }
-        let words = { (name: String?) in Set(InterviewMerger.normalized(name ?? "").split(separator: " ").map(String.init)) }
-        let left = words(a.candidate?.name), right = words(b.candidate?.name)
+        let left = nameWords(a.candidate?.name), right = nameWords(b.candidate?.name)
         if !left.isEmpty, !right.isEmpty, !left.isSubset(of: right), !right.isSubset(of: left) { return false }
         return InterviewMerger.isSame(a, b, window: 10 * 60)
+    }
+
+    /// A name's words, without placeholders a title guess or ATS may put there.
+    static func nameWords(_ name: String?) -> Set<String> {
+        Set(InterviewMerger.normalized(name ?? "").split(separator: " ").map(String.init))
+            .subtracting(["candidate", "interview", "screen", "phone", "call", "with", "for", "and", "the"])
     }
 }
