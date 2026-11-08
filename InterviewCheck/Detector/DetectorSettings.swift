@@ -15,6 +15,8 @@ final class DetectorSettings: ObservableObject {
     @Published var judgeEnabled: Bool { didSet { defaults.set(judgeEnabled, forKey: Keys.judgeEnabled) } }
     /// Compare meaning with OpenAI embeddings (needs an OpenAI key).
     @Published var useEmbeddings: Bool { didSet { defaults.set(useEmbeddings, forKey: Keys.embeddings) } }
+    /// Beta: mark questions automatically when the interviewer forgets the key.
+    @Published var autoMarkQuestions: Bool { didSet { defaults.set(autoMarkQuestions, forKey: Keys.autoMark) } }
     /// Sentence the interviewer can read or paste to tell the candidate.
     @Published var consentNotice: String { didSet { defaults.set(consentNotice, forKey: Keys.notice) } }
     @Published var weights: CheatScoreWeights { didSet { save(weights, key: Keys.weights) } }
@@ -42,6 +44,7 @@ final class DetectorSettings: ObservableObject {
         static let judge = "interviewcheck.detector.judge"
         static let judgeEnabled = "interviewcheck.detector.judgeEnabled"
         static let embeddings = "interviewcheck.detector.embeddings"
+        static let autoMark = "interviewcheck.detector.autoMarkQuestions"
         static let notice = "interviewcheck.detector.consentNotice"
         static let weights = "interviewcheck.detector.weights"
         static let retention = "interviewcheck.detector.retentionDays"
@@ -53,6 +56,7 @@ final class DetectorSettings: ObservableObject {
         judge = Self.load(LineupEntry.self, key: Keys.judge, from: defaults) ?? Self.defaultJudge
         judgeEnabled = defaults.object(forKey: Keys.judgeEnabled) as? Bool ?? true
         useEmbeddings = defaults.object(forKey: Keys.embeddings) as? Bool ?? true
+        autoMarkQuestions = defaults.object(forKey: Keys.autoMark) as? Bool ?? false
         consentNotice = defaults.string(forKey: Keys.notice) ?? Self.defaultNotice
         weights = Self.load(CheatScoreWeights.self, key: Keys.weights, from: defaults) ?? .default
         retentionDays = defaults.object(forKey: Keys.retention) as? Int ?? 0

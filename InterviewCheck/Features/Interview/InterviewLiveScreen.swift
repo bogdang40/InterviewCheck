@@ -126,6 +126,10 @@ struct InterviewLiveScreen: View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     Tag(text: "Q\(question.ordinal)", color: .accentColor)
+                    if controller.autoMarkedIDs.contains(question.id) {
+                        Tag(text: "Marked automatically", color: .secondary)
+                            .help("You didn't press Question Asked; the app found this question when the answer began.")
+                    }
                     if question.closedAt == nil { Tag(text: "Answering", color: .orange) }
                     Spacer()
                     if editingID == question.id {

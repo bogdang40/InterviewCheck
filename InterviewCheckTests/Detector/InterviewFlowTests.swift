@@ -84,6 +84,67 @@ final class InterviewFlowTests: XCTestCase {
         XCTAssertTrue(first.answerText.hasPrefix("We had a race condition"))
     }
 
+    func testForgottenKeypressIsMarkedAutomaticallyOnce() async throws {
+        settings.autoMarkQuestions = true
+        controller.consentConfirmed = true
+        controller.start()
+        let question = F.words(F.question, side: .interviewer, start: now + 1)
+        let answer = F.words("I would use a token bucket per key stored in Redis so every gateway agrees on the count",
+                             side: .candidate, start: question.last!.end + 1.5)
+        timeline.append(question)
+        now = question.last!.end + 0.5
+        controller.tick()
+        XCTAssertTrue(controller.questions.isEmpty, "no answer yet: nothing is marked")
+        timeline.append(answer)
+        now = answer.last!.end + 0.5
+        controller.tick()
+        controller.tick()
+        XCTAssertEqual(controller.questions.count, 1, "marked once, not every tick")
+        let marked = controller.questions[0]
+        XCTAssertEqual(marked.markedAt + controller.origin, question.last!.end, accuracy: 0.01, "timed at the question's end")
+        XCTAssertTrue(controller.autoMarkedIDs.contains(marked.id))
+        try await waitUntil { self.controller.questions.first?.text.isEmpty == false }
+        XCTAssertEqual(controller.questions.first?.text, F.question)
+        XCTAssertEqual(controller.liveWindow?.answerWords.count, answer.count)
+    }
+
+    func testAPressedQuestionIsNotMarkedAgain() {
+        settings.autoMarkQuestions = true
+        controller.consentConfirmed = true
+        controller.start()
+        let question = F.words(F.question, side: .interviewer, start: now + 1)
+        timeline.append(question)
+        now = question.last!.end + 0.3
+        controller.markQuestion()
+        timeline.append(F.words("I would use a token bucket per key stored in Redis so every gateway agrees",
+                                side: .candidate, start: now + 1))
+        now += 10
+        controller.tick()
+        XCTAssertEqual(controller.questions.count, 1)
+        XCTAssertTrue(controller.autoMarkedIDs.isEmpty)
+    }
+
+    func testAForgottenSecondQuestionIsMarkedAfterAPressedFirst() {
+        settings.autoMarkQuestions = true
+        controller.consentConfirmed = true
+        controller.start()
+        let q1 = F.words("Tell me about a hard bug you fixed recently.", side: .interviewer, start: now + 1)
+        timeline.append(q1)
+        now = q1.last!.end + 0.3
+        controller.markQuestion()
+        let a1 = F.words("We had a race condition in billing where two workers charged the same invoice twice",
+                         side: .candidate, start: now + 1)
+        let q2 = F.words("How did you find it in production?", side: .interviewer, start: a1.last!.end + 2)
+        let a2 = F.words("I added tracing around the charge path and saw two workers take the same message",
+                         side: .candidate, start: q2.last!.end + 1)
+        timeline.append(a1 + q2 + a2)
+        now = a2.last!.end + 0.5
+        controller.tick()
+        XCTAssertEqual(controller.questions.count, 2)
+        XCTAssertEqual(controller.questions[1].markedAt + controller.origin, q2.last!.end, accuracy: 0.01)
+        XCTAssertFalse(controller.questions[0].answerText.contains("tracing"), "Q1's answer ends where Q2 began")
+    }
+
     func testStartNeedsConsent() {
         controller.start()
         XCTAssertEqual(controller.phase, .setup)

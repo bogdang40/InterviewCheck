@@ -97,6 +97,9 @@ tools; pull finished meeting recordings for scoring; optionally post a private n
 - [x] E9 Automation entry points: Shortcuts actions (Prepare Next Interview, Sync, Latest Report), Dock
       menu with the next interviews, interviewcheck://prepare-next | sync | report/latest, Welcome step.
 
+- [x] E10 Beta: mark questions automatically when the interviewer forgets the key (Settings ›
+      Detector, off by default; question end + 12-word answer, tagged "Marked automatically").
+
 ## C. Verify every step
 - build; guarded tests; render native screens light/dark; launch the installed app,
   confirm it stays up, no new crash report, window screenshot.

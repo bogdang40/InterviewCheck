@@ -19,6 +19,7 @@ extension InterviewController {
     /// Once a second: refresh the active answer; every few seconds, a quick
     /// local score (no model calls) so the interviewer sees it build.
     func tick() {
+        if phase == .live, settings.autoMarkQuestions { autoMarkIfMissed() }
         guard phase == .live, let question = activeQuestion,
               let index = questions.firstIndex(where: { $0.id == question.id }) else { return }
         let window = window(for: question)

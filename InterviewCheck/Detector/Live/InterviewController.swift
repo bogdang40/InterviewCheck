@@ -55,6 +55,8 @@ final class InterviewController: ObservableObject {
     /// waits for these so no score is lost.
     @Published var pendingScoring: Set<String> = []
     var scoringTokens: [String: UUID] = [:]
+    /// Questions the app marked by itself (shown with an "Auto" tag).
+    @Published var autoMarkedIDs: Set<String> = []
     /// At most this many AI answers per question.
     var maxReferenceRuns = ReferenceAnswerRunner.maxRuns
     var tickTimer: Timer?
@@ -98,6 +100,7 @@ final class InterviewController: ObservableObject {
         savedWordCount = 0
         savedWordKeys = []
         questions = []
+        autoMarkedIDs = []
         references = [:]
         scores = [:]
         activeQuestionID = nil
@@ -128,6 +131,7 @@ final class InterviewController: ObservableObject {
         phase = .setup
         interview = nil
         questions = []
+        autoMarkedIDs = []
         references = [:]
         scores = [:]
         candidateName = ""
@@ -142,8 +146,13 @@ final class InterviewController: ObservableObject {
 
     /// The interviewer pressed "Question asked", or picked a planned question.
     func markQuestion(planned: PlannedQuestion? = nil) {
+        markQuestion(planned: planned, at: nil, automatically: false)
+    }
+
+    /// `at` marks a time in the past (an automatic mark at the question's end).
+    func markQuestion(planned: PlannedQuestion? = nil, at time: TimeInterval?, automatically: Bool) {
         guard phase == .live, let interview else { return }
-        let now = timeline.now
+        let now = time ?? timeline.now
         // Pressed twice in a row with no answer yet: the same question, marked again.
         if planned == nil, let active = activeQuestion, let index = questions.firstIndex(where: { $0.id == active.id }),
            now - (origin + active.markedAt) < 2, window(for: active).answerWords.isEmpty {
@@ -170,10 +179,11 @@ final class InterviewController: ObservableObject {
         activeQuestionID = question.id
         database.saveInterviewQuestion(question)
 
+        if automatically { autoMarkedIDs.insert(question.id) }
         // The interviewer's last words are often still being finalized when
         // the key is pressed; wait a moment before reading the question.
         Task { @MainActor [weak self] in
-            if planned == nil { try? await Task.sleep(nanoseconds: self?.questionSettleDelay ?? 0) }
+            if planned == nil, !automatically { try? await Task.sleep(nanoseconds: self?.questionSettleDelay ?? 0) }
             guard let self else { return }
             self.resolveQuestionText(id: question.id, lowerBound: previousMark)
             self.generateReferences(for: question.id)

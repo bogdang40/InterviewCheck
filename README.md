@@ -27,7 +27,8 @@ interviewer to confirm this).
    interviewers with **Export…** and **File › Import Role…**.
 3. **Interview**: choose the role, type the candidate's name, optionally add
    their resume, confirm the notice, **Start Interview**.
-4. Press **Question Asked** after each question and **Answer Done** (⇧⌘E)
+4. Press **Question Asked** after each question (or turn on Settings › Detector ›
+   *Mark questions automatically* (beta) for the ones you forget) and **Answer Done** (⇧⌘E)
    when the candidate finishes. **Window › Live Companion** keeps a small
    window above the call.
 5. **Reports**: every interview, each answer and its evidence, your verdict

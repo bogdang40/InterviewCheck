@@ -157,6 +157,12 @@ struct DetectorSettingsTab: View {
                 Text("The review adds evidence and two follow-up questions to each score.")
             }
 
+            Section {
+                Toggle("Mark questions automatically when I forget the key (beta)", isOn: $settings.autoMarkQuestions)
+            } footer: {
+                Text("A question followed by an answer of a dozen words or more is marked at the end of the question. Pressing Question Asked yourself is still more precise.")
+            }
+
             CalibrationSection()
 
             Section("Notice for candidates") {
