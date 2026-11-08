@@ -90,3 +90,10 @@ Detection gained three signals that need no AI key: model wording read aloud, a 
   10. "N of M" counted unanswered questions in the report but not live; it now counts scored answers everywhere. "Add Keys in Settings…" and the welcome's "Open Settings" now open the Keys tab.
 
   Totals: 86 core tests and 347 app tests.
+- **N15 done.** A fresh reviewer confirmed all 10 fixes, then raised four low findings, now fixed:
+  - Shared-word tiling is now strictly longest-first within each pass (its example now covers 16 of 21 words, not 14).
+  - The probe-term adverb rule only applies before "-ly" adverbs, and only when exactly one of the two words looks plural ("cache scales" is dropped; "payments service" and "Redis cache" stay).
+  - The missing-Deepgram-key alert's "Open Settings" did nothing on current macOS. It now opens Settings on the Keys tab.
+  - The summary's count before the report loads now uses scored answers too.
+
+  Totals: 88 core tests, 347 app tests.

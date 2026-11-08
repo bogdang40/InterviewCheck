@@ -69,7 +69,8 @@ final class PhrasingSignalTests: XCTestCase {
     }
 
     func testRepeatsAreCounted() {
-        XCTAssertEqual(PhrasingSignal.occurrences(of: ["furthermore"], in: ["furthermore", "a", "furthermore"]), 2)
+        var used = Set<Int>()
+        XCTAssertEqual(PhrasingSignal.claim(["furthermore"], in: ["furthermore", "a", "furthermore"], used: &used), 2)
         XCTAssertEqual(PhrasingSignal.announcedList(["so", "there", "are", "three", "key", "parts"]), "there are three key \u{2026}")
         XCTAssertNil(PhrasingSignal.starLabels(["the", "task", "situation", "action", "result"]))
     }

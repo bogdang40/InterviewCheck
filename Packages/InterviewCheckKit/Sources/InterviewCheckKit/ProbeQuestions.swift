@@ -87,6 +87,12 @@ public enum ProbeQuestions {
         "real", "several", "certain", "various", "such", "own", "new", "old", "first", "second", "main", "much",
     ]
 
+    /// "teams", "scales"; not "Redis", "class", "status", "stateless".
+    static func looksPlural(_ word: String) -> Bool {
+        let lower = word.lowercased()
+        return lower.hasSuffix("s") && !["ss", "us", "is", "less"].contains { lower.hasSuffix($0) }
+    }
+
     /// Runs of adjectives and nouns ending in a noun ("token bucket",
     /// "public API", "HTTP 429"), in the order they appear.
     static func nounPhrases(_ text: String) -> [String] {
@@ -94,14 +100,17 @@ public enum ProbeQuestions {
         tagger.string = text
         var phrases: [String] = []
         var run: [(word: String, isNoun: Bool)] = []
-        func flush(before tag: NLTag? = nil) {
+        func flush(before tag: NLTag? = nil, word next: String = "") {
             // "node shares the state": a verb taken for a plural noun.
             if [.determiner, .pronoun].contains(tag), run.count >= 2, run.last?.word.hasSuffix("s") == true {
                 run.removeLast()
             }
-            // "teams ship safely": after a plural subject, the word before an adverb is a verb.
-            // ("token bucket heavily" keeps its noun.)
-            if tag == .adverb, run.count >= 2, run[run.count - 2].word.hasSuffix("s") { run.removeLast() }
+            // "teams ship safely", "cache scales horizontally": subject and verb, the verb
+            // taken for a noun. ("token bucket heavily", "payments service then" keep their nouns.)
+            if tag == .adverb, run.count >= 2, next.lowercased().hasSuffix("ly"),
+               looksPlural(run[run.count - 2].word) != looksPlural(run[run.count - 1].word) {
+                run.removeLast()
+            }
             while let last = run.last, !last.isNoun { run.removeLast() }
             if !run.isEmpty { phrases.append(run.map(\.word).joined(separator: " ")) }
             run = []
@@ -117,7 +126,7 @@ public enum ProbeQuestions {
             case .adjective?:
                 run.append((word, false))
             default:
-                flush(before: tag)
+                flush(before: tag, word: word)
             }
             return true
         }

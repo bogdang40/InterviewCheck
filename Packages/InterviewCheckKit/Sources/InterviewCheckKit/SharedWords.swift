@@ -173,9 +173,13 @@ public struct SharedWords: Equatable {
                 swap(&previous, &current)
             }
 
+            // Only the longest runs this pass: a shorter one must not take words
+            // that a trimmed longer run needs in the next pass.
             var progress = false
+            var passLength: Int?
             for tile in candidates.sorted(by: { ($0.length, -$0.answer) > ($1.length, -$1.answer) })
             where !rejected.contains(tile) {
+                if let length = passLength, tile.length < length { break }
                 let answerRange = tile.answer..<(tile.answer + tile.length)
                 let referenceRange = tile.reference..<(tile.reference + tile.length)
                 guard !answerRange.contains(where: { usedA[$0] }), !referenceRange.contains(where: { usedB[$0] }) else { continue }
@@ -190,6 +194,7 @@ public struct SharedWords: Equatable {
                 referenceRange.forEach { usedB[$0] = true }
                 accepted.append(tile)
                 progress = true
+                passLength = tile.length
             }
             if !progress { break }
         }

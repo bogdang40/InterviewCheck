@@ -222,7 +222,7 @@ struct InterviewSummaryView: View {
                 Text("Interview Ended").font(.title.weight(.semibold))
                 if let interview, let percent = interview.overallPercent {
                     VStack(spacing: 4) {
-                        Text(report?.flaggedLine ?? InterviewSummary.flaggedLine(interview.flaggedCount, of: interview.questionCount))
+                        Text(report?.flaggedLine ?? liveFlaggedLine)
                             .font(.system(size: 30, weight: .semibold, design: .rounded))
                             .foregroundStyle(interview.flaggedCount > 0 ? ScoreBand.flagged.color : .primary)
                         Text("\(percent)% overall \u{00B7} \(ScoreBand(percent: percent).title)")
@@ -292,5 +292,11 @@ struct InterviewSummaryView: View {
 
     private func load() {
         report = controller.interview.flatMap { controller.database.loadInterviewReport(id: $0.id) }
+    }
+
+    /// Until the report loads: the same count from the scores in memory.
+    private var liveFlaggedLine: String {
+        let finals = controller.questions.compactMap { controller.scores[$0.id] }.filter(\.isFinal)
+        return InterviewSummary.flaggedLine(finals.filter { $0.percent >= 70 }.count, of: finals.count)
     }
 }

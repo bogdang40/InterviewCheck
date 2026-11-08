@@ -58,6 +58,17 @@ final class ProbeQuestionsTests: XCTestCase {
         XCTAssertTrue(terms.contains { $0.lowercased() == "token bucket" }, "\(terms)")
     }
 
+    func testVerbAfterASingularSubjectAndCompoundNounsAreHandled() {
+        let question = "How would you design a rate limiter?"
+        XCTAssertFalse(ProbeQuestions.keyTerms(in: "Here the cache scales horizontally across regions.", questionText: question)
+            .contains { $0.lowercased().contains("scales") })
+        XCTAssertTrue(ProbeQuestions.keyTerms(in: "We call the payments service then retry with backoff.", questionText: question)
+            .contains { $0.lowercased() == "payments service" })
+        XCTAssertFalse(ProbeQuestions.looksPlural("Redis"))
+        XCTAssertFalse(ProbeQuestions.looksPlural("stateless"))
+        XCTAssertTrue(ProbeQuestions.looksPlural("teams"))
+    }
+
     func testNothingToAskAboutGivesNoProbes() {
         XCTAssertTrue(ProbeQuestions.make(answerText: "Um, yes, I think so, honestly.", questionText: question).isEmpty)
         XCTAssertTrue(ProbeQuestions.make(answerText: "", questionText: question).isEmpty)

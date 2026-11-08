@@ -115,21 +115,6 @@ public enum PhrasingSignal {
         return count
     }
 
-    static func occurrences(of phrase: [String], in tokens: [String]) -> Int {
-        guard !phrase.isEmpty, tokens.count >= phrase.count else { return 0 }
-        var count = 0
-        var index = 0
-        while index + phrase.count <= tokens.count {
-            if Array(tokens[index..<(index + phrase.count)]) == phrase {
-                count += 1
-                index += phrase.count
-            } else {
-                index += 1
-            }
-        }
-        return count
-    }
-
     /// "situation … task … action … result" said in that order.
     static func starLabels(_ tokens: [String]) -> String? {
         let labels: [Set<String>] = [["situation"], ["task"], ["action", "actions"], ["result", "results"]]

@@ -68,6 +68,14 @@ final class SharedWordsTests: XCTestCase {
         XCTAssertEqual(shared.sharedCount, 17)
     }
 
+    func testShorterRunsWaitForTheLongestOnes() {
+        // From the second review: strict longest-first covers 16 of 21, not 14.
+        let shared = SharedWords.find(
+            answer: "gateways apply token buckets per route with burst credits refilled, Redis shards hot keys, shards hot keys across tenants then gateways",
+            reference: "Redis shards hot keys across tenants then gateways apply token buckets per route with burst credits refilled.")
+        XCTAssertEqual(shared.sharedCount, 16)
+    }
+
     func testWordRangesSplitOnAnyWhitespace() {
         let text = "  one two\n\nthree\tfour "
         XCTAssertEqual(SharedWords.wordRanges(text).map { String(text[$0]) }, ["one", "two", "three", "four"])

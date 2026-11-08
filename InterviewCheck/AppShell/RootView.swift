@@ -29,6 +29,7 @@ struct MainSplitView: View {
     @ObservedObject private var navigation = AppNavigation.shared
     @ObservedObject private var interview = InterviewController.shared
     @ObservedObject private var permissions = InterviewPermissions.shared
+    @Environment(\.openSettings) private var openSettings
     @ObservedObject private var welcome = WelcomePresenter.shared
     @ObservedObject private var recording = RecordingAnalyzer.shared
     @ObservedObject private var connectors = ConnectorManager.shared
@@ -72,7 +73,14 @@ struct MainSplitView: View {
         }
         .alert(item: $permissions.problem) { problem in
             Alert(title: Text(problem.title), message: Text(problem.message),
-                  primaryButton: .default(Text(problem.actionTitle)) { permissions.openSettings(for: problem) },
+                  primaryButton: .default(Text(problem.actionTitle)) {
+                      if problem == .deepgramKey {
+                          UserDefaults.standard.set(SettingsTab.keys, forKey: SettingsTab.storageKey)
+                          openSettings()
+                      } else {
+                          permissions.openSettings(for: problem)
+                      }
+                  },
                   secondaryButton: .cancel())
         }
     }
