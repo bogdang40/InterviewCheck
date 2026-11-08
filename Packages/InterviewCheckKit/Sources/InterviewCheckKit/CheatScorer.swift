@@ -12,6 +12,10 @@ public struct CheatScoreWeights: Equatable, Codable {
     public var wordsForHighConfidence = 60
     /// The detector never claims certainty: shown scores stop here.
     public var maximumPercent = 95
+    /// An answer this short, or one judged on its pause alone, stays below
+    /// "mixed signs": a pause is not enough to call anything AI help.
+    public var shortAnswerWords = 8
+    public var timingOnlyMaximumPercent = 39
 
     public static let `default` = CheatScoreWeights()
 
@@ -32,6 +36,9 @@ extension CheatScoreWeights {
         wordsForHighConfidence = try container.decodeIfPresent(Int.self, forKey: .wordsForHighConfidence)
             ?? fallback.wordsForHighConfidence
         maximumPercent = try container.decodeIfPresent(Int.self, forKey: .maximumPercent) ?? fallback.maximumPercent
+        shortAnswerWords = try container.decodeIfPresent(Int.self, forKey: .shortAnswerWords) ?? fallback.shortAnswerWords
+        timingOnlyMaximumPercent = try container.decodeIfPresent(Int.self, forKey: .timingOnlyMaximumPercent)
+            ?? fallback.timingOnlyMaximumPercent
     }
 }
 
@@ -82,10 +89,17 @@ public enum CheatScorer {
         similarity: SimilarityResult?,
         judge: JudgeResult?,
         hasTimingGap: Bool,
-        weights: CheatScoreWeights = .default
+        weights: CheatScoreWeights = .default,
+        measuresFluency: Bool = true
     ) -> AnswerScore {
-        let components = Self.components(timing: timing, fluency: fluency, similarity: similarity, judge: judge)
-        let percent = Int((blend(components, weights: weights) * 100).rounded())
+        // A meeting transcript spreads words evenly over each line: its pace
+        // and fillers say nothing, so fluency is left out entirely.
+        let fluencyResult = measuresFluency ? fluency : fluency.unmeasured
+        let components = Self.components(timing: timing, fluency: fluencyResult, similarity: similarity, judge: judge)
+        var percent = Int((blend(components, weights: weights) * 100).rounded())
+        let onlyTiming = components.fluency == nil && components.similarity == nil && components.judge == nil
+        let tooShort = fluency.wordCount < weights.shortAnswerWords
+        if onlyTiming || tooShort { percent = min(percent, weights.timingOnlyMaximumPercent) }
 
         let hasReferences = similarity?.best != nil
         let confidence: ScoreConfidence
@@ -97,7 +111,12 @@ public enum CheatScorer {
             confidence = .medium
         }
 
-        let notes = ScoreNotes.build(timing: timing, fluency: fluency, similarity: similarity, judge: judge)
+        var notes = ScoreNotes.build(timing: timing, fluency: fluencyResult, similarity: similarity, judge: judge)
+        if tooShort {
+            notes.counterpoints.insert("Too short to judge: \(fluency.wordCount) word\(fluency.wordCount == 1 ? "" : "s")", at: 0)
+        } else if onlyTiming {
+            notes.counterpoints.insert("Only the pause could be measured; a pause alone is not a sign of AI help", at: 0)
+        }
         return AnswerScore(
             percent: min(max(percent, 0), weights.maximumPercent),
             confidence: confidence,
@@ -105,7 +124,7 @@ public enum CheatScorer {
             counterpoints: notes.counterpoints,
             followUps: judge?.followUpQuestions ?? [],
             timing: timing,
-            fluency: fluency,
+            fluency: fluencyResult,
             similarity: similarity,
             judge: judge,
             components: components

@@ -110,6 +110,16 @@ final class RecordingAnalyzerTests: XCTestCase {
         XCTAssertTrue(InterviewReportComposer.markdown(report).contains("meeting's own transcript"))
     }
 
+    func testCandidateVoiceMatchesWholeNamesOnly() {
+        let speakers = [RecordingAnalyzer.SpeakerSample(id: 0, wordCount: 40, sample: "", name: "Brian Lee"),
+                        RecordingAnalyzer.SpeakerSample(id: 1, wordCount: 90, sample: "", name: "Ian Ruiz")]
+        XCTAssertEqual(RecordingAnalyzer.speaker(named: "Ian", in: speakers), 1, "Ian is not Brian")
+        XCTAssertEqual(RecordingAnalyzer.speaker(named: "ian ruiz", in: speakers), 1)
+        XCTAssertNil(RecordingAnalyzer.speaker(named: "Lee Park", in: speakers), "every part of the name must match")
+        let twins = speakers + [RecordingAnalyzer.SpeakerSample(id: 2, wordCount: 5, sample: "", name: "Ian Smith")]
+        XCTAssertNil(RecordingAnalyzer.speaker(named: "Ian", in: twins), "two speakers named Ian: no guess")
+    }
+
     func testTranscriptWithoutSpeakersIsRefused() throws {
         let file = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).vtt")
         defer { try? FileManager.default.removeItem(at: file) }

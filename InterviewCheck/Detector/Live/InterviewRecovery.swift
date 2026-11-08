@@ -23,7 +23,8 @@ enum InterviewRecovery {
             let window = QuestionTracker.resolve(
                 words: words, markedAt: question.markedAt,
                 lowerBound: index > 0 ? report.questions[index - 1].markedAt : 0,
-                closedAt: index + 1 < report.questions.count ? report.questions[index + 1].markedAt : nil
+                // Answer Done already closed it; otherwise the next question does.
+                closedAt: question.closedAt ?? (index + 1 < report.questions.count ? report.questions[index + 1].markedAt : nil)
             )
             var closed = question
             if closed.text.isEmpty { closed.text = window.questionText }
@@ -37,7 +38,8 @@ enum InterviewRecovery {
 
             // Words after the last save were lost, so the answer may be cut short.
             let score = evaluator.evaluate(questionText: closed.text, window: window,
-                                           references: report.references[question.id] ?? [], hasTimingGap: true)
+                                           references: report.references[question.id] ?? [], hasTimingGap: true,
+                                           measuresFluency: report.interview.scoredFrom != .transcript)
             let record = AnswerScoreRecord(
                 questionID: question.id, percent: score.percent, confidence: score.confidence,
                 reasons: score.reasons, counterpoints: score.counterpoints, followUps: score.followUps,

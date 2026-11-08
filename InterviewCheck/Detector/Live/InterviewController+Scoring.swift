@@ -69,11 +69,24 @@ extension InterviewController {
     /// similarity and the judge's review, then save the final score.
     func scoreFinal(questionID: String) {
         scoringTasks[questionID]?.cancel()
+        let token = UUID()
+        scoringTokens[questionID] = token
+        pendingScoring.insert(questionID)
         scoringTasks[questionID] = Task { @MainActor [weak self] in
             guard let self else { return }
+            defer {
+                if self.scoringTokens[questionID] == token { self.pendingScoring.remove(questionID) }
+            }
             await self.waitForReferences(questionID, timeout: 45)
-            guard !Task.isCancelled, let question = self.questions.first(where: { $0.id == questionID }) else { return }
-            let window = self.window(for: question)
+            // Let the candidate's last words arrive before the answer is read.
+            if self.answerSettleDelay > 0 { try? await Task.sleep(nanoseconds: self.answerSettleDelay) }
+            guard !Task.isCancelled, let index = self.questions.firstIndex(where: { $0.id == questionID }) else { return }
+            let generation = self.referenceGeneration[questionID]
+            let window = self.window(for: self.questions[index])
+            self.apply(window, to: index)
+            self.database.saveInterviewQuestion(self.questions[index])
+            self.flushWords()
+            let question = self.questions[index]
             guard !window.answerWords.isEmpty else {
                 self.scores[questionID] = nil
                 self.refreshSummary()
@@ -94,7 +107,9 @@ extension InterviewController {
             } catch {
                 self.errorMessage = "The AI review failed (\(error.localizedDescription)); the score uses the other signals."
             }
-            guard !Task.isCancelled else { return }
+            // The question was edited and its AI answers regenerated meanwhile:
+            // that generation scores again; this result is stale.
+            guard !Task.isCancelled, self.referenceGeneration[questionID] == generation else { return }
             let final = self.evaluate(question: question, window: window, answerEmbedding: answerEmbedding,
                                       referenceEmbeddings: referenceEmbeddings, judge: judge)
             self.store(final, questionID: questionID, window: window, isFinal: true)
@@ -142,9 +157,10 @@ extension InterviewController {
             guard self.referenceGeneration[questionID] == generation else { return }
             results.forEach(self.database.saveReferenceAnswer)
             self.referencesInFlight.remove(questionID)
-            // An edited question on an answer that already closed: score again.
+            // New AI answers for an answer that already closed: score again
+            // (this also replaces a scoring run still using the old ones).
             if self.questions.first(where: { $0.id == questionID })?.closedAt != nil,
-               self.scoringTasks[questionID] == nil || self.scores[questionID]?.isFinal == true {
+               generation > 1 || self.scoringTasks[questionID] == nil {
                 self.scoreFinal(questionID: questionID)
             }
         }

@@ -93,4 +93,27 @@ final class QuestionTrackerTests: XCTestCase {
                                          answerEnd: nil, words: q1 + a1)
         XCTAssertEqual(open.answerWords.count, a1.count)
     }
+
+    func testPlannedQuestionClickedBeforeItIsReadOut() {
+        // Q0 was asked and answered; the interviewer clicks Q1 at 100, then reads it.
+        let q0 = F.words("Tell me about yourself.", side: .interviewer, start: 60)
+        let a0 = F.words("I build payment systems at a fintech company", side: .candidate, start: 63)
+        let q1 = F.words("How would you design a rate limiter?", side: .interviewer, start: 101)
+        let a1 = F.words("I would use a token bucket per key", side: .candidate, start: q1.last!.end + 2)
+        let window = QuestionTracker.resolve(words: q0 + a0 + q1 + a1, markedAt: 100, lowerBound: 55, closedAt: nil)
+        XCTAssertEqual(window.questionText, "How would you design a rate limiter?")
+        XCTAssertEqual(window.questionEnd, q1.last!.end, accuracy: 1e-9, "timed from the question, not the click")
+        XCTAssertEqual(window.answerWords.map(\.text), a1.map(\.text))
+    }
+
+    func testLateKeypressSkipsAnInterjectionInTheAnswer() {
+        let question = F.words("Design a rate limiter for a public API.", side: .interviewer, start: 0)
+        let answer = F.words("I would start with a token bucket per key", side: .candidate, start: question.last!.end + 1)
+        let nod = F.words("Mm-hmm.", side: .interviewer, start: answer.last!.end + 0.2)
+        let more = F.words("and store the buckets in Redis for every node", side: .candidate, start: nod.last!.end + 0.3)
+        let window = QuestionTracker.resolve(words: question + answer + nod + more, markedAt: more.last!.end + 1,
+                                             lowerBound: nil, closedAt: nil)
+        XCTAssertEqual(window.questionText, "Design a rate limiter for a public API.")
+        XCTAssertEqual(window.answerWords.first?.text, "I", "the start of the answer is kept")
+    }
 }

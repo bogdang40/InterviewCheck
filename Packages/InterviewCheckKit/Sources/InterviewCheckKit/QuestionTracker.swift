@@ -59,9 +59,7 @@ public enum QuestionTracker {
             .sorted { $0.start < $1.start }
         let turns = group(relevant)
 
-        guard let lastAsked = turns.lastIndex(where: {
-            $0.side == .interviewer && $0.start <= markedAt + markTolerance
-        }) else {
+        guard let lastAsked = askedTurn(turns, markedAt: markedAt) else {
             // The mic caught no question: time the answer from the keypress.
             let answer = relevant.filter { $0.side == .candidate && $0.start >= markedAt - markTolerance }
             return QuestionWindow(questionText: "", questionStart: nil, questionEnd: markedAt, answerWords: answer)
@@ -101,6 +99,41 @@ public enum QuestionTracker {
             questionEnd: questionEnd,
             answerWords: answer
         )
+    }
+
+    /// How long after an early keypress the question may still begin.
+    public static let earlyMarkWindow: TimeInterval = 20
+    /// An interviewer turn this short inside an answer is an interjection
+    /// ("Mm-hmm", "Right"), not a question.
+    public static let interjectionMaxWords = 3
+
+    /// The interviewer turn the keypress belongs to.
+    /// - The usual case: the last interviewer turn before the keypress, not
+    ///   yet answered.
+    /// - Pressed early (a planned question clicked, then read out): the turn
+    ///   before was already answered, and the interviewer speaks right after
+    ///   the keypress, before the candidate does.
+    /// - Pressed late: the answer is under way; short interjections in it are
+    ///   skipped back to the real question.
+    static func askedTurn(_ turns: [Turn], markedAt: TimeInterval) -> Int? {
+        let substantive = { (turn: Turn) in turn.side == .candidate && turn.words.count > backchannelMaxWords }
+        let before = turns.lastIndex { $0.side == .interviewer && $0.start <= markedAt + markTolerance }
+        let answeredBeforeMark = before.map { index in
+            turns[(index + 1)...].contains { substantive($0) && $0.start < markedAt - markTolerance }
+        } ?? true
+        if answeredBeforeMark, let after = turns.firstIndex(where: {
+            $0.side == .interviewer && $0.start > markedAt - markTolerance && $0.start <= markedAt + earlyMarkWindow
+        }), !turns[..<after].contains(where: { substantive($0) && $0.start >= markedAt - markTolerance }) {
+            return after
+        }
+        guard var asked = before else { return nil }
+        if answeredBeforeMark {
+            while turns[asked].words.count <= interjectionMaxWords, asked > 0, substantive(turns[asked - 1]),
+                  let earlier = turns[..<(asked - 1)].lastIndex(where: { $0.side == .interviewer }) {
+                asked = earlier
+            }
+        }
+        return asked
     }
 
     public static func group(_ words: [TimedWord]) -> [Turn] {

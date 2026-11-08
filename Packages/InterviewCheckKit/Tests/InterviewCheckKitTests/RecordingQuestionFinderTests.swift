@@ -39,4 +39,24 @@ final class RecordingQuestionFinderTests: XCTestCase {
         XCTAssertEqual(window.questionText, "Walk me through your last project.")
         XCTAssertEqual(window.answerWords.count, a.count)
     }
+
+    func testInterjectionsInsideAnAnswerAreNotQuestions() {
+        let q = F.words("How would you design a rate limiter for our API?", side: .interviewer, start: 0)
+        let a1 = F.words("I would start with a token bucket for each key stored in Redis", side: .candidate, start: q.last!.end + 1)
+        let nod = F.words("Right, that makes sense.", side: .interviewer, start: a1.last!.end + 0.3)
+        let a2 = F.words("and then return a 429 with a retry after header when the bucket runs out", side: .candidate,
+                         start: nod.last!.end + 0.3)
+        let really = F.words("Really?", side: .interviewer, start: a2.last!.end + 0.3)
+        let a3 = F.words("yes because it keeps the gateway simple and the limits easy to reason about for everyone", side: .candidate,
+                         start: really.last!.end + 0.3)
+        let marks = RecordingQuestionFinder.questionMarks(in: q + a1 + nod + a2 + really + a3)
+        XCTAssertEqual(marks.count, 1, "one question, one long answer")
+        XCTAssertEqual(marks.first ?? 0, q.last!.end, accuracy: 1e-9)
+
+        // A real follow-up after an answer still counts.
+        let followUp = F.words("What bucket size would you pick?", side: .interviewer, start: a3.last!.end + 1)
+        let a4 = F.words("probably a hundred requests per minute with a burst of twenty for most partners", side: .candidate,
+                         start: followUp.last!.end + 1)
+        XCTAssertEqual(RecordingQuestionFinder.questionMarks(in: q + a1 + nod + a2 + really + a3 + followUp + a4).count, 2)
+    }
 }

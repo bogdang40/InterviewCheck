@@ -85,4 +85,27 @@ final class CheatScorerTests: XCTestCase {
         // "um" ends at 101.3; "I'd" starts 2.08 s later.
         XCTAssertEqual(text, "[um] [silence 2.1s] I'd use Redis")
     }
+
+    func testAPauseAloneNeverFlagsAShortAnswer() {
+        // "Yes, I have." eight seconds after the question, no references, no judge.
+        let words = F.words("Yes, I have.", side: .candidate, start: 18)
+        let timing = TimingSignal.pacedToAI(TimingSignal.evaluate(answerWords: words, questionEnd: 10, questionText: "Have you used Go?"),
+                                            fastestFirstSentence: 4)
+        let score = CheatScorer.score(timing: timing, fluency: FluencySignal.evaluate(answerWords: words, from: timing.substantiveIndex),
+                                      similarity: nil, judge: nil, hasTimingGap: false)
+        XCTAssertLessThanOrEqual(score.percent, 39)
+        XCTAssertTrue(score.counterpoints.first?.hasPrefix("Too short to judge") ?? false)
+        XCTAssertEqual(score.confidence, .low)
+    }
+
+    func testTranscriptScoresLeaveFluencyOut() {
+        let answer = F.readingAnswer(after: 10)
+        let timing = TimingSignal.evaluate(answerWords: answer, questionEnd: 10, questionText: F.question)
+        let fluency = FluencySignal.evaluate(answerWords: answer, from: timing.substantiveIndex)
+        XCTAssertTrue(fluency.isReliable)
+        let score = CheatScorer.score(timing: timing, fluency: fluency, similarity: nil, judge: JudgeResult(likelihood: 30, confidence: "low",
+                                      evidence: [], followUpQuestions: []), hasTimingGap: true, measuresFluency: false)
+        XCTAssertNil(score.components.fluency)
+        XCTAssertFalse(score.reasons.contains { $0.contains("very even pace") }, "no invented fluency reason")
+    }
 }

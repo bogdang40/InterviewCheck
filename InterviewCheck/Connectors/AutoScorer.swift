@@ -65,6 +65,12 @@ final class AutoScorer {
             return nil
         }
         guard await wait(for: analyzer, until: { $0 == .chooseSpeaker }) else { return nil }
+        // With nobody to confirm the voice, a transcript is only scored when
+        // the candidate's name picks out exactly one speaker.
+        if recording.bestMediaFile == nil, !analyzer.candidateMatchedByName {
+            analyzer.reset()
+            return nil
+        }
         analyzer.analyze()
         guard await wait(for: analyzer, until: { if case .finished = $0 { return true } else { return false } }),
               case .finished(let id, _) = analyzer.step else { return nil }

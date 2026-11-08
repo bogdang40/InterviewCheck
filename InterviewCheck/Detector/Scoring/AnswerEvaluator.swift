@@ -13,7 +13,8 @@ struct AnswerEvaluator {
         hasTimingGap: Bool,
         answerEmbedding: [Double]? = nil,
         referenceEmbeddings: [String: [Double]] = [:],
-        judge: JudgeResult? = nil
+        judge: JudgeResult? = nil,
+        measuresFluency: Bool = true
     ) -> AnswerScore {
         let finished = references.filter { !$0.isStreaming && $0.error == nil && !$0.text.isEmpty }
         var timing = TimingSignal.evaluate(answerWords: window.answerWords, questionEnd: window.questionEnd,
@@ -28,7 +29,7 @@ struct AnswerEvaluator {
             answerEmbedding: answerEmbedding, questionText: questionText, references: texts
         )
         return CheatScorer.score(timing: timing, fluency: fluency, similarity: similarity, judge: judge,
-                                 hasTimingGap: hasTimingGap, weights: weights)
+                                 hasTimingGap: hasTimingGap, weights: weights, measuresFluency: measuresFluency)
     }
 }
 

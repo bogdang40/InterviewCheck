@@ -28,6 +28,7 @@ final class DetectorRenderTests: XCTestCase {
         controller.startAudio = {}
         controller.stopAudio = {}
         controller.questionSettleDelay = 0
+        controller.answerSettleDelay = 0
         controller.roleProvider = { nil }
         controller.candidateName = "Jordan Rivera"
         controller.consentConfirmed = true

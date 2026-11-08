@@ -43,8 +43,18 @@ final class InterviewController: ObservableObject {
     /// Host time the interview started; stored times are relative to it.
     private(set) var origin: TimeInterval = 0
     var savedWordCount = 0
+    /// Words already written, by side, start and text: late batches are
+    /// sorted into the middle of the timeline, so a count is not enough.
+    var savedWordKeys: Set<String> = []
     /// Wait after a keypress so the interviewer's last words are final.
     var questionSettleDelay: UInt64 = 900_000_000
+    /// The candidate's last words are still being finalized when the answer
+    /// closes; the final score waits this long for them.
+    var answerSettleDelay: UInt64 = 1_500_000_000
+    /// Questions whose final score is still being worked out. New Interview
+    /// waits for these so no score is lost.
+    @Published var pendingScoring: Set<String> = []
+    var scoringTokens: [String: UUID] = [:]
     /// At most this many AI answers per question.
     var maxReferenceRuns = ReferenceAnswerRunner.maxRuns
     var tickTimer: Timer?
@@ -86,6 +96,7 @@ final class InterviewController: ObservableObject {
         timeline.reset()
         origin = timeline.now
         savedWordCount = 0
+        savedWordKeys = []
         questions = []
         references = [:]
         scores = [:]
@@ -113,7 +124,7 @@ final class InterviewController: ObservableObject {
 
     /// Back to setup for the next candidate.
     func reset() {
-        guard phase != .live else { return }
+        guard phase != .live, pendingScoring.isEmpty else { return }
         phase = .setup
         interview = nil
         questions = []
@@ -133,6 +144,13 @@ final class InterviewController: ObservableObject {
     func markQuestion(planned: PlannedQuestion? = nil) {
         guard phase == .live, let interview else { return }
         let now = timeline.now
+        // Pressed twice in a row with no answer yet: the same question, marked again.
+        if planned == nil, let active = activeQuestion, let index = questions.firstIndex(where: { $0.id == active.id }),
+           now - (origin + active.markedAt) < 2, window(for: active).answerWords.isEmpty {
+            questions[index].markedAt = now - origin
+            database.saveInterviewQuestion(questions[index])
+            return
+        }
         let previousMark = activeQuestion.map { origin + $0.markedAt }
         closeActiveQuestion(at: now)
 
@@ -211,9 +229,16 @@ final class InterviewController: ObservableObject {
     func flushWords() {
         guard let interview else { return }
         let words = timeline.words
-        guard words.count > savedWordCount else { return }
-        database.appendInterviewWords(Array(words[savedWordCount...]), interviewID: interview.id, origin: origin)
+        guard words.count > savedWordCount || words.count != savedWordKeys.count else { return }
+        let unsaved = words.filter { !savedWordKeys.contains(Self.key($0)) }
+        guard !unsaved.isEmpty else { return }
+        database.appendInterviewWords(unsaved, interviewID: interview.id, origin: origin)
+        unsaved.forEach { savedWordKeys.insert(Self.key($0)) }
         savedWordCount = words.count
+    }
+
+    static func key(_ word: TimedWord) -> String {
+        "\(word.side.rawValue)|\(Int((word.start * 1000).rounded()))|\(word.text)"
     }
 
     /// Keeps the list's overall line current.

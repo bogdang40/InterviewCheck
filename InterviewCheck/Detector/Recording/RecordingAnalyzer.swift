@@ -40,7 +40,6 @@ final class RecordingAnalyzer: ObservableObject {
     private var task: Task<Void, Never>?
     private var scoredFrom = ScoredFrom.recording
     private var recordingID: String?
-    private var cleanupFolder: URL?
     /// When the meeting happened, for recordings from a connector.
     var meetingStart: Date?
     var database: SessionDatabase = .shared
@@ -51,10 +50,18 @@ final class RecordingAnalyzer: ObservableObject {
         return try await RecordingTranscriber(apiKey: key).transcribe(audioFile: url)
     }
 
+    /// The candidate's voice was found by name (not just the busiest voice).
+    @Published private(set) var candidateMatchedByName = false
+
+    /// Reopening the sheet shows work in progress instead of cancelling it.
     func present() {
-        if case .answering = step { isPresented = true; return }
-        reset()
-        isPresented = true
+        switch step {
+        case .preparing, .transcribing, .answering, .chooseSpeaker:
+            isPresented = true
+        default:
+            reset()
+            isPresented = true
+        }
     }
 
     func reset() {
@@ -73,10 +80,11 @@ final class RecordingAnalyzer: ObservableObject {
         self.candidateName = candidateName
         self.role = role
         self.recordingID = recordingID
-        self.cleanupFolder = cleanup
         scoredFrom = .recording
+        candidateMatchedByName = false
         task = Task { @MainActor in
-            defer { self.removeCleanupFolder() }
+            // This run's own download folder, whatever starts later.
+            defer { if let cleanup { try? FileManager.default.removeItem(at: cleanup) } }
             let scoped = file.startAccessingSecurityScopedResource()
             defer { if scoped { file.stopAccessingSecurityScopedResource() } }
             do {
@@ -87,8 +95,11 @@ final class RecordingAnalyzer: ObservableObject {
                 words = try await transcribe(audio.file)
                 speakers = Self.speakerSamples(words)
                 candidateSpeaker = speakers.max { $0.wordCount < $1.wordCount }?.id
+                guard !Task.isCancelled else { return }
                 step = speakers.isEmpty ? .failed(RecordingError.noQuestions.localizedDescription) : .chooseSpeaker
             } catch {
+                // A cancelled run must not overwrite the step of the next one.
+                guard !Task.isCancelled else { return }
                 step = .failed(error.localizedDescription)
             }
         }
@@ -117,10 +128,24 @@ final class RecordingAnalyzer: ObservableObject {
             step = .failed("This transcript has no speaker names, so questions and answers can't be told apart. Analyze the recording instead.")
             return
         }
-        let wanted = candidateName.lowercased().split(separator: " ").first.map(String.init) ?? ""
-        candidateSpeaker = speakers.first { !wanted.isEmpty && ($0.name ?? "").lowercased().contains(wanted) }?.id
-            ?? speakers.max { $0.wordCount < $1.wordCount }?.id
+        let byName = Self.speaker(named: candidateName, in: speakers)
+        candidateMatchedByName = byName != nil
+        candidateSpeaker = byName ?? speakers.max { $0.wordCount < $1.wordCount }?.id
         step = .chooseSpeaker
+    }
+
+    /// The one speaker whose name holds every part of the candidate's name
+    /// as a whole word ("Ian" is not "Brian"); nil when none or several do.
+    static func speaker(named candidate: String, in speakers: [SpeakerSample]) -> Int? {
+        let parts = Set(tokens(candidate))
+        guard !parts.isEmpty else { return nil }
+        let matches = speakers.filter { parts.isSubset(of: Set(tokens($0.name ?? ""))) }
+        return matches.count == 1 ? matches[0].id : nil
+    }
+
+    static func tokens(_ name: String) -> [String] {
+        name.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
+            .components(separatedBy: CharacterSet.letters.inverted).filter { !$0.isEmpty }
     }
 
     /// Words from transcript lines, one speaker index per distinct name.
@@ -141,11 +166,6 @@ final class RecordingAnalyzer: ObservableObject {
             }
         }
         return (words, Dictionary(uniqueKeysWithValues: indexes.map { ($0.value, $0.key) }))
-    }
-
-    private func removeCleanupFolder() {
-        if let cleanupFolder { try? FileManager.default.removeItem(at: cleanupFolder) }
-        cleanupFolder = nil
     }
 
     /// Step 2: with the candidate's voice chosen, analyse every answer.
@@ -191,7 +211,9 @@ final class RecordingAnalyzer: ObservableObject {
             id: UUID().uuidString, workspaceID: role?.id, roleTitle: role?.displayTitle ?? "",
             candidateName: candidateName.trimmingCharacters(in: .whitespaces),
             consentConfirmedAt: Date(), startedAt: created,
-            endedAt: created.addingTimeInterval(timed.last?.end ?? 0), scoredFrom: scoredFrom
+            // No end until every answer is scored: a run cut short is then
+            // finished by crash recovery instead of looking complete.
+            endedAt: nil, scoredFrom: scoredFrom
         )
         database.saveInterview(interview)
         database.appendInterviewWords(timed, interviewID: interview.id, origin: 0)
@@ -227,12 +249,13 @@ final class RecordingAnalyzer: ObservableObject {
             let coarse = scoredFrom == .transcript
             let quick = evaluator.evaluate(questionText: question.text, window: window, references: references,
                                            hasTimingGap: coarse, answerEmbedding: answerEmbedding,
-                                           referenceEmbeddings: referenceEmbeddings)
+                                           referenceEmbeddings: referenceEmbeddings, measuresFluency: !coarse)
             let judge = try? await reviewer.judge(questionText: question.text, window: window,
                                                   references: references, quick: quick)
             let score = evaluator.evaluate(questionText: question.text, window: window, references: references,
                                            hasTimingGap: coarse, answerEmbedding: answerEmbedding,
-                                           referenceEmbeddings: referenceEmbeddings, judge: judge ?? nil)
+                                           referenceEmbeddings: referenceEmbeddings, judge: judge ?? nil,
+                                           measuresFluency: !coarse)
             let record = AnswerScoreRecord(
                 questionID: question.id, percent: score.percent, confidence: score.confidence,
                 reasons: score.reasons, counterpoints: score.counterpoints, followUps: score.followUps,
@@ -242,6 +265,7 @@ final class RecordingAnalyzer: ObservableObject {
             finals.append(record)
         }
 
+        interview.endedAt = created.addingTimeInterval(timed.last?.end ?? 0)
         interview.questionCount = marks.count
         interview.flaggedCount = finals.filter { $0.percent >= 70 }.count
         interview.overallPercent = InterviewSummary.overall(finals)

@@ -215,6 +215,8 @@ struct InterviewSummaryView: View {
                     .controlSize(.large)
                 Button("New Interview") { controller.reset() }
                     .controlSize(.large)
+                    .disabled(!controller.pendingScoring.isEmpty)
+                    .help(controller.pendingScoring.isEmpty ? "" : "Available once the last scores are saved")
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -39,7 +39,7 @@ private struct NewItemCommands: View {
             interview.reset()
         }
         .keyboardShortcut("n")
-        .disabled(interview.phase == .live)
+        .disabled(interview.phase == .live || !interview.pendingScoring.isEmpty)
 
         Button("New Role") {
             openWindow(id: AppWindowID.main)

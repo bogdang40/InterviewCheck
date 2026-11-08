@@ -12,8 +12,18 @@ public struct FluencyResult: Equatable {
     public let paceVariation: Double?
     /// 0 (halting, natural) ... 1 (steady, filler-free, read-like).
     public let score: Double
-    /// Too few words to judge.
-    public var isReliable: Bool { wordCount >= FluencySignal.minimumWords }
+    /// False when the timing it would need was not recorded (meeting
+    /// transcripts): then fluency takes no part in the score.
+    public var measured = true
+    /// Too few words to judge, or not measured.
+    public var isReliable: Bool { measured && wordCount >= FluencySignal.minimumWords }
+
+    /// The same counts, marked as not usable for scoring.
+    public var unmeasured: FluencyResult {
+        var copy = self
+        copy.measured = false
+        return copy
+    }
 }
 
 /// Reading-like delivery: almost no fillers or restarts, no long mid-answer

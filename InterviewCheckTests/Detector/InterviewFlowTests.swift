@@ -23,6 +23,7 @@ final class InterviewFlowTests: XCTestCase {
         controller.startAudio = {}
         controller.stopAudio = {}
         controller.questionSettleDelay = 0
+        controller.answerSettleDelay = 0
         controller.roleProvider = { nil }
         controller.runner = ReferenceAnswerRunner(
             makeClient: { _, _ in FakeTextClient(reply: F.aiAnswer) }, clock: { 0 }, deliver: { $0() })
@@ -32,6 +33,36 @@ final class InterviewFlowTests: XCTestCase {
         controller.stopTicking()
         database = nil
         try? FileManager.default.removeItem(atPath: databasePath)
+    }
+
+    func testDoubleKeypressIsOneQuestion() async throws {
+        controller.consentConfirmed = true
+        controller.start()
+        let question = F.words(F.question, side: .interviewer, start: now + 1)
+        timeline.append(question)
+        now = question.last!.end + 0.2
+        controller.markQuestion()
+        now += 0.3
+        controller.markQuestion()
+        XCTAssertEqual(controller.questions.count, 1, "a second press before any answer re-marks the same question")
+        try await waitUntil { self.controller.questions.first?.text.isEmpty == false }
+        XCTAssertEqual(controller.questions.first?.text, F.question)
+    }
+
+    func testLateWordsAreSavedOnceEvenWhenSortedIntoTheMiddle() {
+        controller.consentConfirmed = true
+        controller.start()
+        let early = F.words("I would use a token bucket", side: .candidate, start: now + 10)
+        let nod = F.words("Mm-hmm.", side: .interviewer, start: now + 15)
+        timeline.append(early + nod)
+        controller.flushWords()
+        // A slower batch from the call audio lands between them.
+        let late = F.words("per key in Redis", side: .candidate, start: early.last!.end + 0.1)
+        timeline.append(late)
+        controller.flushWords()
+        let saved = database.loadInterviewWords(interviewID: controller.interview!.id)
+        XCTAssertEqual(saved.count, early.count + nod.count + late.count, "every word once, none twice")
+        XCTAssertEqual(Set(saved.map(\.text)).count, Set((early + nod + late).map(\.text)).count)
     }
 
     func testStartNeedsConsent() {

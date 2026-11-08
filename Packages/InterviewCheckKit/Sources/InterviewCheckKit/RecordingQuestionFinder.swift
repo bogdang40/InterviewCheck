@@ -16,13 +16,32 @@ public enum RecordingQuestionFinder {
         let turns = QuestionTracker.group(words.sorted { $0.start < $1.start })
         var marks: [TimeInterval] = []
         for (index, turn) in turns.enumerated() where turn.side == .interviewer {
-            let spoken = turn.words.filter { !$0.isFiller }.count
-            let asks = spoken >= minimumQuestionWords || turn.words.last?.text.hasSuffix("?") == true
-            guard asks, index + 1 < turns.count, turns[index + 1].side == .candidate else { continue }
+            guard isQuestion(turns, at: index), index + 1 < turns.count, turns[index + 1].side == .candidate else { continue }
             let answer = answerWordCount(turns, from: index + 1)
             if answer >= minimumAnswerWords { marks.append(turn.end) }
         }
         return marks
+    }
+
+    static let questionStarts: Set<String> = ["what", "how", "why", "when", "where", "who", "which", "can", "could", "would",
+                                              "tell", "walk", "describe", "explain", "do", "did", "have", "are", "is", "talk", "give"]
+
+    /// An interviewer turn that asks something. Right after a substantial
+    /// answer, a short remark ("Really?", "Right, that makes sense.") is an
+    /// interjection unless it asks a question.
+    static func isQuestion(_ turns: [QuestionTracker.Turn], at index: Int) -> Bool {
+        let turn = turns[index]
+        guard turn.side == .interviewer else { return false }
+        let spoken = turn.words.filter { !$0.isFiller }
+        let asksOutright = spoken.contains { $0.text.contains("?") }
+        let first = spoken.first?.normalized.trimmingCharacters(in: .punctuationCharacters) ?? ""
+        let afterAnswer = index > 0 && turns[index - 1].side == .candidate
+            && turns[index - 1].words.filter { !$0.isFiller }.count >= 5
+        if afterAnswer {
+            if spoken.count <= 2 { return false }
+            if spoken.count < 8, !asksOutright, !questionStarts.contains(first) { return false }
+        }
+        return spoken.count >= minimumQuestionWords || asksOutright
     }
 
     /// Spoken words in the candidate's answer starting at `start`, carrying
@@ -35,7 +54,7 @@ public enum RecordingQuestionFinder {
             let spoken = turn.words.filter { !$0.isFiller }.count
             if turn.side == .candidate {
                 count += spoken
-            } else if spoken >= minimumQuestionWords || turn.words.last?.text.hasSuffix("?") == true {
+            } else if isQuestion(turns, at: index) {
                 break
             }
             index += 1
