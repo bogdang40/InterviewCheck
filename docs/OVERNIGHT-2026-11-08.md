@@ -52,7 +52,7 @@ for another Mac. It is not notarized yet, so macOS warns before opening it there
 
 ## Checks
 
-- **Tests:** 344 app tests, 98 connector tests and 47 core tests. They run on
+- **Tests:** 345 app tests, 99 connector tests and 47 core tests. They run on
   every step through a watchdog that stops at the first crash.
 - **Reviews:** independent reviews of the night's connector and automation code, run
   after each batch. They found real problems, all fixed and tested, including:
