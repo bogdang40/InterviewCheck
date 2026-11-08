@@ -5,6 +5,9 @@ struct RoleEditor: View {
     @ObservedObject private var store = RoleStore.shared
     @ObservedObject private var settings = DetectorSettings.shared
     @State private var draft: RoleProfile
+    /// The store's version this editor last matched, to tell its own edits
+    /// apart from changes made elsewhere (a background draft, an import).
+    @State private var base: RoleProfile
     @State private var saveTask: Task<Void, Never>?
     @State private var isDrafting = false
     @State private var draftMessage: String?
@@ -14,6 +17,7 @@ struct RoleEditor: View {
 
     init(role: RoleProfile) {
         _draft = State(initialValue: role)
+        _base = State(initialValue: role)
     }
 
     var body: some View {
@@ -144,6 +148,12 @@ struct RoleEditor: View {
             Text("The text from the file replaces what is there now.")
         }
         .onDisappear { saveNow() }
+        .onChange(of: store.role(id: draft.id)) { _, latest in
+            guard let latest else { return }
+            let merged = RoleEditMerge.merge(local: draft, base: base, latest: latest)
+            base = latest
+            if !RoleEditMerge.sameContent(merged, draft) { draft = merged }
+        }
     }
 
     private func scheduleSave(_ role: RoleProfile) {
@@ -157,7 +167,9 @@ struct RoleEditor: View {
 
     private func saveNow() {
         saveTask?.cancel()
-        if store.role(id: draft.id) != draft { store.save(draft) }
+        guard let stored = store.role(id: draft.id) else { return }
+        let merged = RoleEditMerge.merge(local: draft, base: base, latest: stored)
+        if !RoleEditMerge.sameContent(merged, stored) { store.save(merged) }
     }
 
     private func runDraft() async {
