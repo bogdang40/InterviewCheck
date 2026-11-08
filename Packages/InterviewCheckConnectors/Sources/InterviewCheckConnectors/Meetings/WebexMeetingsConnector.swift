@@ -20,7 +20,7 @@ public struct WebexMeetingsConnector: InterviewSource, RecordingSource {
     private let token: AccessTokenProvider
     private let transport: HTTPTransport
     private let keywords: [String]
-    /// Recording details (one call each) are read for at most this many meetings.
+    /// Meeting links (one call each) are looked up for at most this many recordings.
     static let detailLimit = 20
 
     public init(credentials: ConnectorCredentials, transport: HTTPTransport, accessToken: AccessTokenProvider?) throws {
@@ -88,23 +88,18 @@ public struct WebexMeetingsConnector: InterviewSource, RecordingSource {
             recording.files.append(ExternalFile(kind: .transcript, filename: "\(topic) transcript.vtt", url: link, needsAuth: true))
             found[meetingID] = recording
         }
-        // Recordings: the audio file, through a short-lived direct link.
+        // Recordings: the file is fetched through a direct link that lasts only
+        // hours, so the recording's own address is kept and the link is asked
+        // for when the file is downloaded.
         let listed = try await api.getJSON("recordings", query: window)["items"].array.filter {
             $0["topic"].string.map(looksLikeInterview) == true && $0["status"].string != "deleted"
         }
-        if listed.count > Self.detailLimit { SyncNotes.cut("recordings", read: Self.detailLimit) }
-        for item in listed.prefix(Self.detailLimit) {
+        for item in listed {
             guard let id = item["id"].string, let meetingID = item["meetingId"].string, let topic = item["topic"].string,
                   let started = item["timeRecorded"].date ?? item["createTime"].date else { continue }
-            let details = try? await api.getJSON("recordings/\(id)")
-            let links = details?["temporaryDirectDownloadLinks"]
             var recording = found[meetingID] ?? ExternalRecording(source: .webex, externalID: meetingID, title: topic, startedAt: started, files: [])
             recording.duration = recording.duration ?? item["durationSeconds"].double
-            if let audio = links?["audioDownloadLink"].url {
-                recording.files.append(ExternalFile(kind: .audio, filename: "\(topic).mp3", url: audio, needsAuth: false))
-            } else if let video = links?["recordingDownloadLink"].url {
-                recording.files.append(ExternalFile(kind: .video, filename: "\(topic).mp4", url: video, needsAuth: false))
-            }
+            recording.files.append(ExternalFile(kind: .audio, filename: "\(topic).mp3", url: api.url("recordings/\(id)"), needsAuth: true))
             found[meetingID] = recording
         }
         // The meeting's join link ties a recording to its scheduled interview.
@@ -119,6 +114,18 @@ public struct WebexMeetingsConnector: InterviewSource, RecordingSource {
     }
 
     public func download(_ file: ExternalFile, into folder: URL) async throws -> URL {
-        try await FileDownload.save(file, into: folder, client: try await client(), transport: transport)
+        let api = try await client()
+        // A recording: ask for today's direct link (audio, else the video).
+        if file.kind != .transcript, file.url.path.contains("/v1/recordings/") {
+            let links = try await api.getJSON(file.url.absoluteString)["temporaryDirectDownloadLinks"]
+            guard let direct = links["audioDownloadLink"].url ?? links["recordingDownloadLink"].url else {
+                throw ConnectorError.unsupported("Webex has no downloadable file for this recording yet.")
+            }
+            let isAudio = links["audioDownloadLink"].url != nil
+            let named = file.filename.replacingOccurrences(of: #"\.mp3$"#, with: isAudio ? ".mp3" : ".mp4", options: .regularExpression)
+            return try await FileDownload.save(ExternalFile(kind: isAudio ? .audio : .video, filename: named, url: direct, needsAuth: false),
+                                               into: folder, client: nil, transport: transport)
+        }
+        return try await FileDownload.save(file, into: folder, client: api, transport: transport)
     }
 }

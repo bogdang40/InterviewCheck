@@ -151,10 +151,22 @@ public struct CalComConnector: InterviewSource {
 
     public func upcomingInterviews(from start: Date, to end: Date) async throws -> [ExternalInterview] {
         var bookings: [JSONValue] = []
+        // Finished ones too (the sync looks a week back to match recordings);
+        // Cal.com takes one status per request.
+        for status in ["upcoming", "past"] {
+            bookings += try await self.bookings(status: status, from: start, to: end)
+        }
+        var seen = Set<String>()
+        return bookings.filter { seen.insert($0["uid"].string ?? $0["id"].string ?? UUID().uuidString).inserted }
+            .compactMap { booking in self.interview(booking, from: start, to: end) }
+    }
+
+    private func bookings(status: String, from start: Date, to end: Date) async throws -> [JSONValue] {
+        var bookings: [JSONValue] = []
         var cursor: String?
         var pages = 0
         repeat {
-            var query = [URLQueryItem(name: "status", value: "upcoming"),
+            var query = [URLQueryItem(name: "status", value: status),
                          URLQueryItem(name: "afterStart", value: DateParsing.iso(start)),
                          URLQueryItem(name: "beforeEnd", value: DateParsing.iso(end.addingTimeInterval(24 * 3600))),
                          URLQueryItem(name: "sortStart", value: "asc"), URLQueryItem(name: "limit", value: "100")]
@@ -165,25 +177,26 @@ public struct CalComConnector: InterviewSource {
             cursor = page["pagination"]["hasMore"].bool == true ? page["pagination"]["nextCursor"].string : nil
         } while cursor != nil && pages < Self.pageLimit
         if cursor != nil { SyncNotes.cut("bookings", read: bookings.count) }
+        return bookings
+    }
 
-        return bookings.compactMap { booking in
-            guard let startsAt = booking["start"].date, startsAt >= start, startsAt <= end,
-                  booking["status"].string.map({ ["accepted", "awaiting_host"].contains($0) }) ?? true else { return nil }
-            let title = booking["title"].string ?? "Meeting"
-            guard BookingFilter.keeps(title, everyBooking: everyBooking, extraKeywords: extraKeywords) else { return nil }
-            let attendee = booking["attendees"].array.first
-            return ExternalInterview(
-                source: .calCom, externalID: booking["uid"].string ?? booking["id"].string ?? UUID().uuidString,
-                title: title, startsAt: startsAt, endsAt: booking["end"].date,
-                meetingURL: BookingFilter.link([booking["location"].string, booking["meetingUrl"].string]),
-                candidate: attendee.flatMap { attendee in
-                    attendee["name"].string.map { ExternalCandidate(name: $0, email: attendee["email"].string) }
-                },
-                job: BookingFilter.job(from: title),
-                interviewers: booking["hosts"].array.compactMap { host in
-                    host["name"].string.map { ExternalPerson(name: $0, email: host["email"].string) }
-                }
-            )
-        }
+    private func interview(_ booking: JSONValue, from start: Date, to end: Date) -> ExternalInterview? {
+        guard let startsAt = booking["start"].date, startsAt >= start, startsAt <= end,
+              booking["status"].string.map({ ["accepted", "awaiting_host"].contains($0) }) ?? true else { return nil }
+        let title = booking["title"].string ?? "Meeting"
+        guard BookingFilter.keeps(title, everyBooking: everyBooking, extraKeywords: extraKeywords) else { return nil }
+        let attendee = booking["attendees"].array.first
+        return ExternalInterview(
+            source: .calCom, externalID: booking["uid"].string ?? booking["id"].string ?? UUID().uuidString,
+            title: title, startsAt: startsAt, endsAt: booking["end"].date,
+            meetingURL: BookingFilter.link([booking["location"].string, booking["meetingUrl"].string]),
+            candidate: attendee.flatMap { attendee in
+                attendee["name"].string.map { ExternalCandidate(name: $0, email: attendee["email"].string) }
+            },
+            job: BookingFilter.job(from: title),
+            interviewers: booking["hosts"].array.compactMap { host in
+                host["name"].string.map { ExternalPerson(name: $0, email: host["email"].string) }
+            }
+        )
     }
 }

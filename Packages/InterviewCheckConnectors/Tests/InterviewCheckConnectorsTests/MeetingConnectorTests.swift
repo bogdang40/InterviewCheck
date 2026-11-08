@@ -129,7 +129,7 @@ final class OtherCalendarsTests: XCTestCase {
 
     func testOutlookFindsCalendarsByNameAndAsksForSharedAccess() async throws {
         let stub = StubTransport()
-        let row = #"{"id":"%@","subject":"Interview: Jane Doe","start":{"dateTime":"2026-11-10T19:00:00.0000000","timeZone":"UTC"},"end":{"dateTime":"2026-11-10T20:00:00.0000000","timeZone":"UTC"},"organizer":{"emailAddress":{"name":"Sam","address":"sam@contoso.com"}},"attendees":[],"isCancelled":false}"#
+        let row = #"{"id":"%@","iCalUId":"040000008200E00074C5B7101A82E008","subject":"Interview: Jane Doe","start":{"dateTime":"2026-11-10T19:00:00.0000000","timeZone":"UTC"},"end":{"dateTime":"2026-11-10T20:00:00.0000000","timeZone":"UTC"},"organizer":{"emailAddress":{"name":"Sam","address":"sam@contoso.com"}},"attendees":[],"isCancelled":false}"#
         stub.on("GET", "/me/calendars/CAL2/calendarView", json: #"{"value":[\#(row.replacingOccurrences(of: "%@", with: "copy-in-team-calendar"))]}"#)
         stub.on("GET", "/me/calendarView", json: #"{"value":[\#(row.replacingOccurrences(of: "%@", with: "mine"))]}"#)
         stub.on("GET", "/me/calendars?", json: #"{"value":[{"id":"CAL1","name":"Calendar"},{"id":"CAL2","name":"Interviews"}]}"#)
@@ -137,10 +137,24 @@ final class OtherCalendarsTests: XCTestCase {
         let connector = try MicrosoftGraphConnector(credentials: credentials, transport: stub, accessToken: { "t" })
         let notes = SyncNotes()
         let interviews = try await SyncNotes.$current.withValue(notes) { try await connector.upcomingInterviews(from: from, to: to) }
-        XCTAssertEqual(interviews.count, 1, "the same meeting on two calendars counts once")
+        XCTAssertEqual(interviews.count, 1, "the same meeting (one iCalUId) on two calendars counts once")
         XCTAssertEqual(stub.requests(containing: "/me/calendars/CAL2/calendarView").count, 1, "names match without case")
         XCTAssertEqual(notes.messages, ["No calendar named \u{201C}Hiring panel\u{201D} was found in Outlook."])
         XCTAssertTrue(MicrosoftConnectorProvider.provider(credentials).scopes.contains("Calendars.Read.Shared"))
         XCTAssertFalse(MicrosoftConnectorProvider.provider(ConnectorCredentials(fields: [:])).scopes.contains("Calendars.Read.Shared"))
+    }
+
+    func testOutlookKeepsTwoDifferentEventsWithTheSameTitleAndTime() async throws {
+        let stub = StubTransport()
+        let hold = #"{"id":"%@","iCalUId":"%@","subject":"Phone Screen","start":{"dateTime":"2026-11-10T19:00:00.0000000","timeZone":"UTC"},"end":{"dateTime":"2026-11-10T19:30:00.0000000","timeZone":"UTC"},"attendees":[],"isCancelled":false}"#
+        let rows = ["a", "b"].map { hold.replacingOccurrences(of: "%@", with: $0) }.joined(separator: ",")
+        stub.on("GET", "/me/calendarView", json: #"{"value":[\#(rows)]}"#)
+        stub.on("GET", "/me/calendars?", status: 403, json: #"{"error":{"message":"denied"}}"#)
+        let connector = try MicrosoftGraphConnector(credentials: ConnectorCredentials(fields: ["calendars": "Interviews"]),
+                                                    transport: stub, accessToken: { "t" })
+        let notes = SyncNotes()
+        let interviews = try await SyncNotes.$current.withValue(notes) { try await connector.upcomingInterviews(from: from, to: to) }
+        XCTAssertEqual(interviews.count, 2, "two holds are two interviews")
+        XCTAssertEqual(notes.messages.count, 1, "the calendar list failing is a note; the main calendar still syncs")
     }
 }

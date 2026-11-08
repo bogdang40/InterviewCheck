@@ -35,8 +35,20 @@ final class WebexTests: XCTestCase {
         XCTAssertEqual(recordings.count, 1, "the retro is not an interview")
         let recording = try XCTUnwrap(recordings.first)
         XCTAssertEqual(Set(recording.files.map(\.kind)), [.transcript, .audio])
-        XCTAssertEqual(recording.files.first { $0.kind == .audio }?.needsAuth, false, "the direct link carries its own token")
+        let audio = try XCTUnwrap(recording.files.first { $0.kind == .audio })
+        XCTAssertEqual(audio.url.absoluteString, "https://webexapis.com/v1/recordings/R1", "the lasting address, not the hours-long link")
         XCTAssertEqual(recording.files.first { $0.kind == .transcript }?.needsAuth, true)
+        XCTAssertTrue(stub.requests(containing: "recordings/R1").isEmpty, "no detail calls while listing")
+
+        // Downloading asks for a fresh direct link and sends no Webex token to it.
+        stub.on("GET", "cdn.webex.com/audio/R1.mp3", json: "ID3")
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("webex-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let saved = try await connector(stub).download(audio, into: folder)
+        XCTAssertEqual(saved.pathExtension, "mp3")
+        XCTAssertEqual(stub.requests(containing: "recordings/R1").first?.value(forHTTPHeaderField: "Authorization"), "Bearer wt")
+        XCTAssertNil(stub.requests(containing: "cdn.webex.com").first?.value(forHTTPHeaderField: "Authorization"))
         XCTAssertEqual(recording.duration, 3300)
         XCTAssertEqual(recording.meetingURL?.host, "acme.webex.com")
     }

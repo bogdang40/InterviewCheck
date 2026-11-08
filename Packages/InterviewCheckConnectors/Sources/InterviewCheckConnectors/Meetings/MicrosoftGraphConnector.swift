@@ -36,9 +36,16 @@ public struct MicrosoftGraphConnector: InterviewSource, RecordingSource {
         let api = try await client()
         var rows = try await rows(in: "me/calendarView", api: api, from: start, to: end)
         if !otherCalendars.isEmpty {
-            let calendars = try await api.getJSON("me/calendars", query: [URLQueryItem(name: "$select", value: "id,name"),
+            // The list of calendars failing must not stop the main calendar or the recordings.
+            var calendars: [JSONValue]?
+            do {
+                calendars = try await api.getJSON("me/calendars", query: [URLQueryItem(name: "$select", value: "id,name"),
                                                                           URLQueryItem(name: "$top", value: "200")])["value"].array
+            } catch {
+                SyncNotes.note("Other Outlook calendars could not be listed: \(error.localizedDescription)")
+            }
             for name in otherCalendars {
+                guard let calendars else { break }
                 guard let id = calendars.first(where: { $0["name"].string?.caseInsensitiveCompare(name) == .orderedSame })?["id"].string else {
                     SyncNotes.note("No calendar named \u{201C}\(name)\u{201D} was found in Outlook.")
                     continue
@@ -50,11 +57,11 @@ public struct MicrosoftGraphConnector: InterviewSource, RecordingSource {
                 }
             }
         }
-        // An event on two calendars counts once (Graph gives each copy its own id).
+        // An event on two calendars counts once: each copy has its own id but
+        // the same iCalUId. Different events never merge.
         var seen = Set<String>()
-        return rows.compactMap(Self.calendarEvent).filter { event in
-            seen.insert("\(event.startsAt.timeIntervalSince1970)|\(event.title)|\(event.url?.absoluteString ?? "")").inserted
-        }
+        return rows.filter { seen.insert($0["iCalUId"].string ?? $0["id"].string ?? UUID().uuidString).inserted }
+            .compactMap(Self.calendarEvent)
     }
 
     private func rows(in path: String, api: APIClient, from start: Date, to end: Date) async throws -> [JSONValue] {
@@ -62,7 +69,7 @@ public struct MicrosoftGraphConnector: InterviewSource, RecordingSource {
         var page = try await api.getJSON(path, query: [
             URLQueryItem(name: "startDateTime", value: DateParsing.iso(start)),
             URLQueryItem(name: "endDateTime", value: DateParsing.iso(end)),
-            URLQueryItem(name: "$select", value: "id,subject,start,end,organizer,attendees,onlineMeeting,location,bodyPreview,isCancelled"),
+            URLQueryItem(name: "$select", value: "id,iCalUId,subject,start,end,organizer,attendees,onlineMeeting,location,bodyPreview,isCancelled"),
             URLQueryItem(name: "$orderby", value: "start/dateTime"),
             URLQueryItem(name: "$top", value: "100"),
         ])

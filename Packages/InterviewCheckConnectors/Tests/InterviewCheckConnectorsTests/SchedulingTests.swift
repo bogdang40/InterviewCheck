@@ -65,6 +65,7 @@ final class SchedulingTests: XCTestCase {
 
     func testCalComBookingsWithCursorPaging() async throws {
         let stub = StubTransport()
+        stub.on("GET", "status=past", json: #"{"status":"success","data":[{"id":0,"uid":"b0","title":"Phone screen with Ana Pop","status":"accepted","start":"2026-11-07T15:00:00Z","end":"2026-11-07T15:30:00Z","attendees":[{"name":"Ana Pop","email":"ana@example.com"}]}],"pagination":{"nextCursor":null,"hasMore":false}}"#)
         stub.on("GET", "cursor=c2", json: #"{"status":"success","data":[{"id":2,"uid":"b2","title":"Onsite interview with Max Roe","status":"cancelled","start":"2026-11-13T15:00:00Z","end":"2026-11-13T16:00:00Z","attendees":[]}],"pagination":{"nextCursor":null,"hasMore":false}}"#)
         stub.on("GET", "api.cal.com/v2/bookings?", json: #"""
         {"status":"success","data":[
@@ -77,7 +78,8 @@ final class SchedulingTests: XCTestCase {
         stub.on("GET", "api.cal.com/v2/me", json: #"{"status":"success","data":{"id":7,"email":"lee@acme.com","username":"lee"}}"#)
         let connector = try CalComConnector(credentials: ConnectorCredentials(fields: ["apiKey": "cal_live_x"]), transport: stub)
         let interviews = try await connector.upcomingInterviews(from: from, to: to)
-        XCTAssertEqual(interviews.map(\.externalID), ["b1"], "the cancelled booking on page two is left out")
+        XCTAssertEqual(interviews.map(\.externalID), ["b1", "b0"],
+                       "the cancelled booking on page two is left out; a finished one is kept for matching recordings")
         XCTAssertEqual(interviews.first?.candidate?.email, "jane.doe@gmail.com")
         XCTAssertEqual(interviews.first?.meetingURL?.absoluteString, "https://app.cal.com/video/abc123")
         XCTAssertEqual(interviews.first?.interviewers.first?.name, "Lee Engineer")
