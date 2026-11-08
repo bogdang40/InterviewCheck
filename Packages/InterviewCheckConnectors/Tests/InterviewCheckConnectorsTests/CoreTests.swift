@@ -115,6 +115,9 @@ final class CoreTests: XCTestCase {
     func testCatalogCoversEveryKind() {
         XCTAssertEqual(ConnectorCatalog.all.count, ConnectorKind.allCases.count)
         XCTAssertTrue(ConnectorCatalog.all.allSatisfy { !$0.name.isEmpty && !$0.summary.isEmpty && !$0.setup.isEmpty })
+        XCTAssertEqual(ConnectorKind.greenhouseMCP.descriptor.vendorName, "Greenhouse")
+        XCTAssertEqual(ConnectorKind.microsoft365.descriptor.vendorName, "Microsoft 365")
+        XCTAssertEqual(ConnectorCategory.allCases.first, .calendar, "no-setup sources are listed first")
     }
 }
 

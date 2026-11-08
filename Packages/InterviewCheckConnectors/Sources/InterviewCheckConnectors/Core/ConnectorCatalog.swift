@@ -1,7 +1,8 @@
 import Foundation
 
 public enum ConnectorCategory: String, Codable, CaseIterable, Sendable {
-    case ats, unified, calendar, meetings, mcp
+    // In the order the Connections list shows them: no-setup sources first.
+    case calendar, meetings, ats, mcp, unified
 
     public var title: String {
         switch self {
@@ -24,6 +25,15 @@ public enum ConnectorKind: String, Codable, CaseIterable, Identifiable, Sendable
 
     public var id: String { rawValue }
     public var descriptor: ConnectorDescriptor { ConnectorCatalog.descriptor(self) }
+
+    /// Systems reached through a unified API rather than directly.
+    public var routedThrough: [ConnectorKind] {
+        switch self {
+        case .workday: return [.merge, .kombo]
+        case .icims: return [.unifiedTo]
+        default: return []
+        }
+    }
 }
 
 public enum ConnectorCapability: String, Codable, CaseIterable, Sendable {
@@ -86,4 +96,9 @@ public struct ConnectorDescriptor: Equatable, Sendable {
     public var docsURL: URL?
     /// Built from the vendor's public docs; not yet run against a live account.
     public var isUntestedAgainstLiveAccount: Bool
+
+    /// The vendor's name without a note in brackets ("Greenhouse").
+    public var vendorName: String {
+        name.replacingOccurrences(of: #"\s*\(.*\)$"#, with: "", options: .regularExpression)
+    }
 }

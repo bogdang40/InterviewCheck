@@ -2,6 +2,7 @@ import SwiftUI
 import XCTest
 @testable import InterviewCheck
 import InterviewCheckKit
+import InterviewCheckConnectors
 
 /// Renders the native screens with sample data, light and dark, to PNG.
 /// Opt in with INTERVIEWCHECK_RENDER_SMOKE=1; files land in INTERVIEWCHECK_RENDER_DIR.
@@ -182,6 +183,22 @@ final class DetectorRenderTests: XCTestCase {
         }
         try await RenderHarness.render("native-settings-audio", size: CGSize(width: 640, height: 480)) {
             native { AudioSettingsTab() }
+        }
+    }
+}
+
+@MainActor
+final class ConnectionsRenderTests: XCTestCase {
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        try RenderHarness.skipUnlessEnabled()
+    }
+
+    func testRenderConnectorDetails() async throws {
+        for kind in [ConnectorKind.greenhouse, .microsoft365, .greenhouseMCP, .workday] {
+            try await RenderHarness.render("connector-\(kind.rawValue)", size: CGSize(width: 720, height: 760), settle: 0.4) {
+                ConnectorDetailView(kind: kind).background(Color(nsColor: .windowBackgroundColor))
+            }
         }
     }
 }

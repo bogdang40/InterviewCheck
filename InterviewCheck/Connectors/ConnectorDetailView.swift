@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 /// One system: what it brings, how to connect it, and its sync state.
 struct ConnectorDetailView: View {
     let kind: ConnectorKind
+    var select: (ConnectorKind) -> Void = { _ in }
     @ObservedObject private var connectors = ConnectorManager.shared
     @State private var fields: [String: String] = [:]
     @State private var isWorking = false
@@ -33,6 +34,17 @@ struct ConnectorDetailView: View {
 
             if let account {
                 connectedSection(account)
+            } else if !kind.routedThrough.isEmpty {
+                Section {
+                    Text(descriptor.setup).fixedSize(horizontal: false, vertical: true)
+                    HStack {
+                        ForEach(kind.routedThrough) { route in
+                            Button("Set Up \(route.descriptor.name)") { select(route) }
+                        }
+                    }
+                } header: {
+                    Text("Connect Through a Unified API")
+                }
             } else if !isAvailable {
                 Section {
                     Label("Not available in this build yet.", systemImage: "clock")
@@ -51,10 +63,13 @@ struct ConnectorDetailView: View {
             }
 
             Section {
-                if let docs = descriptor.docsURL { Link("\(descriptor.name) API documentation", destination: docs) }
+                if let docs = descriptor.docsURL {
+                    Link(descriptor.category == .mcp ? "About \(descriptor.vendorName)'s MCP server" : "\(descriptor.vendorName) API documentation",
+                         destination: docs)
+                }
                 Text(privacyNote).font(.caption).foregroundStyle(.secondary)
                 if descriptor.isUntestedAgainstLiveAccount {
-                    Text("Beta: built from \(descriptor.name)'s published API. Check the first sync's interviews look right.")
+                    Text("Beta: built from \(descriptor.vendorName)'s published documentation. Check that the first sync's interviews look right.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
@@ -232,7 +247,7 @@ struct ConnectorDetailView: View {
     private var privacyNote: String {
         switch descriptor.auth {
         case .system: return "Read on this Mac only."
-        default: return "The key or sign-in is kept in the macOS Keychain. Interview data is read from \(descriptor.name) and kept on this Mac."
+        default: return "The key or sign-in is kept in the macOS Keychain. Interview data is read from \(descriptor.vendorName) and kept on this Mac."
         }
     }
 }

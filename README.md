@@ -38,7 +38,30 @@ interviewer to confirm this).
    through the real live screen and scorer. Needs no keys, microphone or
    network; nothing is saved to your interviews.
 
-Keyboard: ⌘1 Interview, ⌘2 Roles, ⌘3 Reports, ⌘N new interview, ⇧⌘N new
+### Connections (⌘4)
+
+Connect the systems interviews already live in, so the app does the setup:
+
+- **Calendar on this Mac** (no keys) and **.ics invites**; **Google Workspace**
+  (Calendar, Meet transcripts), **Microsoft 365** (Outlook, Teams transcripts),
+  **Zoom** (meetings, cloud recordings). Browser sign-in, no client secret.
+- **Applicant tracking**: Greenhouse (Harvest v3), Lever, Ashby, Workable,
+  SmartRecruiters, Recruitee, Zoho Recruit, Teamtailor, BambooHR, JazzHR,
+  Breezy HR, Personio; **Workday, iCIMS, SuccessFactors, Taleo, Jobvite** and
+  the long tail through **Merge, Kombo, Unified.to** (or Apideck for jobs).
+- **MCP**: sign in as yourself to Greenhouse's, Ashby's or Workable's official
+  MCP servers, or any MCP server.
+
+Then: **Interview › Upcoming Interviews** lists the next interviews with
+**Join** and **Prepare** (candidate, role with the job description, résumé; a
+calendar invite is matched to the ATS candidate by email); a reminder arrives
+before each one; **File › Analyze Recording** offers recent Zoom, Teams and
+Meet recordings; a report prepared from an ATS has **Send to <ATS>** (an
+editable private note, sent only when you press Send). Keys stay in the
+Keychain; synced data stays on this Mac. Connector code and tests live in
+`Packages/InterviewCheckConnectors` (`swift test`).
+
+Keyboard: ⌘1 Interview, ⌘2 Roles, ⌘3 Reports, ⌘4 Connections, ⌘N new interview, ⇧⌘N new
 role, ⌘O analyze a recording, ⌘R start, ⇧⌘↩ question asked, ⇧⌘E answer done,
 ⌘P print the open report, ⌥⌘L Live Companion, ⌘, Settings.
 

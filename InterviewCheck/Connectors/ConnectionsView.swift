@@ -39,7 +39,7 @@ struct ConnectionsView: View {
 
             Group {
                 if let kind = selection {
-                    ConnectorDetailView(kind: kind).id(kind)
+                    ConnectorDetailView(kind: kind, select: { selection = $0 }).id(kind)
                 } else {
                     ContentUnavailableView("Select a System", systemImage: "point.3.connected.trianglepath.dotted",
                                            description: Text("Connect your ATS, calendar and meeting tools."))
@@ -100,6 +100,9 @@ private struct ConnectorRow: View {
 
     private var status: String {
         if let account { return account.lastError == nil ? account.label : "Needs attention" }
+        if !kind.routedThrough.isEmpty {
+            return "Via " + ListFormatter.localizedString(byJoining: kind.routedThrough.map { $0.descriptor.name })
+        }
         if !ConnectorFactory.implemented.contains(kind), kind != .icsFile { return "Coming soon" }
         return kind.descriptor.capabilities.prefix(2).map(\.title).joined(separator: ", ")
     }
