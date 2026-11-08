@@ -49,6 +49,9 @@ Status key: [ ] todo · [~] in progress · [x] done (commit)
 - [x] D10 Report feedback: "this score was wrong" to calibrate weights locally.
 - [x] D11 Demo Interview (Help › Demo Interview, `-InterviewCheckOpenDemo YES`): a scripted
       three-question interview through the real live screen and scorer; no keys, mic or network.
+- [x] D12 Your notes per answer (live and in reports, saved as you type, schema v19), the timing
+      strip rebuilt in reports from saved word timings, verdict + notes in Markdown/PDF, and
+      Export › All Interviews as CSV (formula cells defused).
 
 ## C. Verify every step
 - build; guarded tests; render native screens light/dark; launch the installed app,
@@ -72,3 +75,4 @@ Status key: [ ] todo · [~] in progress · [x] done (commit)
 - 21:01–21:13 D7 privacy (810551e), D8 audio settings (c337c94), D10 calibration (verdicts + tuner,
   schema v18). D9 deferred. 268 app + 41 package tests.
 - 21:16 D11 demo interview (honest answer low, read-from-AI answer high). 270 app tests.
+- 21:36 D12 notes, report timing strip, CSV export. 272 app + 42 package tests.

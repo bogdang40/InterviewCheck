@@ -30,6 +30,10 @@ enum InterviewReportComposer {
             } else {
                 lines.append("_Not scored (no answer captured)._")
             }
+            if let verdict = report.verdicts[question.id] { lines += ["", "Your verdict: **\(verdict.title)**"] }
+            if let note = report.notes[question.id], !note.isEmpty {
+                lines += ["", "**Your notes**", ""] + note.components(separatedBy: .newlines).map { "> \($0)" }
+            }
             lines += ["", "**Candidate's answer**", "", "> \(question.answerText.isEmpty ? "(nothing captured)" : question.answerText)", ""]
             for answer in report.references[question.id] ?? [] where answer.error == nil && !answer.text.isEmpty {
                 lines.append("<details><summary>\(answer.label)\(answer.firstSentenceSeconds.map { ", first line after \(ScoreNotes.seconds($0))" } ?? "")</summary>")

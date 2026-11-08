@@ -37,6 +37,36 @@ extension SessionDatabase {
         return Dictionary(rows.compactMap { id, label in label.map { (id, $0) } }, uniquingKeysWith: { $1 })
     }
 
+    /// Saves the interviewer's note on an answer; an empty note is removed.
+    func saveAnswerNote(_ note: String, questionID: String) {
+        let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            interviewWrite("clearAnswerNote", "DELETE FROM answer_notes WHERE question_id = ?") {
+                $0.bindText(questionID, at: 1)
+            }
+        } else {
+            interviewWrite("saveAnswerNote",
+                           "INSERT OR REPLACE INTO answer_notes (question_id, note, updated_at) VALUES (?, ?, ?)") {
+                $0.bindText(questionID, at: 1)
+                $0.bindText(trimmed, at: 2)
+                $0.bindMillis(Date(), at: 3)
+            }
+        }
+    }
+
+    func loadAnswerNote(questionID: String) -> String {
+        interviewRead("loadAnswerNote", "SELECT note FROM answer_notes WHERE question_id = ?",
+                      bind: { $0.bindText(questionID, at: 1) }) { $0.columnText(0) ?? "" }.first ?? ""
+    }
+
+    func loadAnswerNotes(interviewID: String) -> [String: String] {
+        let rows = interviewRead("loadAnswerNotes", """
+            SELECT n.question_id, n.note FROM answer_notes n
+            JOIN interview_questions q ON q.id = n.question_id WHERE q.interview_id = ?
+            """, bind: { $0.bindText(interviewID, at: 1) }) { ($0.columnText(0) ?? "", $0.columnText(1) ?? "") }
+        return Dictionary(rows, uniquingKeysWith: { $1 })
+    }
+
     /// Every labeled answer whose score kept its signal values.
     func loadLabeledAnswers() -> [LabeledAnswer] {
         interviewRead("loadLabeledAnswers", """

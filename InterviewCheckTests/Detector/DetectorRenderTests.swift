@@ -107,8 +107,11 @@ final class DetectorRenderTests: XCTestCase {
             native { InterviewSummaryView(controller: controller) }
         }
         let report = try XCTUnwrap(controller.database.loadInterviewReport(id: controller.interview!.id))
-        try await RenderHarness.render("native-report", size: CGSize(width: 820, height: 1300)) {
-            native { ReportDetail(report: report) }
+        controller.database.saveAnswerNote("Couldn't say what bucket size they'd pick. Ask again in the panel.",
+                                           questionID: report.questions[0].id)
+        controller.database.saveAnswerLabel(.aiAssisted, questionID: report.questions[0].id)
+        try await RenderHarness.render("native-report", size: CGSize(width: 820, height: 1300), settle: 0.6) {
+            native { ReportDetail(report: report, database: controller.database) }
         }
     }
 

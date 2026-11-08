@@ -76,4 +76,21 @@ final class QuestionTrackerTests: XCTestCase {
                                              isCandidate: { $0.speakerIndex == 0 })
         XCTAssertEqual(window.answerWords.first?.text, "Sure")
     }
+
+    func testStoredWindowKeepsOnlyThisAnswersCandidateWords() {
+        let q1 = F.words("Tell me about yourself.", side: .interviewer, start: 0)
+        let a1 = F.words("I build payment systems", side: .candidate, start: q1.last!.end + 1)
+        let q2 = F.words("Design a rate limiter.", side: .interviewer, start: a1.last!.end + 1)
+        let a2 = F.words("Well um a token bucket per key", side: .candidate, start: q2.last!.end + 4)
+        let words = q1 + a1 + q2 + a2
+        let window = QuestionWindow.stored(questionText: "Design a rate limiter.", questionEnd: q2.last!.end,
+                                           answerStart: a2.first!.start, answerEnd: a2.last!.end, words: words)
+        XCTAssertEqual(window.answerWords.map(\.text), a2.map(\.text))
+        XCTAssertEqual(window.questionEnd, q2.last!.end, accuracy: 1e-9)
+
+        // An answer still open (no end) runs to the last candidate word.
+        let open = QuestionWindow.stored(questionText: "", questionEnd: q1.last!.end, answerStart: nil,
+                                         answerEnd: nil, words: q1 + a1)
+        XCTAssertEqual(open.answerWords.count, a1.count)
+    }
 }

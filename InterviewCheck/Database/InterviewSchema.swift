@@ -109,5 +109,15 @@ extension SessionDatabaseMigrationSteps {
             )
             """,
         ]),
+        // The interviewer's own notes on an answer.
+        MigrationStep(version: 19, statements: [
+            """
+            CREATE TABLE IF NOT EXISTS answer_notes (
+                question_id TEXT PRIMARY KEY,
+                note TEXT NOT NULL,
+                updated_at INTEGER NOT NULL
+            )
+            """,
+        ]),
     ]
 }

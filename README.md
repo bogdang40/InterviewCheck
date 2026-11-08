@@ -29,8 +29,8 @@ interviewer to confirm this).
 4. Press **Question Asked** after each question and **Answer Done** (⇧⌘E)
    when the candidate finishes. **Window › Live Companion** keeps a small
    window above the call.
-5. **Reports**: every interview, each answer and its evidence; export
-   Markdown or PDF.
+5. **Reports**: every interview, each answer and its evidence, your verdict
+   and notes; export Markdown or PDF, or every interview as one CSV.
 6. **File › Analyze Recording** (⌘O): score a recorded interview (audio or
    video). Pick the candidate's voice; questions are found automatically.
 7. **Help › Demo Interview**: watch a scripted three-question interview run

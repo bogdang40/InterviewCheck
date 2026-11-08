@@ -96,6 +96,9 @@ struct InterviewLiveScreen: View {
     private func questionSection(_ question: InterviewQuestionRecord) -> some View {
         let window = controller.activeQuestionID == question.id ? controller.liveWindow : nil
         questionCard(question)
+        QuestionNoteField(questionID: question.id, database: controller.database)
+            .id(question.id)
+            .frame(maxWidth: 640)
         if let window {
             TimingStrip(model: TimingStripModel(
                 window: window,

@@ -121,3 +121,17 @@ public enum QuestionTracker {
         return index + 1 < turns.count && turns[index + 1].side == .interviewer
     }
 }
+
+public extension QuestionWindow {
+    /// Rebuilds a saved question's answer from the interview's stored words,
+    /// for the timing strip in a report. Times share the stored time base.
+    static func stored(questionText: String, questionEnd: TimeInterval, answerStart: TimeInterval?,
+                       answerEnd: TimeInterval?, words: [TimedWord]) -> QuestionWindow {
+        let tolerance = 0.002
+        let from = (answerStart ?? questionEnd) - tolerance
+        let until = (answerEnd ?? .infinity) + tolerance
+        let answer = words.filter { $0.side == .candidate && $0.start >= from && $0.start <= until }
+        return QuestionWindow(questionText: questionText, questionStart: nil, questionEnd: questionEnd,
+                              answerWords: answer)
+    }
+}

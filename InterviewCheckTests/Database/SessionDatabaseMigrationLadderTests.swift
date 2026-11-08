@@ -147,7 +147,7 @@ final class SessionDatabaseMigrationLadderTests: XCTestCase {
 
     func testUpgradeFromV16CreatesInterviewTables() throws {
         let tables = ["interviews", "interview_words", "interview_questions", "reference_answers",
-                      "answer_scores", "role_profiles", "answer_labels"]
+                      "answer_scores", "role_profiles", "answer_labels", "answer_notes"]
         try database.performSyncThrowing { db in
             for table in tables { _ = sqlite3_exec(db, "DROP TABLE IF EXISTS \(table)", nil, nil, nil) }
             _ = sqlite3_exec(db, "PRAGMA user_version = 16", nil, nil, nil)

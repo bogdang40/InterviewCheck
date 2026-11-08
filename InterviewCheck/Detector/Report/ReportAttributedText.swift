@@ -37,6 +37,15 @@ enum ReportAttributedText {
                     for followUp in score.followUps { text.append(bullet(followUp)) }
                 }
             }
+            if let verdict = report.verdicts[question.id] {
+                text.append(line("Your verdict: \(verdict.title)", font: .systemFont(ofSize: 11, weight: .semibold),
+                                 before: 4, after: 2))
+            }
+            if let note = report.notes[question.id], !note.isEmpty {
+                text.append(line("Your notes", font: .systemFont(ofSize: 10, weight: .semibold), color: muted,
+                                 before: 4, after: 2))
+                text.append(line(note, font: .systemFont(ofSize: 11), indent: 8, after: 4))
+            }
             text.append(line("Candidate's answer", font: .systemFont(ofSize: 10, weight: .semibold), color: muted,
                              before: 6, after: 2))
             text.append(line(question.answerText.isEmpty ? "(nothing captured)" : question.answerText,

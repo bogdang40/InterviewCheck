@@ -59,11 +59,18 @@ struct ReportsView: View {
                 .help("Score a recorded interview (File \u{203A} Analyze Recording\u{2026})")
                 Menu {
                     Button("Markdown\u{2026}") { if let id = selection { export(id, pdf: false) } }
+                        .disabled(report == nil)
                     Button("PDF\u{2026}") { if let id = selection { export(id, pdf: true) } }
+                        .disabled(report == nil)
+                    Divider()
+                    Button("All Interviews as CSV\u{2026}") {
+                        ReportExporter.exportCSV(interviews.compactMap { database.loadInterviewReport(id: $0.id) })
+                    }
+                    .disabled(interviews.isEmpty)
                 } label: {
                     Label("Export", systemImage: "square.and.arrow.up")
                 }
-                .disabled(report == nil)
+                .disabled(interviews.isEmpty)
                 Button { confirmDelete = true } label: { Label("Delete", systemImage: "trash") }
                     .disabled(report == nil)
             }
@@ -123,6 +130,7 @@ struct ReportDetail: View {
     let report: InterviewReportData
     var database: SessionDatabase = .shared
     @State private var labels: [String: AnswerLabel] = [:]
+    @State private var words: [TimedWord] = []
 
     var body: some View {
         ScrollView {
@@ -137,6 +145,13 @@ struct ReportDetail: View {
                         if let score = report.scores[question.id] {
                             ScoreCard(score: score)
                             verdictPicker(question.id)
+                        }
+                        Text("YOUR NOTES").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                        QuestionNoteField(questionID: question.id, database: database)
+                            .id(question.id)
+                            .frame(maxWidth: 640)
+                        if let strip = timingStrip(question) {
+                            TimingStrip(model: strip)
                         }
                         Text("CANDIDATE'S ANSWER").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                         Text(question.answerText.isEmpty ? "(nothing captured)" : question.answerText)
@@ -155,24 +170,45 @@ struct ReportDetail: View {
             .padding(24)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .onAppear { labels = database.loadAnswerLabels(interviewID: report.interview.id) }
-        .onChange(of: report.interview.id) { _, id in labels = database.loadAnswerLabels(interviewID: id) }
+        .onAppear { load(report.interview.id) }
+        .onChange(of: report.interview.id) { _, id in load(id) }
+    }
+
+    private func load(_ interviewID: String) {
+        labels = database.loadAnswerLabels(interviewID: interviewID)
+        words = database.loadInterviewWords(interviewID: interviewID)
+    }
+
+    /// Silence, stalling and the answer, rebuilt from the saved word timings.
+    private func timingStrip(_ question: InterviewQuestionRecord) -> TimingStripModel? {
+        guard let questionEnd = question.questionEnd, !words.isEmpty else { return nil }
+        let window = QuestionWindow.stored(questionText: question.text, questionEnd: questionEnd,
+                                           answerStart: question.answerStart, answerEnd: question.answerEnd,
+                                           words: words)
+        guard !window.answerWords.isEmpty else { return nil }
+        let timing = TimingSignal.evaluate(answerWords: window.answerWords, questionEnd: questionEnd,
+                                           questionText: question.text)
+        return TimingStripModel(window: window, timing: timing, now: window.answerEnd ?? questionEnd)
     }
 
     /// The interviewer's own verdict, used to tune the weights.
     private func verdictPicker(_ questionID: String) -> some View {
-        Picker("Your verdict", selection: Binding(
-            get: { labels[questionID] },
-            set: { label in
-                labels[questionID] = label
-                database.saveAnswerLabel(label, questionID: questionID)
+        HStack(spacing: 10) {
+            Text("Your verdict").fixedSize()
+            Picker("Your verdict", selection: Binding(
+                get: { labels[questionID] },
+                set: { label in
+                    labels[questionID] = label
+                    database.saveAnswerLabel(label, questionID: questionID)
+                }
+            )) {
+                Text("Not judged").tag(AnswerLabel?.none)
+                ForEach(AnswerLabel.allCases) { Text($0.title).tag(Optional($0)) }
             }
-        )) {
-            Text("Not judged").tag(AnswerLabel?.none)
-            ForEach(AnswerLabel.allCases) { Text($0.title).tag(Optional($0)) }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(maxWidth: 420)
         }
-        .pickerStyle(.segmented)
-        .frame(maxWidth: 460)
         .help("After follow-ups, mark what you concluded. Settings \u{203A} Detector can tune the weights from these.")
     }
 

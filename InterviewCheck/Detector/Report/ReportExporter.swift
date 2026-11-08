@@ -16,6 +16,15 @@ enum ReportExporter {
         }
     }
 
+    /// Every answer from every saved interview, for a spreadsheet.
+    static func exportCSV(_ reports: [InterviewReportData]) {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.commaSeparatedText]
+        panel.nameFieldStringValue = "\(AppBrand.name) interviews.csv"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        try? InterviewCSV.make(reports).write(to: url, atomically: true, encoding: .utf8)
+    }
+
     private static func savePanel(_ report: InterviewReportData, type: UTType, extension ext: String) -> URL? {
         let panel = NSSavePanel()
         panel.allowedContentTypes = [type]

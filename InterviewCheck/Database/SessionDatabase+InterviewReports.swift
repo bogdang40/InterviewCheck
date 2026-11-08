@@ -8,6 +8,8 @@ struct InterviewReportData: Equatable {
     let questions: [InterviewQuestionRecord]
     let references: [String: [ReferenceAnswerRecord]]
     let scores: [String: AnswerScoreRecord]
+    var verdicts: [String: AnswerLabel] = [:]
+    var notes: [String: String] = [:]
 }
 
 extension SessionDatabase {
@@ -76,7 +78,9 @@ extension SessionDatabase {
             interview: interview,
             questions: questions,
             references: Dictionary(grouping: references, by: \.questionID),
-            scores: Dictionary(scores.map { ($0.questionID, $0) }, uniquingKeysWith: { $1 })
+            scores: Dictionary(scores.map { ($0.questionID, $0) }, uniquingKeysWith: { $1 }),
+            verdicts: loadAnswerLabels(interviewID: id),
+            notes: loadAnswerNotes(interviewID: id)
         )
     }
 
@@ -99,6 +103,7 @@ extension SessionDatabase {
     func deleteInterview(id: String) {
         for sql in [
             "DELETE FROM answer_labels WHERE question_id IN (SELECT id FROM interview_questions WHERE interview_id = ?)",
+            "DELETE FROM answer_notes WHERE question_id IN (SELECT id FROM interview_questions WHERE interview_id = ?)",
             "DELETE FROM answer_scores WHERE question_id IN (SELECT id FROM interview_questions WHERE interview_id = ?)",
             "DELETE FROM reference_answers WHERE question_id IN (SELECT id FROM interview_questions WHERE interview_id = ?)",
             "DELETE FROM interview_questions WHERE interview_id = ?",
