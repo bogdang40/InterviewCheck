@@ -160,4 +160,4 @@ tools; pull finished meeting recordings for scoring; optionally post a private n
 - 00:25 798ff92 E12 Calendly + Cal.com connectors ("Booking links" section). 66 connector tests.
 - 00:28–00:31 6dde412 download header fix; 5c7292f E13 Webex. 71 connector tests.
 - 00:34 1be7a1f Sync notes: a list cut at a page limit (any connector) shows "Stopped after N …; some may be missing." on the account, without counting as a failure. 73 connector + 312 app tests.
-- 00:45 E14 automatic Prepare before each interview. 318 app tests.
+- 00:36 528bdbd E14 automatic Prepare before each interview. 318 app tests.

@@ -75,34 +75,25 @@ struct ConnectionsView: View {
         .navigationSubtitle(connectors.accounts.isEmpty ? "" : "\(connectors.accounts.count) connected")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Toggle(isOn: Binding(get: { autoScore }, set: { on in
-                    if on { confirmAutoScore = true } else { autoScore = false; AutoScorer.shared.isEnabled = false }
-                })) {
-                    Label("Score Recordings Automatically", systemImage: "wand.and.stars")
+                Menu {
+                    Toggle("Get Next Interview Ready", isOn: $autoPrepare)
+                    Toggle("Score Recordings Automatically", isOn: Binding(get: { autoScore }, set: { on in
+                        if on { confirmAutoScore = true } else { autoScore = false; AutoScorer.shared.isEnabled = false }
+                    }))
+                    Divider()
+                    Picker("Reminders", selection: $reminderMinutes) {
+                        ForEach(InterviewReminders.choices, id: \.self) { minutes in
+                            Text(minutes == 0 ? "Off" : "\(minutes) minutes before").tag(minutes)
+                        }
+                    }
+                } label: {
+                    Label("Automation", systemImage: "wand.and.stars")
                 }
-                .toggleStyle(.button)
-                .help("Score new Zoom, Teams, Meet and Webex recordings of scheduled interviews as they arrive")
-            }
-            ToolbarItem(placement: .primaryAction) {
-                Toggle(isOn: $autoPrepare) {
-                    Label("Get Next Interview Ready", systemImage: "person.crop.circle.badge.clock")
-                }
-                .toggleStyle(.button)
-                .help("A few minutes before each interview, fill in the candidate, role and r\u{00E9}sum\u{00E9} by itself (never over setup you typed, never starts the interview)")
+                .help("Get Next Interview Ready fills in the candidate, role and r\u{00E9}sum\u{00E9} at reminder time (never starts the interview). Score Recordings Automatically scores new Zoom, Teams, Meet and Webex recordings of scheduled interviews.")
                 .onChange(of: autoPrepare) { _, on in
                     AutoPrepare.shared.isEnabled = on
                     if on { Task { await AutoPrepare.shared.tick() } }
                 }
-            }
-            ToolbarItem(placement: .primaryAction) {
-                Picker(selection: $reminderMinutes) {
-                    ForEach(InterviewReminders.choices, id: \.self) { minutes in
-                        Text(minutes == 0 ? "No reminders" : "Remind \(minutes) min before").tag(minutes)
-                    }
-                } label: {
-                    Label("Reminders", systemImage: "bell")
-                }
-                .help("A notification before each upcoming interview, with Prepare")
                 .onChange(of: reminderMinutes) { _, minutes in
                     InterviewReminders.minutes = minutes
                     InterviewReminders.shared.schedule(connectors.upcoming)
