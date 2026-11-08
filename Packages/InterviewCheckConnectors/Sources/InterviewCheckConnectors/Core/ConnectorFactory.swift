@@ -32,6 +32,12 @@ public enum ConnectorFactory {
     /// Filled in by each connector family as it is added.
     static func makeHTTP(_ kind: ConnectorKind, credentials: ConnectorCredentials, transport: HTTPTransport,
                          accessToken: AccessTokenProvider?) throws -> Connector? {
-        nil
+        switch kind {
+        case .greenhouse: return try GreenhouseConnector(credentials: credentials, transport: transport)
+        case .lever: return try LeverConnector(credentials: credentials, transport: transport)
+        case .ashby: return try AshbyConnector(credentials: credentials, transport: transport)
+        case .workable: return try WorkableConnector(credentials: credentials, transport: transport)
+        default: return nil
+        }
     }
 }

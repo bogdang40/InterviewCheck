@@ -31,22 +31,23 @@ public enum ConnectorCatalog {
                          docs: "https://developers.zoom.us/docs/api/")
         case .greenhouse:
             return entry(kind, "Greenhouse", .ats, "Scheduled interviews, candidates, r\u{00E9}sum\u{00E9}s, job posts, and private notes.",
-                         .fields([CredentialField("apiKey", "Harvest API key", secret: true),
-                                  CredentialField("userID", "Your Greenhouse user ID (for notes)", optional: true)]),
+                         .fields([CredentialField("clientID", "Client ID"),
+                                  CredentialField("clientSecret", "Client secret", secret: true),
+                                  CredentialField("userID", "Act as user ID", placeholder: "Optional: a Site Admin's user ID", optional: true)]),
                          [.upcomingInterviews, .candidates, .resumes, .jobDescriptions, .notes],
-                         setup: "Greenhouse \u{203A} Configure \u{203A} Dev Center \u{203A} API Credential Management \u{203A} Create a Harvest key with Scheduled Interviews, Applications, Candidates and Jobs read access (and Notes to post).",
-                         docs: "https://developers.greenhouse.io/harvest.html")
+                         setup: "Greenhouse \u{203A} Configure \u{203A} Dev Center \u{203A} API Credentials \u{203A} Create \u{201C}Harvest V3 (OAuth)\u{201D} credentials with the interviews, interviewers, applications, candidates, attachments, jobs and job_posts list scopes (and notes:create to post notes). Harvest v1/v2 keys were retired in August 2026.",
+                         docs: "https://harvestdocs.greenhouse.io/docs/authentication")
         case .lever:
             return entry(kind, "Lever", .ats, "Interviews on active opportunities, candidates, r\u{00E9}sum\u{00E9}s, postings and notes.",
                          .fields([CredentialField("apiKey", "API key", secret: true)]),
                          [.upcomingInterviews, .candidates, .resumes, .jobDescriptions, .notes],
-                         setup: "Lever \u{203A} Settings \u{203A} Integrations and API \u{203A} API Credentials \u{203A} Generate New Key (read opportunities, interviews, postings; write notes).",
+                         setup: "A Lever Super Admin creates a key in Settings \u{203A} Integrations and API \u{203A} API Credentials with read access to opportunities, interviews, resumes and postings (and write for notes). Lever has no interview feed, so the first sync reads each open candidate.",
                          docs: "https://hire.lever.co/developer/documentation")
         case .ashby:
             return entry(kind, "Ashby", .ats, "Interview schedules, candidates, r\u{00E9}sum\u{00E9}s, job postings and notes.",
                          .fields([CredentialField("apiKey", "API key", secret: true)]),
                          [.upcomingInterviews, .candidates, .resumes, .jobDescriptions, .notes],
-                         setup: "Ashby \u{203A} Admin \u{203A} API Keys \u{203A} New key with Interviews, Candidates and Jobs read (and Candidates write for notes).",
+                         setup: "An Ashby Admin creates a key at Admin \u{203A} API Keys with Interviews, Candidates and Jobs read (Candidates write and \u{201C}non-offer private fields\u{201D} for private notes).",
                          docs: "https://developers.ashbyhq.com/")
         case .workable:
             return entry(kind, "Workable", .ats, "Interview events, candidates, r\u{00E9}sum\u{00E9}s, job descriptions and comments.",
@@ -54,7 +55,7 @@ public enum ConnectorCatalog {
                                   CredentialField("apiKey", "API access token", secret: true),
                                   CredentialField("memberID", "Your member ID (for comments)", optional: true)]),
                          [.upcomingInterviews, .candidates, .resumes, .jobDescriptions, .notes],
-                         setup: "Workable \u{203A} Settings \u{203A} Integrations \u{203A} Apps \u{203A} Generate API token (r_jobs, r_candidates, r_events; w_candidates for comments).",
+                         setup: "A Workable Admin generates an account token under Integrations with r_jobs and r_candidates (w_comments to post comments). Your member ID limits the list to your own interviews and is needed for comments.",
                          docs: "https://workable.readme.io/reference")
         case .smartRecruiters, .bambooHR, .teamtailor, .recruitee, .jazzHR, .breezyHR, .personio, .zohoRecruit, .workday, .icims:
             return MoreATSCatalog.descriptor(kind)
