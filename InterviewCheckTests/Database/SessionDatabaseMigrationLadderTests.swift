@@ -161,12 +161,26 @@ final class SessionDatabaseMigrationLadderTests: XCTestCase {
             XCTAssertTrue(try tableExists(table), "v17 must create \(table)")
         }
         XCTAssertTrue(try indexExists("idx_interview_words_interview"))
+        XCTAssertTrue(try columnExists("interviews", "interrupted"), "v20 adds the interrupted flag")
     }
 
     func testFreshDatabaseLandsAtCurrentVersionWithV15Indices() throws {
         XCTAssertEqual(try readUserVersion(), SessionDatabaseMigrationSteps.currentVersion)
         XCTAssertTrue(try indexExists("idx_quick_assist_calls_started_at"))
         XCTAssertTrue(try indexExists("idx_transcript_entries_session_ts"))
+        XCTAssertTrue(try columnExists("interviews", "interrupted"))
+    }
+
+    private func columnExists(_ table: String, _ column: String) throws -> Bool {
+        try database.performSyncThrowing { db in
+            var statement: OpaquePointer?
+            guard sqlite3_prepare_v2(db, "PRAGMA table_info(\(table))", -1, &statement, nil) == SQLITE_OK else { return false }
+            defer { sqlite3_finalize(statement) }
+            while sqlite3_step(statement) == SQLITE_ROW {
+                if let name = sqlite3_column_text(statement, 1), String(cString: name) == column { return true }
+            }
+            return false
+        }
     }
 
     // MARK: - Helpers

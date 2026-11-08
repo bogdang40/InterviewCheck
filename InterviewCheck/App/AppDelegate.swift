@@ -21,9 +21,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // First touch of the database (schema and migrations) off the main thread.
         let retentionDays = DetectorSettings.shared.retentionDays
+        let weights = DetectorSettings.shared.weights
         DispatchQueue.global(qos: .utility).async {
             SessionDatabase.shared.warmUp()
             InterviewRetention.apply(days: retentionDays, database: .shared)
+            InterviewRecovery.finishUnended(database: .shared, weights: weights)
         }
         accessController.startPeriodicVerification()
         Task { @MainActor [weak self] in

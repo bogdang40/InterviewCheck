@@ -119,5 +119,9 @@ extension SessionDatabaseMigrationSteps {
             )
             """,
         ]),
+        // Interviews finished at the next launch after the app quit mid-call.
+        MigrationStep(version: 20, statements: [
+            "ALTER TABLE interviews ADD COLUMN interrupted INTEGER NOT NULL DEFAULT 0",
+        ]),
     ]
 }

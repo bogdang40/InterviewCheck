@@ -16,6 +16,9 @@ struct InterviewRecord: Equatable, Identifiable {
     var overallPercent: Int?
     var flaggedCount: Int = 0
     var questionCount: Int = 0
+    /// The app quit or crashed before the interview was ended; it was
+    /// finished from the saved words at the next launch.
+    var wasInterrupted = false
 }
 
 enum QuestionSource: String, Codable, Equatable {

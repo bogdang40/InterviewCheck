@@ -22,6 +22,10 @@ enum ReportAttributedText {
             text.append(line("\(overall)% overall \u{00B7} \(interview.flaggedCount) of \(interview.questionCount) answers flagged",
                              font: .systemFont(ofSize: 14, weight: .semibold), after: 4))
         }
+        if interview.wasInterrupted {
+            text.append(line("The app closed before this interview was ended; the last answer may be cut short.",
+                             font: .systemFont(ofSize: 11), color: muted, after: 4))
+        }
         text.append(line("Scores are signals to follow up on, not proof.", font: .systemFont(ofSize: 11), color: muted, after: 14))
 
         for question in report.questions {

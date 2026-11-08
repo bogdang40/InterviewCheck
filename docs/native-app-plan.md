@@ -52,6 +52,8 @@ Status key: [ ] todo · [~] in progress · [x] done (commit)
 - [x] D12 Your notes per answer (live and in reports, saved as you type, schema v19), the timing
       strip rebuilt in reports from saved word timings, verdict + notes in Markdown/PDF, and
       Export › All Interviews as CSV (formula cells defused).
+- [x] D13 Crash recovery: an interview left open is finished and scored at the next launch,
+      marked "ended unexpectedly" in the report and exports.
 
 ## C. Verify every step
 - build; guarded tests; render native screens light/dark; launch the installed app,
@@ -77,3 +79,4 @@ Status key: [ ] todo · [~] in progress · [x] done (commit)
 - 21:16 D11 demo interview (honest answer low, read-from-AI answer high). 270 app tests.
 - 21:22 D12 notes, report timing strip, CSV export. 272 app + 42 package tests.
 - 21:28 demo: one card per prompt style (Copilot / Talking points / STAR), bullets keep line breaks, demo + companion windows not restored at launch, Welcome › Watch a Demo Interview. 273 app tests.
+- 21:31 D13 crash recovery: interviews left open by a quit/crash are closed, scored offline (low confidence) and marked interrupted at next launch (schema v20).

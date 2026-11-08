@@ -16,7 +16,7 @@ extension SessionDatabase {
     func loadInterviews(limit: Int = 200) -> [InterviewRecord] {
         interviewRead("loadInterviews", """
             SELECT id, workspace_id, role_title, candidate_name, consent_confirmed_at, started_at, ended_at,
-                   overall_percent, flagged_count, question_count
+                   overall_percent, flagged_count, question_count, interrupted
             FROM interviews ORDER BY started_at DESC LIMIT ?
             """, bind: { $0.bindInt(limit, at: 1) }, row: Self.interviewRow)
     }
@@ -24,7 +24,7 @@ extension SessionDatabase {
     func loadInterviewReport(id: String) -> InterviewReportData? {
         guard let interview = interviewRead("loadInterview", """
             SELECT id, workspace_id, role_title, candidate_name, consent_confirmed_at, started_at, ended_at,
-                   overall_percent, flagged_count, question_count
+                   overall_percent, flagged_count, question_count, interrupted
             FROM interviews WHERE id = ?
             """, bind: { $0.bindText(id, at: 1) }, row: Self.interviewRow).first else { return nil }
 
@@ -123,6 +123,12 @@ extension SessionDatabase {
         return ids.count
     }
 
+    /// Interviews that were started but never ended.
+    func unendedInterviewIDs() -> [String] {
+        interviewRead("unendedInterviews", "SELECT id FROM interviews WHERE ended_at IS NULL",
+                      row: { $0.columnText(0) ?? "" })
+    }
+
     /// Deletes every interview, its words, AI answers and scores (roles stay).
     @discardableResult
     func deleteAllInterviews() -> Int {
@@ -135,7 +141,8 @@ extension SessionDatabase {
             candidateName: row.columnText(3) ?? "", consentConfirmedAt: row.columnOptionalDate(4),
             startedAt: row.columnDate(5), endedAt: row.columnOptionalDate(6),
             overallPercent: row.columnIsNull(7) ? nil : row.columnInt(7),
-            flaggedCount: row.columnInt(8), questionCount: row.columnInt(9)
+            flaggedCount: row.columnInt(8), questionCount: row.columnInt(9),
+            wasInterrupted: row.columnBool(10)
         )
     }
 

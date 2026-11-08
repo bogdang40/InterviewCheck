@@ -228,6 +228,11 @@ struct ReportDetail: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            if interview.wasInterrupted {
+                Label("The app closed before this interview was ended. The last answer may be cut short.",
+                      systemImage: "exclamationmark.triangle")
+                    .font(.callout).foregroundStyle(.orange)
+            }
             Text("Scores are signals to follow up on, not proof. A person should review the evidence before any decision.")
                 .font(.caption).foregroundStyle(.secondary)
         }

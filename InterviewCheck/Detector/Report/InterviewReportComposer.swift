@@ -13,6 +13,9 @@ enum InterviewReportComposer {
             lines.append("- Overall: **\(overall)%** (\(ScoreBand(percent: overall).title.lowercased())); " +
                          "\(interview.flaggedCount) of \(interview.questionCount) answers at 70% or more")
         }
+        if interview.wasInterrupted {
+            lines.append("- Interrupted: the app closed before the interview was ended; the last answer may be cut short.")
+        }
         lines += ["", "_Scores are signals to follow up on, not proof. A person should review the evidence before any decision._", ""]
 
         for question in report.questions {
