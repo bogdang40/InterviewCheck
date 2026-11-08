@@ -171,6 +171,9 @@ enum IMAPBodyStructure {
         guard items.count >= 7 else { return }
         let type = items[0].text?.lowercased() ?? ""
         let subtype = items[1].text?.lowercased() ?? ""
+        // A forwarded message (message/rfc822) holds its own parts; its later
+        // fields are the inner envelope and body, not this part's file name.
+        guard type != "message" else { return }
         let params = parameters(items[2])
         // A file name is in the type's parameters or the disposition's (later fields).
         let extra = items.dropFirst(7).flatMap(strings)

@@ -40,12 +40,16 @@ public struct CalendarFeedConnector: InterviewSource {
     }
 
     public func upcomingInterviews(from start: Date, to end: Date) async throws -> [ExternalInterview] {
+        // A feed that cannot be read fails the sync, so the interviews from the
+        // last good sync are kept instead of disappearing (offline, a dead feed).
         var found: [CalendarEvent] = []
         for feed in feeds {
             do {
                 found += try await events(feed)
-            } catch where feeds.count > 1 {
-                SyncNotes.note("The feed on \(feed.host ?? "a calendar") could not be read: \(error.localizedDescription)")
+            } catch {
+                throw feeds.count > 1
+                    ? ConnectorError.unsupported("The feed on \(feed.host ?? "a calendar") could not be read: \(error.localizedDescription)")
+                    : error
             }
         }
         var seen = Set<String>()

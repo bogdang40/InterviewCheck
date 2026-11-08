@@ -110,7 +110,9 @@ final class IMAPSession {
 
     /// A quoted IMAP string. Line breaks and non-ASCII text cannot be quoted.
     static func quoted(_ value: String) throws -> String {
-        guard value.allSatisfy({ $0.isASCII && $0 != "\r" && $0 != "\n" }) else {
+        // Printable ASCII only: a line break or other control character would
+        // end the command and start another (command injection).
+        guard value.unicodeScalars.allSatisfy({ (0x20...0x7E).contains($0.value) }) else {
             throw ConnectorError.unsupported("Mail sign-in only accepts plain letters, digits and symbols. Use an app password.")
         }
         return "\"" + value.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"") + "\""

@@ -54,18 +54,17 @@ final class CalendarFeedTests: XCTestCase {
         XCTAssertThrowsError(try CalendarFeedConnector(credentials: ConnectorCredentials(fields: [:]), transport: StubTransport()))
     }
 
-    func testOneBrokenFeedOfSeveralIsANote() async throws {
+    func testABrokenFeedFailsTheSyncSoTheLastGoodListIsKept() async throws {
         let stub = StubTransport()
         stub.on("GET", "good.example.com", json: feed)
         stub.on("GET", "gone.example.com", status: 404, json: "")
         let connector = try CalendarFeedConnector(
             credentials: ConnectorCredentials(fields: ["url": "https://good.example.com/a.ics\nhttps://gone.example.com/b.ics"]), transport: stub)
-        let notes = SyncNotes()
-        let interviews = try await SyncNotes.$current.withValue(notes) {
-            try await connector.upcomingInterviews(from: date("2026-11-07T00:00:00Z"), to: date("2026-11-21T00:00:00Z"))
+        do {
+            _ = try await connector.upcomingInterviews(from: date("2026-11-07T00:00:00Z"), to: date("2026-11-21T00:00:00Z"))
+            XCTFail("a failing feed must not return a shorter list (it would remove that feed's interviews)")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("gone.example.com"), error.localizedDescription)
         }
-        XCTAssertEqual(interviews.count, 1)
-        XCTAssertEqual(notes.messages.count, 1)
-        XCTAssertTrue(notes.messages[0].contains("gone.example.com"))
     }
 }

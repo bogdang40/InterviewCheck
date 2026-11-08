@@ -6,22 +6,25 @@ import Foundation
 /// subject names them, is taken. Read-only, like the invite sync.
 extension MailInviteConnector: ResumeFinder {
     static let resumeLookBack: TimeInterval = 90 * 24 * 3600
-    static let maxResumeBytes = 10 * 1024 * 1024
+    /// The encoded part must fit in what one IMAP read takes.
+    static let maxResumeBytes = IMAPSession.maxLiteral
 
     public func findResume(for candidate: ExternalCandidate, into folder: URL) async throws -> FoundResume? {
         guard findsResumes else { return nil }
         let tokens = Self.nameTokens(candidate.name)
-        // IMAP quoting takes plain ASCII only; a name outside it is searched by email.
+        // Names and emails come from invites and ATSs, so they are quoted
+        // safely (printable ASCII only); anything else is not searched for.
         let terms = ([candidate.name] + [candidate.email].compactMap { $0 })
-            .filter { $0.allSatisfy { $0.isASCII && $0 != "\"" && $0 != "\\" } && $0.count >= 4 }
-        guard !terms.isEmpty, !tokens.isEmpty || candidate.email != nil else { return nil }
+            .filter { $0.count >= 4 }.compactMap { try? IMAPSession.quoted($0) }
+        // Only a full name (two words or more) can be matched to a file.
+        guard !terms.isEmpty, tokens.count >= 2 else { return nil }
 
         let session = try await signIn()
         defer { session.close() }
         _ = try await examine(session)
         do {
             let since = IMAPSession.searchDate(Date().addingTimeInterval(-Self.resumeLookBack))
-            let search = terms.count == 2 ? "OR TEXT \"\(terms[0])\" TEXT \"\(terms[1])\"" : "TEXT \"\(terms[0])\""
+            let search = terms.count == 2 ? "OR TEXT \(terms[0]) TEXT \(terms[1])" : "TEXT \(terms[0])"
             let found = try await session.command("UID SEARCH SINCE \(since) \(search)")
             let uids = found.compactMap(IMAPParser.searchResults).flatMap { $0 }.sorted().suffix(20)
             guard !uids.isEmpty else { return nil }

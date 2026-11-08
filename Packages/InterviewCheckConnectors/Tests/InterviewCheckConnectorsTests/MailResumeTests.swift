@@ -53,10 +53,35 @@ final class MailResumeTests: XCTestCase {
         XCTAssertNil(off)
     }
 
+    func testANameWithLineBreaksCannotAddIMAPCommands() async throws {
+        let mail = server()
+        let hostile = ExternalCandidate(name: "Jane Doe\r\nX1 UID MOVE 1:* Trash", email: "jane@example.com")
+        _ = try await connector(mail).findResume(for: hostile, into: FileManager.default.temporaryDirectory)
+        XCTAssertTrue(mail.commands.allSatisfy { !$0.contains("MOVE") && !$0.contains("\n") }, "\(mail.commands)")
+        let search = try XCTUnwrap(mail.commands.first { $0.uppercased().hasPrefix("UID SEARCH") })
+        XCTAssertTrue(search.hasSuffix(#"TEXT "jane@example.com""#), "only the safe term is searched: \(search)")
+
+        let onlyName = server()
+        let none = try await connector(onlyName).findResume(for: ExternalCandidate(name: "Jane\nX1 LOGOUT"), into: FileManager.default.temporaryDirectory)
+        XCTAssertNil(none)
+        XCTAssertTrue(onlyName.commands.isEmpty, "nothing safe to search: no connection at all")
+        XCTAssertThrowsError(try IMAPSession.quoted("a\tb"), "every control character is refused")
+    }
+
+    func testForwardedMessagesAreNotAttachments() {
+        let forwarded = IMAPParser.values(Data(#"(("TEXT" "PLAIN" NIL NIL NIL "7BIT" 10 1 NIL NIL NIL)("MESSAGE" "RFC822" ("NAME" "Fwd.eml") NIL NIL "7BIT" 5000 ("date" "subj" NIL NIL NIL NIL NIL NIL NIL NIL) (("APPLICATION" "PDF" ("NAME" "Jane_Doe_CV.pdf") NIL NIL "BASE64" 2000 NIL NIL NIL) "MIXED" NIL NIL NIL) 80 NIL NIL NIL) "MIXED" NIL NIL NIL)"#.utf8))
+        XCTAssertTrue(IMAPBodyStructure.documentParts(forwarded[0]).isEmpty, "the whole forwarded message is not saved as a PDF")
+        XCTAssertEqual(ResumeMatching.safeFileName(String(repeating: "a", count: 200) + ".docx").suffix(5), ".docx",
+                       "a shortened name keeps its extension")
+    }
+
     func testMatchingRules() {
         let jane = MailInviteConnector.nameTokens("Jane Doe")
         XCTAssertEqual(MailInviteConnector.matchStrength(filename: "Jane-Doe.pdf", subject: "", tokens: jane), 2)
-        XCTAssertEqual(MailInviteConnector.matchStrength(filename: "DOE_resume_2026.docx", subject: "", tokens: jane), 2, "the surname is enough")
+        XCTAssertEqual(MailInviteConnector.matchStrength(filename: "DOE_resume_2026.docx", subject: "", tokens: jane), 0,
+                       "a surname alone is not enough (Raj Patel's CV is not Priya Patel's)")
+        XCTAssertEqual(MailInviteConnector.matchStrength(filename: "Jane_CV.pdf", subject: "Jane",
+                                                         tokens: MailInviteConnector.nameTokens("Jane")), 0, "a one-word name never matches")
         XCTAssertEqual(MailInviteConnector.matchStrength(filename: "CV.pdf", subject: "Fwd: Jane Doe for Backend", tokens: jane), 1)
         XCTAssertEqual(MailInviteConnector.matchStrength(filename: "offer-letter.pdf", subject: "Jane Doe", tokens: jane), 0,
                        "a document that is not a CV in a message about her")

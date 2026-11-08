@@ -103,7 +103,7 @@ public struct BullhornConnector: InterviewSource, JobSource, CandidateSource, Ca
         for page in 0..<Self.pageLimit {
             let data = try await api.getJSON("query/Appointment", query: [
                 URLQueryItem(name: "where", value: clause), URLQueryItem(name: "fields", value: fields),
-                URLQueryItem(name: "orderBy", value: "dateBegin"), URLQueryItem(name: "start", value: "\(page * Self.pageSize)"),
+                URLQueryItem(name: "orderBy", value: "dateBegin,id"), URLQueryItem(name: "start", value: "\(page * Self.pageSize)"),
                 URLQueryItem(name: "count", value: "\(Self.pageSize)"),
             ])["data"].array
             rows += data
