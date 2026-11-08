@@ -55,6 +55,11 @@ How it reads:
   last 60 days are downloaded, up to the newest 500 messages and 150 invites per sync.
 - When an invite is updated, the version with the highest SEQUENCE (then the newest
   message) wins. A cancellation (METHOD:CANCEL or STATUS:CANCELLED) removes the interview.
+- **Résumés from mail:** when no ATS has the candidate's résumé, Prepare asks the mailbox
+  server to search the last 90 days for the candidate's name or email and takes a PDF,
+  Word, RTF or ODT attachment only if its file name names the candidate, or it looks like a
+  CV and the subject names them. Prepare says which file and sender it used. Turn it off
+  with "Don't look for résumés in mail".
 - Outlook and Microsoft 365 mailboxes no longer accept app passwords. Use the Microsoft
   365 connector; their invites are already in the Outlook calendar.
 - Proton Mail works through Proton Mail Bridge on the Mac (`127.0.0.1:1143` is not TLS,

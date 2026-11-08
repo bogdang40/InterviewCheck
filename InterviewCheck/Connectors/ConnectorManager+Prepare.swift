@@ -88,6 +88,15 @@ extension ConnectorManager {
             }
         }
 
+        // No résumé from an ATS: one a recruiter emailed (connected mailbox).
+        if resume == nil, let candidate = interview.candidate,
+           let found = await emailedResume(for: candidate, current: current) {
+            guard current() else { return stop() }
+            resume = (found.text, found.filename)
+            missing.removeAll { $0 == "No r\u{00E9}sum\u{00E9} on file." }
+            missing.append("R\u{00E9}sum\u{00E9} from mail: \(found.filename) (\(found.origin)). Check it is this candidate\u{2019}s.")
+        }
+
         guard current(), canApply?(roleID) ?? true else { return stop() }
         controller.candidateName = interview.candidate?.name ?? ""
         controller.externalRef = interview.id
@@ -157,6 +166,23 @@ extension ConnectorManager {
         }
         roles.save(role)
         return roles.role(id: role.id) ?? role
+    }
+
+    /// A résumé attached to a recent email, from the first connected mailbox
+    /// that has one; its text is read and the file deleted.
+    private func emailedResume(for candidate: ExternalCandidate,
+                               current: () -> Bool) async -> (text: String, filename: String, origin: String)? {
+        for account in accounts {
+            guard current(), let finder = try? makeConnector(account.kind) as? ResumeFinder else { continue }
+            let folder = FileManager.default.temporaryDirectory.appendingPathComponent("interviewcheck-mail-\(UUID().uuidString)")
+            guard (try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)) != nil else { continue }
+            defer { try? FileManager.default.removeItem(at: folder) }
+            guard let found = try? await finder.findResume(for: candidate, into: folder),
+                  let text = try? DocumentText.read(found.file),
+                  !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
+            return (text, found.filename, found.origin)
+        }
+        return nil
     }
 
     /// Downloads the résumé to a temporary file, reads its text, deletes it.

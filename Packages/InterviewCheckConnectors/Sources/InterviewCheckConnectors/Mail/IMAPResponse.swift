@@ -127,23 +127,44 @@ enum IMAPBodyStructure {
         /// BASE64, QUOTED-PRINTABLE, 7BIT, 8BIT.
         var encoding: String
         var charset: String?
+        /// The attachment's file name, when it has one.
+        var filename: String? = nil
+        var size: Int? = nil
     }
 
     /// Calendar invites: text/calendar, application/ics, or any part named *.ics.
     static func calendarParts(_ body: IMAPValue) -> [Part] {
+        parts(body) { type, subtype, names in
+            (type == "text" && subtype == "calendar") || (type == "application" && subtype == "ics")
+                || names.contains { $0.lowercased().hasSuffix(".ics") }
+        }
+    }
+
+    static let documentExtensions = [".pdf", ".docx", ".doc", ".rtf", ".odt"]
+
+    /// Documents a résumé could be in: PDF, Word, RTF or ODT attachments.
+    static func documentParts(_ body: IMAPValue) -> [Part] {
+        parts(body) { type, subtype, names in
+            type == "application" && ["pdf", "msword", "rtf", "vnd.oasis.opendocument.text",
+                                      "vnd.openxmlformats-officedocument.wordprocessingml.document"].contains(subtype)
+                || names.contains { name in documentExtensions.contains { name.lowercased().hasSuffix($0) } }
+        }.filter { $0.filename != nil }
+    }
+
+    private static func parts(_ body: IMAPValue, matching: (String, String, [String]) -> Bool) -> [Part] {
         var found: [Part] = []
-        walk(body, path: [], found: &found)
+        walk(body, path: [], found: &found, matching: matching)
         return found
     }
 
-    private static func walk(_ body: IMAPValue, path: [Int], found: inout [Part]) {
+    private static func walk(_ body: IMAPValue, path: [Int], found: inout [Part], matching: (String, String, [String]) -> Bool) {
         guard let items = body.items, !items.isEmpty else { return }
         if items.first?.items != nil {
             // Multipart: the children come first, then the subtype.
             var child = 0
             for item in items where item.items != nil {
                 child += 1
-                walk(item, path: path + [child], found: &found)
+                walk(item, path: path + [child], found: &found, matching: matching)
             }
             return
         }
@@ -151,12 +172,14 @@ enum IMAPBodyStructure {
         let type = items[0].text?.lowercased() ?? ""
         let subtype = items[1].text?.lowercased() ?? ""
         let params = parameters(items[2])
-        let named = ([params["name"]] + items.dropFirst(7).flatMap(strings)).compactMap { $0 }
-            .contains { $0.lowercased().hasSuffix(".ics") }
-        let isCalendar = (type == "text" && subtype == "calendar") || (type == "application" && subtype == "ics") || named
-        guard isCalendar else { return }
+        // A file name is in the type's parameters or the disposition's (later fields).
+        let extra = items.dropFirst(7).flatMap(strings)
+        let names = ([params["name"]] + extra).compactMap { $0 }
+        guard matching(type, subtype, names) else { return }
+        let filename = params["name"] ?? zip(extra, extra.dropFirst()).first { $0.0.lowercased() == "filename" }?.1
         found.append(Part(section: path.isEmpty ? "1" : path.map(String.init).joined(separator: "."),
-                          encoding: items[5].text?.uppercased() ?? "7BIT", charset: params["charset"]))
+                          encoding: items[5].text?.uppercased() ?? "7BIT", charset: params["charset"],
+                          filename: filename.map(MIMEDecoding.headerText), size: items[6].text.flatMap(Int.init)))
     }
 
     private static func parameters(_ value: IMAPValue) -> [String: String] {
@@ -178,6 +201,42 @@ enum IMAPBodyStructure {
 
 /// Undoes a MIME content-transfer-encoding.
 enum MIMEDecoding {
+    /// The bytes of a part (an attachment), undoing its transfer encoding.
+    static func data(_ data: Data, encoding: String) -> Data? {
+        switch encoding.uppercased() {
+        case "BASE64":
+            let compact = String(decoding: data, as: UTF8.self).filter { !$0.isWhitespace }
+            return Data(base64Encoded: compact, options: .ignoreUnknownCharacters)
+        case "QUOTED-PRINTABLE": return quotedPrintable(data)
+        default: return data
+        }
+    }
+
+    /// Header text with RFC 2047 encoded words ("=?UTF-8?B?…?=", "=?iso-8859-1?Q?…?=") decoded.
+    static func headerText(_ value: String) -> String {
+        let pattern = #"=\?([^?]+)\?([BbQq])\?([^?]*)\?="#
+        // Encoded words separated only by white space are joined without it (RFC 2047 6.2).
+        let value = value.replacingOccurrences(of: #"\?=\s+=\?"#, with: "?==?", options: .regularExpression)
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return value }
+        var result = value
+        for match in regex.matches(in: value, range: NSRange(value.startIndex..., in: value)).reversed() {
+            guard let whole = Range(match.range, in: value), let charsetRange = Range(match.range(at: 1), in: value),
+                  let kindRange = Range(match.range(at: 2), in: value), let textRange = Range(match.range(at: 3), in: value) else { continue }
+            let text = String(value[textRange])
+            let bytes: Data?
+            if value[kindRange].uppercased() == "B" {
+                bytes = Data(base64Encoded: text, options: .ignoreUnknownCharacters)
+            } else {
+                bytes = quotedPrintable(Data(text.replacingOccurrences(of: "_", with: " ").utf8))
+            }
+            let latin = value[charsetRange].lowercased().contains("8859") || value[charsetRange].lowercased().contains("1252")
+            guard let bytes, let decoded = latin ? String(data: bytes, encoding: .windowsCP1252) : String(data: bytes, encoding: .utf8)
+            else { continue }
+            result.replaceSubrange(Range(match.range, in: result) ?? whole, with: decoded)
+        }
+        return result
+    }
+
     static func decode(_ data: Data, encoding: String, charset: String?) -> String? {
         let raw: Data
         switch encoding.uppercased() {

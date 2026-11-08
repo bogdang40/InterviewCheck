@@ -14,6 +14,8 @@ public struct MailInviteConnector: InterviewSource {
     let extraKeywords: [String]
     /// Every invite in the folder counts (a mailbox kept for interviews).
     let everyInvite: Bool
+    /// Prepare may look for a candidate's emailed résumé (on unless turned off).
+    let findsResumes: Bool
     let openStream: @Sendable (String, UInt16) async throws -> IMAPStream
     let cache: MailInviteCache
 
@@ -44,6 +46,7 @@ public struct MailInviteConnector: InterviewSource {
         self.extraKeywords = credentials["keywords"]?.split(separator: ",")
             .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty } ?? []
         self.everyInvite = credentials["everyInvite"] == "true"
+        self.findsResumes = credentials["noResumes"] != "true"
         self.openStream = openStream
         self.cache = cache
     }
@@ -166,7 +169,7 @@ public struct MailInviteConnector: InterviewSource {
             .sorted { $0.startsAt < $1.startsAt }
     }
 
-    private func signIn() async throws -> IMAPSession {
+    func signIn() async throws -> IMAPSession {
         let session = IMAPSession(stream: try await openStream(host, port))
         do {
             try await session.greeting()
@@ -186,7 +189,7 @@ public struct MailInviteConnector: InterviewSource {
     }
 
     /// Opens the folder read-only; returns its message count and UIDVALIDITY when given.
-    private func examine(_ session: IMAPSession) async throws -> (count: Int?, uidValidity: String?) {
+    func examine(_ session: IMAPSession) async throws -> (count: Int?, uidValidity: String?) {
         do {
             let lines = try await session.command("EXAMINE \(try IMAPSession.quoted(folder))")
             var count: Int?

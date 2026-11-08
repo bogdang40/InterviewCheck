@@ -67,8 +67,41 @@ private final class PartialSource: InterviewSource, @unchecked Sendable {
     }
 }
 
+/// A mailbox holding the candidate's emailed CV.
+private struct MailWithCV: InterviewSource, ResumeFinder {
+    let kind = ConnectorKind.imapMail
+    let start: Date
+    func verify() async throws -> String { "lee@gmail.com" }
+    func upcomingInterviews(from: Date, to: Date) async throws -> [ExternalInterview] {
+        [ExternalInterview(source: .imapMail, externalID: "inv1", title: "Interview: Jane Doe", startsAt: start,
+                           candidate: ExternalCandidate(name: "Jane Doe", email: "jane@example.com"))]
+    }
+    func findResume(for candidate: ExternalCandidate, into folder: URL) async throws -> FoundResume? {
+        guard candidate.name == "Jane Doe" else { return nil }
+        let file = folder.appendingPathComponent("Jane_Doe_CV.txt")
+        try "Jane Doe\nEight years of payments in Go.".write(to: file, atomically: true, encoding: .utf8)
+        return FoundResume(file: file, filename: "Jane_Doe_CV.txt", origin: "Sam <sam@acme.com>, Thu, 5 Nov 2026")
+    }
+}
+
 @MainActor
 final class ConnectorManagerTests: XCTestCase {
+    func testAnEmailedCVFillsTheResumeWhenNoATSHasOne() async throws {
+        let path = NSTemporaryDirectory() + "connectors-\(UUID().uuidString).sqlite"
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let database = SessionDatabase(databasePath: path)
+        let defaults = UserDefaults(suiteName: "connectors.\(UUID().uuidString)")!
+        let manager = ConnectorManager(store: MemoryCredentialStore(), database: database, defaults: defaults)
+        manager.factory = { _, _, _, _ in MailWithCV(start: Date().addingTimeInterval(3600)) }
+        try await manager.connect(.imapMail, fields: ["email": "lee@gmail.com", "password": "p"])
+        let controller = InterviewController(timeline: InterviewTimeline(), database: database, settings: DetectorSettings(defaults: defaults))
+        let notes = await manager.prepare(manager.upcoming[0], controller: controller,
+                                          roles: RoleStore(database: database, defaults: defaults), navigate: false)
+        XCTAssertTrue(controller.resumeText.contains("payments in Go"))
+        XCTAssertEqual(controller.resumeFileName, "Jane_Doe_CV.txt")
+        XCTAssertTrue(notes.contains { $0.hasPrefix("R\u{00E9}sum\u{00E9} from mail: Jane_Doe_CV.txt (Sam <sam@acme.com>") }, "\(notes)")
+    }
+
     func testAListCutShortIsNotedOnTheAccountUntilTheNextFullSync() async throws {
         let path = NSTemporaryDirectory() + "connectors-\(UUID().uuidString).sqlite"
         defer { try? FileManager.default.removeItem(atPath: path) }

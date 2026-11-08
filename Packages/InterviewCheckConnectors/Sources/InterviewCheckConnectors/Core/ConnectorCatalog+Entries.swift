@@ -31,9 +31,10 @@ public enum ConnectorCatalog {
                              CredentialField("folder", "Folder", placeholder: "INBOX, or [Gmail]/All Mail, or a folder kept for interviews", optional: true),
                              keywords,
                              CredentialField("everyInvite", "Every invite in this folder is an interview", toggle: true),
+                             CredentialField("noResumes", "Don\u{2019}t look for r\u{00E9}sum\u{00E9}s in mail", toggle: true),
                          ]),
-                         [.upcomingInterviews, .emailInvites],
-                         setup: "Make an app password for InterviewCheck: Google Account \u{203A} Security \u{203A} App passwords (needs 2-Step Verification); Apple Account \u{203A} Sign-In and Security \u{203A} App-Specific Passwords; Yahoo \u{203A} Account security \u{203A} App passwords; Fastmail \u{203A} Settings \u{203A} Privacy & Security \u{203A} App passwords. The mailbox is only read: nothing is sent, moved or marked as read. For Outlook and Microsoft 365 mailboxes use the Microsoft 365 connector (their invites are already in Outlook\u{2019}s calendar).",
+                         [.upcomingInterviews, .emailInvites, .resumes],
+                         setup: "Make an app password for InterviewCheck: Google Account \u{203A} Security \u{203A} App passwords (needs 2-Step Verification); Apple Account \u{203A} Sign-In and Security \u{203A} App-Specific Passwords; Yahoo \u{203A} Account security \u{203A} App passwords; Fastmail \u{203A} Settings \u{203A} Privacy & Security \u{203A} App passwords. The mailbox is only read: nothing is sent, moved or marked as read. When an ATS has no r\u{00E9}sum\u{00E9}, Prepare looks for one emailed in the last 90 days: an attachment that names the candidate, or a CV in a message whose subject names them. For Outlook and Microsoft 365 mailboxes use the Microsoft 365 connector (their invites are already in Outlook\u{2019}s calendar).",
                          docs: "https://support.google.com/accounts/answer/185833")
         case .calendly:
             return entry(kind, "Calendly", .scheduling, "Screens and interviews booked through your Calendly links: the candidate\u{2019}s name, email and LinkedIn link, and the meeting link.",

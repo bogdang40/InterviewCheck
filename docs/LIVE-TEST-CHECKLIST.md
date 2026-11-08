@@ -17,7 +17,7 @@ Order suggested by how many customers each reaches and how little setup it needs
 |---|---|---|---|
 | Calendar on this Mac | Calendar access | An event titled "Interview with …" appears; the outside guest becomes the candidate | – |
 | Calendar feed (iCal link) | A Google "Secret address in iCal format" | Times are right in your time zone; a cancelled event disappears after the provider refreshes the feed (Google: hours) | Recurring interviews show only if their first date is in range (RRULE is not expanded) |
-| Mail (IMAP) | Gmail with 2-Step Verification and an app password | Verify shows "address · INBOX (N messages)"; an invite from another company appears; a cancellation email removes it; nothing is marked as read in Gmail | Exchange/Outlook-originated invites inside Gmail; folders with non-ASCII names; forwarded invites (message/rfc822) are not read |
+| Mail (IMAP) | Gmail with 2-Step Verification and an app password | Verify shows "address · INBOX (N messages)"; an invite from another company appears; a cancellation email removes it; nothing is marked as read in Gmail; email yourself "Jane_Doe_CV.pdf", then Prepare a Jane Doe interview with no ATS résumé: it is found and named | Exchange/Outlook-originated invites inside Gmail; folders with non-ASCII names; forwarded invites (message/rfc822) are not read |
 | Calendly | A personal access token | A booking named "Phone Screen …" appears with the invitee's email; a LinkedIn answer becomes the profile link | Event types with several invitees (only the first is the candidate) |
 | Cal.com | An API key | Upcoming and finished bookings; Cal Video links | Header `cal-api-version: 2026-05-01` accepted by self-hosted versions |
 
