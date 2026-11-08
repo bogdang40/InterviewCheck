@@ -33,6 +33,7 @@ extension ConnectorManager {
         fields["tokenURL"] = endpoints.tokenURL.absoluteString
         fields["scopes"] = endpoints.scopes.joined(separator: " ")
         try store.save(ConnectorCredentials(fields: fields, tokens: tokens), for: kind.rawValue)
+        sessions[kind] = nil
         let label = try await makeConnector(kind).verify()
         upsert(Account(kind: kind, label: label, connectedAt: now()))
         await sync(kind)

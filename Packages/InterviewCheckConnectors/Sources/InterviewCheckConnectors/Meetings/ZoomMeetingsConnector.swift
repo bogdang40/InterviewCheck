@@ -80,8 +80,10 @@ public struct ZoomMeetingsConnector: InterviewSource, RecordingSource {
                 return ExternalFile(kind: kind, filename: "\(topic).\(ext)", url: url, needsAuth: true)
             }
             guard !files.isEmpty else { return nil }
+            // The meeting number links the recording to its scheduled interview.
             return ExternalRecording(source: .zoom, externalID: uuid, title: topic, startedAt: started,
-                                     duration: meeting["duration"].double.map { $0 * 60 }, files: files)
+                                     duration: meeting["duration"].double.map { $0 * 60 },
+                                     meetingURL: meeting["id"].string.flatMap { URL(string: "https://zoom.us/j/\($0)") }, files: files)
         }
     }
 

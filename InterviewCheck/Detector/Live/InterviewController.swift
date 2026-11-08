@@ -16,6 +16,8 @@ final class InterviewController: ObservableObject {
     @Published var resumeFileName: String?
     /// The connector record this interview was prepared from ("greenhouse:123").
     @Published var externalRef: String?
+    /// The upcoming interview Prepare started from (before any ATS match).
+    @Published var preparedFrom: String?
 
     // Live state
     @Published private(set) var phase: Phase = .setup
@@ -122,6 +124,7 @@ final class InterviewController: ObservableObject {
         resumeText = ""
         resumeFileName = nil
         externalRef = nil
+        preparedFrom = nil
     }
 
     // MARK: - Questions

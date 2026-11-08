@@ -68,7 +68,7 @@ struct UpcomingInterviewsSection: View {
                 Button("Join") {
                     NSWorkspace.shared.open(link)
                     // Joining also prepares the interview, unless that is done.
-                    guard controller.externalRef != interview.id, preparingID == nil else { return }
+                    guard controller.preparedFrom != interview.id, preparingID == nil else { return }
                     preparingID = interview.id
                     Task {
                         notes = await connectors.prepare(interview, controller: controller)

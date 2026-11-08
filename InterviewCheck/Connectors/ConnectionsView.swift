@@ -10,6 +10,7 @@ struct ConnectionsView: View {
     @State private var reminderMinutes = InterviewReminders.minutes
     @State private var autoScore = AutoScorer.shared.isEnabled
     @State private var confirmAutoScore = false
+    @State private var myEmails = ConnectorManager.shared.typedEmails
 
     private func kinds(in category: ConnectorCategory) -> [ConnectorKind] {
         let query = search.trimmingCharacters(in: .whitespaces).lowercased()
@@ -23,6 +24,17 @@ struct ConnectionsView: View {
     var body: some View {
         HSplitView {
             List(selection: $selection) {
+                Section {
+                    TextField("Your work email", text: $myEmails, prompt: Text("you@company.com"))
+                        .onChange(of: myEmails) { _, value in connectors.typedEmails = value }
+                        .help("Only interviews you are on are shown. Separate several addresses with commas.")
+                    if !connectors.myEmails.isEmpty {
+                        Text("Showing interviews for \(connectors.myEmails.sorted().joined(separator: ", "))")
+                            .font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                    }
+                } header: {
+                    Text("You")
+                }
                 ForEach(ConnectorCategory.allCases, id: \.self) { category in
                     let kinds = kinds(in: category)
                     if !kinds.isEmpty {

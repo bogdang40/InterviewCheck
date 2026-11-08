@@ -209,16 +209,17 @@ struct ConnectorDetailView: View {
         message = nil
         Task {
             do {
+                // Fixing keeps saved secrets (client secret, key) left empty.
+                let values = isFixing ? connectors.mergedWithSavedSecrets(kind, fields) : fields
                 if case .oauth = descriptor.auth {
                     message = "Finish signing in in your browser\u{2026}"
                     failed = false
-                    try await connectors.signIn(kind, fields: fields)
+                    try await connectors.signIn(kind, fields: values)
                 } else if case .mcp = descriptor.auth {
                     if (fields["token"] ?? "").isEmpty { message = "Finish signing in in your browser\u{2026}" }
                     failed = false
-                    try await connectors.signInMCP(kind, fields: fields)
+                    try await connectors.signInMCP(kind, fields: values)
                 } else {
-                    let values = isFixing ? connectors.mergedWithSavedSecrets(kind, fields) : fields
                     try await connectors.connect(kind, fields: values)
                 }
                 failed = false

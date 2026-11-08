@@ -9,17 +9,28 @@ extension ConnectorManager {
     func prepare(_ interview: ExternalInterview, controller: InterviewController,
                  roles: RoleStore = .shared) async -> [String] {
         guard controller.phase != .live else { return ["An interview is live."] }
+        prepareGeneration += 1
+        let generation = prepareGeneration
+        // Each await is a chance for the interview to start or another Prepare
+        // to begin; then this one stops instead of overwriting the setup.
+        let stopped = ["Preparation stopped: an interview started or another one is being prepared."]
+        let current = { generation == self.prepareGeneration && controller.phase != .live }
+        let original = interview
         controller.reset()
+        controller.preparedFrom = original.id
         // A calendar invite knows little: find the candidate in a connected ATS.
         let interview = await enriched(interview)
+        guard current() else { return stopped }
         controller.candidateName = interview.candidate?.name ?? ""
         controller.externalRef = interview.id
+        controller.preparedFrom = original.id
         database.saveExternalLink(interview)
         var missing: [String] = []
         let connector = try? makeConnector(interview.source)
 
         if let job = interview.job {
             let role = await role(for: job, source: interview.source, connector: connector, roles: roles)
+            guard current() else { return stopped }
             roles.selectedRoleID = role.id
             if role.jobDescription.isEmpty {
                 missing.append("The job description was not available; paste it into the role.")
@@ -37,7 +48,10 @@ extension ConnectorManager {
                     resume = try await sourceConnector.candidate(id: id).resume
                 }
                 if let resume {
-                    try await loadResume(resume, from: sourceConnector, into: controller)
+                    let text = try await resumeText(resume, from: sourceConnector)
+                    guard current() else { return stopped }
+                    controller.resumeText = text
+                    controller.resumeFileName = resume.filename
                 } else {
                     missing.append("No r\u{00E9}sum\u{00E9} on file.")
                 }
@@ -108,13 +122,11 @@ extension ConnectorManager {
     }
 
     /// Downloads the résumé to a temporary file, reads its text, deletes it.
-    private func loadResume(_ file: ExternalFile, from connector: CandidateSource,
-                            into controller: InterviewController) async throws {
+    private func resumeText(_ file: ExternalFile, from connector: CandidateSource) async throws -> String {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("interviewcheck-resume-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: folder) }
         let local = try await connector.download(file, into: folder)
-        controller.resumeText = try DocumentText.read(local)
-        controller.resumeFileName = file.filename
+        return try DocumentText.read(local)
     }
 }

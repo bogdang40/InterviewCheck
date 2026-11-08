@@ -16,6 +16,8 @@ final class ConnectorManager: ObservableObject {
         var connectedAt: Date
         var lastSync: Date?
         var lastError: String?
+        /// Recordings were fetched up to here (moves only on success).
+        var recordingsCheckedAt: Date?
         var id: String { kind.rawValue }
     }
 
@@ -26,7 +28,7 @@ final class ConnectorManager: ObservableObject {
 
     let store: CredentialStore
     let database: SessionDatabase
-    private let defaults: UserDefaults
+    let defaults: UserDefaults
     var transport: HTTPTransport = URLSession.shared
     var openURL: (URL) -> Void = { NSWorkspace.shared.open($0) }
     /// Builds connectors; tests swap in fakes.
@@ -35,6 +37,11 @@ final class ConnectorManager: ObservableObject {
     }
     var now: () -> Date = { Date() }
     private var timer: Timer?
+    /// One token session per account, shared by every connector built for
+    /// it, so refreshes never race.
+    var sessions: [ConnectorKind: OAuthSession] = [:]
+    /// Bumped by each Prepare; an older one still running stops writing.
+    var prepareGeneration = 0
     /// Called with the upcoming list after every change (reminders).
     var onUpcomingChanged: (([ExternalInterview]) -> Void)?
     /// Called after a sync that may have brought new recordings.
@@ -65,6 +72,7 @@ final class ConnectorManager: ObservableObject {
         let connector = try factory(kind, credentials, transport, nil)
         let label = try await connector.verify()
         try store.save(credentials, for: kind.rawValue)
+        sessions[kind] = nil
         upsert(Account(kind: kind, label: label, connectedAt: now()))
         await sync(kind)
     }
@@ -87,6 +95,7 @@ final class ConnectorManager: ObservableObject {
         let tokens = try await client.exchange(code: code, verifier: verifier, redirectURI: redirect)
         let credentials = ConnectorCredentials(fields: fields, tokens: tokens)
         try store.save(credentials, for: kind.rawValue)
+        sessions[kind] = nil
         let connector = try makeConnector(kind)
         let label = try await connector.verify()
         upsert(Account(kind: kind, label: label, connectedAt: now()))
@@ -115,6 +124,7 @@ final class ConnectorManager: ObservableObject {
     var accountsNeedingAttention: Int { accounts.filter { $0.lastError != nil }.count }
 
     func disconnect(_ kind: ConnectorKind) {
+        sessions[kind] = nil
         store.delete(kind.rawValue)
         accounts.removeAll { $0.kind == kind }
         saveAccounts()
@@ -135,14 +145,19 @@ final class ConnectorManager: ObservableObject {
         default: break
         }
         if let provider = oauthProvider, let tokens = credentials.tokens {
-            let client = OAuthClient(provider: provider, clientID: credentials["clientID"] ?? "",
-                                     clientSecret: credentials["clientSecret"], transport: transport)
-            let store = self.store
-            let session = OAuthSession(tokens: tokens, client: client) { updated in
-                var saved = credentials
-                saved.tokens = updated
-                try? store.save(saved, for: kind.rawValue)
-            }
+            let session = sessions[kind] ?? {
+                let client = OAuthClient(provider: provider, clientID: credentials["clientID"] ?? "",
+                                         clientSecret: credentials["clientSecret"], transport: transport)
+                let store = self.store
+                let session = OAuthSession(tokens: tokens, client: client) { updated in
+                    // Not after a disconnect: the account is gone for good.
+                    guard var saved = store.load(kind.rawValue) else { return }
+                    saved.tokens = updated
+                    try? store.save(saved, for: kind.rawValue)
+                }
+                sessions[kind] = session
+                return session
+            }()
             tokenProvider = { try await session.accessToken() }
         }
         return try factory(kind, credentials, transport, tokenProvider)
@@ -160,25 +175,44 @@ final class ConnectorManager: ObservableObject {
         guard account(kind) != nil, !syncing.contains(kind) else { return }
         syncing.insert(kind)
         defer { syncing.remove(kind) }
-        var failure: String?
+        var failures: [String] = []
+        var recordingsCheckedAt: Date?
+        let started = now()
         do {
             let connector = try makeConnector(kind)
-            // A week back too, so finished interviews can be matched to recordings.
-            let start = now().addingTimeInterval(-7 * 86_400)
+            // Interviews and recordings are fetched separately: one failing
+            // (a missing scope, say) must not stop the other.
             if let source = connector as? InterviewSource {
-                let found = try await source.upcomingInterviews(from: start, to: now().addingTimeInterval(14 * 86_400))
-                database.replaceExternalInterviews(found, source: kind)
+                do {
+                    // A week back too, so finished interviews can be matched to recordings.
+                    let found = try await source.upcomingInterviews(from: started.addingTimeInterval(-7 * 86_400),
+                                                                     to: started.addingTimeInterval(14 * 86_400))
+                    // Disconnected while waiting: keep nothing.
+                    guard account(kind) != nil else { return }
+                    database.replaceExternalInterviews(found, source: kind)
+                } catch {
+                    failures.append(error.localizedDescription)
+                }
             }
             if let source = connector as? RecordingSource {
-                let since = account(kind)?.lastSync?.addingTimeInterval(-86_400) ?? now().addingTimeInterval(-7 * 86_400)
-                database.addExternalRecordings(try await source.recordings(since: since))
+                do {
+                    let since = account(kind)?.recordingsCheckedAt?.addingTimeInterval(-86_400)
+                        ?? started.addingTimeInterval(-7 * 86_400)
+                    let found = try await source.recordings(since: since)
+                    guard account(kind) != nil else { return }
+                    database.addExternalRecordings(found)
+                    recordingsCheckedAt = started
+                } catch {
+                    failures.append(error.localizedDescription)
+                }
             }
         } catch {
-            failure = error.localizedDescription
+            failures.append(error.localizedDescription)
         }
         if var updated = account(kind) {
             updated.lastSync = now()
-            updated.lastError = failure
+            updated.lastError = failures.isEmpty ? nil : failures.joined(separator: " ")
+            if let recordingsCheckedAt { updated.recordingsCheckedAt = recordingsCheckedAt }
             upsert(updated)
         }
         reloadCache()
@@ -211,7 +245,8 @@ final class ConnectorManager: ObservableObject {
     }
 
     func reloadCache() {
-        upcoming = InterviewMerger.merge(database.loadExternalInterviews(startingAfter: now().addingTimeInterval(-2 * 3600)))
+        upcoming = InterviewMerger.merge(database.loadExternalInterviews(startingAfter: now().addingTimeInterval(-2 * 3600))
+            .filter(isMine))
         recordings = database.loadExternalRecordings()
         onUpcomingChanged?(upcoming)
     }
