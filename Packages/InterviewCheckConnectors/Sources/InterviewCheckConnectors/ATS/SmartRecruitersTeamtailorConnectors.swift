@@ -38,6 +38,7 @@ public struct SmartRecruitersConnector: InterviewSource, JobSource, CandidateSou
             URLQueryItem(name: "status", value: "INTERVIEW"), URLQueryItem(name: "limit", value: "100"),
             URLQueryItem(name: "updatedAfter", value: DateParsing.iso(start.addingTimeInterval(-60 * 86_400))),
         ])["content"].array
+        if candidates.count >= 100 { SyncNotes.cut("candidates in the Interview step", read: 100) }
         var result: [ExternalInterview] = []
         for candidate in candidates.prefix(100) {
             guard let candidateID = candidate["id"].string,

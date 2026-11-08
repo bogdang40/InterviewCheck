@@ -43,6 +43,15 @@ Order suggested by how many customers each reaches and how little setup it needs
 | Merge, Kombo, Unified.to, Apideck | Interviews (not Apideck), job text, résumé | Per-ATS field coverage differs; check the first few interviews against the ATS |
 | MCP (Greenhouse, Ashby, Workable) | Sign-in in the browser; the tools list; interviews read from whichever interview tool the server offers | Tool names and result shapes (vendors say they may change) |
 
+## Known limitation to check
+
+Some sources give interviewers by name only (Workable without a member ID, Zoho Recruit,
+SmartRecruiters, Unified.to, MCP servers). "Only interviews you are on" matches by email,
+so their interviews all count as yours: in a large company Upcoming, reminders and
+automatic Prepare would cover everyone's interviews. On the first sync of such a source,
+check the count. If it is the whole company, set Workable's member ID, or use a calendar
+connection instead for that team.
+
 ## After the first sync
 
 - **Prepare:** candidate, role with the job description and résumé fill in, with no

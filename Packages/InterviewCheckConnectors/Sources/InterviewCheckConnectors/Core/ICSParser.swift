@@ -63,7 +63,8 @@ public enum ICSParser {
             attendees: fields.filter { $0.name == "ATTENDEE" }.map { person(($0.params, $0.value)) },
             isCancelled: cancelled,
             sequence: field("SEQUENCE").flatMap { Int($0.value.trimmingCharacters(in: .whitespaces)) } ?? 0,
-            method: method
+            method: method,
+            isAllDay: field("DTSTART").map { $0.value.count == 8 || $0.params["VALUE"] == "DATE" } ?? false
         )
     }
 

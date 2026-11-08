@@ -71,13 +71,17 @@ public struct GoogleWorkspaceConnector: InterviewSource, RecordingSource {
         let person = { (json: JSONValue) -> ExternalPerson in
             ExternalPerson(name: json["displayName"].string ?? json["email"].string ?? "", email: json["email"].string)
         }
+        // An invitation the user declined is not their interview.
+        let declined = item["attendees"].array.contains { $0["self"].bool == true && $0["responseStatus"].string == "declined" }
         return CalendarEvent(
             id: id, title: item["summary"].string ?? "", startsAt: startsAt,
             endsAt: item.at("end.dateTime").date ?? item.at("end.date").date,
             location: item["location"].string, notes: item["description"].string.map(HTMLText.plain),
             url: video?["uri"].url ?? item["hangoutLink"].url,
             organizer: item["organizer"].isNull ? nil : person(item["organizer"]),
-            attendees: item["attendees"].array.filter { $0["resource"].bool != true }.map(person)
+            attendees: item["attendees"].array.filter { $0["resource"].bool != true }.map(person),
+            isCancelled: declined,
+            isAllDay: item.at("start.dateTime").isNull && !item.at("start.date").isNull
         )
     }
 
@@ -87,6 +91,7 @@ public struct GoogleWorkspaceConnector: InterviewSource, RecordingSource {
         let records = try await meet.getJSON("conferenceRecords", query: [URLQueryItem(name: "filter", value: filter),
                                                                            URLQueryItem(name: "pageSize", value: "50")])
         var result: [ExternalRecording] = []
+        if records["nextPageToken"].string != nil { SyncNotes.cut("Meet conferences", read: records["conferenceRecords"].array.count) }
         for record in records["conferenceRecords"].array {
             guard let name = record["name"].string, let started = record["startTime"].date, record["endTime"].date != nil else { continue }
             let transcripts = try await meet.getJSON("\(name)/transcripts")["transcripts"].array

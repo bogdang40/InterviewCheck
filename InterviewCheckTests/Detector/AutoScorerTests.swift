@@ -87,5 +87,12 @@ final class AutoScorerTests: XCTestCase {
         XCTAssertEqual(manager.recordings.first?.interviewID, report.interview.id)
         await scorer.run()
         XCTAssertEqual(reports.count, 1, "each recording is scored once")
+
+        // A second recording of the same interview (the meeting restarted) is not scored again.
+        var second = try XCTUnwrap(manager.recordings.first?.recording)
+        second.externalID = "m1-part2"
+        database.addExternalRecordings([second])
+        manager.reloadCache()
+        XCTAssertTrue(scorer.pending().isEmpty, "the interview already has a report")
     }
 }

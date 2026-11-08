@@ -41,10 +41,13 @@ public enum MeetingLinks {
 
     public static func platform(of url: URL) -> Platform {
         let host = url.host?.lowercased() ?? ""
-        if host.hasSuffix("zoom.us") || host.hasSuffix("zoomgov.us") { return .zoom }
+        // The domain itself or a subdomain of it: "xzoom.us" is not Zoom.
+        let on = { (domain: String) in host == domain || host.hasSuffix("." + domain) }
+        guard url.scheme?.lowercased() == "https" else { return .other }
+        if on("zoom.us") || on("zoomgov.us") { return .zoom }
         if host == "meet.google.com" { return .googleMeet }
-        if host.hasSuffix("teams.microsoft.com") || host.hasSuffix("teams.live.com") { return .teams }
-        if host.hasSuffix("webex.com") { return .webex }
+        if on("teams.microsoft.com") || on("teams.live.com") { return .teams }
+        if on("webex.com") { return .webex }
         return .other
     }
 }

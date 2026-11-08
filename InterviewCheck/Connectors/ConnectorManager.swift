@@ -261,13 +261,25 @@ final class ConnectorManager: ObservableObject {
         if !accounts.isEmpty { Task { await syncAll() } }
     }
 
-    /// Adds the interviews in a dropped .ics invite.
-    func importInvite(_ url: URL) throws -> [ExternalInterview] {
-        let found = try InviteFileImporter.interviews(from: url)
-        let existing = database.loadExternalInterviews(startingAfter: .distantPast).filter { $0.source == .icsFile }
-        database.replaceExternalInterviews(existing + found, source: .icsFile)
+    /// Adds the interviews in a dropped .ics invite, replacing earlier copies
+    /// of the same invite; a cancellation removes the interview. Returns what
+    /// was added and how many were removed.
+    func importInvite(_ url: URL) throws -> (added: [ExternalInterview], removed: Int) {
+        let cancelled = Set(InviteFileImporter.cancellations(from: url).map(\.id))
+        var existing = database.loadExternalInterviews(startingAfter: .distantPast).filter { $0.source == .icsFile }
+        let before = existing.count
+        existing.removeAll { cancelled.contains($0.externalID) }
+        let removed = before - existing.count
+        let found: [ExternalInterview]
+        do {
+            found = try InviteFileImporter.interviews(from: url)
+        } catch where !cancelled.isEmpty {
+            found = []          // a cancellation only
+        }
+        let ids = Set(found.map(\.externalID))
+        database.replaceExternalInterviews(existing.filter { !ids.contains($0.externalID) } + found, source: .icsFile)
         reloadCache()
-        return found
+        return (found, removed)
     }
 
     func reloadCache() {

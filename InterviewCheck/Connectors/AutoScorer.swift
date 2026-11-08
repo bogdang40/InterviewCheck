@@ -33,11 +33,16 @@ final class AutoScorer {
     /// Recordings worth scoring now: new, recent, matched to an interview.
     func pending() -> [(ExternalRecording, ExternalInterview)] {
         let seen = attempted
+        // An interview already reported on (live, or from another part of the
+        // same meeting) is not scored a second time.
+        var reported = Set(manager.database.loadInterviews(limit: 500).compactMap(\.externalRef))
         return manager.recordings.compactMap { item -> (ExternalRecording, ExternalInterview)? in
             let recording = item.recording
             guard item.interviewID == nil, !seen.contains(recording.id),
                   recording.startedAt > now().addingTimeInterval(-2 * 86_400),
-                  let interview = manager.interview(for: recording), interview.candidate != nil else { return nil }
+                  let interview = manager.interview(for: recording), interview.candidate != nil,
+                  !reported.contains(interview.id) else { return nil }
+            reported.insert(interview.id)
             return (recording, interview)
         }
     }

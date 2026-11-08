@@ -243,11 +243,14 @@ struct ConnectorDetailView: View {
 
     private func importInvites(_ urls: [URL]) {
         var total = 0
+        var removed = 0
         for url in urls {
             let scoped = url.startAccessingSecurityScopedResource()
             defer { if scoped { url.stopAccessingSecurityScopedResource() } }
             do {
-                total += try connectors.importInvite(url).count
+                let result = try connectors.importInvite(url)
+                total += result.added.count
+                removed += result.removed
             } catch {
                 failed = true
                 message = "\(url.lastPathComponent): \(error.localizedDescription)"
@@ -255,7 +258,10 @@ struct ConnectorDetailView: View {
             }
         }
         failed = false
-        message = "Added \(total) interview\(total == 1 ? "" : "s"). They appear under Interview \u{203A} Upcoming."
+        let added = total > 0 ? "Added \(total) interview\(total == 1 ? "" : "s"). They appear under Interview \u{203A} Upcoming." : ""
+        let gone = removed > 0 ? "Removed \(removed) cancelled interview\(removed == 1 ? "" : "s")." : ""
+        message = [added, gone].filter { !$0.isEmpty }.joined(separator: " ").isEmpty
+            ? "Nothing new in that invite." : [added, gone].filter { !$0.isEmpty }.joined(separator: " ")
     }
 
     private func binding(_ key: String) -> Binding<String> {

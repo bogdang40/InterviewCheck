@@ -77,4 +77,15 @@ final class CalendarParsingTests: XCTestCase {
         XCTAssertTrue(InterviewEventClassifier.isInterview(CalendarEvent(id: "3", title: "Sync", startsAt: Date()),
                                                            extraKeywords: ["sync"]))
     }
+
+    func testAllDayCancelledAndLookAlikeLinks() {
+        let allDay = ICSParser.events(in: "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:x\r\nDTSTART;VALUE=DATE:20261110\r\nSUMMARY:Onsite interview - Jane Doe\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n")
+        XCTAssertEqual(allDay.first?.isAllDay, true)
+        XCTAssertFalse(InterviewEventClassifier.isInterview(allDay[0]), "a whole-day block has no time to prepare for")
+        let google = GoogleWorkspaceConnector.calendarEvent(try! JSONValue.parse(Data(#"{"id":"g1","status":"confirmed","summary":"Interview: Jane Doe","start":{"dateTime":"2026-11-10T15:00:00Z"},"attendees":[{"email":"me@acme.com","self":true,"responseStatus":"declined"},{"email":"jane@gmail.com"}]}"#.utf8)))
+        XCTAssertEqual(google?.isCancelled, true, "an invitation the user declined is not their interview")
+        XCTAssertEqual(MeetingLinks.platform(of: URL(string: "https://login.xzoom.us/j/1")!), .other)
+        XCTAssertEqual(MeetingLinks.platform(of: URL(string: "https://acme.zoom.us/j/1")!), .zoom)
+        XCTAssertEqual(MeetingLinks.platform(of: URL(string: "http://acme.zoom.us/j/1")!), .other, "https only")
+    }
 }

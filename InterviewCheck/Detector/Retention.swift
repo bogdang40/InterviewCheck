@@ -12,6 +12,9 @@ enum InterviewRetention {
         guard days > 0, let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: now) else { return 0 }
         // Meeting recordings found by connectors age out with the interviews.
         database.deleteExternalRecordings(startedBefore: cutoff)
+        // The candidate links of the interviews being deleted go with them
+        // (links of interviews prepared but not run yet stay).
+        database.deleteExternalLinks(database.loadInterviews(limit: 100_000).filter { $0.startedAt < cutoff }.compactMap(\.externalRef))
         return database.deleteInterviews(startedBefore: cutoff)
     }
 }

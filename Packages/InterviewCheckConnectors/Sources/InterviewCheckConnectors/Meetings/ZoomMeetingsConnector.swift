@@ -65,6 +65,7 @@ public struct ZoomMeetingsConnector: InterviewSource, RecordingSource {
             URLQueryItem(name: "to", value: day.string(from: Date().addingTimeInterval(86_400))),
             URLQueryItem(name: "page_size", value: "100"),
         ])
+        if let next = page["next_page_token"].string, !next.isEmpty { SyncNotes.cut("recorded meetings", read: page["meetings"].array.count) }
         return page["meetings"].array.compactMap { meeting -> ExternalRecording? in
             guard let uuid = meeting["uuid"].string ?? meeting["id"].string, let started = meeting["start_time"].date,
                   let topic = meeting["topic"].string, looksLikeInterview(topic) else { return nil }

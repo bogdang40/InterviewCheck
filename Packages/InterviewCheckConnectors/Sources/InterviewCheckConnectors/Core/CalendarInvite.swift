@@ -18,6 +18,8 @@ public struct CalendarEvent: Equatable, Sendable {
     public var sequence: Int
     /// The iTIP method of the invite file (REQUEST, CANCEL, REPLY, COUNTER…).
     public var method: String?
+    /// A whole-day event: never taken as an interview (it has no time).
+    public var isAllDay: Bool
 
     /// A version of the event from its organiser, not someone's reply or
     /// proposal: only these replace an earlier version.
@@ -28,7 +30,7 @@ public struct CalendarEvent: Equatable, Sendable {
 
     public init(id: String, title: String, startsAt: Date, endsAt: Date? = nil, location: String? = nil,
                 notes: String? = nil, url: URL? = nil, organizer: ExternalPerson? = nil, attendees: [ExternalPerson] = [],
-                isCancelled: Bool = false, sequence: Int = 0, method: String? = nil) {
+                isCancelled: Bool = false, sequence: Int = 0, method: String? = nil, isAllDay: Bool = false) {
         self.id = id
         self.title = title
         self.startsAt = startsAt
@@ -41,6 +43,7 @@ public struct CalendarEvent: Equatable, Sendable {
         self.isCancelled = isCancelled
         self.sequence = sequence
         self.method = method
+        self.isAllDay = isAllDay
     }
 }
 
@@ -52,6 +55,8 @@ public enum InterviewEventClassifier {
                            "entrevista", "entretien", "vorstellungsgespr\u{00E4}ch", "interviu"]
 
     public static func isInterview(_ event: CalendarEvent, extraKeywords: [String] = []) -> Bool {
+        // Cancelled, declined (marked cancelled by the connectors) or all-day: not an interview.
+        guard !event.isCancelled, !event.isAllDay else { return false }
         let title = event.title.lowercased()
         return (keywords + extraKeywords.map { $0.lowercased() }).contains { !$0.isEmpty && title.contains($0) }
     }

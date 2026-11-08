@@ -167,10 +167,36 @@ final class ConnectorManagerTests: XCTestCase {
         await manager.prepare(manager.upcoming[0], controller: controller, roles: roles)
         XCTAssertEqual(roles.roles.count, 1)
 
+        XCTAssertNotNil(database.loadExternalLink("greenhouse:901"))
         manager.disconnect(.greenhouse)
+        XCTAssertNil(database.loadExternalLink("greenhouse:901"), "the candidate's details go with the connection")
         XCTAssertNil(store.load("greenhouse"))
         XCTAssertTrue(manager.upcoming.isEmpty)
         XCTAssertTrue(manager.accounts.isEmpty)
+    }
+
+    func testADroppedCancellationRemovesTheInterview() throws {
+        let path = NSTemporaryDirectory() + "connectors-\(UUID().uuidString).sqlite"
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let manager = ConnectorManager(store: MemoryCredentialStore(), database: SessionDatabase(databasePath: path),
+                                       defaults: UserDefaults(suiteName: "connectors.\(UUID().uuidString)")!)
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("ics-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let start = ISO8601DateFormatter().string(from: Date().addingTimeInterval(86_400))
+            .replacingOccurrences(of: "-", with: "").replacingOccurrences(of: ":", with: "")
+        let body = { (method: String, sequence: Int) in
+            "BEGIN:VCALENDAR\r\nMETHOD:\(method)\r\nBEGIN:VEVENT\r\nUID:i-42\r\nSEQUENCE:\(sequence)\r\nDTSTART:\(start)\r\nSUMMARY:Interview: Jane Doe\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+        }
+        let invite = folder.appendingPathComponent("invite.ics")
+        try body("REQUEST", 0).write(to: invite, atomically: true, encoding: .utf8)
+        XCTAssertEqual(try manager.importInvite(invite).added.count, 1)
+        XCTAssertEqual(try manager.importInvite(invite).added.count, 1, "the same invite again")
+        XCTAssertEqual(manager.upcoming.count, 1, "replaces, does not duplicate")
+        let cancel = folder.appendingPathComponent("cancel.ics")
+        try body("CANCEL", 1).write(to: cancel, atomically: true, encoding: .utf8)
+        XCTAssertEqual(try manager.importInvite(cancel).removed, 1)
+        XCTAssertTrue(manager.upcoming.isEmpty)
     }
 
     func testFailedSyncIsShownOnTheAccount() async throws {

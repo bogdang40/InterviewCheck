@@ -55,13 +55,23 @@ public struct AppleCalendarConnector: InterviewSource {
             notes: event.notes,
             url: event.url,
             organizer: event.organizer.map(person),
-            attendees: (event.attendees ?? []).map(person)
+            attendees: (event.attendees ?? []).map(person),
+            // Cancelled by the organiser, or declined by this Mac's user.
+            isCancelled: event.status == .canceled
+                || event.attendees?.contains { $0.isCurrentUser && $0.participantStatus == .declined } == true,
+            isAllDay: event.isAllDay
         )
     }
 }
 
 /// Interviews from .ics invite files the interviewer drops in.
 public enum InviteFileImporter {
+    /// The interviews (UIDs) a dropped file cancels, with their revision.
+    public static func cancellations(from url: URL) -> [(id: String, sequence: Int)] {
+        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return [] }
+        return ICSParser.events(in: text).filter { $0.isCancelled && $0.isRevision }.map { ($0.id, $0.sequence) }
+    }
+
     public static func interviews(from url: URL) throws -> [ExternalInterview] {
         guard let text = try? String(contentsOf: url, encoding: .utf8) else {
             throw ConnectorError.invalidResponse("not a readable .ics file")

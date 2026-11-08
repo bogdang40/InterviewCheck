@@ -136,7 +136,9 @@ public struct ZohoRecruitConnector: InterviewSource, JobSource, CandidateSource,
         ])
         // 204 means no matches.
         guard response.statusCode != 204, !data.isEmpty else { return [] }
-        return try JSONValue.parse(data)["data"].array.compactMap { row in
+        let page = try JSONValue.parse(data)
+        if page.at("info.more_records").bool == true { SyncNotes.cut("interviews", read: page["data"].array.count) }
+        return page["data"].array.compactMap { row in
             guard let id = row["id"].string, let startsAt = row["Start_DateTime"].date,
                   (row["Interview_Status"].string ?? "").lowercased() != "cancelled" else { return nil }
             return ExternalInterview(

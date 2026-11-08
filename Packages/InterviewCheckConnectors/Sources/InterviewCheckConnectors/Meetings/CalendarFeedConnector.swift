@@ -54,7 +54,7 @@ public struct CalendarFeedConnector: InterviewSource {
         }
         var seen = Set<String>()
         return found
-            .filter { !$0.isCancelled && $0.startsAt >= start && $0.startsAt <= end && seen.insert($0.id).inserted }
+            .filter { !$0.isCancelled && !$0.isAllDay && $0.startsAt >= start && $0.startsAt <= end && seen.insert($0.id).inserted }
             .filter { everyEvent || InterviewEventClassifier.isInterview($0, extraKeywords: keywords) }
             .map { InterviewEventClassifier.interview(from: $0, source: .icsFeed) }
             .sorted { $0.startsAt < $1.startsAt }

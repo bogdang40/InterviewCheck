@@ -97,10 +97,27 @@ extension SessionDatabase {
         interviewWrite("deleteOldRecordings", "DELETE FROM external_recordings WHERE started_at < ?") { $0.bindMillis(date, at: 1) }
     }
 
-    /// Forgets everything a source brought in (when it is disconnected).
+    /// Forgets everything a source brought in (when it is disconnected),
+    /// including candidate links no report refers to.
     func deleteExternalData(source: ConnectorKind) {
         for table in ["external_interviews", "external_recordings"] {
             interviewWrite("deleteExternal", "DELETE FROM \(table) WHERE source = ?") { $0.bindText(source.rawValue, at: 1) }
+        }
+        interviewWrite("deleteExternalLinks",
+                       "DELETE FROM external_links WHERE ref LIKE ? AND ref NOT IN (SELECT external_ref FROM interviews WHERE external_ref IS NOT NULL)") {
+            $0.bindText("\(source.rawValue):%", at: 1)
+        }
+    }
+
+    /// Candidate links (from Prepare) that no saved interview refers to.
+    func deleteUnusedExternalLinks() {
+        interviewWrite("deleteUnusedLinks",
+                       "DELETE FROM external_links WHERE ref NOT IN (SELECT external_ref FROM interviews WHERE external_ref IS NOT NULL)") { _ in }
+    }
+
+    func deleteExternalLinks(_ refs: [String]) {
+        for ref in Set(refs) {
+            interviewWrite("deleteLink", "DELETE FROM external_links WHERE ref = ?") { $0.bindText(ref, at: 1) }
         }
     }
 }

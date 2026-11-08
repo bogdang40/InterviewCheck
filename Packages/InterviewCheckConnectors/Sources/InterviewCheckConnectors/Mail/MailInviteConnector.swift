@@ -163,7 +163,7 @@ public struct MailInviteConnector: InterviewSource {
         }
 
         return latest.values.map(\.event)
-            .filter { !$0.isCancelled && $0.startsAt >= start && $0.startsAt <= end }
+            .filter { !$0.isCancelled && !$0.isAllDay && $0.startsAt >= start && $0.startsAt <= end }
             .filter { everyInvite || InterviewEventClassifier.isInterview($0, extraKeywords: extraKeywords) }
             .map { InterviewEventClassifier.interview(from: $0, source: .imapMail) }
             .sorted { $0.startsAt < $1.startsAt }

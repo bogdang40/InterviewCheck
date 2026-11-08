@@ -56,7 +56,8 @@ final class MeetingConnectorTests: XCTestCase {
     func testMicrosoftCalendarAndTeamsTranscripts() async throws {
         let stub = StubTransport()
         stub.on("GET", "/me/calendarView", json: #"{"value":[{"id":"AAMk1","subject":"Interview: Jane Doe","start":{"dateTime":"2026-11-10T19:00:00.0000000","timeZone":"UTC"},"end":{"dateTime":"2026-11-10T20:00:00.0000000","timeZone":"UTC"},"organizer":{"emailAddress":{"name":"Me","address":"me@contoso.com"}},"attendees":[{"emailAddress":{"name":"Jane Doe","address":"jane@candidate.dev"}}],"onlineMeeting":{"joinUrl":"https://teams.microsoft.com/l/meetup-join/19%3ameeting_x%40thread.v2/0"},"isCancelled":false}]}"#)
-        stub.on("GET", "/me/onlineMeetings/M1/transcripts", json: #"{"value":[{"id":"T1"}]}"#)
+        // A recurring slot: last week's transcript is on the same meeting and must be left out.
+        stub.on("GET", "/me/onlineMeetings/M1/transcripts", json: #"{"value":[{"id":"T0","createdDateTime":"2026-11-03T19:02:00Z"},{"id":"T1","createdDateTime":"2026-11-10T19:01:30Z"}]}"#)
         stub.on("GET", "/me/onlineMeetings/M1/recordings", json: #"{"value":[]}"#)
         stub.on("GET", "/me/onlineMeetings?", json: #"{"value":[{"id":"M1"}]}"#)
         let connector = try MicrosoftGraphConnector(credentials: ConnectorCredentials(fields: ["transcripts": "true"]),
@@ -67,8 +68,9 @@ final class MeetingConnectorTests: XCTestCase {
         XCTAssertTrue((stub.requests[0].value(forHTTPHeaderField: "Prefer") ?? "").contains("outlook.timezone=\"UTC\""))
 
         let recordings = try await connector.recordings(since: date("2026-11-01T00:00:00Z"))
-        XCTAssertEqual(recordings.first?.files.map(\.kind), [.transcript])
-        XCTAssertTrue(recordings.first!.files[0].url.absoluteString.contains("transcripts/T1/content"))
+        let recording = try XCTUnwrap(recordings.first)
+        XCTAssertEqual(recording.files.map(\.kind), [.transcript], "only this occurrence's transcript")
+        XCTAssertTrue(try XCTUnwrap(recording.files.first).url.absoluteString.contains("transcripts/T1/content"))
         let lookup = try XCTUnwrap(stub.requests(containing: "/me/onlineMeetings?").first?.url?.absoluteString)
         XCTAssertTrue(lookup.contains("JoinWebUrl"))
 
