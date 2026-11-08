@@ -25,6 +25,9 @@ struct RolesView: View {
                     .tag(role.id)
                     .contextMenu {
                         Button("Use for Next Interview") { store.selectedRoleID = role.id }
+                        Button("Duplicate") { selection = store.duplicate(role.id)?.id }
+                        Button("Export\u{2026}") { RoleTransfer.export(role) }
+                        Divider()
                         Button("Delete\u{2026}", role: .destructive) { confirmDelete = role }
                     }
                 }
@@ -56,6 +59,17 @@ struct RolesView: View {
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 Button { newRole() } label: { Label("New Role", systemImage: "plus") }
+                Menu {
+                    Button("Duplicate") { if let id = selection { selection = store.duplicate(id)?.id } }
+                        .disabled(selection == nil)
+                    Button("Export\u{2026}") { if let role = store.role(id: selection) { RoleTransfer.export(role) } }
+                        .disabled(selection == nil)
+                    Divider()
+                    Button("Import Role\u{2026}") { if let role = RoleTransfer.importWithPanel() { selection = role.id } }
+                } label: {
+                    Label("Share", systemImage: "square.and.arrow.up")
+                }
+                .help("Duplicate, export or import a role to share it with other interviewers")
                 Button { if let id = selection { confirmDelete = store.role(id: id) } } label: {
                     Label("Delete Role", systemImage: "trash")
                 }
@@ -67,6 +81,11 @@ struct RolesView: View {
             handleNewRoleRequest()
         }
         .onChange(of: navigation.newRoleRequest) { _, _ in handleNewRoleRequest() }
+        .onChange(of: navigation.roleToShow) { _, id in
+            guard let id else { return }
+            selection = id
+            navigation.roleToShow = nil
+        }
         .confirmationDialog("Delete \u{201C}\(confirmDelete?.displayTitle ?? "")\u{201D}?",
                             isPresented: Binding(get: { confirmDelete != nil }, set: { if !$0 { confirmDelete = nil } })) {
             Button("Delete Role", role: .destructive) {

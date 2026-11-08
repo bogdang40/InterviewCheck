@@ -113,7 +113,7 @@ struct InterviewSetupForm: View {
         }
         .formStyle(.grouped)
         .navigationTitle("New Interview")
-        .fileImporter(isPresented: $isImportingResume, allowedContentTypes: [.pdf, .plainText, .text]) { result in
+        .fileImporter(isPresented: $isImportingResume, allowedContentTypes: DocumentText.contentTypes) { result in
             if case .success(let url) = result { importResume(url) }
         }
     }
@@ -121,10 +121,8 @@ struct InterviewSetupForm: View {
     private func importResume(_ url: URL) {
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-        let ext = url.pathExtension.lowercased()
-        let kind: ModeAttachmentKind = ext == "pdf" ? .pdf : ext == "md" ? .markdown : .text
         do {
-            controller.resumeText = try DefaultModeTextExtractor.shared.extract(from: url, kind: kind).raw
+            controller.resumeText = try DocumentText.read(url)
             controller.resumeFileName = url.lastPathComponent
         } catch {
             controller.errorMessage = "Could not read that file: \(error.localizedDescription)"

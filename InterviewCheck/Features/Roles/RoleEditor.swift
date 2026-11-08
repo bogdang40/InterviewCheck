@@ -9,6 +9,8 @@ struct RoleEditor: View {
     @State private var isDrafting = false
     @State private var draftMessage: String?
     @State private var draftFailed = false
+    @State private var isImportingJD = false
+    @State private var pendingJD: String?
 
     init(role: RoleProfile) {
         _draft = State(initialValue: role)
@@ -30,7 +32,21 @@ struct RoleEditor: View {
                     .font(.body)
                     .frame(minHeight: 180)
                     .scrollContentBackground(.hidden)
+                    .overlay(alignment: .topLeading) {
+                        if draft.jobDescription.isEmpty {
+                            Text("Paste the job posting here, or import a PDF or Word file.")
+                                .foregroundStyle(.tertiary)
+                                .padding(.leading, 5)
+                                .allowsHitTesting(false)
+                        }
+                    }
                 HStack {
+                    Button {
+                        isImportingJD = true
+                    } label: {
+                        Label("Import from File\u{2026}", systemImage: "doc.badge.plus")
+                    }
+                    .help("PDF, Word, RTF or text")
                     Button {
                         Task { await runDraft() }
                     } label: {
@@ -100,6 +116,33 @@ struct RoleEditor: View {
         .formStyle(.grouped)
         .navigationTitle(draft.displayTitle)
         .onChange(of: draft) { _, newValue in scheduleSave(newValue) }
+        .fileImporter(isPresented: $isImportingJD, allowedContentTypes: DocumentText.contentTypes) { result in
+            guard case .success(let url) = result else { return }
+            let scoped = url.startAccessingSecurityScopedResource()
+            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+            do {
+                let text = try DocumentText.read(url)
+                if draft.jobDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    draft.jobDescription = text
+                } else {
+                    pendingJD = text
+                }
+                draftFailed = false
+                draftMessage = nil
+            } catch {
+                draftFailed = true
+                draftMessage = error.localizedDescription
+            }
+        }
+        .confirmationDialog("Replace the job description?",
+                            isPresented: Binding(get: { pendingJD != nil }, set: { if !$0 { pendingJD = nil } })) {
+            Button("Replace") {
+                if let pendingJD { draft.jobDescription = pendingJD }
+                pendingJD = nil
+            }
+        } message: {
+            Text("The text from the file replaces what is there now.")
+        }
         .onDisappear { saveNow() }
     }
 

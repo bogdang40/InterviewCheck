@@ -47,6 +47,14 @@ private struct NewItemCommands: View {
         }
         .keyboardShortcut("n", modifiers: [.command, .shift])
 
+        Button("Import Role\u{2026}") {
+            openWindow(id: AppWindowID.main)
+            if let role = RoleTransfer.importWithPanel() {
+                AppNavigation.shared.show(.roles)
+                AppNavigation.shared.roleToShow = role.id
+            }
+        }
+
         Divider()
         Button("Analyze Recording\u{2026}") {
             openWindow(id: AppWindowID.main)

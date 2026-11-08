@@ -35,6 +35,8 @@ final class AppNavigation: ObservableObject {
     @Published var newRoleRequest: UUID?
     /// Asks the Reports screen to show this interview.
     @Published var reportToShow: String?
+    /// Asks the Roles screen to select this role (after an import).
+    @Published var roleToShow: String?
     /// The interview open in Reports, for File › Print.
     @Published var selectedReportID: String?
 

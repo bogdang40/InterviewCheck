@@ -56,6 +56,18 @@ final class RoleStore: ObservableObject {
         }
     }
 
+    /// A copy of a role under a new id, named "… copy".
+    @discardableResult
+    func duplicate(_ id: String) -> RoleProfile? {
+        guard let original = role(id: id) else { return nil }
+        var copy = original
+        copy.workspaceID = UUID().uuidString
+        copy.name = original.name.isEmpty ? "" : "\(original.name) copy"
+        copy.createdAt = Date()
+        save(copy)
+        return role(id: copy.id)
+    }
+
     func delete(_ id: String) {
         database.deleteRoleProfile(workspaceID: id)
         roles.removeAll { $0.id == id }

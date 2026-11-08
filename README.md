@@ -22,8 +22,9 @@ interviewer to confirm this).
 
 1. **Settings › Keys**: add a Deepgram key (transcription with word timings)
    and a Claude and/or OpenAI key (AI answers, review, drafting).
-2. **Roles**: create a role, paste the job description, press **Draft
-   Questions and Prompts**.
+2. **Roles**: create a role, paste the job description (or import a PDF or
+   Word file), press **Draft Questions and Prompts**. Share a role with other
+   interviewers with **Export…** and **File › Import Role…**.
 3. **Interview**: choose the role, type the candidate's name, optionally add
    their resume, confirm the notice, **Start Interview**.
 4. Press **Question Asked** after each question and **Answer Done** (⇧⌘E)
