@@ -9,7 +9,7 @@ enum SummaryNote {
         let interview = report.interview
         var lines = ["\(AppBrand.name) summary for \(interview.candidateName.isEmpty ? "the candidate" : interview.candidateName)"]
         if let overall = interview.overallPercent {
-            lines.append("AI-assistance signal: \(overall)% overall; \(interview.flaggedCount) of \(interview.questionCount) answers flagged (70% or more).")
+            lines.append("AI-assistance signal: \(overall)% overall; \(InterviewSummary.flaggedLine(interview.flaggedCount, of: interview.questionCount)) (70% or more).")
         }
         for question in report.questions {
             var line = "Q\(question.ordinal). \(question.text.isEmpty ? "(question not captured)" : question.text)"

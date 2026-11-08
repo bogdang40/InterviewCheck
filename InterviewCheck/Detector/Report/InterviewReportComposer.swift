@@ -11,7 +11,7 @@ enum InterviewReportComposer {
         lines.append("- Candidate notified: \(interview.consentConfirmedAt.map { "yes, \(timeFormatter.string(from: $0))" } ?? "not recorded")")
         if let overall = interview.overallPercent {
             lines.append("- Overall: **\(overall)%** (\(ScoreBand(percent: overall).title.lowercased())); " +
-                         "\(interview.flaggedCount) of \(interview.questionCount) answers flagged (70% or more)")
+                         "\(InterviewSummary.flaggedLine(interview.flaggedCount, of: interview.questionCount)) (70% or more)")
         }
         if interview.wasInterrupted {
             lines.append("- Interrupted: the app closed before the interview was ended; the last answer may be cut short.")

@@ -19,7 +19,7 @@ enum ReportAttributedText {
             .filter { !$0.isEmpty }.joined(separator: " \u{00B7} ")
         text.append(line(meta, font: .systemFont(ofSize: 11), color: muted, after: 8))
         if let overall = interview.overallPercent {
-            text.append(line("\(overall)% overall \u{00B7} \(interview.flaggedCount) of \(interview.questionCount) answers flagged",
+            text.append(line("\(InterviewSummary.flaggedLine(interview.flaggedCount, of: interview.questionCount)) \u{00B7} \(overall)% overall",
                              font: .systemFont(ofSize: 14, weight: .semibold), after: 4))
         }
         if interview.scoredFrom == .transcript {

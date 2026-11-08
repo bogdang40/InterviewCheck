@@ -30,6 +30,7 @@ every screen of the installed app and the demo.
 | N7 | **Follow-ups without keys.** "Ask next" questions made from the answer's own terms (those an AI answer also used first) when there is no AI review. | Done |
 | N8 | **The report leads with its payoff.** Question chips that jump to each answer, and "What stood out": every answer at 70%+ with its strongest evidence, in the app, PDF and Markdown. | Done |
 | N9 | **Fixes from an independent design review** (screenshots of every screen). | Done |
+| N10 | **The moment the call ends.** The summary leads with "1 of 3 answers flagged", the chips and what stood out; "1 of 1 answer" everywhere. | Done |
 
 ## Log
 
@@ -51,3 +52,4 @@ every screen of the installed app and the demo.
   - Start Interview was greyed out at the bottom of a long form with no reason given. It now sits in a bottom bar that says what it is waiting for (the consent confirmation) or "Ready: name · role".
   - The notes field was capped at 640 pt and the timing strip had no label. Notes are now full width, the strip is captioned "Timing", and the report runs score, timing, answer, AI answers, then verdict and notes.
   - Settings: the model pickers are aligned. "When I forget the key" is now "when I forget to press Question Asked". The audio rows show their icon on the left and their fix on the right, and the Deepgram row has "Open Keys", which switches to the Keys tab.
+- **N10 done.** The summary after End used to be one big overall %. It now leads with "N of M answers flagged" (red when any), with "63% overall · Some signs of AI help" below and a tooltip. The question chips open the report, and "What stood out" gives up to three flagged answers with their strongest evidence. "Open Report" is the default button. `InterviewSummary.flaggedLine` gives every place the same wording with the right plural ("1 of 1 answer flagged"): rail, report, summary, demo, PDF, Markdown, the "Report ready" notification and the note sent to the ATS. The chips' own count is hidden where the screen already says it. Full suite green (346).

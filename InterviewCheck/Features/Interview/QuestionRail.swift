@@ -8,6 +8,8 @@ struct QuestionRail: View {
     let scores: [String: AnswerScoreRecord]
     let activeID: String?
     let focusedID: String?
+    /// Off where the screen already says how many answers were flagged.
+    var showsSummary = true
     let select: (String) -> Void
 
     private var finals: [AnswerScoreRecord] { questions.compactMap { scores[$0.id] }.filter(\.isFinal) }
@@ -26,10 +28,10 @@ struct QuestionRail: View {
                     withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(last.id, anchor: .trailing) }
                 }
             }
-            if let overall = InterviewSummary.overall(finals) {
+            if showsSummary, let overall = InterviewSummary.overall(finals) {
                 let flagged = finals.filter { $0.percent >= 70 }.count
                 VStack(alignment: .trailing, spacing: 1) {
-                    Text("\(flagged) of \(finals.count) answer\(finals.count == 1 ? "" : "s") flagged")
+                    Text(InterviewSummary.flaggedLine(flagged, of: finals.count))
                         .font(.callout.weight(.semibold))
                         .foregroundStyle(flagged > 0 ? ScoreBand.flagged.color : .primary)
                     Text("\(overall)% overall").font(.caption).monospacedDigit().foregroundStyle(.secondary)

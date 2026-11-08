@@ -76,7 +76,7 @@ final class InterviewReminders: NSObject, UNUserNotificationCenterDelegate {
         let content = UNMutableNotificationContent()
         content.title = "Report ready: \(report.interview.candidateName.isEmpty ? "interview" : report.interview.candidateName)"
         content.body = report.interview.overallPercent.map {
-            "\($0)% overall \u{00B7} \(report.interview.flaggedCount) of \(report.interview.questionCount) answers flagged (70% or more). A signal, not proof."
+            "\($0)% overall \u{00B7} \(InterviewSummary.flaggedLine(report.interview.flaggedCount, of: report.interview.questionCount)) (70% or more). A signal, not proof."
         } ?? "No answers could be scored."
         content.sound = .default
         content.userInfo = ["reportID": report.interview.id]

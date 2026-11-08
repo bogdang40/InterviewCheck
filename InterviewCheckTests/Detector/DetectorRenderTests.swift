@@ -119,6 +119,11 @@ final class DetectorRenderTests: XCTestCase {
         try await RenderHarness.render("native-live-rail", size: CGSize(width: 1000, height: 700), settle: 0.6) {
             native { InterviewLiveScreen(controller: controller, timeline: timeline, showsAudioStatus: false) }
         }
+        controller.end()
+        controller.errorMessage = nil
+        try await RenderHarness.render("native-summary-rail", size: CGSize(width: 900, height: 700), settle: 0.8) {
+            native { InterviewSummaryView(controller: controller) }
+        }
     }
 
     func testRenderSetupAndSummary() async throws {

@@ -200,44 +200,91 @@ struct InterviewLiveScreen: View {
     }
 }
 
-/// After "End": the overall line and what to do next.
+/// After "End": how many answers were flagged, what stood out, and what
+/// to do next.
 struct InterviewSummaryView: View {
     @ObservedObject var controller: InterviewController
+    @State private var report: InterviewReportData?
 
     var body: some View {
         let interview = controller.interview
         let scoring = controller.questions.contains { controller.scores[$0.id]?.isFinal != true && !$0.answerText.isEmpty }
-        VStack(spacing: 16) {
-            Image(systemName: "checkmark.seal").font(.system(size: 44)).foregroundStyle(.secondary)
-            Text("Interview Ended").font(.largeTitle.weight(.semibold))
-            if let percent = interview?.overallPercent {
-                Text("\(percent)%")
-                    .font(.system(size: 48, weight: .semibold, design: .rounded))
-                    .foregroundStyle(ScoreBand(percent: percent).color)
-                Text("\(ScoreBand(percent: percent).title) overall \u{00B7} \(interview?.flaggedCount ?? 0) of \(interview?.questionCount ?? 0) answers flagged")
-                    .foregroundStyle(.secondary)
-            } else {
-                Text("No answers were scored.").foregroundStyle(.secondary)
+        ScrollView {
+            VStack(spacing: 18) {
+                Image(systemName: "checkmark.seal").font(.system(size: 40)).foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+                Text("Interview Ended").font(.title.weight(.semibold))
+                if let interview, let percent = interview.overallPercent {
+                    VStack(spacing: 4) {
+                        Text(InterviewSummary.flaggedLine(interview.flaggedCount, of: interview.questionCount))
+                            .font(.system(size: 30, weight: .semibold, design: .rounded))
+                            .foregroundStyle(interview.flaggedCount > 0 ? ScoreBand.flagged.color : .primary)
+                        Text("\(percent)% overall \u{00B7} \(ScoreBand(percent: percent).title)")
+                            .foregroundStyle(.secondary)
+                            .help(InterviewSummary.overallHelp)
+                    }
+                } else {
+                    Text("No answers were scored.").foregroundStyle(.secondary)
+                }
+                if let report, report.questions.count > 1 {
+                    QuestionRail(questions: report.questions, scores: report.scores, activeID: nil, focusedID: nil,
+                                 showsSummary: false) { _ in
+                        AppNavigation.shared.showReport(interview?.id)
+                    }
+                    .frame(maxWidth: 640)
+                }
+                if let report {
+                    let standouts = ReportStandout.make(report)
+                    if !standouts.isEmpty {
+                        VStack(alignment: .leading, spacing: 10) {
+                            SectionCaption("What stood out")
+                            ForEach(standouts.prefix(3)) { item in
+                                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                                    Text("\(item.score.percent)%").fontWeight(.semibold).monospacedDigit()
+                                        .foregroundStyle(ScoreBand(percent: item.score.percent).color)
+                                        .frame(minWidth: 44, alignment: .leading)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Q\(item.question.ordinal). \(item.question.text)").fontWeight(.medium)
+                                        if let first = item.evidence.first {
+                                            Text(first).font(.callout).foregroundStyle(.secondary)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        .padding(14)
+                        .frame(maxWidth: 640, alignment: .leading)
+                        .background(RoundedRectangle(cornerRadius: 10).fill(Color.secondary.opacity(0.08)))
+                    }
+                }
+                if scoring {
+                    HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Finishing the last scores\u{2026}") }
+                        .foregroundStyle(.secondary)
+                }
+                if let message = controller.errorMessage {
+                    Text(message).foregroundStyle(.orange).multilineTextAlignment(.center)
+                }
+                HStack {
+                    Button("Open Report") { AppNavigation.shared.showReport(interview?.id) }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
+                        .keyboardShortcut(.defaultAction)
+                    Button("New Interview") { controller.reset() }
+                        .controlSize(.large)
+                        .disabled(!controller.pendingScoring.isEmpty)
+                        .help(controller.pendingScoring.isEmpty ? "" : "Available once the last scores are saved")
+                }
             }
-            if scoring {
-                HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Finishing the last scores\u{2026}") }
-                    .foregroundStyle(.secondary)
-            }
-            if let message = controller.errorMessage {
-                Text(message).foregroundStyle(.orange).multilineTextAlignment(.center)
-            }
-            HStack {
-                Button("Open Report") { AppNavigation.shared.showReport(interview?.id) }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-                Button("New Interview") { controller.reset() }
-                    .controlSize(.large)
-                    .disabled(!controller.pendingScoring.isEmpty)
-                    .help(controller.pendingScoring.isEmpty ? "" : "Available once the last scores are saved")
-            }
+            .frame(maxWidth: .infinity)
+            .padding(32)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(32)
         .navigationTitle(interview?.candidateName.isEmpty == false ? interview!.candidateName : "Interview")
+        .onAppear(perform: load)
+        .onChange(of: controller.pendingScoring.isEmpty) { _, _ in load() }
+        .onChange(of: controller.interview?.overallPercent) { _, _ in load() }
+    }
+
+    private func load() {
+        report = controller.interview.flatMap { controller.database.loadInterviewReport(id: $0.id) }
     }
 }

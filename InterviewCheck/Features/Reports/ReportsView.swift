@@ -234,7 +234,8 @@ struct ReportDetail: View {
             VStack(alignment: .leading, spacing: 18) {
                 header
                 if report.questions.count > 1 {
-                    QuestionRail(questions: report.questions, scores: report.scores, activeID: nil, focusedID: nil) { id in
+                    QuestionRail(questions: report.questions, scores: report.scores, activeID: nil, focusedID: nil,
+                                 showsSummary: false) { id in
                         withAnimation(.easeInOut(duration: 0.3)) { proxy.scrollTo(id, anchor: .top) }
                     }
                 }
@@ -357,7 +358,7 @@ struct ReportDetail: View {
                 .foregroundStyle(.secondary)
             if let overall = interview.overallPercent {
                 HStack(spacing: 8) {
-                    Text("\(interview.flaggedCount) of \(interview.questionCount) answers flagged")
+                    Text(InterviewSummary.flaggedLine(interview.flaggedCount, of: interview.questionCount))
                         .fontWeight(.semibold)
                         .foregroundStyle(interview.flaggedCount > 0 ? ScoreBand.flagged.color : .primary)
                     Text("\u{00B7} \(overall)% overall").foregroundStyle(.secondary).monospacedDigit()

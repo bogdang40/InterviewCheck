@@ -180,6 +180,11 @@ extension InterviewController {
 
 /// The interview's overall line.
 enum InterviewSummary {
+    /// "1 of 3 answers flagged", "1 of 1 answer flagged".
+    static func flaggedLine(_ flagged: Int, of total: Int) -> String {
+        "\(flagged) of \(total) answer\(total == 1 ? "" : "s") flagged"
+    }
+
     /// What "overall" means, wherever it is shown.
     static let overallHelp = "The average of the answer scores, weighted by confidence, so a strong signal counts more than a weak one. Look at the flagged answers first."
 
