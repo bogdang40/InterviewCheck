@@ -57,10 +57,12 @@ How it reads:
   message) wins. A cancellation (METHOD:CANCEL or STATUS:CANCELLED) removes the interview.
 - **Résumés from mail:** when you press Prepare and no ATS has the candidate's résumé, the
   mailbox server is searched (last 90 days) for the candidate's name or email. A PDF, Word,
-  RTF or ODT attachment is taken only if its file name has every word of the candidate's
-  full name, or it looks like a CV and the subject has every word of the name. A surname
-  alone or a one-word name never matches. Prepare says which file and sender it used.
-  Automatic Prepare does not use mail résumés (it has nowhere to show that note). Turn it
+  RTF or ODT attachment is taken only if its file name has the candidate's first and last name
+  (or it looks like a CV and the subject has them). A surname
+  alone or a one-word name never matches; titles and middle names are not needed. Prepare
+  says which file and sender it used.
+  Only Prepare and Join in the app and the Shortcuts actions use mail résumés (they show
+  that note); automatic Prepare, the Dock, links and reminders do not. Turn it
   off with "Don't look for résumés in mail".
 - Outlook and Microsoft 365 mailboxes no longer accept app passwords. Use the Microsoft
   365 connector; their invites are already in the Outlook calendar.

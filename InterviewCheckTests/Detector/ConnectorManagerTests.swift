@@ -96,10 +96,16 @@ final class ConnectorManagerTests: XCTestCase {
         try await manager.connect(.imapMail, fields: ["email": "lee@gmail.com", "password": "p"])
         let controller = InterviewController(timeline: InterviewTimeline(), database: database, settings: DetectorSettings(defaults: defaults))
         let notes = await manager.prepare(manager.upcoming[0], controller: controller,
-                                          roles: RoleStore(database: database, defaults: defaults), navigate: false)
+                                          roles: RoleStore(database: database, defaults: defaults), navigate: false, mailResumes: true)
         XCTAssertTrue(controller.resumeText.contains("payments in Go"))
         XCTAssertEqual(controller.resumeFileName, "Jane_Doe_CV.txt")
         XCTAssertTrue(notes.contains { $0.hasPrefix("R\u{00E9}sum\u{00E9} from mail: Jane_Doe_CV.txt (Sam <sam@acme.com>") }, "\(notes)")
+
+        // Callers that do not show notes (Dock, links, reminders) never use mail résumés.
+        let silent = InterviewController(timeline: InterviewTimeline(), database: database, settings: DetectorSettings(defaults: defaults))
+        _ = await manager.prepare(manager.upcoming[0], controller: silent, roles: RoleStore(database: database, defaults: defaults),
+                                  navigate: false)
+        XCTAssertTrue(silent.resumeText.isEmpty)
     }
 
     func testAListCutShortIsNotedOnTheAccountUntilTheNextFullSync() async throws {

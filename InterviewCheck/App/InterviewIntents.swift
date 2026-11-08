@@ -8,7 +8,7 @@ struct PrepareNextInterviewIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
-        .result(dialog: IntentDialog(stringLiteral: await InterviewAutomation.prepareNext()))
+        .result(dialog: IntentDialog(stringLiteral: await InterviewAutomation.prepareNext(mailResumes: true)))
     }
 }
 
@@ -19,7 +19,7 @@ struct JoinNextInterviewIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
-        .result(dialog: IntentDialog(stringLiteral: await InterviewAutomation.joinNext()))
+        .result(dialog: IntentDialog(stringLiteral: await InterviewAutomation.joinNext(mailResumes: true)))
     }
 }
 

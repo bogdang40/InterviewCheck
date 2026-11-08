@@ -129,6 +129,7 @@ final class InterviewController: ObservableObject {
     func reset() {
         guard phase != .live, pendingScoring.isEmpty else { return }
         phase = .setup
+        errorMessage = nil
         interview = nil
         questions = []
         autoMarkedIDs = []

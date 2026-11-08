@@ -12,7 +12,8 @@ extension ConnectorManager {
     /// wait, and only if `canApply` (given the role Prepare chose) agrees.
     @discardableResult
     func prepare(_ interview: ExternalInterview, controller: InterviewController,
-                 roles: RoleStore = .shared, navigate: Bool = true, canApply: ((String?) -> Bool)? = nil) async -> [String] {
+                 roles: RoleStore = .shared, navigate: Bool = true, canApply: ((String?) -> Bool)? = nil,
+                 mailResumes: Bool = false) async -> [String] {
         guard controller.phase != .live else { return ["An interview is live."] }
         guard controller.pendingScoring.isEmpty else {
             let wait = Self.waitForScores
@@ -25,8 +26,10 @@ extension ConnectorManager {
         // Each await is a chance for the interview to start or another Prepare
         // to begin; then this one stops instead of overwriting the setup.
         let stopped = ["Preparation stopped: an interview started or another one is being prepared."]
-        let current = { generation == self.prepareGeneration && controller.phase != .live }
         let original = interview
+        // New Interview meanwhile clears preparedFrom: then this Prepare stops too.
+        let current = { generation == self.prepareGeneration && controller.phase != .live
+            && controller.preparedFrom == original.id }
         let staged = canApply != nil
         controller.reset()
         controller.preparedFrom = original.id
@@ -94,9 +97,9 @@ extension ConnectorManager {
         }
 
         // No résumé from an ATS: one a recruiter emailed (connected mailbox).
-        // Only when the interviewer asked (the "check it" note is shown to them);
-        // an automatic Prepare has nowhere to show it.
-        if resume == nil, !staged, let candidate = interview.candidate,
+        // Only for a caller that shows the "check it" note (the Prepare and
+        // Join buttons, Shortcuts); never automatic, Dock, links or reminders.
+        if resume == nil, mailResumes, !staged, let candidate = interview.candidate,
            let found = await emailedResume(for: candidate, current: current) {
             guard current() else { return stop() }
             resume = (found.text, found.filename)

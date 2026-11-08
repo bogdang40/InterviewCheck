@@ -16,8 +16,8 @@ extension MailInviteConnector: ResumeFinder {
         // safely (printable ASCII only); anything else is not searched for.
         let terms = ([candidate.name] + [candidate.email].compactMap { $0 })
             .filter { $0.count >= 4 }.compactMap { try? IMAPSession.quoted($0) }
-        // Only a full name (two words or more) can be matched to a file.
-        guard !terms.isEmpty, tokens.count >= 2 else { return nil }
+        // Only a full name (first and last) can be matched to a file.
+        guard !terms.isEmpty, tokens.filter({ !ResumeMatching.ignoredNameWords.contains($0) }).count >= 2 else { return nil }
 
         let session = try await signIn()
         defer { session.close() }

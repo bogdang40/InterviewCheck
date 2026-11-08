@@ -80,6 +80,9 @@ final class MailResumeTests: XCTestCase {
         XCTAssertEqual(MailInviteConnector.matchStrength(filename: "Jane-Doe.pdf", subject: "", tokens: jane), 2)
         XCTAssertEqual(MailInviteConnector.matchStrength(filename: "DOE_resume_2026.docx", subject: "", tokens: jane), 0,
                        "a surname alone is not enough (Raj Patel's CV is not Priya Patel's)")
+        XCTAssertEqual(MailInviteConnector.matchStrength(filename: "Priya_Patel_CV.pdf", subject: "",
+                                                         tokens: MailInviteConnector.nameTokens("Dr. Priya Ramesh Patel")), 2,
+                       "titles and middle names are not needed")
         XCTAssertEqual(MailInviteConnector.matchStrength(filename: "Jane_CV.pdf", subject: "Jane",
                                                          tokens: MailInviteConnector.nameTokens("Jane")), 0, "a one-word name never matches")
         XCTAssertEqual(MailInviteConnector.matchStrength(filename: "CV.pdf", subject: "Fwd: Jane Doe for Backend", tokens: jane), 1)

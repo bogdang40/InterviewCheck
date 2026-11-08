@@ -203,6 +203,18 @@ final class AutoPrepareTests: XCTestCase {
         XCTAssertEqual(controller.candidateName, "Jane Q. Doe", "the interviewer's correction stays")
     }
 
+    func testNewInterviewDuringAPrepareStopsIt() async throws {
+        source.delay = 300_000_000
+        let a = manager.upcoming[0]
+        let manual = Task { await self.manager.prepare(a, controller: self.controller, roles: self.roles, navigate: false) }
+        try await Task.sleep(nanoseconds: 80_000_000)
+        controller.reset()                                   // New Interview while it downloads
+        let said = await manual.value
+        XCTAssertTrue(said.first?.hasPrefix("Preparation stopped") == true, "\(said)")
+        XCTAssertNil(controller.preparedFrom, "no half-filled setup marked as A's")
+        XCTAssertTrue(controller.candidateName.isEmpty)
+    }
+
     func testARefusalIsSaidOnItsOwn() async {
         controller.pendingScoring = ["q1"]
         let said = await InterviewAutomation.prepare(manager.upcoming[0], manager: manager, controller: controller)

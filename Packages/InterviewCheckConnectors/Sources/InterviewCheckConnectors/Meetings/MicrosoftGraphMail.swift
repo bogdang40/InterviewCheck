@@ -11,7 +11,7 @@ extension MicrosoftGraphConnector: ResumeFinder {
         let terms = [candidate.name, candidate.email].compactMap { $0 }
             .map { $0.replacingOccurrences(of: "\"", with: "") }.filter { $0.count >= 4 }
         // Only a full name (two words or more) can be matched to a file.
-        guard !terms.isEmpty, tokens.count >= 2 else { return nil }
+        guard !terms.isEmpty, tokens.filter({ !ResumeMatching.ignoredNameWords.contains($0) }).count >= 2 else { return nil }
         let api = try await client()
         let since = Date().addingTimeInterval(-90 * 24 * 3600)
         var best: (message: JSONValue, attachment: JSONValue, strength: Int, received: Date)?

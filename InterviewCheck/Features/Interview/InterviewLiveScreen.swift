@@ -218,6 +218,9 @@ struct InterviewSummaryView: View {
                 HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Finishing the last scores\u{2026}") }
                     .foregroundStyle(.secondary)
             }
+            if let message = controller.errorMessage {
+                Text(message).foregroundStyle(.orange).multilineTextAlignment(.center)
+            }
             HStack {
                 Button("Open Report") { AppNavigation.shared.showReport(interview?.id) }
                     .buttonStyle(.borderedProminent)

@@ -126,9 +126,8 @@ final class AutoPrepare {
     }
 
     /// Empty, or still exactly what the last automatic Prepare filled in for
-    /// an interview that is over. An interview about to start, or under way
-    /// while the interviewer waits, is kept until its end (an hour when the
-    /// end is not known), but no later than five minutes before `next`.
+    /// an interview that is over: kept until its end when known; with no end,
+    /// an hour but released 5 minutes before `next`, never in its first 15 minutes.
     func setupIsFree(for next: ExternalInterview) -> Bool {
         guard controller.phase == .setup, controller.pendingScoring.isEmpty, !controller.consentConfirmed else { return false }
         if controller.candidateName.isEmpty, controller.resumeText.isEmpty, controller.externalRef == nil,

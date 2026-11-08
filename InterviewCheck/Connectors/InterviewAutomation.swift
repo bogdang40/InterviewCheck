@@ -12,18 +12,19 @@ enum InterviewAutomation {
 
     /// Prepares the next interview; returns a sentence for the caller to show.
     @discardableResult
-    static func prepareNext(manager: ConnectorManager = .shared, controller: InterviewController = .shared) async -> String {
+    static func prepareNext(manager: ConnectorManager = .shared, controller: InterviewController = .shared,
+                            mailResumes: Bool = false) async -> String {
         guard controller.phase != .live else { return "An interview is live." }
         guard let interview = nextInterview(manager: manager) else {
             return manager.accounts.isEmpty ? "Connect a calendar, mailbox or ATS in Connections first." : "No upcoming interviews."
         }
-        return await prepare(interview, manager: manager, controller: controller)
+        return await prepare(interview, manager: manager, controller: controller, mailResumes: mailResumes)
     }
 
     @discardableResult
     static func prepare(_ interview: ExternalInterview, manager: ConnectorManager = .shared,
-                        controller: InterviewController = .shared) async -> String {
-        let missing = await manager.prepare(interview, controller: controller)
+                        controller: InterviewController = .shared, mailResumes: Bool = false) async -> String {
+        let missing = await manager.prepare(interview, controller: controller, mailResumes: mailResumes)
         // Refused or stopped: say only that, not "Prepared …".
         if let first = missing.first, first == ConnectorManager.waitForScores || first.hasPrefix("Preparation stopped")
             || first == "An interview is live." {
@@ -39,14 +40,15 @@ enum InterviewAutomation {
     @discardableResult
     static func joinNext(manager: ConnectorManager = .shared, controller: InterviewController = .shared,
                          open: (URL) -> Void = { NSWorkspace.shared.open($0) },
-                         joined: @MainActor (String) -> Void = { AutoPrepare.shared.markJoined($0) }) async -> String {
+                         joined: @MainActor (String) -> Void = { AutoPrepare.shared.markJoined($0) },
+                         mailResumes: Bool = false) async -> String {
         guard controller.phase != .live else { return "An interview is live." }
         guard let interview = nextInterview(manager: manager) else {
             return manager.accounts.isEmpty ? "Connect a calendar, mailbox or ATS in Connections first." : "No upcoming interviews."
         }
         var said: [String] = []
         if controller.preparedFrom != interview.id || controller.externalRef == nil {
-            said.append(await prepare(interview, manager: manager, controller: controller))
+            said.append(await prepare(interview, manager: manager, controller: controller, mailResumes: mailResumes))
         }
         guard let link = interview.meetingURL else { return (said + ["This interview has no meeting link."]).joined(separator: " ") }
         open(link)

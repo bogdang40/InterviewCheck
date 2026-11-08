@@ -90,7 +90,7 @@ struct UpcomingInterviewsSection: View {
                     guard !ready, preparingID == nil else { return }
                     preparingID = interview.id
                     Task {
-                        notes = await connectors.prepare(interview, controller: controller)
+                        notes = await connectors.prepare(interview, controller: controller, mailResumes: true)
                         preparingID = nil
                     }
                 }
@@ -100,7 +100,7 @@ struct UpcomingInterviewsSection: View {
             Button(preparingID == interview.id ? "Preparing\u{2026}" : "Prepare") {
                 preparingID = interview.id
                 Task {
-                    notes = await connectors.prepare(interview, controller: controller)
+                    notes = await connectors.prepare(interview, controller: controller, mailResumes: true)
                     preparingID = nil
                 }
             }
