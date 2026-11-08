@@ -138,7 +138,11 @@ private struct ConnectorRow: View {
     }
 
     private var status: String {
-        if let account { return account.lastError == nil ? account.label : "Needs attention" }
+        if let account {
+            guard account.lastError == nil else { return "Needs attention" }
+            // A list cut short at a page limit: said here too, not only in the detail.
+            return (account.notes?.isEmpty ?? true) ? account.label : "\(account.label) \u{00B7} some items skipped"
+        }
         if !kind.routedThrough.isEmpty {
             return "Via " + ListFormatter.localizedString(byJoining: kind.routedThrough.map { $0.descriptor.name })
         }
