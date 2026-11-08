@@ -62,7 +62,7 @@ struct KeysSettingsTab: View {
             }
 
             Section("Azure OpenAI (optional)") {
-                TextField("Endpoint", text: $azureEndpoint, prompt: Text("https://your-resource.openai.azure.com"))
+                TextField("Endpoint", text: $azureEndpoint, prompt: Text(verbatim: "https://your-resource.openai.azure.com"))
                     .onSubmit { settings.setAzureEndpoint(azureEndpoint) }
                 TextField("Deployment", text: $azureDeployment, prompt: Text("gpt-4o"))
                     .onSubmit { settings.setAzureDeploymentName(azureDeployment) }

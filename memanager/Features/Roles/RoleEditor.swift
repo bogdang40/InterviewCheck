@@ -51,7 +51,8 @@ struct RoleEditor: View {
             Section {
                 ForEach($draft.plannedQuestions) { $question in
                     VStack(alignment: .leading, spacing: 4) {
-                        TextField("Question", text: $question.text, axis: .vertical)
+                        TextField("Question", text: $question.text, prompt: Text("Type a question"), axis: .vertical)
+                            .labelsHidden()
                         if !question.strongAnswer.isEmpty || question.family != nil {
                             Text([question.family, question.strongAnswer.isEmpty ? nil : "Strong answer: \(question.strongAnswer)"]
                                     .compactMap { $0 }.joined(separator: " \u{00B7} "))

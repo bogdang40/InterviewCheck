@@ -36,6 +36,15 @@ final class AppNavigation: ObservableObject {
     /// Asks the Reports screen to show this interview.
     @Published var reportToShow: String?
 
+    init() {
+        // `-InterviewCheckStartSection roles` opens a section at launch
+        // (used for screenshots and support).
+        if let raw = UserDefaults.standard.string(forKey: "InterviewCheckStartSection"),
+           let item = SidebarItem(rawValue: raw) {
+            selection = item
+        }
+    }
+
     func show(_ item: SidebarItem) { selection = item }
 
     func requestNewRole() {
