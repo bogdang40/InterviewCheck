@@ -67,4 +67,35 @@ final class ReportAutoSaveTests: XCTestCase {
         XCTAssertTrue(files.first?.contains("Max Roe") == true)
         controller.stopTicking()
     }
+
+    func testChangedScoresRewriteTheSameFileAndFailuresAreRetried() throws {
+        let path = NSTemporaryDirectory() + "autosave-\(UUID().uuidString).sqlite"
+        let base = FileManager.default.temporaryDirectory.appendingPathComponent("reports-\(UUID().uuidString)", isDirectory: true)
+        defer {
+            try? FileManager.default.removeItem(atPath: path)
+            try? FileManager.default.removeItem(at: base)
+        }
+        let database = SessionDatabase(databasePath: path)
+        let defaults = UserDefaults(suiteName: "autosave.\(UUID().uuidString)")!
+        let autosave = ReportAutoSave(defaults: defaults, database: database)
+        var record = InterviewRecord(id: "i1", workspaceID: nil, roleTitle: "Backend Engineer", candidateName: "Ana Pop",
+                                     consentConfirmedAt: Date(), startedAt: Date())
+        let report = InterviewReportData(interview: record, questions: [], references: [:], scores: [:])
+
+        // A folder that cannot be written (a file is in the way): not remembered, so tried again.
+        try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+        let blocked = base.appendingPathComponent("blocked")
+        try Data("x".utf8).write(to: blocked)
+        autosave.folder = blocked
+        XCTAssertNil(autosave.save(report))
+        autosave.folder = base.appendingPathComponent("reports")
+        let first = try XCTUnwrap(autosave.save(report), "the failed save is tried again")
+
+        XCTAssertNil(autosave.save(report), "unchanged: not written twice")
+        record.overallPercent = 64
+        let changed = InterviewReportData(interview: record, questions: [], references: [:], scores: [:])
+        let rewritten = try XCTUnwrap(autosave.save(changed), "changed scores: written again")
+        XCTAssertEqual(rewritten, first, "in place, not a second file")
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: first.deletingLastPathComponent().path).count, 1)
+    }
 }

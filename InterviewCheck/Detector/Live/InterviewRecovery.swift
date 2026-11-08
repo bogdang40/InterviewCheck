@@ -7,9 +7,11 @@ import InterviewCheckKit
 /// as interrupted so the report can say so.
 enum InterviewRecovery {
     @discardableResult
-    static func finishUnended(database: SessionDatabase, weights: CheatScoreWeights) -> Int {
+    static func finishUnended(database: SessionDatabase, weights: CheatScoreWeights,
+                              finished: @escaping @Sendable ([String]) -> Void = { _ in }) -> Int {
         let ids = database.unendedInterviewIDs()
         ids.forEach { finish($0, database: database, weights: weights) }
+        if !ids.isEmpty { finished(ids) }
         return ids.count
     }
 

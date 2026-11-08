@@ -25,7 +25,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.global(qos: .utility).async {
             SessionDatabase.shared.warmUp()
             InterviewRetention.apply(days: retentionDays, database: .shared)
-            InterviewRecovery.finishUnended(database: .shared, weights: weights)
+            // Interviews a quit or crash left open get their report PDF too.
+            InterviewRecovery.finishUnended(database: .shared, weights: weights) { ids in
+                Task { @MainActor in ids.forEach { ReportAutoSave.shared.save(id: $0) } }
+            }
         }
         accessController.startPeriodicVerification()
         // Connected ATS, calendars and meeting tools sync now and every 15

@@ -16,7 +16,9 @@ final class ReportAutoSave {
 
     private let defaults: UserDefaults
     private let database: SessionDatabase
-    private var saved: Set<String> = []
+    /// Each saved report's file and the scores it showed: a report whose
+    /// scores change later (Save and Regenerate) is written again in place.
+    private var saved: [String: (url: URL, scores: String)] = [:]
     private var watching: AnyCancellable?
     /// The last file written or the last failure, for Settings.
     private(set) var lastResult: String?
@@ -26,38 +28,52 @@ final class ReportAutoSave {
         self.database = database
     }
 
-    /// Saves each live interview once it has ended and every score is final.
+    /// Saves each live interview once it has ended, every score is final and
+    /// no AI answers are still being generated; again if its scores change.
     func watch(_ controller: InterviewController) {
-        watching = controller.$phase.combineLatest(controller.$pendingScoring)
+        watching = controller.$phase.combineLatest(controller.$pendingScoring, controller.$referencesInFlight)
             .receive(on: DispatchQueue.main)
-            .sink { [weak self, weak controller] phase, pending in
-                guard let self, let controller, phase == .ended, pending.isEmpty, let id = controller.interview?.id else { return }
+            .sink { [weak self, weak controller] phase, pending, inFlight in
+                guard let self, let controller, phase == .ended, pending.isEmpty, inFlight.isEmpty,
+                      let id = controller.interview?.id else { return }
                 self.save(id: id)
             }
     }
 
-    /// Saves the stored report of this interview, once.
+    /// Saves the stored report of this interview (again only if its scores changed).
     @discardableResult
     func save(id: String) -> URL? {
-        guard folder != nil, !saved.contains(id), let report = database.loadInterviewReport(id: id) else { return nil }
+        guard folder != nil, let report = database.loadInterviewReport(id: id) else { return nil }
         return save(report)
     }
 
     @discardableResult
     func save(_ report: InterviewReportData) -> URL? {
-        guard let folder, !saved.contains(report.interview.id) else { return nil }
-        saved.insert(report.interview.id)
+        guard let folder else { return nil }
+        let id = report.interview.id
+        let scores = Self.scoreLine(report)
+        if let previous = saved[id], previous.scores == scores { return nil }
         guard let data = PaginatedPDF.data(ReportAttributedText.make(report)) else { return nil }
         do {
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            let url = Self.uniqueURL(in: folder, name: Self.fileName(report))
+            let url = saved[id].map(\.url) ?? Self.uniqueURL(in: folder, name: Self.fileName(report))
             try data.write(to: url, options: .atomic)
+            // Remembered only once written, so a failed save is tried again.
+            saved[id] = (url, scores)
             lastResult = "Saved \(url.lastPathComponent)"
             return url
         } catch {
             lastResult = "Could not save to \(folder.path): \(error.localizedDescription)"
             return nil
         }
+    }
+
+    /// The scores a report shows, to notice when they change.
+    static func scoreLine(_ report: InterviewReportData) -> String {
+        report.questions.map { question in
+            let score = report.scores[question.id]
+            return "\(question.id):\(score.map { "\($0.percent)\($0.isFinal ? "f" : "")" } ?? "-")"
+        }.joined(separator: "|") + "|\(report.interview.overallPercent.map(String.init) ?? "-")"
     }
 
     /// "2026-11-08 10.15 Jane Doe - Backend Engineer.pdf"
