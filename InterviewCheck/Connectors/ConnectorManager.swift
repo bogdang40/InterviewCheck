@@ -82,14 +82,16 @@ final class ConnectorManager: ObservableObject {
     }
 
     /// Browser sign-in for OAuth connectors (Google, Microsoft, Zoom).
-    func signIn(_ kind: ConnectorKind, fields: [String: String]) async throws {
-        guard case .oauth(var provider, _) = kind.descriptor.auth else { return }
-        let clientID = fields["clientID"]?.trimmingCharacters(in: .whitespaces) ?? ""
+    func signIn(_ kind: ConnectorKind, fields typed: [String: String]) async throws {
+        guard case .oauth = kind.descriptor.auth else { return }
+        let clientID = typed["clientID"]?.trimmingCharacters(in: .whitespaces) ?? ""
         guard !clientID.isEmpty else { throw ConnectorError.missingCredential("client ID") }
-        if kind == .microsoft365 { provider = MicrosoftConnectorProvider.provider(ConnectorCredentials(fields: fields)) }
+        // Some vendors need a lookup first (Bullhorn's data center).
+        let fields = try await ConnectorOAuth.prepareSignIn(kind, fields: typed, transport: transport)
+        guard let provider = ConnectorOAuth.provider(kind, ConnectorCredentials(fields: fields)) else { return }
         let client = OAuthClient(provider: provider, clientID: clientID, clientSecret: fields["clientSecret"], transport: transport)
-        // Webex matches the redirect exactly, port included.
-        let receiver = try LoopbackReceiver(port: kind == .webex ? WebexConnectorProvider.redirectPort : 0)
+        // Webex, Bullhorn and JobAdder match the redirect exactly, port included.
+        let receiver = try LoopbackReceiver(port: ConnectorOAuth.redirectPort(kind))
         defer { receiver.stop() }
         let redirect = try await receiver.start(host: kind == .microsoft365 ? "localhost" : "127.0.0.1")
         let verifier = PKCE.verifier()
@@ -145,7 +147,7 @@ final class ConnectorManager: ObservableObject {
         var tokenProvider: AccessTokenProvider?
         var oauthProvider: OAuthProvider?
         switch kind.descriptor.auth {
-        case .oauth(let provider, _): oauthProvider = kind == .microsoft365 ? MicrosoftConnectorProvider.provider(credentials) : provider
+        case .oauth: oauthProvider = ConnectorOAuth.provider(kind, credentials)
         case .mcp: oauthProvider = Self.mcpProvider(credentials)
         default: break
         }

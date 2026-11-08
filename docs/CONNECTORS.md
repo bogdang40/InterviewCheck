@@ -141,6 +141,15 @@ Notes:
 | JazzHR | from calendar | ✓ | ✓ | ✓ (only you) | API key |
 | Breezy HR | from calendar | ✓ | ✓ | Team note | Personal access token |
 | Personio | from calendar | – | – | – | Client ID + secret (Recruiting read) |
+| Bullhorn (staffing) | ✓ (Interview appointments) | ✓ | ✓ | – (notes cannot be private) | API key from Bullhorn Support + API user name; browser sign-in |
+| JobAdder (staffing) | ✓ (interviews + scheduler events) | ✓ | ✓ | – (notes cannot be private) | Approved developer app (client ID + secret); browser sign-in |
+
+Bullhorn and JobAdder match the sign-in redirect exactly, so register
+`http://127.0.0.1:53871/callback`; InterviewCheck always listens on that port for them (and
+for Webex). Bullhorn's sign-in host depends on the customer's data center, which is found
+from the API user name before the browser opens; only `*.bullhornstaffing.com` addresses are
+accepted. Bullhorn reads appointments of the type "Interview" unless other types are named.
+JobAdder reads both `/interviews` and the newer scheduler's `/events`, merged.
 
 "From calendar" means the vendor's API has no interview schedule. The interview
 comes from the interviewer's calendar, and the ATS supplies the candidate, job and

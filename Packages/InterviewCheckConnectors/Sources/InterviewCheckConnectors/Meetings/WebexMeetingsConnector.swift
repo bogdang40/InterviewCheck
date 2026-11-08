@@ -5,7 +5,7 @@ import Foundation
 public enum WebexConnectorProvider {
     /// Webex matches redirect URIs exactly, port included, so the sign-in
     /// listens on this fixed port: register http://127.0.0.1:53871/callback.
-    public static let redirectPort: UInt16 = 53_871
+    public static let redirectPort: UInt16 = ConnectorOAuth.fixedRedirectPort
     public static let provider = OAuthProvider(
         authorizeURL: URL(string: "https://webexapis.com/v1/authorize")!,
         tokenURL: URL(string: "https://webexapis.com/v1/access_token")!,

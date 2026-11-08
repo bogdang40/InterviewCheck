@@ -45,3 +45,39 @@ public enum ZoomConnectorProvider {
         basicAuthOnTokenCall: true
     )
 }
+
+/// Where each OAuth connector signs in, from its saved settings.
+public enum ConnectorOAuth {
+    /// Vendors that match redirect URIs exactly, port included, get this port:
+    /// http://127.0.0.1:53871/callback.
+    public static let fixedRedirectPort: UInt16 = 53_871
+
+    public static func provider(_ kind: ConnectorKind, _ credentials: ConnectorCredentials) -> OAuthProvider? {
+        switch kind {
+        case .microsoft365: return MicrosoftConnectorProvider.provider(credentials)
+        case .bullhorn: return BullhornConnectorProvider.provider(credentials)
+        default:
+            if case .oauth(let provider, _) = kind.descriptor.auth { return provider }
+            return nil
+        }
+    }
+
+    /// 0 lets the system pick a port (loopback redirects with any port).
+    public static func redirectPort(_ kind: ConnectorKind) -> UInt16 {
+        [.webex, .bullhorn, .jobAdder].contains(kind) ? fixedRedirectPort : 0
+    }
+
+    /// Settings looked up before the browser opens (Bullhorn's data center).
+    public static func prepareSignIn(_ kind: ConnectorKind, fields: [String: String],
+                                     transport: HTTPTransport) async throws -> [String: String] {
+        guard kind == .bullhorn else { return fields }
+        guard let username = fields["username"]?.trimmingCharacters(in: .whitespaces), !username.isEmpty else {
+            throw ConnectorError.missingCredential("API user name")
+        }
+        let located = try await BullhornConnectorProvider.locate(username: username, transport: transport)
+        var updated = fields
+        updated["oauthURL"] = located.oauthURL
+        updated["restURL"] = located.restURL
+        return updated
+    }
+}

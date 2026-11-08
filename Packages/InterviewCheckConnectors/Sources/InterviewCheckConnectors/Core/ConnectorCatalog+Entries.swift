@@ -71,6 +71,24 @@ public enum ConnectorCatalog {
                          ]), [.upcomingInterviews, .recordings, .transcripts],
                          setup: "On developer.webex.com open My Webex Apps \u{203A} Create a New App \u{203A} Integration. Add the redirect URI http://127.0.0.1:53871/callback and the scopes spark:people_read, meeting:schedules_read, meeting:transcripts_read and meeting:recordings_read. Paste the client ID and secret, then Sign In. Transcripts need Webex Assistant turned on in the meeting; recordings need cloud recording.",
                          docs: "https://developer.webex.com/docs/meetings")
+        case .bullhorn:
+            return entry(kind, "Bullhorn", .ats, "Interview appointments for staffing agencies, with the candidate, job order and r\u{00E9}sum\u{00E9}. Read-only: Bullhorn notes cannot be private, so no summary is sent back.",
+                         .oauth(BullhornConnectorProvider.provider(ConnectorCredentials(fields: [:])), clientFields: [
+                             CredentialField("username", "API user name", placeholder: "The Bullhorn user the key belongs to"),
+                             CredentialField("clientID", "Client ID"),
+                             CredentialField("clientSecret", "Client secret", secret: true),
+                             CredentialField("types", "Interview appointment types", placeholder: "Optional: Interview (default), e.g. Interview, Phone Screen", optional: true),
+                         ]), [.upcomingInterviews, .jobDescriptions, .candidates, .resumes],
+                         setup: "Ask Bullhorn Support for a REST API key (client ID and secret) for your own integration, with the redirect URI http://127.0.0.1:53871/callback. Enter the API user name (it finds your data center), the client ID and secret, then Sign In. Appointments of the Interview type are read; name other types if your agency uses them. Not available on the ATS Growth edition.",
+                         docs: "https://bullhorn.github.io/rest-api-docs/")
+        case .jobAdder:
+            return entry(kind, "JobAdder", .ats, "Interviews (including the newer scheduler\u{2019}s events) with the candidate, job and r\u{00E9}sum\u{00E9}. Read-only: JobAdder notes cannot be private, so no summary is sent back.",
+                         .oauth(JobAdderConnectorProvider.provider, clientFields: [
+                             CredentialField("clientID", "Client ID"),
+                             CredentialField("clientSecret", "Client secret", secret: true),
+                         ]), [.upcomingInterviews, .jobDescriptions, .candidates, .resumes],
+                         setup: "Register an app at developers.jobadder.com with the redirect URI http://127.0.0.1:53871/callback and wait for JobAdder to approve it. Paste the client ID and secret, then Sign In with a JobAdder user.",
+                         docs: "https://api.jobadder.com/v2/docs")
         case .greenhouse:
             return entry(kind, "Greenhouse", .ats, "Scheduled interviews, candidates, r\u{00E9}sum\u{00E9}s, job posts, and private notes.",
                          .fields([CredentialField("clientID", "Client ID"),

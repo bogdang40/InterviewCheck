@@ -114,6 +114,10 @@ tools; pull finished meeting recordings for scoring; optionally post a private n
 - [x] E15 Other calendars for Google (calendar IDs) and Microsoft 365 (calendar names; Calendars.Read.Shared only
       when named): team "Interviews" calendars, deduplicated, unreadable ones noted on the account.
 
+- [x] E16 Staffing ATSs: Bullhorn (Interview appointments, data-center lookup, one REST login per sync, résumé
+      attachments, email lookup) and JobAdder (/interviews + /events merged). Read-only: neither has private notes.
+      Shared ConnectorOAuth picks each vendor's endpoints and the fixed redirect port.
+
 - [x] E10 Beta: mark questions automatically when the interviewer forgets the key (Settings ›
       Detector, off by default; question end + 12-word answer, tagged "Marked automatically").
 
@@ -165,3 +169,4 @@ tools; pull finished meeting recordings for scoring; optionally post a private n
 - 00:34 1be7a1f Sync notes: a list cut at a page limit (any connector) shows "Stopped after N …; some may be missing." on the account, without counting as a failure. 73 connector + 312 app tests.
 - 00:36 528bdbd E14 automatic Prepare before each interview. 318 app tests.
 - 00:44 85c5593 E15 other calendars (Google, Outlook). 75 connector tests.
+- E16 Bullhorn + JobAdder. 81 connector tests.
