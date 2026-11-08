@@ -65,12 +65,13 @@ struct ConnectorDetailView: View {
 
             Section {
                 if let docs = descriptor.docsURL {
-                    Link(descriptor.category == .mcp ? "About \(descriptor.vendorName)'s MCP server" : "\(descriptor.vendorName) API documentation",
-                         destination: docs)
+                    Link(docsLabel, destination: docs)
                 }
                 Text(privacyNote).font(.caption).foregroundStyle(.secondary)
                 if descriptor.isUntestedAgainstLiveAccount {
-                    Text("Beta: built from \(descriptor.vendorName)'s published documentation. Check that the first sync's interviews look right.")
+                    Text(descriptor.category == .mail
+                         ? "Beta: built on the IMAP mail standard. Check that the first sync's interviews look right."
+                         : "Beta: built from \(descriptor.vendorName)'s published documentation. Check that the first sync's interviews look right.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
@@ -255,9 +256,19 @@ struct ConnectorDetailView: View {
         Binding(get: { fields[key] ?? "" }, set: { fields[key] = $0 })
     }
 
+    private var docsLabel: String {
+        switch descriptor.category {
+        case .mcp: return "About \(descriptor.vendorName)'s MCP server"
+        case .mail: return "How to make a Gmail app password"
+        default: return "\(descriptor.vendorName) API documentation"
+        }
+    }
+
     private var privacyNote: String {
         switch descriptor.auth {
         case .system: return "Read on this Mac only."
+        case .fields where descriptor.category == .mail:
+            return "The app password is kept in the macOS Keychain. Invites are read from your mailbox and kept on this Mac."
         default: return "The key or sign-in is kept in the macOS Keychain. Interview data is read from \(descriptor.vendorName) and kept on this Mac."
         }
     }

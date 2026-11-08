@@ -12,6 +12,19 @@ public enum ConnectorCatalog {
         case .icsFile:
             return entry(kind, "Invite files (.ics)", .calendar, "Drop an interview invite from any email into the app.",
                          .system, [.upcomingInterviews, .emailInvites], setup: "Drag a .ics invite onto the Interview screen, or use File \u{203A} Import Invite.", tested: true)
+        case .imapMail:
+            return entry(kind, "Mail (IMAP)", .mail, "Interview invites from any mailbox: Gmail, iCloud, Yahoo, Fastmail, Zoho or your company\u{2019}s mail server. Updates and cancellations are followed.",
+                         .fields([
+                             CredentialField("email", "Email address", placeholder: "you@company.com"),
+                             CredentialField("password", "App password", placeholder: "An app password, not your normal password", secret: true),
+                             CredentialField("host", "IMAP server", placeholder: "Filled in for Gmail, iCloud, Yahoo, Fastmail; otherwise imap.example.com", optional: true),
+                             CredentialField("folder", "Folder", placeholder: "INBOX, or [Gmail]/All Mail, or a folder kept for interviews", optional: true),
+                             keywords,
+                             CredentialField("everyInvite", "Every invite in this folder is an interview", toggle: true),
+                         ]),
+                         [.upcomingInterviews, .emailInvites],
+                         setup: "Make an app password for InterviewCheck: Google Account \u{203A} Security \u{203A} App passwords (needs 2-Step Verification); Apple Account \u{203A} Sign-In and Security \u{203A} App-Specific Passwords; Yahoo \u{203A} Account security \u{203A} App passwords; Fastmail \u{203A} Settings \u{203A} Privacy & Security \u{203A} App passwords. The mailbox is only read: nothing is sent, moved or marked as read. For Outlook and Microsoft 365 mailboxes use the Microsoft 365 connector (their invites are already in Outlook\u{2019}s calendar).",
+                         docs: "https://support.google.com/accounts/answer/185833")
         case .google:
             return entry(kind, "Google Workspace", .calendar, "Interviews from Google Calendar (including invites from Gmail) and Google Meet transcripts with speakers and timing.",
                          .oauth(GoogleConnectorProvider.provider, clientFields: oauthClient + [keywords]), [.upcomingInterviews, .transcripts],

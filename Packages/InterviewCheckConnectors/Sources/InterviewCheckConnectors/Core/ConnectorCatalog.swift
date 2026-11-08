@@ -2,13 +2,14 @@ import Foundation
 
 public enum ConnectorCategory: String, Codable, CaseIterable, Sendable {
     // In the order the Connections list shows them: no-setup sources first.
-    case calendar, meetings, ats, mcp, unified
+    case calendar, mail, meetings, ats, mcp, unified
 
     public var title: String {
         switch self {
         case .ats: return "Applicant tracking"
         case .unified: return "Unified HR APIs (Workday, iCIMS, SuccessFactors and more)"
         case .calendar: return "Calendars"
+        case .mail: return "Mail"
         case .meetings: return "Meeting recordings"
         case .mcp: return "MCP servers"
         }
@@ -16,7 +17,7 @@ public enum ConnectorCategory: String, Codable, CaseIterable, Sendable {
 }
 
 public enum ConnectorKind: String, Codable, CaseIterable, Identifiable, Sendable {
-    case appleCalendar, icsFile
+    case appleCalendar, icsFile, imapMail
     case google, microsoft365, zoom
     case greenhouse, lever, ashby, workable, smartRecruiters, bambooHR, teamtailor, recruitee, jazzHR, breezyHR
     case personio, zohoRecruit, workday, icims

@@ -24,6 +24,7 @@ public enum InterviewMerger {
             case .ats, .unified, .mcp: return 0
             case .meetings: return 1
             case .calendar: return 2
+            case .mail: return 3
             }
         }
         return order(a) != order(b) ? order(a) < order(b) : a.startsAt < b.startsAt

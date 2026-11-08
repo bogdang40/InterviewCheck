@@ -9,7 +9,7 @@ public enum ConnectorFactory {
                                                                         "accountToken": "x", "integrationID": "x", "url": "https://x",
                                                                         "clientID": "x", "clientSecret": "x", "domain": "zoho.com",
                                                                         "email": "x", "password": "x", "appID": "x", "refreshToken": "x",
-                                                                        "consumerID": "x", "connectionID": "x"]),
+                                                                        "consumerID": "x", "connectionID": "x", "host": "x"]),
                            accessToken: { "x" })) != nil
         })
     }()
@@ -21,6 +21,8 @@ public enum ConnectorFactory {
         case .appleCalendar:
             return AppleCalendarConnector(extraKeywords: credentials["keywords"]?
                 .split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) } ?? [])
+        case .imapMail:
+            return try MailInviteConnector(credentials: credentials)
         default:
             if let connector = try makeHTTP(kind, credentials: credentials, transport: transport, accessToken: accessToken) {
                 return connector

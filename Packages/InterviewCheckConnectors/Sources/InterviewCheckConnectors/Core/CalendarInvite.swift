@@ -12,9 +12,14 @@ public struct CalendarEvent: Equatable, Sendable {
     public var url: URL?
     public var organizer: ExternalPerson?
     public var attendees: [ExternalPerson]
+    /// The invite cancels the event (METHOD:CANCEL or STATUS:CANCELLED).
+    public var isCancelled: Bool
+    /// The invite's revision (SEQUENCE): a later update has a higher number.
+    public var sequence: Int
 
     public init(id: String, title: String, startsAt: Date, endsAt: Date? = nil, location: String? = nil,
-                notes: String? = nil, url: URL? = nil, organizer: ExternalPerson? = nil, attendees: [ExternalPerson] = []) {
+                notes: String? = nil, url: URL? = nil, organizer: ExternalPerson? = nil, attendees: [ExternalPerson] = [],
+                isCancelled: Bool = false, sequence: Int = 0) {
         self.id = id
         self.title = title
         self.startsAt = startsAt
@@ -24,6 +29,8 @@ public struct CalendarEvent: Equatable, Sendable {
         self.url = url
         self.organizer = organizer
         self.attendees = attendees
+        self.isCancelled = isCancelled
+        self.sequence = sequence
     }
 }
 

@@ -78,7 +78,7 @@ extension ConnectorManager {
     /// the connected ATS sees it (candidate, job, application), found by the
     /// candidate's email. Unchanged when nothing matches.
     func enriched(_ interview: ExternalInterview) async -> ExternalInterview {
-        guard [.calendar, .meetings].contains(interview.source.descriptor.category),
+        guard [.calendar, .mail, .meetings].contains(interview.source.descriptor.category),
               let email = interview.candidate?.email else { return interview }
         for account in accounts where [.ats, .unified].contains(account.kind.descriptor.category) {
             guard let lookup = try? makeConnector(account.kind) as? CandidateLookup,

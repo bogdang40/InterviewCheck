@@ -29,6 +29,34 @@ Interviews from an ATS or unified API show only when **you** are one of the
 interviewers. Your email comes from a connected Google, Microsoft 365 or Zoom
 account, or from the "Your work email" field at the top of Connections.
 
+## Mail (any mailbox, over IMAP)
+
+**Mail (IMAP)** reads interview invites straight from a mailbox: Gmail, iCloud, Yahoo,
+AOL, Fastmail, Zoho, GMX, or a company mail server. It is useful when invites are not
+accepted into a calendar, or when a shared mailbox such as interviews@ receives them.
+
+1. Make an app password for InterviewCheck:
+   - Gmail: Google Account › Security › App passwords (needs 2-Step Verification).
+   - iCloud: Apple Account › Sign-In and Security › App-Specific Passwords.
+   - Yahoo: Account security › App passwords. Fastmail: Settings › Privacy & Security › App passwords.
+2. In Connections › Mail (IMAP), enter the address and the app password. The server is
+   filled in for the big providers; for others type it (`imap.example.com`, or `host:port`).
+3. Optionally pick a folder (`[Gmail]/All Mail` finds archived invites too), add title
+   words, or turn on **Every invite in this folder is an interview** for a mailbox kept
+   only for interviews.
+
+How it reads:
+- The mailbox is only read: it is opened with EXAMINE, and parts are fetched with
+  BODY.PEEK, so nothing is marked as read, moved or sent.
+- Only the calendar parts (text/calendar, application/ics or *.ics) of messages from the
+  last 60 days are downloaded, up to the newest 500 messages and 150 invites per sync.
+- When an invite is updated, the version with the highest SEQUENCE (then the newest
+  message) wins. A cancellation (METHOD:CANCEL or STATUS:CANCELLED) removes the interview.
+- Outlook and Microsoft 365 mailboxes no longer accept app passwords. Use the Microsoft
+  365 connector; their invites are already in the Outlook calendar.
+- Proton Mail works through Proton Mail Bridge on the Mac (`127.0.0.1:1143` is not TLS,
+  so it is not supported yet).
+
 ## Calendars and meeting tools (browser sign-in)
 
 Each company registers its own OAuth app once and pastes the client ID. Each

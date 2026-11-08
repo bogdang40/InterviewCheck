@@ -10,11 +10,16 @@ public enum ICSParser {
             .replacingOccurrences(of: "\n\t", with: "")
         var events: [CalendarEvent] = []
         var current: [(name: String, params: [String: String], value: String)]?
+        var cancelsAll = false
         for line in unfolded.components(separatedBy: "\n") {
             if line == "BEGIN:VEVENT" { current = []; continue }
             if line == "END:VEVENT" {
                 if let fields = current, let event = event(from: fields) { events.append(event) }
                 current = nil
+                continue
+            }
+            if current == nil, line.uppercased().hasPrefix("METHOD:") {
+                cancelsAll = line.dropFirst(7).trimmingCharacters(in: .whitespaces).uppercased() == "CANCEL"
                 continue
             }
             guard current != nil, let colon = valueSeparator(in: line) else { continue }
@@ -26,6 +31,7 @@ public enum ICSParser {
             }
             current?.append((head.first?.uppercased() ?? "", params, String(line[line.index(after: colon)...])))
         }
+        if cancelsAll { for index in events.indices { events[index].isCancelled = true } }
         return events
     }
 
@@ -47,7 +53,9 @@ public enum ICSParser {
             notes: field("DESCRIPTION").map { unescape($0.value) },
             url: field("URL").flatMap { URL(string: $0.value) },
             organizer: field("ORGANIZER").map(person),
-            attendees: fields.filter { $0.name == "ATTENDEE" }.map { person(($0.params, $0.value)) }
+            attendees: fields.filter { $0.name == "ATTENDEE" }.map { person(($0.params, $0.value)) },
+            isCancelled: field("STATUS")?.value.uppercased() == "CANCELLED",
+            sequence: field("SEQUENCE").flatMap { Int($0.value.trimmingCharacters(in: .whitespaces)) } ?? 0
         )
     }
 
