@@ -136,14 +136,17 @@ final class AutoPrepare {
     /// an hour but released 5 minutes before `next`, never in its first 15 minutes.
     func setupIsFree(for next: ExternalInterview) -> Bool {
         // A finished interview whose scores are all in is saved: the next may come in.
-        if controller.phase == .ended { return controller.pendingScoring.isEmpty && controller.referencesInFlight.isEmpty }
+        // (Not the interview that just ended, prepared by hand or started early.)
+        if controller.phase == .ended {
+            return controller.pendingScoring.isEmpty && controller.referencesInFlight.isEmpty && !manager.holds(next, in: controller)
+        }
         guard controller.phase == .setup, controller.pendingScoring.isEmpty, !controller.consentConfirmed else { return false }
         if controller.candidateName.isEmpty, controller.resumeText.isEmpty, controller.externalRef == nil,
            controller.preparedFrom == nil { return true }
         guard let lastFill, lastFill == fill, let lastPrepared else { return false }
         // Cancelled or moved since (no longer among the user's interviews): let it go.
-        guard manager.mine.contains(where: { $0.id == lastPrepared.id && $0.startsAt == lastPrepared.startsAt
-            || InterviewMerger.isSame($0, lastPrepared, window: 0) }) else { return true }
+        guard manager.mine.contains(where: { ($0.id == lastPrepared.id || ConnectorManager.sameInterview($0, lastPrepared))
+            && abs($0.startsAt.timeIntervalSince(lastPrepared.startsAt)) < 60 }) else { return true }
         let keepUntil: Date
         if let end = lastPrepared.endsAt {
             // A known end: kept until then, even if the next one overlaps.

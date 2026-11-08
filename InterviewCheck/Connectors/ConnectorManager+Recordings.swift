@@ -8,7 +8,7 @@ extension ConnectorManager {
     /// guess between two different candidates.
     func interview(for recording: ExternalRecording) -> ExternalInterview? {
         let nearby = database.loadExternalInterviews(startingAfter: recording.startedAt.addingTimeInterval(-3 * 3600))
-            .filter { isMine($0) && $0.startsAt < recording.startedAt.addingTimeInterval(3600) }
+            .filter { isMine($0, ignoringShowAll: true) && $0.startsAt < recording.startedAt.addingTimeInterval(3600) }
         let gap = { (interview: ExternalInterview) in abs(interview.startsAt.timeIntervalSince(recording.startedAt)) }
         if let link = recording.meetingURL.map(Self.meetingKey) {
             let sameLink = nearby.filter { $0.meetingURL.map(Self.meetingKey) == link && gap($0) <= 3600 }

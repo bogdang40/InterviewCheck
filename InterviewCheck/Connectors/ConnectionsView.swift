@@ -100,7 +100,7 @@ struct ConnectionsView: View {
                 }
                 .onChange(of: reminderMinutes) { _, minutes in
                     InterviewReminders.minutes = minutes
-                    InterviewReminders.shared.schedule(connectors.upcoming)
+                    InterviewReminders.shared.schedule(connectors.mine)
                 }
             }
             ToolbarItem(placement: .primaryAction) {

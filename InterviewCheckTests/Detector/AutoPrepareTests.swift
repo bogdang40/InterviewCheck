@@ -266,6 +266,36 @@ final class AutoPrepareTests: XCTestCase {
         manager.showsAllInterviews = false
     }
 
+    func testOneMeetingRoomForTwoCandidatesIsTwoInterviews() {
+        let room = URL(string: "https://acme.zoom.us/j/81234567890")
+        let a = ExternalInterview(source: .calendly, externalID: "a", title: "Screen", startsAt: clock, meetingURL: room,
+                                  candidate: ExternalCandidate(name: "Jane Doe", email: "jane@example.com"))
+        var b = a
+        b.externalID = "b"
+        b.startsAt = clock.addingTimeInterval(15 * 60)
+        b.candidate = ExternalCandidate(name: "Max Roe", email: "max@example.com")
+        XCTAssertFalse(ConnectorManager.sameInterview(a, b), "same personal room, different candidates")
+        var copy = a
+        copy.source = .greenhouse
+        copy.meetingURL = nil
+        XCTAssertTrue(ConnectorManager.sameInterview(a, copy), "the ATS copy of the same interview")
+    }
+
+    func testTheInterviewJustRunIsNotPreparedAgain() async throws {
+        controller.startAudio = {}
+        controller.stopAudio = {}
+        controller.roleProvider = { nil }
+        let a = manager.upcoming[0]
+        _ = await manager.prepare(a, controller: controller, roles: roles, navigate: false)   // by hand
+        controller.consentConfirmed = true
+        controller.start()
+        controller.end()                                       // a no-show, ended early
+        controller.stopTicking()
+        let next = await auto.tick()
+        XCTAssertNil(next, "A is not prepared again over its own summary")
+        XCTAssertEqual(controller.phase, .ended)
+    }
+
     func testOffOrWhileEditingRolesNothingHappens() async {
         editingRoles = true
         let whileEditing = await auto.tick()

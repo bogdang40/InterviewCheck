@@ -55,12 +55,14 @@ final class AutoScorer {
         reports.contains { report in
             guard abs(report.startedAt.timeIntervalSince(start)) < 3 * 3600 else { return false }
             guard let ref = report.externalRef else {
-                // Run live without Prepare: the same candidate's name near that time.
+                // Run live without Prepare: the same candidate's name, started
+                // at this meeting's time (not a second round later that day).
                 let name = InterviewMerger.normalized(interview.candidate?.name ?? "")
                 return !name.isEmpty && InterviewMerger.normalized(report.candidateName) == name
+                    && abs(report.startedAt.timeIntervalSince(interview.startsAt)) < 20 * 60
             }
             if ref == interview.id { return true }
-            return manager.database.loadExternalLink(ref).map { InterviewMerger.isSame($0, interview, window: 15 * 60) } ?? false
+            return manager.database.loadExternalLink(ref).map { ConnectorManager.sameInterview($0, interview) } ?? false
         }
     }
 

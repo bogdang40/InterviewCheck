@@ -141,7 +141,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         // The last answers are still being scored: quit once they are saved
         // (and the report PDF written), at most a minute later.
-        guard !controller.pendingScoring.isEmpty || !controller.referencesInFlight.isEmpty else { return .terminateNow }
+        guard !controller.pendingScoring.isEmpty || !controller.referencesInFlight.isEmpty else {
+            // Nothing left to score: write the report PDF now, before the app exits.
+            if controller.phase == .ended, let id = controller.interview?.id { ReportAutoSave.shared.save(id: id) }
+            return .terminateNow
+        }
         Task { @MainActor in
             let deadline = Date().addingTimeInterval(60)
             while !controller.pendingScoring.isEmpty || !controller.referencesInFlight.isEmpty, Date() < deadline {

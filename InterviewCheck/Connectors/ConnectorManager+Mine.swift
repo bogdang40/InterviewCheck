@@ -65,6 +65,17 @@ extension ConnectorManager {
         guard let prepared = controller.preparedFrom, controller.externalRef != nil else { return false }
         if prepared == interview.id { return true }
         guard let ref = controller.externalRef, let saved = database.loadExternalLink(ref) else { return false }
-        return InterviewMerger.isSame(saved, interview, window: 15 * 60)
+        return Self.sameInterview(saved, interview)
+    }
+
+    /// Two copies of one interview: within the merge window and, when both
+    /// name a candidate, the same candidate. A shared meeting room alone is not
+    /// enough (back-to-back screens on one personal Zoom link).
+    static func sameInterview(_ a: ExternalInterview, _ b: ExternalInterview) -> Bool {
+        guard abs(a.startsAt.timeIntervalSince(b.startsAt)) <= 10 * 60 else { return false }
+        if let left = a.candidate?.email?.lowercased(), let right = b.candidate?.email?.lowercased() { return left == right }
+        let left = InterviewMerger.normalized(a.candidate?.name ?? ""), right = InterviewMerger.normalized(b.candidate?.name ?? "")
+        if !left.isEmpty, !right.isEmpty { return left == right }
+        return InterviewMerger.isSame(a, b, window: 10 * 60)
     }
 }
