@@ -126,6 +126,12 @@ final class DetectorRenderTests: XCTestCase {
         }
     }
 
+    func testRenderWelcome() async throws {
+        try await RenderHarness.render("native-welcome", size: CGSize(width: 560, height: 760), settle: 0.4) {
+            native { WelcomeView(onDone: {}) }
+        }
+    }
+
     func testRenderSetupAndSummary() async throws {
         let setup = InterviewController()
         setup.candidateName = "Jordan Rivera"
