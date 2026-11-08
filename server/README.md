@@ -1,7 +1,7 @@
-# memanager access server
+# InterviewCheck access server
 
 Accounts, Stripe subscriptions, entitlements, and the admin API that the
-memanager macOS app talks to. The desktop app cannot hold a Stripe secret
+InterviewCheck macOS app talks to. The desktop app cannot hold a Stripe secret
 or decide its own entitlement, so this small service is the source of truth.
 
 Stack: Node 22, Hono, `node:sqlite` (no native modules), Stripe SDK, zod,
@@ -26,7 +26,7 @@ That is enough to develop the app and to hand out access manually.
 
 ## Stripe setup (once)
 
-1. In the Stripe dashboard create one product ("memanager") with two
+1. In the Stripe dashboard create one product ("InterviewCheck") with two
    recurring prices, monthly and annual. Copy both price ids into
    `STRIPE_PRICE_MONTHLY` and `STRIPE_PRICE_ANNUAL`.
 2. Copy the secret key into `STRIPE_SECRET_KEY`.
@@ -52,16 +52,16 @@ license file:
 ```bash
 npm run owner-license -- keygen
 # paste the printed public key into
-# memanager/Access/Services/OwnerLicensePublicKey.swift, then rebuild
+# InterviewCheck/Access/Services/OwnerLicensePublicKey.swift, then rebuild
 npm run owner-license -- issue --email you@example.com --device auto
 ```
 
-`issue` writes `~/.memanager/owner.license`; the app reads it on every
+`issue` writes `~/.InterviewCheck/owner.license`; the app reads it on every
 access check. `--device auto` reads this Mac's IOPlatformUUID; for another
 Mac pass the identifier the app shows under Advanced on the sign in screen.
 `npm run owner-license -- verify --public-key <base64> --device auto`
 checks a file the way the app will. The private key
-(`~/.memanager/owner-signing.key`) never goes into the repository.
+(`~/.InterviewCheck/owner-signing.key`) never goes into the repository.
 
 ## Admin privileges
 
@@ -120,7 +120,7 @@ All JSON, all under `/v1`. Authenticated routes take `Authorization: Bearer <tok
 | POST | `/billing/checkout` | user | `{plan}` returns `{url}` to open in the browser |
 | POST | `/billing/portal` | user | returns `{url}` for the Stripe Customer Portal |
 | POST | `/billing/webhook` | Stripe signature | applies subscription changes idempotently |
-| GET | `/billing/return` | none | browser landing page that deep links to `memanager://billing/<status>` |
+| GET | `/billing/return` | none | browser landing page that deep links to `InterviewCheck://billing/<status>` |
 | GET | `/admin/stats` | admin | counts |
 | GET | `/admin/users?q=&limit=&cursor=` | admin | paginated users with entitlement |
 | GET | `/admin/users/:id` | admin | one user |

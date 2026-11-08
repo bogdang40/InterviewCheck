@@ -41,7 +41,7 @@ class OwnerLicenseCommand {
     writeFileSync(keyPath, pair.privateKeyPem, { mode: 0o600 });
     chmodSync(keyPath, 0o600);
     console.log(`private key: ${keyPath}`);
-    console.log(`public key (paste into memanager/Access/Services/OwnerLicensePublicKey.swift):`);
+    console.log(`public key (paste into InterviewCheck/Access/Services/OwnerLicensePublicKey.swift):`);
     console.log(pair.publicKeyBase64);
   }
 

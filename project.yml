@@ -1,4 +1,4 @@
-name: memanager
+name: InterviewCheck
 
 options:
   bundleIdPrefix: com.interviewcheck
@@ -9,7 +9,7 @@ options:
 
 settings:
   base:
-    PRODUCT_NAME: memanager
+    PRODUCT_NAME: InterviewCheck
     MARKETING_VERSION: 1.0.0
     CURRENT_PROJECT_VERSION: 1
     SWIFT_VERSION: "5.9"
@@ -17,21 +17,21 @@ settings:
     CODE_SIGN_STYLE: Automatic
     ENABLE_HARDENED_RUNTIME: YES
     CODE_SIGN_IDENTITY: "Apple Development"
-    DEVELOPMENT_TEAM: "$(MEMANAGER_DEVELOPMENT_TEAM)"
+    DEVELOPMENT_TEAM: "$(INTERVIEWCHECK_DEVELOPMENT_TEAM)"
     CLANG_ENABLE_MODULES: YES
 
 targets:
-  memanager:
+  InterviewCheck:
     type: application
     platform: macOS
     sources:
-      - path: memanager
+      - path: InterviewCheck
         excludes:
           - "*.entitlements"
     settings:
       base:
-        INFOPLIST_FILE: memanager/Info.plist
-        CODE_SIGN_ENTITLEMENTS: memanager/memanager.entitlements
+        INFOPLIST_FILE: InterviewCheck/Info.plist
+        CODE_SIGN_ENTITLEMENTS: InterviewCheck/InterviewCheck.entitlements
         LD_RUNPATH_SEARCH_PATHS:
           - "@executable_path/../Frameworks"
         PRODUCT_BUNDLE_IDENTIFIER: com.interviewcheck.app
@@ -43,35 +43,35 @@ targets:
         script: |
           "${SRCROOT}/scripts/verify-entitlements.sh"
     entitlements:
-      path: memanager/memanager.entitlements
+      path: InterviewCheck/InterviewCheck.entitlements
       properties:
         com.apple.security.app-sandbox: false
         com.apple.security.device.audio-input: true
 
-  memanagerTests:
+  InterviewCheckTests:
     type: bundle.unit-test
     platform: macOS
     sources:
-      - path: memanagerTests
+      - path: InterviewCheckTests
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
-        PRODUCT_NAME: memanagerTests
+        PRODUCT_NAME: InterviewCheckTests
         PRODUCT_BUNDLE_IDENTIFIER: com.interviewcheck.tests
     dependencies:
-      - target: memanager
+      - target: InterviewCheck
 
 schemes:
-  memanager:
+  InterviewCheck:
     build:
       targets:
-        memanager: all
+        InterviewCheck: all
     run:
       config: Debug
     test:
       config: Debug
       gatherCoverageData: false
       targets:
-        - memanagerTests
+        - InterviewCheckTests
     archive:
       config: Release

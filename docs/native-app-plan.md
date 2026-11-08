@@ -27,10 +27,10 @@ Status key: [ ] todo · [~] in progress · [x] done (commit)
       an explanation screen; nothing at launch.
 
 ## B. Scalable structure
-- [ ] B1 Rename target/module memanager → InterviewCheck (folders, imports, scripts).
+- [x] B1 Rename target/module InterviewCheck → InterviewCheck (folders, imports, scripts).
 - [ ] B2 `Packages/InterviewCheckKit`: detector core (models, timing, scoring) as a
       Swift package with `swift test` (fast, no app host, no crash dialogs).
-- [ ] B3 Remove candidate-only code: Quick Assist/Solve/Design/ML guide, Practice,
+- [x] B3 Remove candidate-only code: Quick Assist/Solve/Design/ML guide, Practice,
       Knowledge, Modes, teleprompter, coach nudges, voice signature + Eagle SDK,
       overlay window + glass/Metal shaders (drops the Metal toolchain need).
 - [ ] B4 README + ARCHITECTURE docs; one `scripts/ci.sh`.
@@ -55,3 +55,6 @@ Status key: [ ] todo · [~] in progress · [x] done (commit)
 - 21:00 B3 round 2: removed Picovoice Eagle voice ID (Swift code, dylib, model, build steps,
   disable-library-validation), old welcome frames (30 MB), Mermaid bundle. App 49 MB -> 10 MB;
   no network needed to build; 281 tests pass; launches.
+- 21:08 B1: renamed target/module/folders memanager -> InterviewCheck (InterviewCheck/,
+  InterviewCheckTests/, entitlements, scripts, settings keys, queue labels, server names).
+  Old cheating-tool docs removed. 281 tests pass; installed app runs as InterviewCheck.

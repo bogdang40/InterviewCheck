@@ -19,7 +19,7 @@ esac
 echo "=== Staging $BUILD_CONFIGURATION deployment ==="
 DEPLOY_DIR="$(dirname "$DEPLOY_TARGET")"
 mkdir -p "$DEPLOY_DIR"
-DEPLOY_LOCK="$DEPLOY_DIR/.memanager-deployment.lock"
+DEPLOY_LOCK="$DEPLOY_DIR/.interviewcheck-deployment.lock"
 DEPLOY_LOCK_OWNED=0
 STAGING_DIR=""
 PREVIOUS_APP=""
@@ -70,8 +70,8 @@ if ! mkdir "$DEPLOY_LOCK"; then
   exit 1
 fi
 DEPLOY_LOCK_OWNED=1
-STAGING_DIR="$(mktemp -d "$DEPLOY_DIR/.memanager-release.XXXXXX")"
-STAGED_APP="$STAGING_DIR/memanager.app"
+STAGING_DIR="$(mktemp -d "$DEPLOY_DIR/.interviewcheck-release.XXXXXX")"
+STAGED_APP="$STAGING_DIR/InterviewCheck.app"
 PREVIOUS_APP="$STAGING_DIR/previous.app"
 
 ditto "$BUILD_OUTPUT" "$STAGED_APP"

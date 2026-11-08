@@ -1,6 +1,6 @@
 # Accounts, Subscriptions, and Admin
 
-memanager is sold as a subscription. The macOS app cannot hold a Stripe
+InterviewCheck is sold as a subscription. The macOS app cannot hold a Stripe
 secret or decide its own entitlement, so a small server in `server/` is the
 source of truth and the app is a client of it.
 
@@ -56,12 +56,12 @@ owner license is a small signed file bound to one Mac:
 - `server/src/owner/OwnerLicenseSigner.ts` signs `{version, email,
   deviceID, issuedAt, expiresAt, note}` with an Ed25519 private key. The
   key pair is created once with `npm run owner-license -- keygen`; the
-  private key lives in `~/.memanager/owner-signing.key` (mode 600, never
+  private key lives in `~/.InterviewCheck/owner-signing.key` (mode 600, never
   in the repository) and the public key is compiled into the app as
   `OwnerLicensePublicKey.base64`. Regenerating the key invalidates every
   license issued so far.
 - `npm run owner-license -- issue --email you@example.com --device auto`
-  reads this Mac's IOPlatformUUID and writes `~/.memanager/owner.license`.
+  reads this Mac's IOPlatformUUID and writes `~/.InterviewCheck/owner.license`.
   For another Mac, copy the identifier shown under Advanced on the sign in
   screen (or on the Account page) and pass it as `--device`.
 - On the Mac, `OwnerLicenseGate` (file store, `OwnerLicenseVerifier` with
@@ -83,14 +83,14 @@ owner license is a small signed file bound to one Mac:
 1. Paywall calls `POST /v1/billing/checkout {plan}` and opens the returned
    Stripe URL in the browser.
 2. Stripe returns to `/v1/billing/return`, which deep links to
-   `memanager://billing/success` (registered in Info.plist) and tells the
+   `InterviewCheck://billing/success` (registered in Info.plist) and tells the
    user to switch back.
 3. The webhook syncs the subscription; the app polls `/v1/me` every few
    seconds for up to three minutes and unlocks as soon as it is active.
 
 ## Storage on the Mac
 
-- Session token: Keychain, key `memanager.access.sessionToken`.
+- Session token: Keychain, key `InterviewCheck.access.sessionToken`.
 - Last snapshot: UserDefaults JSON with the fetch time, authenticated with
   an HMAC whose key lives in the Keychain, used only for the offline grace
   window the server granted. A clock set back before the fetch time does
@@ -100,7 +100,7 @@ owner license is a small signed file bound to one Mac:
   builds start on `AccessServerAddress.releaseOrigin`, which must be set to
   the deployed origin before shipping, and accept a stored override only
   when it targets loopback. To test a release build against a local server:
-  `defaults write com.memanager.app memanager.accessServerBaseURL http://localhost:8787`.
+  `defaults write com.InterviewCheck.app InterviewCheck.accessServerBaseURL http://localhost:8787`.
   Plain `http` is accepted only for loopback.
 - A bare 401 from a proxy or captive portal never signs the user out; only
   the server's own `session_invalid` or `unauthenticated` codes do.
@@ -123,7 +123,7 @@ guards such as never removing the last admin.
 
 ## Tests on the Mac side
 
-`memanagerTests/Access/` covers the gate policy, deep link parsing, server
+`InterviewCheckTests/Access/` covers the gate policy, deep link parsing, server
 address normalization, the API client against a stub transport, the
 controller's sign in, revoke, offline, sign out, and checkout transitions,
 and the owner license (a fixed vector signed by the Node tool, the file

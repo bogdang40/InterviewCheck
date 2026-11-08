@@ -3,10 +3,10 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-BUILD_OUTPUT="$ROOT_DIR/build/DerivedData/Build/Products/Release/memanager.app"
+BUILD_OUTPUT="$ROOT_DIR/build/DerivedData/Build/Products/Release/InterviewCheck.app"
 DEPLOY_TARGET="$HOME/Applications/InterviewCheck.app"
-DEVELOPMENT_TEAM_ID="${MEMANAGER_DEVELOPMENT_TEAM:-}"
-CODE_SIGN_IDENTITY_VALUE="${MEMANAGER_CODE_SIGN_IDENTITY:-Apple Development}"
+DEVELOPMENT_TEAM_ID="${INTERVIEWCHECK_DEVELOPMENT_TEAM:-}"
+CODE_SIGN_IDENTITY_VALUE="${INTERVIEWCHECK_CODE_SIGN_IDENTITY:-Apple Development}"
 USE_ADHOC_SIGNING=0
 DEPLOY=1
 
@@ -27,7 +27,7 @@ esac
 
 if [ -z "$DEVELOPMENT_TEAM_ID" ]; then
   USE_ADHOC_SIGNING=1
-  echo "WARNING: MEMANAGER_DEVELOPMENT_TEAM is not set. Falling back to ad-hoc signing."
+  echo "WARNING: INTERVIEWCHECK_DEVELOPMENT_TEAM is not set. Falling back to ad-hoc signing."
 fi
 
 cd "$ROOT_DIR"
@@ -44,13 +44,13 @@ echo "=== Verifying entitlements ==="
 
 echo "=== Building Release ==="
 if [ "$USE_ADHOC_SIGNING" -eq 1 ]; then
-  xcodebuild -project memanager.xcodeproj -scheme memanager -configuration Release \
+  xcodebuild -project InterviewCheck.xcodeproj -scheme InterviewCheck -configuration Release \
     -derivedDataPath "$ROOT_DIR/build/DerivedData" \
     CODE_SIGNING_ALLOWED=NO \
     CODE_SIGNING_REQUIRED=NO \
     build
 else
-  xcodebuild -project memanager.xcodeproj -scheme memanager -configuration Release \
+  xcodebuild -project InterviewCheck.xcodeproj -scheme InterviewCheck -configuration Release \
     -derivedDataPath "$ROOT_DIR/build/DerivedData" \
     CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION=YES \
     DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM_ID" \
@@ -64,7 +64,7 @@ if [ "$DEPLOY" -eq 0 ]; then
 fi
 
 /bin/bash "$ROOT_DIR/scripts/deploy-app.sh" "$BUILD_OUTPUT" "$DEPLOY_TARGET" \
-  "$USE_ADHOC_SIGNING" "$ROOT_DIR/memanager/memanager.entitlements" Release
+  "$USE_ADHOC_SIGNING" "$ROOT_DIR/InterviewCheck/InterviewCheck.entitlements" Release
 
 echo ""
 echo "=========================================="

@@ -1,15 +1,15 @@
-# Fly.io deployment for the memanager access server.
+# Fly.io deployment for the InterviewCheck access server.
 # One machine plus a persistent volume is all this service needs.
 #
 #   fly launch --no-deploy --copy-config
-#   fly volumes create memanager_data --size 1
+#   fly volumes create interviewcheck_data --size 1
 #   fly secrets set STRIPE_SECRET_KEY=... STRIPE_WEBHOOK_SECRET=... \
 #       STRIPE_PRICE_MONTHLY=price_... STRIPE_PRICE_ANNUAL=price_... \
 #       ADMIN_EMAILS=you@example.com ADMIN_BOOTSTRAP_SECRET=<random> \
 #       PUBLIC_BASE_URL=https://<app>.fly.dev
 #   fly deploy
 
-app = "memanager-access"
+app = "interviewcheck-access"
 primary_region = "iad"
 
 [build]
@@ -21,7 +21,7 @@ primary_region = "iad"
   TRUST_PROXY = "true"
 
 [[mounts]]
-  source = "memanager_data"
+  source = "interviewcheck_data"
   destination = "/data"
 
 [http_service]

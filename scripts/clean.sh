@@ -31,7 +31,7 @@ echo "Cleaned project build directory"
 # Optionally clean system Xcode DerivedData
 if [[ "${1:-}" == "--all" ]]; then
     echo "Cleaning system Xcode DerivedData..."
-    rm -rf ~/Library/Developer/Xcode/DerivedData/memanager-*/
+    rm -rf ~/Library/Developer/Xcode/DerivedData/InterviewCheck-*/
     echo "Cleaned system DerivedData"
 else
     echo ""

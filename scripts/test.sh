@@ -6,14 +6,14 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 BUILD_DIR="$ROOT_DIR/build"
 DERIVED_DATA_PATH="$BUILD_DIR/DerivedData"
 RESULT_BUNDLE_DIR="$BUILD_DIR/xcresult-export"
-RESULT_BUNDLE_PATH="$RESULT_BUNDLE_DIR/memanager-tests.xcresult"
-DEVELOPMENT_TEAM_ID="${MEMANAGER_DEVELOPMENT_TEAM:-}"
-CODE_SIGN_IDENTITY_VALUE="${MEMANAGER_CODE_SIGN_IDENTITY:-Apple Development}"
+RESULT_BUNDLE_PATH="$RESULT_BUNDLE_DIR/interviewcheck-tests.xcresult"
+DEVELOPMENT_TEAM_ID="${INTERVIEWCHECK_DEVELOPMENT_TEAM:-}"
+CODE_SIGN_IDENTITY_VALUE="${INTERVIEWCHECK_CODE_SIGN_IDENTITY:-Apple Development}"
 USE_ADHOC_SIGNING=0
 
 # Xcode forwards TEST_RUNNER_ variables to the test host before app startup.
 # Explicitly select isolated storage even before XCTest classes are loaded.
-export TEST_RUNNER_MEMANAGER_TEST_PROCESS=1
+export TEST_RUNNER_INTERVIEWCHECK_TEST_PROCESS=1
 
 warn_duplicate_derived_data() {
     shopt -s nullglob
@@ -34,17 +34,17 @@ Usage: ./scripts/test.sh [xcodebuild test options]
 
 Examples:
   ./scripts/test.sh
-  ./scripts/test.sh -only-testing:memanagerTests/SeparateStreamAudioRouterTests
+  ./scripts/test.sh -only-testing:InterviewCheckTests/SeparateStreamAudioRouterTests
 
 This wrapper always reuses build/DerivedData and overwrites
-build/xcresult-export/memanager-tests.xcresult.
+build/xcresult-export/interviewcheck-tests.xcresult.
 EOF
     exit 0
 fi
 
 if [ -z "$DEVELOPMENT_TEAM_ID" ]; then
     USE_ADHOC_SIGNING=1
-    echo "WARNING: MEMANAGER_DEVELOPMENT_TEAM is not set. Falling back to unsigned local test configuration."
+    echo "WARNING: INTERVIEWCHECK_DEVELOPMENT_TEAM is not set. Falling back to unsigned local test configuration."
 fi
 
 mkdir -p "$BUILD_DIR" "$RESULT_BUNDLE_DIR"
@@ -78,7 +78,7 @@ echo "=== Verifying entitlements ==="
 
 echo "=== Running tests ==="
 if [ "$USE_ADHOC_SIGNING" -eq 1 ]; then
-    xcodebuild -project memanager.xcodeproj -scheme memanager \
+    xcodebuild -project InterviewCheck.xcodeproj -scheme InterviewCheck \
         -destination "platform=macOS" \
         -parallel-testing-enabled NO \
         -derivedDataPath "$DERIVED_DATA_PATH" \
@@ -88,7 +88,7 @@ if [ "$USE_ADHOC_SIGNING" -eq 1 ]; then
         test \
         "$@"
 else
-    xcodebuild -project memanager.xcodeproj -scheme memanager \
+    xcodebuild -project InterviewCheck.xcodeproj -scheme InterviewCheck \
         -destination "platform=macOS" \
         -parallel-testing-enabled NO \
         -derivedDataPath "$DERIVED_DATA_PATH" \

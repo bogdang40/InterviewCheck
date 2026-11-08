@@ -3,8 +3,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-SRC_FILE="$ROOT_DIR/memanager/memanager.entitlements.template"
-DST_FILE="$ROOT_DIR/memanager/memanager.entitlements"
+SRC_FILE="$ROOT_DIR/InterviewCheck/InterviewCheck.entitlements.template"
+DST_FILE="$ROOT_DIR/InterviewCheck/InterviewCheck.entitlements"
 
 if [[ ! -f "$SRC_FILE" ]]; then
   echo "ERROR: Entitlements template missing at: $SRC_FILE" >&2

@@ -34,7 +34,7 @@ if name == 'xcodegen':
 elif name == 'xcodebuild':
     derived = pathlib.Path(args[args.index('-derivedDataPath') + 1])
     config = args[args.index('-configuration') + 1]
-    bundle = derived / 'Build' / 'Products' / config / 'memanager.app'
+    bundle = derived / 'Build' / 'Products' / config / 'InterviewCheck.app'
     bundle.mkdir(parents=True)
     (bundle / 'version').write_text(os.environ['DEPLOY_MOCK_VERSION'])
 elif name == 'mktemp':
@@ -61,7 +61,7 @@ elif name == 'python3':
         sys.exit(subprocess.call(['/usr/bin/python3'] + args))
     assert args[0] == '-'
     source, target = map(pathlib.Path, args[1:])
-    is_swap = source.name == 'memanager.app' and source.parent.name.startswith('.memanager-release.')
+    is_swap = source.name == 'InterviewCheck.app' and source.parent.name.startswith('.interviewcheck-release.')
     if is_swap:
         pause('swap')
         if failure in ['collision', 'rename-collision']:
@@ -84,7 +84,7 @@ class Fixture:
         self.root = root / name
         self.root.mkdir()
         self.config = config
-        self.deploy = deploy or self.root / 'deployment' / 'memanager.app'
+        self.deploy = deploy or self.root / 'deployment' / 'InterviewCheck.app'
         self.deploy.parent.mkdir(exist_ok=True)
         if deploy is None and existing:
             self.deploy.mkdir()
@@ -92,7 +92,7 @@ class Fixture:
         self.build = self.root / 'build.app'
         self.build.mkdir()
         (self.build / 'version').write_text(name)
-        self.entitlements = self.root / 'memanager' / 'memanager.entitlements'
+        self.entitlements = self.root / 'InterviewCheck' / 'InterviewCheck.entitlements'
         self.entitlements.parent.mkdir()
         self.entitlements.write_text('mock entitlements')
         self.log = self.root / 'calls.jsonl'
@@ -125,7 +125,7 @@ class Fixture:
             path = scripts / dependency
             path.write_text('#!/bin/bash\nexit 0\n')
             path.chmod(0o755)
-        self.env['MEMANAGER_DEVELOPMENT_TEAM'] = '' if adhoc else 'MOCKTEAM'
+        self.env['INTERVIEWCHECK_DEVELOPMENT_TEAM'] = '' if adhoc else 'MOCKTEAM'
         return ['/bin/bash', str(scripts / name)]
 
     def run(self, failure='', adhoc=1, wrapper=False):
@@ -143,10 +143,10 @@ class Fixture:
         return [json.loads(line) for line in self.log.read_text().splitlines()] if self.log.exists() else []
 
     def staging(self):
-        return list(self.deploy.parent.glob('.memanager-release.*'))
+        return list(self.deploy.parent.glob('.interviewcheck-release.*'))
 
     def lock(self):
-        return self.deploy.parent / '.memanager-deployment.lock'
+        return self.deploy.parent / '.interviewcheck-deployment.lock'
 
 
 def wait_for_marker(fixture, process):
@@ -186,7 +186,7 @@ def check_scenarios(root, mockdir):
         if failure in ['rollback', 'collision', 'rename-collision', 'rollback-collision']:
             if failure != 'rollback':
                 assert (fixture.deploy / 'version').read_text() == 'different', name
-                assert not (fixture.deploy / 'memanager.app').exists(), name
+                assert not (fixture.deploy / 'InterviewCheck.app').exists(), name
                 assert not (fixture.deploy / 'previous.app').exists(), name
             else:
                 assert not fixture.deploy.exists(), name
@@ -237,7 +237,7 @@ def check_contention(root, mockdir, owner_config, rival_config, pause='swap', fa
         assert (process.returncode == 0) == (not failure), output
         assert not owner.lock().exists() and not owner.staging()
         assert (owner.deploy / 'version').read_text() == ('old' if failure else name)
-        assert not (owner.deploy / 'memanager.app').exists()
+        assert not (owner.deploy / 'InterviewCheck.app').exists()
         # The losing caller can retry after the first process releases its lock.
         result = rival.run()
         assert result.returncode == 0, result
@@ -271,7 +271,7 @@ def check_termination(root, mockdir, pause):
 def check_source_size_gate(root, mockdir, config):
     name = config + ' rejects oversized source before building or deploying'
     fixture = Fixture(root, name, mockdir, config=config)
-    source = fixture.root / 'memanager' / 'Oversized.swift'
+    source = fixture.root / 'InterviewCheck' / 'Oversized.swift'
     source.write_text(''.join(f'let value{index} = {index}\n' for index in range(401)))
     result = fixture.run(wrapper=True)
     assert result.returncode != 0 and 'Source files exceed 400 lines' in result.stderr, result
@@ -282,7 +282,7 @@ def check_source_size_gate(root, mockdir, config):
 
 
 def main():
-    with tempfile.TemporaryDirectory(prefix='memanager-deployment-check-') as scratch:
+    with tempfile.TemporaryDirectory(prefix='interviewcheck-deployment-check-') as scratch:
         root = Path(scratch)
         mockdir = root / 'bin'
         mockdir.mkdir()
