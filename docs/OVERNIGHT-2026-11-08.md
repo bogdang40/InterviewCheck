@@ -2,7 +2,7 @@
 
 Everything is committed in the local git repository at `~/InterviewCheck` and nothing
 was pushed or sent anywhere. The installed app (`~/Applications/InterviewCheck.app`) is
-the latest Release build, and `build/InterviewCheck-1.0.0.dmg` (about 8 MB) packages it
+the latest Release build (installed 03:10), and `build/InterviewCheck-1.0.0.dmg` (about 8 MB) packages it
 for another Mac. It is not notarized yet, so macOS warns before opening it there. The full step-by-step log is in [native-app-plan.md](native-app-plan.md).
 
 ## What it is now
@@ -52,7 +52,7 @@ for another Mac. It is not notarized yet, so macOS warns before opening it there
 
 ## Checks
 
-- **Tests:** about 340 app tests, 98 connector tests and 47 core tests. They run on
+- **Tests:** 344 app tests, 98 connector tests and 47 core tests. They run on
   every step through a watchdog that stops at the first crash.
 - **Reviews:** independent reviews of the night's connector and automation code, run
   after each batch. They found real problems, all fixed and tested, including:
@@ -65,7 +65,8 @@ for another Mac. It is not notarized yet, so macOS warns before opening it there
 
   A final review looked at how sync, automatic Prepare, reminders, Join Next,
   auto-scoring and report PDFs work together over a whole day, and its findings were
-  fixed too.
+  fixed too (for example, back-to-back screens in one personal Zoom room are now
+  kept apart as two interviews). Every round of fixes was checked again by a fresh reviewer.
 - **Installed app:** opens its window in about 2 seconds, uses about 113 MB, and sits
   at 0% CPU when idle. No crash reports after the early-evening fixes.
 
