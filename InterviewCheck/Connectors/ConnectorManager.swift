@@ -37,6 +37,8 @@ final class ConnectorManager: ObservableObject {
     private var timer: Timer?
     /// Called with the upcoming list after every change (reminders).
     var onUpcomingChanged: (([ExternalInterview]) -> Void)?
+    /// Called after a sync that may have brought new recordings.
+    var onSynced: (() -> Void)?
     private static let accountsKey = "interviewcheck.connectors.accounts"
     static let syncInterval: TimeInterval = 15 * 60
 
@@ -159,6 +161,7 @@ final class ConnectorManager: ObservableObject {
             upsert(updated)
         }
         reloadCache()
+        onSynced?()
     }
 
     func startAutoSync() {

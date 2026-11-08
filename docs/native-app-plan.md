@@ -83,6 +83,9 @@ tools; pull finished meeting recordings for scoring; optionally post a private n
       dynamic client registration, PKCE, RFC 8707 resource); presets for the official Greenhouse, Ashby
       and Workable MCP servers plus any server; tolerant interview mapper; tools list in Connections.
 
+- [x] E8 Optional automatic scoring of new meeting recordings matched to scheduled interviews
+      (off by default, consent confirmation, each recording tried once, "Report ready" notification).
+
 ## C. Verify every step
 - build; guarded tests; render native screens light/dark; launch the installed app,
   confirm it stays up, no new crash report, window screenshot.
@@ -118,3 +121,4 @@ tools; pull finished meeting recordings for scoring; optionally post a private n
 - 22:23 E6 recordings → analysis, transcript scoring, reminders, Send Summary. 286 app + 31 connector tests.
 - 22:31 E3b remaining ATSs + CandidateLookup enrichment in Prepare. 37 connector tests.
 - 22:36 E7 MCP connectors. 42 connector tests.
+- 22:46 E8 auto-scoring of meeting recordings. 288 app tests.

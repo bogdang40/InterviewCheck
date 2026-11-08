@@ -8,6 +8,8 @@ struct ConnectionsView: View {
     @State private var selection: ConnectorKind? = .appleCalendar
     @State private var search = ""
     @State private var reminderMinutes = InterviewReminders.minutes
+    @State private var autoScore = AutoScorer.shared.isEnabled
+    @State private var confirmAutoScore = false
 
     private func kinds(in category: ConnectorCategory) -> [ConnectorKind] {
         let query = search.trimmingCharacters(in: .whitespaces).lowercased()
@@ -47,9 +49,27 @@ struct ConnectionsView: View {
             }
             .frame(minWidth: 460, maxWidth: .infinity, maxHeight: .infinity)
         }
+        .confirmationDialog("Score new meeting recordings automatically?", isPresented: $confirmAutoScore) {
+            Button("Turn On") {
+                autoScore = true
+                AutoScorer.shared.isEnabled = true
+                Task { await AutoScorer.shared.run() }
+            }
+        } message: {
+            Text("New recordings of scheduled interviews are transcribed and scored in the background with your Deepgram and AI keys, and you get a notification when each report is ready. Only turn this on if candidates are told their interviews are recorded and checked.")
+        }
         .navigationTitle("Connections")
         .navigationSubtitle(connectors.accounts.isEmpty ? "" : "\(connectors.accounts.count) connected")
         .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Toggle(isOn: Binding(get: { autoScore }, set: { on in
+                    if on { confirmAutoScore = true } else { autoScore = false; AutoScorer.shared.isEnabled = false }
+                })) {
+                    Label("Score Recordings Automatically", systemImage: "wand.and.stars")
+                }
+                .toggleStyle(.button)
+                .help("Score new Zoom, Teams and Meet recordings of scheduled interviews as they arrive")
+            }
             ToolbarItem(placement: .primaryAction) {
                 Picker(selection: $reminderMinutes) {
                     ForEach(InterviewReminders.choices, id: \.self) { minutes in

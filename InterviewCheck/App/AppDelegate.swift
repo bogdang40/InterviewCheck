@@ -32,6 +32,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // minutes; each change reschedules the reminders before interviews.
         InterviewReminders.shared.install()
         ConnectorManager.shared.onUpcomingChanged = { InterviewReminders.shared.schedule($0) }
+        AutoScorer.shared.onReport = { InterviewReminders.shared.notifyReport($0) }
+        ConnectorManager.shared.onSynced = { Task { await AutoScorer.shared.run() } }
         ConnectorManager.shared.startAutoSync()
         Task { @MainActor [weak self] in
             await self?.accessController.evaluate()

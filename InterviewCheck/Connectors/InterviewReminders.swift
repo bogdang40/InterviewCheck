@@ -64,7 +64,35 @@ final class InterviewReminders: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
+    /// "Report ready" after a recording was scored in the background.
+    func notifyReport(_ report: InterviewReportData) {
+        let content = UNMutableNotificationContent()
+        content.title = "Report ready: \(report.interview.candidateName.isEmpty ? "interview" : report.interview.candidateName)"
+        content.body = report.interview.overallPercent.map {
+            "\($0)% overall \u{00B7} \(report.interview.flaggedCount) of \(report.interview.questionCount) answers at 70% or more. A signal, not proof."
+        } ?? "No answers could be scored."
+        content.sound = .default
+        content.userInfo = ["reportID": report.interview.id]
+        Task {
+            let settings = await center.notificationSettings()
+            if settings.authorizationStatus == .notDetermined {
+                _ = try? await center.requestAuthorization(options: [.alert, .sound])
+            }
+            try? await center.add(UNNotificationRequest(identifier: "report.\(report.interview.id)", content: content, trigger: nil))
+        }
+    }
+
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+        if let report = response.notification.request.content.userInfo["reportID"] as? String {
+            await MainActor.run {
+                NSApp.activate(ignoringOtherApps: true)
+                if !NSApp.windows.contains(where: { $0.isVisible && $0.canBecomeMain }) {
+                    NSWorkspace.shared.open(Bundle.main.bundleURL)
+                }
+                AppNavigation.shared.showReport(report)
+            }
+            return
+        }
         guard let id = response.notification.request.content.userInfo["interviewID"] as? String else { return }
         await MainActor.run {
             NSApp.activate(ignoringOtherApps: true)
