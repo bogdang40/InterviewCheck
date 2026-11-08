@@ -211,8 +211,15 @@ private struct ReportRow: View {
                     .help("The app closed before this interview was ended")
                     .accessibilityLabel("Interrupted")
             }
+            // Flagged answers first, as everywhere else; the overall % is secondary.
+            if record.flaggedCount > 0 {
+                Tag(text: "\(record.flaggedCount) flagged", color: ScoreBand.flagged.color)
+                    .accessibilityLabel("\(record.flaggedCount) answer\(record.flaggedCount == 1 ? "" : "s") flagged")
+            }
             if let percent = record.overallPercent {
-                Tag(text: "\(percent)%", color: ScoreBand(percent: percent).color)
+                Text("\(percent)%").font(.callout).monospacedDigit().foregroundStyle(.secondary)
+                    .frame(minWidth: 36, alignment: .trailing)
+                    .help(InterviewSummary.overallHelp)
                     .accessibilityLabel("\(percent) percent overall")
             }
         }
