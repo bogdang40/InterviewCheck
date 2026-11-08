@@ -8,6 +8,8 @@ final class DemoInterview: ObservableObject {
     let timeline = InterviewTimeline()
     let controller: InterviewController
     @Published private(set) var isFinished = false
+    /// The finished interview's report, once its last score is saved.
+    @Published private(set) var report: InterviewReportData?
     private let databasePath = NSTemporaryDirectory() + "interviewcheck-demo-\(UUID().uuidString).sqlite"
     private var feed: Task<Void, Never>?
 
@@ -38,6 +40,7 @@ final class DemoInterview: ObservableObject {
     func start() {
         guard controller.phase == .setup else { return }
         isFinished = false
+        report = nil
         controller.candidateName = "Jordan Rivera (demo)"
         controller.consentConfirmed = true
         controller.start()
@@ -54,13 +57,22 @@ final class DemoInterview: ObservableObject {
             guard let self, !Task.isCancelled else { return }
             self.controller.answerDone()
             try? await Task.sleep(nanoseconds: 3_000_000_000)
+            guard !Task.isCancelled else { return }
             self.controller.end()
+            // The report shows once the last answer's score is saved.
+            for _ in 0..<40 where !self.controller.pendingScoring.isEmpty {
+                try? await Task.sleep(nanoseconds: 250_000_000)
+                if Task.isCancelled { return }
+            }
+            self.report = self.controller.interview.flatMap { self.controller.database.loadInterviewReport(id: $0.id) }
             self.isFinished = true
         }
     }
 
     func restart() {
         stop()
+        report = nil
+        isFinished = false
         controller.reset()
         timeline.reset()
         start()
@@ -81,11 +93,17 @@ struct DemoTextClient: DetectorTextGenerating {
     let provider: AIProviderType
     let model: String
     var chunkPause: UInt64 = 120_000_000
+    /// Seconds before the first words, per style, like a real model's wait
+    /// (none when chunks are not paced, as in tests).
+    var thinkingTime: [TimeInterval] = [1.6, 1.0, 2.3]
     var label: String { DetectorModelNames.providerShort(provider, model: model) }
 
     func streamText(system: String, user: String, onChunk: @escaping (String) -> Void) async throws -> String {
         let question = user.components(separatedBy: "\n").last { !$0.isEmpty && $0 != "Respond now." } ?? user
         let style = Self.style(system: system)
+        if chunkPause > 0, style < thinkingTime.count {
+            try await Task.sleep(nanoseconds: UInt64(thinkingTime[style] * 1_000_000_000))
+        }
         let answer = DemoScript.aiAnswer(question: user.contains("Speaker 1:") ? user : question, runIndex: style)
         let words = answer.split(separator: " ")
         var sent = ""

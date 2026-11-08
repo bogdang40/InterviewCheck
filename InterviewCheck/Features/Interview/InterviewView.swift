@@ -25,6 +25,7 @@ struct InterviewSetupForm: View {
     @ObservedObject private var settings = DetectorSettings.shared
     var readiness: DetectorReadiness = .current()
     @State private var isImportingResume = false
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         Form {
@@ -32,11 +33,20 @@ struct InterviewSetupForm: View {
 
             if !readiness.problems.isEmpty {
                 Section {
-                    ForEach(readiness.problems, id: \.self) { problem in
-                        Label(problem, systemImage: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.orange)
+                    ReadinessRow(isDone: readiness.hasDeepgramKey, title: "Deepgram key",
+                                 detail: "Times every word of the candidate's answers, so the pause before an answer shows.")
+                    ReadinessRow(isDone: readiness.usableLineupCount > 0, title: "Claude or OpenAI key",
+                                 detail: "Writes the answers AI tools would give, to compare the candidate's answer with.")
+                    HStack {
+                        SettingsLink { Text("Add Keys in Settings\u{2026}") }
+                        Button("Watch the Demo") { openWindow(id: AppWindowID.demo) }
+                            .help("A scripted 90-second interview through the real detector. No keys or microphone needed.")
+                        Spacer()
                     }
-                    SettingsLink { Text("Open Settings\u{2026}") }
+                } header: {
+                    Text("Before your first interview")
+                } footer: {
+                    Text("The demo needs no keys: it shows a reading answer being caught, start to report.")
                 }
             }
 
@@ -142,6 +152,27 @@ struct InterviewSetupForm: View {
         } catch {
             controller.errorMessage = "Could not read that file: \(error.localizedDescription)"
         }
+    }
+}
+
+/// One setup step: done (green check) or still to do.
+struct ReadinessRow: View {
+    let isDone: Bool
+    let title: String
+    let detail: String
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Image(systemName: isDone ? "checkmark.circle.fill" : "circle")
+                .foregroundStyle(isDone ? Color.green : Color.orange)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).fontWeight(.medium)
+                Text(detail).font(.callout).foregroundStyle(.secondary)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityValue(isDone ? "Done" : "Not set up")
     }
 }
 
