@@ -204,9 +204,11 @@ private struct ReportRow: View {
             }
             if let percent = record.overallPercent {
                 Tag(text: "\(percent)%", color: ScoreBand(percent: percent).color)
+                    .accessibilityLabel("\(percent) percent overall")
             }
         }
         .padding(.vertical, 2)
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -231,14 +233,14 @@ struct ReportDetail: View {
                             ScoreCard(score: score)
                             verdictPicker(question.id)
                         }
-                        Text("YOUR NOTES").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                        SectionCaption("Your notes")
                         QuestionNoteField(questionID: question.id, database: database)
                             .id(question.id)
                             .frame(maxWidth: 640)
                         if let strip = timingStrip(question) {
                             TimingStrip(model: strip)
                         }
-                        Text("CANDIDATE'S ANSWER").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                        SectionCaption("Candidate's answer")
                         Text(question.answerText.isEmpty ? "(nothing captured)" : question.answerText)
                             .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
                         let answers = (report.references[question.id] ?? []).filter { $0.error == nil }

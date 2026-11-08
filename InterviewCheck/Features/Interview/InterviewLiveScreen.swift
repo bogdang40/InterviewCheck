@@ -116,7 +116,7 @@ struct InterviewLiveScreen: View {
         }
         let answers = controller.references[question.id] ?? []
         if !answers.isEmpty || controller.referencesInFlight.contains(question.id) {
-            Text("WHAT AI TOOLS WOULD HAVE SAID").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+            SectionCaption("What AI tools would have said")
             ReferenceGrid(answers: answers, bestMatchLabel: controller.scores[question.id]?.metrics.bestMatchLabel)
         }
     }
@@ -157,7 +157,7 @@ struct InterviewLiveScreen: View {
 
     private func answerBlock(_ text: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("CANDIDATE'S ANSWER").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+            SectionCaption("Candidate's answer")
             Text(text.isEmpty ? "Waiting for the candidate\u{2026}" : text)
                 .font(.body)
                 .foregroundStyle(text.isEmpty ? .secondary : .primary)

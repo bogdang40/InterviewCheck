@@ -71,6 +71,7 @@ struct UpcomingInterviewsSection: View {
                     }
                 }
                 .help("Open the \(MeetingLinks.platform(of: link).title) link and prepare this interview")
+                .accessibilityLabel("Join \(MeetingLinks.platform(of: link).title) call with \(interview.candidate?.name ?? interview.title)")
             }
             Button(preparingID == interview.id ? "Preparing\u{2026}" : "Prepare") {
                 preparingID = interview.id
@@ -81,6 +82,7 @@ struct UpcomingInterviewsSection: View {
             }
             .buttonStyle(.borderedProminent)
             .disabled(preparingID != nil)
+            .accessibilityLabel("Prepare interview with \(interview.candidate?.name ?? interview.title)")
         }
         .padding(.vertical, 2)
     }

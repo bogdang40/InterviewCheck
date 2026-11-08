@@ -122,3 +122,4 @@ tools; pull finished meeting recordings for scoring; optionally post a private n
 - 22:31 E3b remaining ATSs + CandidateLookup enrichment in Prepare. 37 connector tests.
 - 22:36 E7 MCP connectors. 42 connector tests.
 - 22:46 E8 auto-scoring of meeting recordings. 288 app tests.
+- 22:47 accessibility pass: score card one spoken summary, headings, labelled Join/Prepare, list rows combined.

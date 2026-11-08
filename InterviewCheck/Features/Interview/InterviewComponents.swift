@@ -26,7 +26,6 @@ struct ScoreCard: View {
                         .font(.system(size: 40, weight: .semibold, design: .rounded))
                         .monospacedDigit()
                         .foregroundStyle(band.color)
-                        .accessibilityLabel("\(score.percent) percent likely AI-assisted")
                     VStack(alignment: .leading, spacing: 4) {
                         Text(band.title).font(.title3.weight(.semibold))
                         HStack(spacing: 6) {
@@ -37,6 +36,9 @@ struct ScoreCard: View {
                     }
                     Spacer(minLength: 0)
                 }
+                // One spoken summary instead of five separate pieces.
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(accessibilitySummary)
                 if !score.reasons.isEmpty {
                     BulletList(title: "Why", items: score.reasons, symbol: "exclamationmark.circle",
                                color: band == .genuine ? .secondary : band.color)
@@ -54,6 +56,13 @@ struct ScoreCard: View {
             .padding(6)
         }
     }
+
+    private var accessibilitySummary: String {
+        var parts = ["\(score.percent) percent", band.title, "\(score.confidence.rawValue) confidence"]
+        if !score.isFinal { parts.append("live estimate") }
+        if score.metrics.timingGap { parts.append("audio gap") }
+        return parts.joined(separator: ", ")
+    }
 }
 
 struct BulletList: View {
@@ -65,11 +74,13 @@ struct BulletList: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title.uppercased()).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                .accessibilityLabel(title)
+                .accessibilityAddTraits(.isHeader)
             ForEach(Array(items.enumerated()), id: \.offset) { _, item in
                 Label {
                     Text(item).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
                 } icon: {
-                    Image(systemName: symbol).foregroundStyle(color)
+                    Image(systemName: symbol).foregroundStyle(color).accessibilityHidden(true)
                 }
             }
         }
@@ -114,9 +125,12 @@ struct TimingStrip: View {
             HStack(spacing: 12) {
                 Text(model.summary).font(.callout).foregroundStyle(.secondary)
                 Spacer(minLength: 0)
-                legend("Silence", .silence)
-                legend("Stalling", .stall)
-                legend("Answer", .speech)
+                Group {
+                    legend("Silence", .silence)
+                    legend("Stalling", .stall)
+                    legend("Answer", .speech)
+                }
+                .accessibilityHidden(true)
             }
         }
     }
@@ -191,5 +205,21 @@ struct ReferenceGrid: View {
                 ReferenceCard(answer: answer, isBestMatch: bestMatchLabel == answer.label)
             }
         }
+    }
+}
+
+/// A small all-caps section label that VoiceOver reads as a heading in
+/// normal case.
+struct SectionCaption: View {
+    let title: String
+
+    init(_ title: String) { self.title = title }
+
+    var body: some View {
+        Text(title.uppercased())
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .accessibilityLabel(title)
+            .accessibilityAddTraits(.isHeader)
     }
 }
