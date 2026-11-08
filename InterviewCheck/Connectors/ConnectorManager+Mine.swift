@@ -75,10 +75,11 @@ extension ConnectorManager {
     /// room, while "Jane Doe", "Jane A. Doe" and "Doe, Jane" are compatible.
     static func sameInterview(_ a: ExternalInterview, _ b: ExternalInterview) -> Bool {
         if a.source == b.source, a.externalID == b.externalID { return true }
-        // Two events from one calendar, mailbox or booking tool are two
-        // interviews, whatever names were guessed for them. (Not for ATSs: a
-        // prepared link keeps the calendar event's id under the ATS's name.)
-        if a.source == b.source, ![.ats, .unified, .mcp].contains(a.source.descriptor.category) { return false }
+        // Two different events from one calendar, mailbox or booking tool are
+        // two interviews, whatever names were guessed for them (InterviewMerger
+        // .distinctEvents). Not for ATSs: a prepared link keeps the calendar
+        // event's id under the ATS's name.
+        if ![.ats, .unified, .mcp].contains(a.source.descriptor.category), InterviewMerger.distinctEvents(a, b) { return false }
         guard abs(a.startsAt.timeIntervalSince(b.startsAt)) <= 10 * 60 else { return false }
         if let left = a.candidate?.email?.lowercased(), let right = b.candidate?.email?.lowercased(), left == right { return true }
         let left = nameWords(a.candidate?.name), right = nameWords(b.candidate?.name)

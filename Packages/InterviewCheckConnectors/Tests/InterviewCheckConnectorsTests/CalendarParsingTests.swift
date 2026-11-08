@@ -89,3 +89,22 @@ final class CalendarParsingTests: XCTestCase {
         XCTAssertEqual(MeetingLinks.platform(of: URL(string: "http://acme.zoom.us/j/1")!), .other, "https only")
     }
 }
+
+final class MergerDistinctEventsTests: XCTestCase {
+    func testBackToBackScreensInOneRoomStayApartButMovedOrDoubleListedEventsMerge() {
+        let room = URL(string: "https://acme.zoom.us/j/81234567890")
+        let start = date("2026-11-10T15:00:00Z")
+        let a = ExternalInterview(source: .appleCalendar, externalID: "E1@1794326400", title: "Screen", startsAt: start, meetingURL: room)
+        var b = a
+        b.externalID = "E2@1794326700"
+        b.startsAt = start.addingTimeInterval(5 * 60)
+        XCTAssertEqual(InterviewMerger.merge([a, b]).count, 2, "two screens 5 minutes apart in one room")
+        var moved = a
+        moved.externalID = "E1@1794326700"
+        moved.startsAt = start.addingTimeInterval(5 * 60)
+        XCTAssertFalse(InterviewMerger.distinctEvents(a, moved), "the same event, moved")
+        var otherCalendar = a
+        otherCalendar.externalID = "E9@1794326400"
+        XCTAssertEqual(InterviewMerger.merge([a, otherCalendar]).count, 1, "one event in two Mac calendars")
+    }
+}

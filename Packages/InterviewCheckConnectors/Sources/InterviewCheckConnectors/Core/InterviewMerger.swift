@@ -34,12 +34,21 @@ public enum InterviewMerger {
     }
 
     public static func isSame(_ a: ExternalInterview, _ b: ExternalInterview, window: TimeInterval) -> Bool {
-        guard abs(a.startsAt.timeIntervalSince(b.startsAt)) <= window else { return false }
+        guard abs(a.startsAt.timeIntervalSince(b.startsAt)) <= window, !distinctEvents(a, b) else { return false }
         if let left = a.meetingURL.map(meetingKey), let right = b.meetingURL.map(meetingKey), left == right { return true }
         if let left = a.candidate?.email?.lowercased(), let right = b.candidate?.email?.lowercased() { return left == right }
         if let left = a.candidate.map({ normalized($0.name) }), let right = b.candidate.map({ normalized($0.name) }),
            !left.isEmpty { return left == right }
         return false
+    }
+
+    /// Two different events of one source at different times (back-to-back
+    /// screens in one meeting room). The same event moved, or listed in two
+    /// calendars at the same time, is not distinct: Mac Calendar and Zoom ids
+    /// end in "@<start>", which is ignored.
+    public static func distinctEvents(_ a: ExternalInterview, _ b: ExternalInterview) -> Bool {
+        let base = { (id: String) in id.replacingOccurrences(of: #"@\d+$"#, with: "", options: .regularExpression) }
+        return a.source == b.source && base(a.externalID) != base(b.externalID) && a.startsAt != b.startsAt
     }
 
     static func fill(_ primary: ExternalInterview, from other: ExternalInterview) -> ExternalInterview {
