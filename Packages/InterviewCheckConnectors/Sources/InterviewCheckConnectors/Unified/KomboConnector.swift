@@ -76,7 +76,7 @@ public struct KomboConnector: InterviewSource, JobSource, CandidateSource, NoteD
         }
         let name = [json["first_name"].string, json["last_name"].string].compactMap { $0 }.joined(separator: " ")
         var candidate = ExternalCandidate(externalID: id, name: name.isEmpty ? "Candidate" : name,
-                                          email: json["email_addresses"][0]["email_address"].string)
+                                          email: json["email_addresses"][0]["email_address"].string, profileURL: json["remote_url"].url)
         let files = try await api.getJSON("ats/candidates/\(id)/attachments").at("data.results").array
         if let resume = files.first(where: { $0["type"].string == "CV" }), let url = resume["data_url"].url {
             candidate.resume = ExternalFile(kind: .resume, filename: resume["file_name"].string ?? "resume", url: url, needsAuth: false)

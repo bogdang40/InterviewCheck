@@ -35,12 +35,16 @@ public struct ExternalCandidate: Codable, Equatable, Hashable, Sendable {
     public var name: String
     public var email: String?
     public var resume: ExternalFile?
+    /// The candidate's page in the source system, for "Open in Greenhouse".
+    public var profileURL: URL?
 
-    public init(externalID: String? = nil, name: String, email: String? = nil, resume: ExternalFile? = nil) {
+    public init(externalID: String? = nil, name: String, email: String? = nil, resume: ExternalFile? = nil,
+                profileURL: URL? = nil) {
         self.externalID = externalID
         self.name = name
         self.email = email
         self.resume = resume
+        self.profileURL = profileURL
     }
 }
 

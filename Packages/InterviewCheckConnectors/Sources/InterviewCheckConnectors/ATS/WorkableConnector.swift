@@ -62,7 +62,8 @@ public struct WorkableConnector: InterviewSource, JobSource, CandidateSource, No
 
     public func candidate(id: String) async throws -> ExternalCandidate {
         let json = try await api.getJSON("candidates/\(id)")["candidate"]
-        var candidate = ExternalCandidate(externalID: id, name: json["name"].string ?? "Candidate", email: json["email"].string)
+        var candidate = ExternalCandidate(externalID: id, name: json["name"].string ?? "Candidate", email: json["email"].string,
+                                          profileURL: json["profile_url"].url)
         if let url = json["resume_url"].url {
             candidate.resume = ExternalFile(kind: .resume, filename: "\(candidate.name) resume", url: url, needsAuth: false)
         }

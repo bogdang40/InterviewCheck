@@ -143,7 +143,8 @@ public struct TeamtailorConnector: JobSource, CandidateSource, NoteDestination {
                                  email: attributes["email"].string,
                                  resume: (attributes["original-resume"].url ?? attributes["resume"].url).map {
                                      ExternalFile(kind: .resume, filename: "\(name) resume", url: $0, needsAuth: false)
-                                 })
+                                 },
+                                 profileURL: attributes["profile-url"].url)
     }
 
     /// Résumé links last about 30 seconds: fetch the candidate again first.

@@ -43,11 +43,22 @@ extension ConnectorManager {
 
         if let sourceConnector = connector as? CandidateSource {
             do {
-                var resume = interview.candidate?.resume
-                if resume == nil, let id = interview.candidate?.externalID {
-                    resume = try await sourceConnector.candidate(id: id).resume
+                // The full record adds the résumé and the link to the candidate's page.
+                var candidate = interview.candidate
+                if candidate?.resume == nil || candidate?.profileURL == nil, let id = candidate?.externalID {
+                    let full = try await sourceConnector.candidate(id: id)
+                    guard current() else { return stopped }
+                    if var known = candidate {
+                        known.resume = known.resume ?? full.resume
+                        known.profileURL = known.profileURL ?? full.profileURL
+                        known.email = known.email ?? full.email
+                        candidate = known
+                    }
+                    var linked = interview
+                    linked.candidate = candidate
+                    database.saveExternalLink(linked)
                 }
-                if let resume {
+                if let resume = candidate?.resume {
                     let text = try await resumeText(resume, from: sourceConnector)
                     guard current() else { return stopped }
                     controller.resumeText = text

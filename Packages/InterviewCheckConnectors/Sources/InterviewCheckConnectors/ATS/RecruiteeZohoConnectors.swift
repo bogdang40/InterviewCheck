@@ -68,7 +68,8 @@ public struct RecruiteeConnector: InterviewSource, JobSource, CandidateSource, N
         return ExternalCandidate(externalID: id, name: json["name"].string ?? "Candidate", email: json["emails"][0].string,
                                  resume: (json["cv_original_url"].url ?? json["cv_url"].url).map {
                                      ExternalFile(kind: .resume, filename: "\(json["name"].string ?? "candidate") CV", url: $0, needsAuth: false)
-                                 })
+                                 },
+                                 profileURL: json["adminapp_url"].url)
     }
 
     public func download(_ file: ExternalFile, into folder: URL) async throws -> URL {

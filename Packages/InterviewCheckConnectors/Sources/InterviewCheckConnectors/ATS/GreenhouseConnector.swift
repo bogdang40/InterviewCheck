@@ -92,7 +92,8 @@ public struct GreenhouseConnector: InterviewSource, JobSource, CandidateSource, 
         let first = json["preferred_name"].string ?? json["first_name"].string ?? ""
         let name = [first, json["last_name"].string ?? ""].filter { !$0.isEmpty }.joined(separator: " ")
         return ExternalCandidate(externalID: json["id"].string, name: name.isEmpty ? "Candidate" : name,
-                                 email: json["email_addresses"][0]["value"].string)
+                                 email: json["email_addresses"][0]["value"].string,
+                                 profileURL: json["id"].string.flatMap { URL(string: "https://app.greenhouse.io/people/\($0)") })
     }
 
     public func job(id: String) async throws -> ExternalJob {

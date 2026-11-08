@@ -67,7 +67,7 @@ public struct UnifiedToConnector: InterviewSource, JobSource, CandidateSource, N
         let name = json["name"].string
             ?? [json["first_name"].string, json["last_name"].string].compactMap { $0 }.joined(separator: " ")
         return ExternalCandidate(externalID: json["id"].string, name: name.isEmpty ? "Candidate" : name,
-                                 email: json["emails"][0]["email"].string)
+                                 email: json["emails"][0]["email"].string, profileURL: json["web_url"].url)
     }
 
     public func job(id: String) async throws -> ExternalJob {

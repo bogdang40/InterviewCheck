@@ -45,7 +45,8 @@ private struct FakeATS: InterviewSource, JobSource, CandidateSource, NoteDestina
 
     func candidate(id: String) async throws -> ExternalCandidate {
         ExternalCandidate(externalID: id, name: "Jane Doe",
-                          resume: ExternalFile(kind: .resume, filename: "jane.txt", url: URL(string: "https://x/r")!, needsAuth: true))
+                          resume: ExternalFile(kind: .resume, filename: "jane.txt", url: URL(string: "https://x/r")!, needsAuth: true),
+                          profileURL: URL(string: "https://app.greenhouse.io/people/\(id)"))
     }
 
     func download(_ file: ExternalFile, into folder: URL) async throws -> URL {
@@ -94,6 +95,8 @@ final class ConnectorManagerTests: XCTestCase {
         XCTAssertEqual(role.name, "Backend Engineer")
         XCTAssertEqual(role.externalJobKey, "greenhouse:j4")
         XCTAssertEqual(role.jobDescription, "Own the payments API in Go and Postgres.")
+        XCTAssertEqual(database.loadExternalLink("greenhouse:901")?.candidate?.profileURL?.absoluteString,
+                       "https://app.greenhouse.io/people/c7", "the report can link to the candidate's page")
 
         // Preparing again reuses the role.
         await manager.prepare(manager.upcoming[0], controller: controller, roles: roles)

@@ -98,7 +98,7 @@ public struct LeverConnector: InterviewSource, JobSource, CandidateSource, NoteD
     public func candidate(id: String) async throws -> ExternalCandidate {
         let opportunity = try await api.getJSON("opportunities/\(id)")["data"]
         var candidate = ExternalCandidate(externalID: id, name: opportunity["name"].string ?? "Candidate",
-                                          email: opportunity["emails"][0].string)
+                                          email: opportunity["emails"][0].string, profileURL: opportunity.at("urls.show").url)
         let resumes = try await api.getJSON("opportunities/\(id)/resumes")["data"].array
         if let resume = resumes.first(where: { $0.at("file.status").string == "processed" }) ?? resumes.first,
            let resumeID = resume["id"].string {

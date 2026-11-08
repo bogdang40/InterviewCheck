@@ -315,6 +315,13 @@ struct ReportDetail: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            if let ref = interview.externalRef, let link = database.loadExternalLink(ref),
+               let profile = link.candidate?.profileURL {
+                Link(destination: profile) {
+                    Label("Open in \(link.source.descriptor.vendorName)", systemImage: "arrow.up.forward.square")
+                }
+                .help("The candidate's page in \(link.source.descriptor.vendorName)")
+            }
             if interview.wasInterrupted {
                 Label("The app closed before this interview was ended. The last answer may be cut short.",
                       systemImage: "exclamationmark.triangle")

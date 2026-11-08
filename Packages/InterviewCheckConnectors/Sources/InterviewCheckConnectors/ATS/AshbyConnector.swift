@@ -90,7 +90,7 @@ public struct AshbyConnector: InterviewSource, JobSource, CandidateSource, NoteD
     public func candidate(id: String) async throws -> ExternalCandidate {
         let json = try await call("candidate.info", ["id": .string(id)])["results"]
         var candidate = ExternalCandidate(externalID: id, name: json["name"].string ?? "Candidate",
-                                          email: json.at("primaryEmailAddress.value").string)
+                                          email: json.at("primaryEmailAddress.value").string, profileURL: json["profileUrl"].url)
         if let handle = json.at("resumeFileHandle.handle").string {
             var components = URLComponents(string: "ashby://file")!
             components.queryItems = [URLQueryItem(name: "handle", value: handle)]

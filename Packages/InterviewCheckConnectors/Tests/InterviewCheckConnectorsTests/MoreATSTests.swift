@@ -82,7 +82,8 @@ final class MoreATSTests: XCTestCase {
         stub.on("GET", "/v3/jobs?", json: #"[{"id":31,"name":"Backend Engineer"}]"#)
         let greenhouse = try GreenhouseConnector(credentials: ConnectorCredentials(fields: ["clientID": "c", "clientSecret": "s"]), transport: stub)
         let match = try await greenhouse.findCandidate(email: "pete@example.com")
-        XCTAssertEqual(match, CandidateMatch(candidate: ExternalCandidate(externalID: "41", name: "Pete Current", email: "pete@example.com"),
+        XCTAssertEqual(match, CandidateMatch(candidate: ExternalCandidate(externalID: "41", name: "Pete Current", email: "pete@example.com",
+                                                                          profileURL: URL(string: "https://app.greenhouse.io/people/41")),
                                              job: ExternalJob(externalID: "31", title: "Backend Engineer"), applicationID: "21"))
         XCTAssertTrue(stub.requests(containing: "/v3/candidates?").first!.url!.absoluteString.contains("email=pete@example.com"))
 
