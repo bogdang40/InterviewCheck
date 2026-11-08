@@ -132,6 +132,12 @@ struct InterviewLiveScreen: View {
         let answers = controller.references[question.id] ?? []
         let answerText = window.map { $0.answerWords.map { $0.isFiller ? "(\($0.normalized))" : $0.text }.joined(separator: " ") }
             ?? question.answerText
+        // The score stays near the top while the answer below it grows (same order as the report).
+        if let score = controller.scores[question.id] {
+            ScoreCard(score: score, baselineNote: BaselineSignal.note(for: question.id, scores: controller.scores))
+        } else if question.closedAt != nil, !question.answerText.isEmpty {
+            HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Scoring the answer\u{2026}").foregroundStyle(.secondary) }
+        }
         if window != nil || !(finished?.answerWords.isEmpty ?? true) { SectionCaption("Timing") }
         if let window {
             TimingStrip(model: TimingStripModel(
@@ -148,11 +154,6 @@ struct InterviewLiveScreen: View {
         }
         if window != nil || !answerText.isEmpty {
             CandidateAnswerBlock(text: answerText, references: answers, question: question.text)
-        }
-        if let score = controller.scores[question.id] {
-            ScoreCard(score: score, baselineNote: BaselineSignal.note(for: question.id, scores: controller.scores))
-        } else if question.closedAt != nil, !question.answerText.isEmpty {
-            HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Scoring the answer\u{2026}").foregroundStyle(.secondary) }
         }
         if !answers.isEmpty || controller.referencesInFlight.contains(question.id) {
             SectionCaption("What AI tools would have said")

@@ -20,7 +20,7 @@ final class CheatScorerTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(result.percent, 75)
         XCTAssertEqual(result.reasons.count, 3)
         XCTAssertTrue(result.reasons.contains { $0.contains("before the first real words") })
-        XCTAssertTrue(result.reasons.contains { $0.hasPrefix("Matches the GPT-5 · Copilot answer word for word: ") }, "\(result.reasons)")
+        XCTAssertTrue(result.reasons.contains { $0.hasPrefix("Matches the GPT-5 · Copilot word for word: ") }, "\(result.reasons)")
     }
 
     func testHonestAnswerScoresLowWithCounterpoints() {

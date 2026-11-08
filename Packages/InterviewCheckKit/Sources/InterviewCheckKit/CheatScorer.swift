@@ -209,9 +209,9 @@ public enum ScoreNotes {
                 // The highlighted words show which; the line says how many.
                 if let shared = similarity.bestShared, shared.sharedCount >= SharedWords.minimumRun {
                     reasons.append((similarity.score,
-                                    "Matches the \(best.label) answer word for word: \(shared.sharedCount) of \(shared.answerCount) words"))
+                                    "Matches the \(best.label) word for word: \(shared.sharedCount) of \(shared.answerCount) words"))
                 } else {
-                    reasons.append((similarity.score, "Closely follows the \(best.label) answer in meaning and order"))
+                    reasons.append((similarity.score, "Closely follows the \(best.label) in meaning and order"))
                 }
             } else if similarity.score < 0.15 {
                 counterpoints.append("Wording is their own, not close to any AI answer")
