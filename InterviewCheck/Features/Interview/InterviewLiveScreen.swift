@@ -222,7 +222,7 @@ struct InterviewSummaryView: View {
                 Text("Interview Ended").font(.title.weight(.semibold))
                 if let interview, let percent = interview.overallPercent {
                     VStack(spacing: 4) {
-                        Text(InterviewSummary.flaggedLine(interview.flaggedCount, of: interview.questionCount))
+                        Text(report?.flaggedLine ?? InterviewSummary.flaggedLine(interview.flaggedCount, of: interview.questionCount))
                             .font(.system(size: 30, weight: .semibold, design: .rounded))
                             .foregroundStyle(interview.flaggedCount > 0 ? ScoreBand.flagged.color : .primary)
                         Text("\(percent)% overall \u{00B7} \(ScoreBand(percent: percent).title)")

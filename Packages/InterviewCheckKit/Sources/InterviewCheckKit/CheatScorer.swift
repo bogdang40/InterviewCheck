@@ -108,8 +108,8 @@ public enum CheatScorer {
         let components = Self.components(timing: timing, fluency: fluencyResult, similarity: similarity, judge: judge,
                                          phrasing: phrasing)
         var percent = Int((blend(components, weights: weights) * 100).rounded())
+        // Wording alone does not lift the cap: a pause plus one AI-sounding word is not enough.
         let onlyTiming = components.fluency == nil && components.similarity == nil && components.judge == nil
-            && components.phrasing == nil
         let tooShort = fluency.wordCount < weights.shortAnswerWords
         if onlyTiming || tooShort { percent = min(percent, weights.timingOnlyMaximumPercent) }
 
@@ -128,7 +128,9 @@ public enum CheatScorer {
         if tooShort {
             notes.counterpoints.insert("Too short to judge: \(fluency.wordCount) word\(fluency.wordCount == 1 ? "" : "s")", at: 0)
         } else if onlyTiming {
-            notes.counterpoints.insert("Only the pause could be measured; a pause alone is not a sign of AI help", at: 0)
+            let measured = components.phrasing == nil ? "Only the pause could be measured; a pause alone is"
+                : "Only the pause and the wording could be measured; they alone are"
+            notes.counterpoints.insert("\(measured) not a sign of AI help", at: 0)
         }
         return AnswerScore(
             percent: min(max(percent, 0), weights.maximumPercent),

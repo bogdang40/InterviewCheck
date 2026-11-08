@@ -7,6 +7,7 @@ struct WelcomeView: View {
     @ObservedObject private var roles = RoleStore.shared
     @ObservedObject private var keys = SettingsManager.shared
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
     let onDone: () -> Void
 
     private var hasKeys: Bool { DetectorReadiness.current().problems.isEmpty }
@@ -24,7 +25,10 @@ struct WelcomeView: View {
 
             step(1, done: hasKeys, title: "Add your keys",
                  detail: "Deepgram times every answer word by word. A Claude or OpenAI key writes the AI answers to compare against.") {
-                SettingsLink { Text("Open Settings") }
+                Button("Open Settings") {
+                    UserDefaults.standard.set(SettingsTab.keys, forKey: SettingsTab.storageKey)
+                    openSettings()
+                }
             }
             step(2, done: !roles.roles.isEmpty, title: "Create a role",
                  detail: "Paste the job description. Draft writes interview questions and the prompts a cheating tool would use for this job.") {

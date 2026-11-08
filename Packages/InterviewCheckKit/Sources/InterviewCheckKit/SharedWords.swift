@@ -123,7 +123,7 @@ public struct SharedWords: Equatable {
         let word: Int
     }
 
-    struct Tile: Equatable {
+    struct Tile: Hashable {
         let answer: Int
         let reference: Int
         let length: Int
@@ -136,49 +136,62 @@ public struct SharedWords: Equatable {
         }
     }
 
-    /// The longest common runs first, without overlap on either side (greedy
-    /// string tiling). A run counts when it has two words that are not small
-    /// words and is not just the question said back.
+    /// The longest common runs first, without overlap on either side, repeated
+    /// over the words still unmatched until no run is left (greedy string
+    /// tiling): a run that overlaps a longer one keeps its own part. A run
+    /// counts when it has two words that are not small words and is not just
+    /// the question said back.
     static func tiles(_ answer: [String], _ reference: [String], question: String) -> [Tile] {
         let minimum = minimumRun
         guard answer.count >= minimum, reference.count >= minimum else { return [] }
         let questionGrams = Set(SimilaritySignal.ngrams(FillerLexicon.tokens(question), 3))
-
         // Words as numbers: the comparison below runs answer × reference times.
         var ids: [String: Int] = [:]
         let a = answer.map { word in ids[word] ?? { ids[word] = ids.count; return ids.count - 1 }() }
         let b = reference.map { word in ids[word] ?? { ids[word] = ids.count; return ids.count - 1 }() }
-
-        var candidates: [Tile] = []
-        var previous = [Int](repeating: 0, count: b.count + 1)
-        var current = previous
-        for i in 1...a.count {
-            for j in 0...b.count { current[j] = 0 }
-            for j in 1...b.count where a[i - 1] == b[j - 1] {
-                current[j] = previous[j - 1] + 1
-                let length = current[j]
-                let extends = i < a.count && j < b.count && a[i] == b[j]
-                if !extends, length >= minimum {
-                    candidates.append(Tile(answer: i - length, reference: j - length, length: length))
-                }
-            }
-            swap(&previous, &current)
-        }
-
-        var usedAnswer = Set<Int>()
-        var usedReference = Set<Int>()
+        var usedA = [Bool](repeating: false, count: a.count)
+        var usedB = [Bool](repeating: false, count: b.count)
         var accepted: [Tile] = []
-        for tile in candidates.sorted(by: { ($0.length, -$0.answer) > ($1.length, -$1.answer) }) {
-            let answerRange = tile.answer..<(tile.answer + tile.length)
-            let referenceRange = tile.reference..<(tile.reference + tile.length)
-            guard usedAnswer.isDisjoint(with: answerRange), usedReference.isDisjoint(with: referenceRange) else { continue }
-            let run = Array(answer[answerRange])
-            guard run.filter({ !FillerLexicon.stopwords.contains($0) }).count >= 2 else { continue }
-            let grams = SimilaritySignal.ngrams(run, 3)
-            if !questionGrams.isEmpty, grams.allSatisfy(questionGrams.contains) { continue }
-            usedAnswer.formUnion(answerRange)
-            usedReference.formUnion(referenceRange)
-            accepted.append(tile)
+        var rejected = Set<Tile>()
+
+        while true {
+            var candidates: [Tile] = []
+            var previous = [Int](repeating: 0, count: b.count + 1)
+            var current = previous
+            for i in 1...a.count {
+                for j in 0...b.count { current[j] = 0 }
+                if !usedA[i - 1] {
+                    for j in 1...b.count where !usedB[j - 1] && a[i - 1] == b[j - 1] {
+                        current[j] = previous[j - 1] + 1
+                        let length = current[j]
+                        let extends = i < a.count && j < b.count && !usedA[i] && !usedB[j] && a[i] == b[j]
+                        if !extends, length >= minimum {
+                            candidates.append(Tile(answer: i - length, reference: j - length, length: length))
+                        }
+                    }
+                }
+                swap(&previous, &current)
+            }
+
+            var progress = false
+            for tile in candidates.sorted(by: { ($0.length, -$0.answer) > ($1.length, -$1.answer) })
+            where !rejected.contains(tile) {
+                let answerRange = tile.answer..<(tile.answer + tile.length)
+                let referenceRange = tile.reference..<(tile.reference + tile.length)
+                guard !answerRange.contains(where: { usedA[$0] }), !referenceRange.contains(where: { usedB[$0] }) else { continue }
+                let run = Array(answer[answerRange])
+                let grams = SimilaritySignal.ngrams(run, 3)
+                guard run.filter({ !FillerLexicon.stopwords.contains($0) }).count >= 2,
+                      questionGrams.isEmpty || !grams.allSatisfy(questionGrams.contains) else {
+                    rejected.insert(tile)
+                    continue
+                }
+                answerRange.forEach { usedA[$0] = true }
+                referenceRange.forEach { usedB[$0] = true }
+                accepted.append(tile)
+                progress = true
+            }
+            if !progress { break }
         }
         return accepted.sorted { $0.answer < $1.answer }
     }

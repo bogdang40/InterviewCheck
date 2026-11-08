@@ -64,13 +64,17 @@ public enum PhrasingSignal {
 
         var weight = 0.0
         var found: [(Double, String)] = []
-        for (list, value) in [(strong, strongWeight), (mild, mildWeight)] {
-            for (phrase, said) in list {
-                let count = occurrences(of: phrase.split(separator: " ").map(String.init), in: tokens)
-                guard count > 0 else { continue }
-                weight += value * Double(count)
-                found.append((value, count > 1 ? "\(said) (\(count)\u{00D7})" : said))
-            }
+        // Longest phrases first; a word inside a matched phrase is not counted again
+        // ("plays a pivotal role" is one tell, not two with "pivotal").
+        let phrases = (strong.map { ($0, strongWeight) } + mild.map { ($0, mildWeight) })
+            .map { (words: $0.0.0.split(separator: " ").map(String.init), said: $0.0.1, weight: $0.1) }
+            .sorted { $0.words.count > $1.words.count }
+        var used = Set<Int>()
+        for phrase in phrases {
+            let count = claim(phrase.words, in: tokens, used: &used)
+            guard count > 0 else { continue }
+            weight += phrase.weight * Double(count)
+            found.append((phrase.weight, count > 1 ? "\(phrase.said) (\(count)\u{00D7})" : phrase.said))
         }
         if let list = announcedList(tokens) {
             weight += listWeight
@@ -86,10 +90,29 @@ public enum PhrasingSignal {
             weight += strongWeight
             found.append((strongWeight + 0.1, star))
         }
-        let perHundred = weight / Double(tokens.count) * 100
+        // Per 100 words, never fewer: one tell in a short answer is one tell, not a density.
+        let perHundred = weight / Double(max(tokens.count, 100)) * 100
         let score = min(max((perHundred - 0.6) / 2.4, 0), 1)
         let tells = found.sorted { $0.0 > $1.0 }.map(\.1)
         return PhrasingResult(score: score, tells: score > 0 ? tells : [], wordCount: tokens.count)
+    }
+
+    /// Counts the phrase where none of its words is already part of another tell.
+    static func claim(_ phrase: [String], in tokens: [String], used: inout Set<Int>) -> Int {
+        guard !phrase.isEmpty, tokens.count >= phrase.count else { return 0 }
+        var count = 0
+        var index = 0
+        while index + phrase.count <= tokens.count {
+            let range = index..<(index + phrase.count)
+            if used.isDisjoint(with: range), Array(tokens[range]) == phrase {
+                used.formUnion(range)
+                count += 1
+                index += phrase.count
+            } else {
+                index += 1
+            }
+        }
+        return count
     }
 
     static func occurrences(of phrase: [String], in tokens: [String]) -> Int {

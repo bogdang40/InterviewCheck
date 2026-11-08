@@ -39,7 +39,7 @@ struct DemoInterviewView: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Demo finished: the report this interview produced").font(.callout.weight(.semibold))
                     if let overall = interview.overallPercent {
-                        Text("\(InterviewSummary.flaggedLine(interview.flaggedCount, of: interview.questionCount)) \u{00B7} \(overall)% overall \u{00B7} nothing saved to your reports")
+                        Text("\(demo.report?.flaggedLine ?? "") \u{00B7} \(overall)% overall \u{00B7} nothing saved to your reports")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }

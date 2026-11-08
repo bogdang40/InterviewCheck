@@ -45,3 +45,23 @@ final class DemoInterviewTests: XCTestCase {
         XCTAssertTrue(answers[1].contains("\n- "), "talking points keep their line breaks")
     }
 }
+
+/// Restart mid-run used to reset a controller that was still scoring, which
+/// froze the demo; each run now has its own controller and timeline.
+@MainActor
+final class DemoRestartTests: XCTestCase {
+    func testRestartStartsAFreshRun() async throws {
+        let demo = DemoInterview()
+        demo.start()
+        let first = demo.controller
+        XCTAssertEqual(first.phase, .live)
+        try await Task.sleep(nanoseconds: 200_000_000)
+        demo.restart()
+        XCTAssertFalse(demo.controller === first)
+        XCTAssertEqual(demo.controller.phase, .live)
+        XCTAssertEqual(first.phase, .ended)
+        XCTAssertFalse(demo.isFinished)
+        XCTAssertNil(demo.report)
+        demo.stop()
+    }
+}

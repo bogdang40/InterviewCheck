@@ -88,7 +88,7 @@ public enum JudgeSignal {
                 lines.append("- Words said in the same order as that AI answer (runs of 4+): \(shared.sharedCount) of \(shared.answerCount)")
             }
         }
-        if let phrasing, !phrasing.tells.isEmpty {
+        if let phrasing, phrasing.score >= PhrasingSignal.countsFrom, !phrasing.tells.isEmpty {
             lines.append("- Wording typical of written AI text: " + phrasing.tells.prefix(5).joined(separator: ", "))
         }
         lines.append("")

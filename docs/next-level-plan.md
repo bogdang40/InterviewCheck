@@ -42,6 +42,7 @@ Detection gained three signals that need no AI key: model wording read aloud, a 
 | N8 | **The report leads with its payoff.** Question chips that jump to each answer, and "What stood out": every answer at 70%+ with its strongest evidence, in the app, PDF and Markdown. | Done |
 | N9 | **Fixes from an independent design review** (screenshots of every screen). | Done |
 | N10 | **The moment the call ends.** The summary leads with "1 of 3 answers flagged", the chips and what stood out; "1 of 1 answer" everywhere. | Done |
+| N14 | **Fixes from an independent code review of the afternoon.** | Done |
 
 ## Log
 
@@ -75,3 +76,17 @@ Detection gained three signals that need no AI key: model wording read aloud, a 
   - Probe terms drop a verb tagged as a noun before an adverb ("teams ship safely"), and generic nouns (team, company, version …) are skipped.
   - Seen in the real demo run: Q1 20%, Q2 95%, Q3 47%, "1 of 3 answers flagged · 55% overall".
 - **N13 done.** The timing strip marks with a tick where the fastest AI answer had its first line, with an "AI's first line" legend and a tooltip. When the real answer began 2.5 s or more after the question and within 5 s of that line, the line under the strip adds "…, 4.0 s after the fastest AI's first line", the same window `TimingSignal.pacedToAI` scores. It appears in the live screen, report and companion. 3 core tests.
+- **N13+.** The AI review's prompt now includes the shared-word count and AI wording. The menu bar shows "N of M answers flagged". The Analyze Recording sheet says what its greyed-out button is waiting for. Shared-word matching compares words as numbers and caches results (about 2 ms for a 700-word answer in Release).
+- **N14 done.** An independent code review found 10 defects, all fixed and tested:
+  1. Wording lifted the 39% cap on pause-only answers (a transcript, an 8 s pause and one "moreover" scored 75%). It no longer does, and the counterpoint now names both signals.
+  2. One tell in a short answer dominated. The density is now per 100 words with a floor of 100, longest phrases are claimed first ("plays a pivotal role" no longer also counts "pivotal"), and STAR labels or a list alone never count.
+  3. Wording below the threshold reached the AI review. It no longer does.
+  4. The demo's Restart could freeze it, because it reset a controller that was still scoring. Each run now has its own controller, timeline and database, and a cancelled run can't touch the next one.
+  5. In reports, the question chips shared ids with the question blocks, so scrolling could jump to the wrong one. Chips now use "chip-…" ids.
+  6. A run overlapping a longer one was dropped, not trimmed. Matching now repeats over unmatched words ("15 of 26" becomes "23 of 26" on a stumble).
+  7. The baseline compared answers too short to judge, and transcript or audio-gap answers. It now needs three or more expected hesitations and skips answers with a timing gap.
+  8. Bare numbers became probe terms, and the adverb rule ate nouns. Numbers are now skipped, and a word is dropped before an adverb only after a plural subject.
+  9. There were no follow-ups when the AI review returned none. Answer-based ones are now used.
+  10. "N of M" counted unanswered questions in the report but not live; it now counts scored answers everywhere. "Add Keys in Settings…" and the welcome's "Open Settings" now open the Keys tab.
+
+  Totals: 86 core tests and 347 app tests.

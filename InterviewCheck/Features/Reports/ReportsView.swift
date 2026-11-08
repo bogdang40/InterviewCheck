@@ -359,7 +359,7 @@ struct ReportDetail: View {
                 .foregroundStyle(.secondary)
             if let overall = interview.overallPercent {
                 HStack(spacing: 8) {
-                    Text(InterviewSummary.flaggedLine(interview.flaggedCount, of: interview.questionCount))
+                    Text(report.flaggedLine)
                         .fontWeight(.semibold)
                         .foregroundStyle(interview.flaggedCount > 0 ? ScoreBand.flagged.color : .primary)
                     Text("\u{00B7} \(overall)% overall").foregroundStyle(.secondary).monospacedDigit()

@@ -19,13 +19,13 @@ struct QuestionRail: View {
             ScrollViewReader { proxy in
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 6) {
-                        ForEach(questions) { question in chip(question).id(question.id) }
+                        ForEach(questions) { question in chip(question).id("chip-\(question.id)") }
                     }
                     .padding(.vertical, 2)
                 }
                 .onChange(of: questions.count) { _, _ in
                     guard let last = questions.last else { return }
-                    withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(last.id, anchor: .trailing) }
+                    withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo("chip-\(last.id)", anchor: .trailing) }
                 }
             }
             if showsSummary, let overall = InterviewSummary.overall(finals) {
@@ -92,8 +92,10 @@ extension AnswerMetrics {
 extension BaselineSignal {
     /// This answer against the same candidate's other finished answers.
     static func note(for questionID: String, scores: [String: AnswerScoreRecord]) -> String? {
-        guard let score = scores[questionID], score.isFinal else { return nil }
-        let others = scores.filter { $0.key != questionID && $0.value.isFinal }.map(\.value.metrics.style)
+        // Timing from a transcript or across an audio gap says nothing about someone's style.
+        guard let score = scores[questionID], score.isFinal, !score.metrics.timingGap else { return nil }
+        let others = scores.filter { $0.key != questionID && $0.value.isFinal && !$0.value.metrics.timingGap }
+            .map(\.value.metrics.style)
         return compare(score.metrics.style, with: others)
     }
 }

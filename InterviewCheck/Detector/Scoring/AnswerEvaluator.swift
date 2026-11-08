@@ -31,7 +31,7 @@ struct AnswerEvaluator {
         // Wording needs no keys: it works even before any AI answer exists.
         let phrasing = PhrasingSignal.evaluate(answerText: answerText)
         // Without the AI review there are still follow-ups: about what the answer itself claimed.
-        let probes = judge == nil
+        let probes = judge?.followUpQuestions.isEmpty != false
             ? ProbeQuestions.make(answerText: answerText, questionText: questionText, aiAnswers: finished.map(\.text))
             : []
         return CheatScorer.score(timing: timing, fluency: fluency, similarity: similarity, judge: judge,

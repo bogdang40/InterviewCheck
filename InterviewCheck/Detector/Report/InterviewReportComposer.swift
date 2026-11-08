@@ -11,7 +11,7 @@ enum InterviewReportComposer {
         lines.append("- Candidate notified: \(interview.consentConfirmedAt.map { "yes, \(timeFormatter.string(from: $0))" } ?? "not recorded")")
         if let overall = interview.overallPercent {
             lines.append("- Overall: **\(overall)%** (\(ScoreBand(percent: overall).title.lowercased())); " +
-                         "\(InterviewSummary.flaggedLine(interview.flaggedCount, of: interview.questionCount)) (70% or more)")
+                         "\(report.flaggedLine) (70% or more)")
         }
         if interview.wasInterrupted {
             lines.append("- Interrupted: the app closed before the interview was ended; the last answer may be cut short.")
@@ -86,6 +86,15 @@ enum InterviewReportComposer {
         formatter.timeStyle = .short
         return formatter
     }()
+}
+
+extension InterviewReportData {
+    /// "1 of 3 answers flagged", counting the answers that were scored (as
+    /// the live screen does), not questions nobody answered.
+    var flaggedLine: String {
+        let finals = questions.compactMap { scores[$0.id] }.filter(\.isFinal)
+        return InterviewSummary.flaggedLine(finals.filter { $0.percent >= 70 }.count, of: finals.count)
+    }
 }
 
 /// An answer at 70% or more with its strongest evidence: what a reader of

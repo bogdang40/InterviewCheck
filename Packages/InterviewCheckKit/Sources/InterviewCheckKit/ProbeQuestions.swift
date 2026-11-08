@@ -40,7 +40,9 @@ public enum ProbeQuestions {
             guard !words.isEmpty, words.count <= 4, !words.contains(where: { $0 == "question" || $0 == "questions" }),
                   seen.insert(key).inserted else { continue }
             let content = words.filter { !FillerLexicon.stopwords.contains($0) && !generic.contains($0) }
-            guard !content.isEmpty, !content.allSatisfy(questionWords.contains) else { continue }
+            guard !content.isEmpty, !content.allSatisfy(questionWords.contains),
+                  // "2019" alone is not something to explain.
+                  !content.allSatisfy({ $0.allSatisfy(\.isNumber) }) else { continue }
             if words.count == 1, words[0].count < 4 { continue }
             var score = 0
             if aiText.contains(" \(key) ") { score += 3 }
@@ -97,8 +99,9 @@ public enum ProbeQuestions {
             if [.determiner, .pronoun].contains(tag), run.count >= 2, run.last?.word.hasSuffix("s") == true {
                 run.removeLast()
             }
-            // "teams ship safely": a verb before an adverb, taken for a noun.
-            if tag == .adverb, run.count >= 2 { run.removeLast() }
+            // "teams ship safely": after a plural subject, the word before an adverb is a verb.
+            // ("token bucket heavily" keeps its noun.)
+            if tag == .adverb, run.count >= 2, run[run.count - 2].word.hasSuffix("s") { run.removeLast() }
             while let last = run.last, !last.isNoun { run.removeLast() }
             if !run.isEmpty { phrases.append(run.map(\.word).joined(separator: " ")) }
             run = []

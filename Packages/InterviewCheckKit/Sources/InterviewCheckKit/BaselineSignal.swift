@@ -35,8 +35,10 @@ public enum BaselineSignal {
         let usualRate = median(usable.map(\.hesitationRate)) ?? 0
         let usualLatency = median(usable.compactMap(\.latency))
 
-        // Far fewer hesitations than usual, from someone who normally has some.
-        let cleaner = usualRate >= 3 && answer.hesitationRate <= usualRate / 3
+        // Far fewer hesitations than usual, from someone who normally has some,
+        // in an answer long enough that their usual rate predicts at least three.
+        let expected = usualRate * Double(answer.wordCount) / 100
+        let cleaner = usualRate >= 3 && expected >= 3 && answer.hesitationRate <= usualRate / 3
         // A much later start than usual.
         var later = false
         if let latency = answer.latency, let usual = usualLatency {

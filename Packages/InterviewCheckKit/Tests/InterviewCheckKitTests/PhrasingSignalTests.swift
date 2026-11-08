@@ -25,24 +25,41 @@ final class PhrasingSignalTests: XCTestCase {
         XCTAssertLessThan(result.score, PhrasingSignal.countsFrom)
     }
 
-    func testSpokenStarLabelsAreAClue() {
-        let result = PhrasingSignal.evaluate(answerText: """
+    func testSpokenStarLabelsAreAClueNotAVerdict() {
+        let star = """
         Situation, our checkout service was failing during the holiday sale. Task, I needed to restore it within the \
         hour. Action, I traced the retries, added backoff and rolled it out behind a flag. Result, errors dropped to \
         zero and we kept the flag as a kill switch.
-        """)
-        XCTAssertGreaterThanOrEqual(result.score, PhrasingSignal.countsFrom)
-        XCTAssertEqual(result.tells.first, "situation \u{2026} task \u{2026} action \u{2026} result")
+        """
+        let alone = PhrasingSignal.evaluate(answerText: star)
+        XCTAssertLessThan(alone.score, PhrasingSignal.countsFrom, "coaches teach STAR too")
+        XCTAssertEqual(alone.tells.first, "situation \u{2026} task \u{2026} action \u{2026} result")
+        let withMore = PhrasingSignal.evaluate(answerText: star + " Furthermore, it's worth noting that this seamlessly improved our holistic approach.")
+        XCTAssertGreaterThanOrEqual(withMore.score, PhrasingSignal.countsFrom)
     }
 
     func testAListAloneDoesNotCount() {
-        let result = PhrasingSignal.evaluate(answerText: """
+        let text = """
         First, we measure the latency at the edge for a week. Second, we cache the hot keys in Redis close to the \
         gateway. Finally, we shed load with a token bucket when the cache misses spike, which keeps the database healthy.
+        """
+        XCTAssertLessThan(PhrasingSignal.evaluate(answerText: text).score, PhrasingSignal.countsFrom)
+        XCTAssertEqual(PhrasingSignal.ordinalList(FillerLexicon.tokens(text)), "first \u{2026} second \u{2026} finally")
+    }
+
+    func testOneTellInAShortAnswerDoesNotCount() {
+        let result = PhrasingSignal.evaluate(answerText: """
+        Additionally I would cache the hot keys in Redis and put a token bucket per key at the gateway so bursts are \
+        absorbed before they reach the database.
         """)
         XCTAssertLessThan(result.score, PhrasingSignal.countsFrom)
-        XCTAssertGreaterThan(result.score, 0)
-        XCTAssertEqual(result.tells, ["first \u{2026} second \u{2026} finally"])
+    }
+
+    func testAPhraseIsNotCountedTwice() {
+        var used = Set<Int>()
+        let tokens = ["it", "plays", "a", "pivotal", "role", "here"]
+        XCTAssertEqual(PhrasingSignal.claim(["plays", "a", "pivotal", "role"], in: tokens, used: &used), 1)
+        XCTAssertEqual(PhrasingSignal.claim(["pivotal"], in: tokens, used: &used), 0)
     }
 
     func testShortAnswersAreNotJudged() {
@@ -98,5 +115,20 @@ final class JudgePromptEvidenceTests: XCTestCase {
             phrasing: PhrasingResult(score: 0.8, tells: ["furthermore", "it's worth noting"], wordCount: 80))
         XCTAssertTrue(prompt.contains("- Words said in the same order as that AI answer (runs of 4+): "), prompt)
         XCTAssertTrue(prompt.contains("- Wording typical of written AI text: furthermore, it's worth noting"), prompt)
+    }
+}
+
+final class PhrasingCapTests: XCTestCase {
+    func testWordingDoesNotLiftThePauseOnlyCap() {
+        // A transcript (no fluency), no AI answers, no review: a long pause plus AI wording stays under "mixed".
+        let words = DetectorFixtures.readingAnswer(after: 100)
+        let timing = TimingSignal.evaluate(answerWords: words, questionEnd: 100, questionText: DetectorFixtures.question)
+        let fluency = FluencySignal.evaluate(answerWords: words, from: timing.substantiveIndex)
+        let score = CheatScorer.score(timing: timing, fluency: fluency, similarity: nil, judge: nil,
+                                      phrasing: PhrasingResult(score: 1, tells: ["moreover"], wordCount: 80),
+                                      hasTimingGap: true, measuresFluency: false)
+        XCTAssertLessThanOrEqual(score.percent, CheatScoreWeights.default.timingOnlyMaximumPercent)
+        XCTAssertTrue(score.counterpoints.first?.hasPrefix("Only the pause and the wording could be measured") == true,
+                      "\(score.counterpoints)")
     }
 }

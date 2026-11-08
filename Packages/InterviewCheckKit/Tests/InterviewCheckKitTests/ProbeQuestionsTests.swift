@@ -51,6 +51,13 @@ final class ProbeQuestionsTests: XCTestCase {
         XCTAssertTrue(terms.contains { $0.lowercased() == "reliability work" }, "\(terms)")
     }
 
+    func testNumbersAloneAreNotTermsAndAdverbsKeepNouns() {
+        let terms = ProbeQuestions.keyTerms(in: "In 2019 I tuned the token bucket heavily for the payments gateway.",
+                                            questionText: "How would you design a rate limiter?")
+        XCTAssertFalse(terms.contains("2019"), "\(terms)")
+        XCTAssertTrue(terms.contains { $0.lowercased() == "token bucket" }, "\(terms)")
+    }
+
     func testNothingToAskAboutGivesNoProbes() {
         XCTAssertTrue(ProbeQuestions.make(answerText: "Um, yes, I think so, honestly.", questionText: question).isEmpty)
         XCTAssertTrue(ProbeQuestions.make(answerText: "", questionText: question).isEmpty)

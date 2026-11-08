@@ -59,6 +59,15 @@ final class SharedWordsTests: XCTestCase {
         XCTAssertTrue(union.reference.isEmpty)
     }
 
+    func testARunOverlappingALongerOneKeepsItsOwnPart() {
+        // Stumbling back over "every API key" must not lose the copied opening.
+        let shared = SharedWords.find(
+            answer: "we keep a token bucket for every API key, every API key, and keep it in Redis so every gateway agrees",
+            reference: "Keep a token bucket for every API key and keep it in Redis so every gateway agrees.")
+        XCTAssertEqual(shared.answerCount, 21)
+        XCTAssertEqual(shared.sharedCount, 17)
+    }
+
     func testWordRangesSplitOnAnyWhitespace() {
         let text = "  one two\n\nthree\tfour "
         XCTAssertEqual(SharedWords.wordRanges(text).map { String(text[$0]) }, ["one", "two", "three", "four"])

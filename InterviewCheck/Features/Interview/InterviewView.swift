@@ -26,6 +26,7 @@ struct InterviewSetupForm: View {
     var readiness: DetectorReadiness = .current()
     @State private var isImportingResume = false
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         Form {
@@ -38,7 +39,10 @@ struct InterviewSetupForm: View {
                     ReadinessRow(isDone: readiness.usableLineupCount > 0, title: "Claude or OpenAI key",
                                  detail: "Writes the answers AI tools would give, to compare the candidate's answer with.")
                     HStack {
-                        SettingsLink { Text("Add Keys in Settings\u{2026}") }
+                        Button("Add Keys in Settings\u{2026}") {
+                            UserDefaults.standard.set(SettingsTab.keys, forKey: SettingsTab.storageKey)
+                            openSettings()
+                        }
                         Button("Watch the Demo") { openWindow(id: AppWindowID.demo) }
                             .help("A scripted 90-second interview through the real detector. No keys or microphone needed.")
                         Spacer()

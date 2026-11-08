@@ -35,6 +35,11 @@ final class BaselineSignalTests: XCTestCase {
         XCTAssertNil(BaselineSignal.compare(AnswerStyle(latency: 6, wordCount: 90, hesitations: 0), with: short))
     }
 
+    func testAShortCleanAnswerIsNotEnoughToCompare() {
+        // 25 words at their usual 7 per 100 would have under two hesitations anyway.
+        XCTAssertNil(BaselineSignal.compare(AnswerStyle(latency: 1.0, wordCount: 25, hesitations: 0), with: halting))
+    }
+
     func testMedian() {
         XCTAssertEqual(BaselineSignal.median([1, 3, 2, 4]), 2.5)
         XCTAssertEqual(BaselineSignal.median([5, 1, 3]), 3)
