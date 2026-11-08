@@ -86,7 +86,8 @@ struct UpcomingInterviewsSection: View {
                     NSWorkspace.shared.open(link)
                     AutoPrepare.shared.markJoined(interview.id)
                     // Joining also prepares the interview, unless that is done.
-                    guard controller.preparedFrom != interview.id, preparingID == nil else { return }
+                    let ready = controller.preparedFrom == interview.id && controller.externalRef != nil
+                    guard !ready, preparingID == nil else { return }
                     preparingID = interview.id
                     Task {
                         notes = await connectors.prepare(interview, controller: controller)

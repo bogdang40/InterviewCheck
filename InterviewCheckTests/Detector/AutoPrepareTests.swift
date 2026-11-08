@@ -10,11 +10,13 @@ private struct TwoInterviews: InterviewSource, CandidateSource {
     var gap: TimeInterval = 3 * 3600
     var delay: UInt64 = 0
     var withLink = false
+    var withJob = false
     func verify() async throws -> String { "lee@acme.com" }
     func upcomingInterviews(from: Date, to: Date) async throws -> [ExternalInterview] {
         [ExternalInterview(source: .calendly, externalID: "a", title: "Phone Screen", startsAt: first,
                            meetingURL: withLink ? URL(string: "https://acme.zoom.us/j/81234567890") : nil,
-                           candidate: ExternalCandidate(externalID: "ca", name: "Jane Doe", email: "jane@example.com")),
+                           candidate: ExternalCandidate(externalID: "ca", name: "Jane Doe", email: "jane@example.com"),
+                           job: withJob ? ExternalJob(externalID: "j1", title: "Backend Engineer") : nil),
          ExternalInterview(source: .calendly, externalID: "b", title: "Phone Screen", startsAt: first.addingTimeInterval(gap),
                            candidate: ExternalCandidate(externalID: "cb", name: "Max Roe", email: "max@example.com"))]
     }
@@ -155,6 +157,39 @@ final class AutoPrepareTests: XCTestCase {
         clock = clock.addingTimeInterval(7 * 60)
         await auto.tick()
         XCTAssertEqual(opened, 0)
+    }
+
+    func testARefusedRunDoesNotBlockLaterOnes() async throws {
+        source.delay = 300_000_000
+        let run = Task { await self.auto.tick() }
+        try await Task.sleep(nanoseconds: 80_000_000)
+        editingRoles = true                       // Roles opened mid-way: this run is refused
+        let refused = await run.value
+        XCTAssertNil(refused)
+        XCTAssertNil(controller.preparedFrom, "no half-made setup is left marked as A's")
+        editingRoles = false
+        source.delay = 0
+        clock = clock.addingTimeInterval(3 * 3600)
+        let next = await auto.tick()
+        XCTAssertEqual(next?.externalID, "b", "automation carries on")
+    }
+
+    func testTheFirstRoleIsMadeAndSelectedOnAFirstRun() async throws {
+        source.withJob = true
+        await manager.sync(.calendly)
+        XCTAssertNil(roles.selectedRoleID)
+        let prepared = await auto.tick()
+        XCTAssertEqual(prepared?.externalID, "a", "the role Prepare made for itself is not a change by the interviewer")
+        XCTAssertEqual(roles.selectedRole?.name, "Backend Engineer")
+    }
+
+    func testWithNoEndTimeTheNextInterviewWithinTheHourIsStillPrepared() async throws {
+        source.gap = 30 * 60
+        await manager.sync(.calendly)
+        await auto.tick()                                    // A at T+8
+        clock = clock.addingTimeInterval(34 * 60)            // B (T+38) starts in 4 min; A was never run
+        let next = await auto.tick()
+        XCTAssertEqual(next?.externalID, "b")
     }
 
     func testOffOrWhileEditingRolesNothingHappens() async {

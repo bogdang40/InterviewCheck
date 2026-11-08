@@ -4,13 +4,19 @@ import InterviewCheckConnectors
 extension ConnectorManager {
     /// Fills the interview setup from an upcoming interview: the candidate,
     /// a role with the job description, and the résumé. Returns what could
-    /// not be filled, in plain words. Everything is gathered first and written
-    /// at once after the last wait; `canApply` can still refuse then (an
-    /// automatic Prepare checks nothing was typed meanwhile).
+    /// not be filled, in plain words.
+    ///
+    /// A manual Prepare writes each part as soon as it is known (starting the
+    /// interview meanwhile keeps the candidate and role). An automatic one
+    /// passes `canApply`: everything is then written at once after the last
+    /// wait, and only if `canApply` (given the role Prepare chose) agrees.
     @discardableResult
     func prepare(_ interview: ExternalInterview, controller: InterviewController,
-                 roles: RoleStore = .shared, navigate: Bool = true, canApply: (() -> Bool)? = nil) async -> [String] {
+                 roles: RoleStore = .shared, navigate: Bool = true, canApply: ((String?) -> Bool)? = nil) async -> [String] {
         guard controller.phase != .live else { return ["An interview is live."] }
+        guard controller.pendingScoring.isEmpty else {
+            return ["The last interview\u{2019}s scores are still being worked out. Try again in a moment."]
+        }
         prepareGeneration += 1
         let generation = prepareGeneration
         // Each await is a chance for the interview to start or another Prepare
@@ -18,12 +24,22 @@ extension ConnectorManager {
         let stopped = ["Preparation stopped: an interview started or another one is being prepared."]
         let current = { generation == self.prepareGeneration && controller.phase != .live }
         let original = interview
+        let staged = canApply != nil
         controller.reset()
         controller.preparedFrom = original.id
+        // Stopping leaves no half-made setup marked as this interview's.
+        let stop = { () -> [String] in
+            if controller.preparedFrom == original.id, controller.externalRef == nil { controller.preparedFrom = nil }
+            return stopped
+        }
         // A calendar invite knows little: find the candidate in a connected ATS.
         let interview = await enriched(interview)
-        guard current() else { return stopped }
+        guard current() else { return stop() }
         database.saveExternalLink(interview)
+        if !staged {
+            controller.candidateName = interview.candidate?.name ?? ""
+            controller.externalRef = interview.id
+        }
         var missing: [String] = []
         var roleID: String?
         var resume: (text: String, fileName: String)?
@@ -31,8 +47,9 @@ extension ConnectorManager {
 
         if let job = interview.job {
             let role = await role(for: job, source: interview.source, connector: connector, roles: roles)
-            guard current() else { return stopped }
+            guard current() else { return stop() }
             roleID = role.id
+            if !staged { roles.selectedRoleID = role.id }
             if role.jobDescription.isEmpty {
                 missing.append("The job description was not available; paste it into the role.")
             } else if role.plannedQuestions.isEmpty, draftRole(role.id, roles: roles) {
@@ -48,7 +65,7 @@ extension ConnectorManager {
                 var candidate = interview.candidate
                 if candidate?.resume == nil || candidate?.profileURL == nil, let id = candidate?.externalID {
                     let full = try await sourceConnector.candidate(id: id)
-                    guard current() else { return stopped }
+                    guard current() else { return stop() }
                     if var known = candidate {
                         known.resume = known.resume ?? full.resume
                         known.profileURL = known.profileURL ?? full.profileURL
@@ -61,7 +78,7 @@ extension ConnectorManager {
                 }
                 if let file = candidate?.resume {
                     let text = try await resumeText(file, from: sourceConnector)
-                    guard current() else { return stopped }
+                    guard current() else { return stop() }
                     resume = (text, file.filename)
                 } else {
                     missing.append("No r\u{00E9}sum\u{00E9} on file.")
@@ -71,7 +88,7 @@ extension ConnectorManager {
             }
         }
 
-        guard current(), canApply?() ?? true else { return stopped }
+        guard current(), canApply?(roleID) ?? true else { return stop() }
         controller.candidateName = interview.candidate?.name ?? ""
         controller.externalRef = interview.id
         controller.preparedFrom = original.id

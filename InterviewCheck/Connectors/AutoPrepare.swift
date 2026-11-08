@@ -76,17 +76,19 @@ final class AutoPrepare {
         joinIfDue()
         guard isEnabled, !isEditingRoles(),
               let next = Self.due(manager.upcoming, now: now(), leadMinutes: leadMinutes(), prepared: preparedIDs),
-              setupIsFree else { return nil }
+              setupIsFree(for: next) else { return nil }
         preparedIDs.insert(next.id)
         let role = roles.selectedRoleID
         let generation = manager.prepareGeneration
         // Written only if, after the downloads, the setup is still as Prepare
         // left it: nothing typed, consent not ticked, Roles not opened.
-        await manager.prepare(next, controller: controller, roles: roles, navigate: false, canApply: { [weak self] in
+        await manager.prepare(next, controller: controller, roles: roles, navigate: false, canApply: { [weak self] chosen in
             guard let self else { return false }
+            // The role Prepare picked (a new role selects itself) is not a change by the interviewer.
+            let selected = self.roles.selectedRoleID
             return self.controller.phase == .setup && !self.controller.consentConfirmed
                 && self.controller.candidateName.isEmpty && self.controller.resumeText.isEmpty
-                && self.controller.preparedFrom == next.id && !self.isEditingRoles() && self.roles.selectedRoleID == role
+                && self.controller.preparedFrom == next.id && !self.isEditingRoles() && (selected == role || selected == chosen)
         })
         guard manager.prepareGeneration == generation + 1, controller.preparedFrom == next.id,
               controller.externalRef != nil else { return nil }
@@ -124,14 +126,17 @@ final class AutoPrepare {
     }
 
     /// Empty, or still exactly what the last automatic Prepare filled in for
-    /// an interview that has ended (an interview about to start, or under
-    /// way while the interviewer waits, is kept).
-    var setupIsFree: Bool {
+    /// an interview that is over. An interview about to start, or under way
+    /// while the interviewer waits, is kept until its end (an hour when the
+    /// end is not known), but no later than five minutes before `next`.
+    func setupIsFree(for next: ExternalInterview) -> Bool {
         guard controller.phase == .setup, controller.pendingScoring.isEmpty, !controller.consentConfirmed else { return false }
         if controller.candidateName.isEmpty, controller.resumeText.isEmpty, controller.externalRef == nil,
            controller.preparedFrom == nil { return true }
         guard let lastFill, lastFill == fill, let lastPrepared else { return false }
-        return now() >= lastPrepared.endsAt ?? lastPrepared.startsAt.addingTimeInterval(3600)
+        let end = lastPrepared.endsAt ?? lastPrepared.startsAt.addingTimeInterval(3600)
+        let keepUntil = max(min(end, next.startsAt.addingTimeInterval(-5 * 60)), lastPrepared.startsAt)
+        return now() >= keepUntil
     }
 
     private var fill: Fill {
