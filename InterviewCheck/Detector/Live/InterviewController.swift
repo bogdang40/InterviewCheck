@@ -152,7 +152,15 @@ final class InterviewController: ObservableObject {
             return
         }
         let previousMark = activeQuestion.map { origin + $0.markedAt }
-        closeActiveQuestion(at: now)
+        // Pressed late, after the new question was asked (and maybe answered
+        // a little): the previous answer ends where the new question began.
+        var closeAt = now
+        if let previousMark {
+            let probe = QuestionTracker.resolve(words: timeline.words, markedAt: now, lowerBound: previousMark,
+                                                closedAt: nil, isCandidate: timeline.isCandidate)
+            if let start = probe.questionStart, start > previousMark { closeAt = min(now, start) }
+        }
+        closeActiveQuestion(at: closeAt)
 
         let question = InterviewQuestionRecord(
             id: UUID().uuidString, interviewID: interview.id, ordinal: questions.count + 1,

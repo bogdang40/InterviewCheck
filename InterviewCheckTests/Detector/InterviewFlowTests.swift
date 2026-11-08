@@ -65,6 +65,25 @@ final class InterviewFlowTests: XCTestCase {
         XCTAssertEqual(Set(saved.map(\.text)).count, Set((early + nod + late).map(\.text)).count)
     }
 
+    func testALateKeypressDoesNotGiveTheNextAnswerToThePreviousQuestion() async throws {
+        controller.consentConfirmed = true
+        controller.start()
+        let q1 = F.words("Tell me about a hard bug you fixed.", side: .interviewer, start: now + 1)
+        timeline.append(q1)
+        now = q1.last!.end + 0.3
+        controller.markQuestion()
+        let a1 = F.words("We had a race condition in billing that charged twice", side: .candidate, start: now + 1)
+        let q2 = F.words("How did you find it in production?", side: .interviewer, start: a1.last!.end + 2)
+        let a2 = F.words("I added tracing around the charge path", side: .candidate, start: q2.last!.end + 1)
+        timeline.append(a1 + q2 + a2)
+        now = a2.last!.end + 0.5
+        controller.markQuestion()   // pressed after Q2 was asked and partly answered
+        let first = controller.questions[0]
+        XCTAssertEqual(first.closedAt.map { $0 + controller.origin } ?? 0, q2.first!.start, accuracy: 0.01)
+        XCTAssertFalse(first.answerText.contains("tracing"), "the second answer is not the first one's")
+        XCTAssertTrue(first.answerText.hasPrefix("We had a race condition"))
+    }
+
     func testStartNeedsConsent() {
         controller.start()
         XCTAssertEqual(controller.phase, .setup)
