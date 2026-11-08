@@ -48,6 +48,8 @@ enum DeepgramStreamCore {
             URLQueryItem(name: "interim_results", value: "true"),
             URLQueryItem(name: "punctuate", value: "true"),
             URLQueryItem(name: "smart_format", value: "true"),
+            // Keep hesitation sounds; the cheating detector measures them.
+            URLQueryItem(name: "filler_words", value: "true"),
         ])
         components?.queryItems = queryItems
         return components?.url

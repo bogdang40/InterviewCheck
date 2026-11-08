@@ -36,6 +36,10 @@ final class DualStreamDeepgramService: ObservableObject {
     /// Called when either connection state changes
     var onConnectionStateChanged: ((DualStreamConnectionState) -> Void)?
 
+    /// Called with every final result's words mapped onto the host clock
+    /// (`ProcessInfo.systemUptime`), for timing analysis.
+    var onFinalTimedWords: ((DeepgramTimedWords) -> Void)?
+
     // MARK: - Private Properties
 
     var apiKey: String?
@@ -55,8 +59,14 @@ final class DualStreamDeepgramService: ObservableObject {
     var systemReady = false
     var connectionEpochs: [AudioSource: UInt64] = [:]
 
-    var pendingMicAudioData: [Data] = []
-    var pendingSystemAudioData: [Data] = []
+    var pendingMicAudioData: [PendingAudioChunk] = []
+    var pendingSystemAudioData: [PendingAudioChunk] = []
+
+    /// Map each connection's Deepgram offsets back to host time.
+    let micClock = StreamClock()
+    let systemClock = StreamClock()
+    /// Host clock; replaceable in tests.
+    var uptime: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
     let pendingAudioLock = NSLock()
     let maxPendingChunks = 100
 
@@ -117,6 +127,7 @@ final class DualStreamDeepgramService: ObservableObject {
         onMicTranscript = nil
         onSystemTranscript = nil
         onConnectionStateChanged = nil
+        onFinalTimedWords = nil
         stateLock.unlock()
 
         disconnectMicStream()
@@ -140,17 +151,20 @@ final class DualStreamDeepgramService: ObservableObject {
     ///
     /// Expected format: PCM16 (Int16), 48kHz, mono
     func sendMicAudio(_ data: Data) {
+        let chunk = PendingAudioChunk(data: data, capturedAt: clock(for: .microphone).captureStart(
+            ofBytes: data.count, arrivedAt: uptime()))
         let socket = stateLock.withLock { micWebSocket }
         guard let socket = socket else {
-            enqueuePendingAudio(data, source: .microphone)
+            enqueuePendingAudio(chunk, source: .microphone)
             return
         }
 
         guard isReady(.microphone) else {
-            enqueuePendingAudio(data, source: .microphone)
+            enqueuePendingAudio(chunk, source: .microphone)
             return
         }
 
+        clock(for: .microphone).recordSent(byteCount: data.count, capturedAt: chunk.capturedAt)
         let message = URLSessionWebSocketTask.Message.data(data)
         socket.send(message) { [weak self] error in
             guard let self, self.isCurrentSocket(socket, source: .microphone) else { return }
@@ -169,17 +183,20 @@ final class DualStreamDeepgramService: ObservableObject {
     ///
     /// Expected format: PCM16 (Int16), 48kHz, mono
     func sendSystemAudio(_ data: Data) {
+        let chunk = PendingAudioChunk(data: data, capturedAt: clock(for: .systemAudio).captureStart(
+            ofBytes: data.count, arrivedAt: uptime()))
         let socket = stateLock.withLock { systemWebSocket }
         guard let socket = socket else {
-            enqueuePendingAudio(data, source: .systemAudio)
+            enqueuePendingAudio(chunk, source: .systemAudio)
             return
         }
 
         guard isReady(.systemAudio) else {
-            enqueuePendingAudio(data, source: .systemAudio)
+            enqueuePendingAudio(chunk, source: .systemAudio)
             return
         }
 
+        clock(for: .systemAudio).recordSent(byteCount: data.count, capturedAt: chunk.capturedAt)
         let message = URLSessionWebSocketTask.Message.data(data)
         socket.send(message) { [weak self] error in
             guard let self, self.isCurrentSocket(socket, source: .systemAudio) else { return }
@@ -255,7 +272,11 @@ final class DualStreamDeepgramService: ObservableObject {
         flushPendingAudio(for: source)
     }
 
-    func enqueuePendingAudio(_ data: Data, source: AudioSource) {
+    func clock(for source: AudioSource) -> StreamClock {
+        source == .microphone ? micClock : systemClock
+    }
+
+    func enqueuePendingAudio(_ data: PendingAudioChunk, source: AudioSource) {
         pendingAudioLock.lock()
         switch source {
         case .microphone:
@@ -277,7 +298,7 @@ final class DualStreamDeepgramService: ObservableObject {
         guard let socket else { return }
 
         pendingAudioLock.lock()
-        let pending: [Data]
+        let pending: [PendingAudioChunk]
         switch source {
         case .microphone:
             pending = pendingMicAudioData
@@ -290,10 +311,18 @@ final class DualStreamDeepgramService: ObservableObject {
 
         guard !pending.isEmpty else { return }
 
-        for data in pending {
-            let message = URLSessionWebSocketTask.Message.data(data)
+        let streamClock = clock(for: source)
+        for chunk in pending {
+            streamClock.recordSent(byteCount: chunk.data.count, capturedAt: chunk.capturedAt)
+            let message = URLSessionWebSocketTask.Message.data(chunk.data)
             socket.send(message) { _ in }
         }
     }
 
+}
+
+/// Audio waiting for its socket, stamped with when it was captured.
+struct PendingAudioChunk {
+    let data: Data
+    let capturedAt: TimeInterval
 }

@@ -31,6 +31,8 @@ extension DualStreamDeepgramService {
         request.setValue("Token \(apiKey)", forHTTPHeaderField: "Authorization")
 
         let socket = makeWebSocket(for: request)
+        // Deepgram's word offsets restart at zero on every new socket.
+        clock(for: .microphone).reset()
         stateLock.withLock { micWebSocket = socket }
         socket?.resume()
 
@@ -85,6 +87,8 @@ extension DualStreamDeepgramService {
         request.setValue("Token \(apiKey)", forHTTPHeaderField: "Authorization")
 
         let socket = makeWebSocket(for: request)
+        // Deepgram's word offsets restart at zero on every new socket.
+        clock(for: .systemAudio).reset()
         stateLock.withLock { systemWebSocket = socket }
         socket?.resume()
 

@@ -87,14 +87,18 @@ extension DualStreamDeepgramService {
                 words: alternative.words ?? []
             )
 
+            let timed = segment.isFinal ? timedWords(segment.words, source: source) : nil
+
             // Resolve the callback when delivering. Teardown or reconnect can
             // invalidate a queued frame after parsing but before the main queue runs.
             DispatchQueue.main.async { [weak self] in
                 guard let self, self.connectionEpoch(for: source) == epoch else { return }
-                let callback = self.stateLock.withLock {
-                    source == .microphone ? self.onMicTranscript : self.onSystemTranscript
+                let (callback, timedCallback) = self.stateLock.withLock {
+                    (source == .microphone ? self.onMicTranscript : self.onSystemTranscript,
+                     self.onFinalTimedWords)
                 }
                 callback?(segment)
+                if let timed { timedCallback?(timed) }
             }
 
         } catch {
@@ -104,4 +108,32 @@ extension DualStreamDeepgramService {
             }
         }
     }
+
+    /// Maps a final result's word offsets onto the host clock. Nil before
+    /// any audio was sent on this connection.
+    func timedWords(_ words: [DeepgramWord], source: AudioSource) -> DeepgramTimedWords? {
+        let streamClock = clock(for: source)
+        var mapped: [DeepgramTimedWords.Word] = []
+        for word in words {
+            guard let start = streamClock.hostTime(forOffset: word.start),
+                  let end = streamClock.hostTime(forOffset: word.end) else { return nil }
+            mapped.append(.init(word: word, hostStart: start, hostEnd: max(end, start)))
+        }
+        guard !mapped.isEmpty else { return nil }
+        return DeepgramTimedWords(source: source, words: mapped, clockBreaks: streamClock.breakCount)
+    }
+}
+
+/// Final words from one Deepgram result, placed on the host clock.
+struct DeepgramTimedWords {
+    struct Word {
+        let word: DeepgramWord
+        let hostStart: TimeInterval
+        let hostEnd: TimeInterval
+    }
+
+    let source: AudioSource
+    let words: [Word]
+    /// How often this connection's audio was not contiguous so far.
+    let clockBreaks: Int
 }

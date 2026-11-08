@@ -77,7 +77,8 @@ targets:
             "$EAGLE_LIB_DIR/x86_64/libpv_eagle.dylib" -output "$DYLIB_DST"
           install_name_tool -id "@rpath/libpv_eagle.dylib" "$DYLIB_DST"
           codesign --force --sign - --timestamp=none "$DYLIB_DST"
-          lipo "$DYLIB_DST" -verify_arch arm64 x86_64
+          lipo "$DYLIB_DST" -verify_arch arm64
+          lipo "$DYLIB_DST" -verify_arch x86_64
           echo "Embedded Eagle dylib for arm64 and x86_64"
         basedOnDependencyAnalysis: false
     entitlements:
