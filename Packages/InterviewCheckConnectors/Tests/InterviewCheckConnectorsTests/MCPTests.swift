@@ -30,6 +30,7 @@ final class MCPTests: XCTestCase {
         XCTAssertEqual(stub.requests[2].value(forHTTPHeaderField: "Authorization"), "Bearer tok")
         XCTAssertEqual(stub.requests[2].value(forHTTPHeaderField: "Accept"), "application/json, text/event-stream")
         XCTAssertEqual(stub.requests.filter { String(decoding: $0.httpBody ?? Data(), as: UTF8.self).contains("\"initialize\"") }.count, 1)
+
     }
 
     func testToolErrorsAndRPCErrorsSurface() async throws {
@@ -86,5 +87,18 @@ final class MCPTests: XCTestCase {
         let url = OAuthClient(provider: provider, clientID: clientID, transport: stub)
             .authorizationURL(redirectURI: redirect, state: "s", codeChallenge: "c").absoluteString
         XCTAssertTrue(url.contains("resource=https://mcp.example.com/mcp") || url.contains("resource=https%3A%2F%2Fmcp.example.com%2Fmcp"))
+    }
+
+    func testUsesTheProtocolVersionTheServerAgreesTo() async throws {
+        let stub = StubTransport()
+        stub.on("POST", server, json: #"{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-03-26","capabilities":{}}}"#,
+                headers: ["Content-Type": "application/json"], bodyContains: "\"initialize\"")
+        stub.on("POST", server, status: 202, json: "", bodyContains: "notifications/initialized")
+        stub.on("POST", server, json: #"{"jsonrpc":"2.0","id":2,"result":{"tools":[]}}"#,
+                headers: ["Content-Type": "application/json"], bodyContains: "tools/list")
+        let client = MCPClient(url: URL(string: server)!, transport: stub, token: nil)
+        _ = try await client.listTools()
+        XCTAssertEqual(stub.requests.first?.value(forHTTPHeaderField: "MCP-Protocol-Version"), "2025-06-18")
+        XCTAssertEqual(stub.requests.last?.value(forHTTPHeaderField: "MCP-Protocol-Version"), "2025-03-26")
     }
 }

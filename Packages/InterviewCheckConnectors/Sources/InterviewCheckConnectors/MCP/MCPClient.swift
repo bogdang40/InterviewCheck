@@ -16,6 +16,8 @@ public actor MCPClient {
     private var sessionID: String?
     private var nextID = 1
     private var initialized = false
+    /// The version the server agreed to in `initialize` (sent on every call after).
+    private(set) var negotiatedVersion = MCPClient.protocolVersion
 
     public init(url: URL, transport: HTTPTransport, token: AccessTokenProvider?) {
         self.url = url
@@ -53,16 +55,17 @@ public actor MCPClient {
 
     private func ensureInitialized() async throws {
         guard !initialized else { return }
-        _ = try await request("initialize", params: [
+        let result = try await request("initialize", params: [
             "protocolVersion": .string(Self.protocolVersion), "capabilities": [:],
             "clientInfo": ["name": "InterviewCheck", "version": "1.0"],
         ])
+        if let agreed = result["protocolVersion"].string { negotiatedVersion = agreed }
         initialized = true
         try await notify("notifications/initialized")
     }
 
     private func headers() async throws -> [String: String] {
-        var headers = ["Accept": "application/json, text/event-stream", "MCP-Protocol-Version": Self.protocolVersion]
+        var headers = ["Accept": "application/json, text/event-stream", "MCP-Protocol-Version": negotiatedVersion]
         if let token { headers["Authorization"] = "Bearer \(try await token())" }
         if let sessionID { headers["Mcp-Session-Id"] = sessionID }
         return headers
