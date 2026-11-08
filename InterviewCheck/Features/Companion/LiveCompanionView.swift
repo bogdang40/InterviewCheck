@@ -28,6 +28,7 @@ struct LiveCompanionView: View {
 
     private var live: some View {
         VStack(alignment: .leading, spacing: 12) {
+            AudioStatusStrip(startedAt: nil, compact: true)
             if let question {
                 Text("Q\(question.ordinal)").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                 Text(question.text.isEmpty ? "Listening for the question\u{2026}" : question.text)

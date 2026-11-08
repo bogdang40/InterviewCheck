@@ -17,6 +17,7 @@ struct InterviewLiveScreen: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
+                AudioStatusStrip(startedAt: controller.interview?.startedAt)
                 if let message = controller.errorMessage {
                     HStack {
                         Label(message, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange)
