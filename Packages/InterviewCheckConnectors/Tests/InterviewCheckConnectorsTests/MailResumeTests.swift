@@ -70,3 +70,29 @@ final class MailResumeTests: XCTestCase {
         XCTAssertEqual(MIMEDecoding.headerText("Plain subject"), "Plain subject")
     }
 }
+
+final class OutlookResumeTests: XCTestCase {
+    func testOutlookMailIsSearchedOnlyWhenTurnedOn() async throws {
+        let stub = StubTransport()
+        stub.on("GET", "attachments/A2/$value", json: "%PDF-1.4 Jane")
+        stub.on("GET", "me/messages/M1/attachments", json: #"{"value":[{"id":"A1","name":"logo.png","contentType":"image/png","size":2000},{"id":"A2","name":"Jane Doe - CV.pdf","contentType":"application/pdf","size":90000}]}"#)
+        stub.on("GET", "me/messages?", json: #"{"value":[{"id":"M1","subject":"CV","hasAttachments":true,"receivedDateTime":"\#(DateParsing.iso(Date().addingTimeInterval(-86_400)))","from":{"emailAddress":{"name":"Sam Recruiter","address":"sam@contoso.com"}}}]}"#)
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("ol-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+
+        let off = try MicrosoftGraphConnector(credentials: ConnectorCredentials(fields: [:]), transport: stub, accessToken: { "t" })
+        let none = try await off.findResume(for: ExternalCandidate(name: "Jane Doe"), into: folder)
+        XCTAssertNil(none)
+        XCTAssertTrue(stub.requests.isEmpty, "no mail is read unless turned on")
+
+        let credentials = ConnectorCredentials(fields: ["mailResumes": "true"])
+        let on = try MicrosoftGraphConnector(credentials: credentials, transport: stub, accessToken: { "t" })
+        let found = try await on.findResume(for: ExternalCandidate(name: "Jane Doe", email: "jane@example.com"), into: folder)
+        XCTAssertEqual(found?.filename, "Jane Doe - CV.pdf")
+        XCTAssertTrue(found?.origin.hasPrefix("Sam Recruiter, ") == true)
+        XCTAssertEqual(stub.requests(containing: "me/messages?").count, 2, "the name and the email are searched")
+        XCTAssertTrue(MicrosoftConnectorProvider.provider(credentials).scopes.contains("Mail.Read"))
+        XCTAssertFalse(MicrosoftConnectorProvider.provider(ConnectorCredentials(fields: [:])).scopes.contains("Mail.Read"))
+    }
+}

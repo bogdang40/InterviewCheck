@@ -109,6 +109,9 @@ Notes:
 - Your default calendar is read. Name other calendars (for example "Interviews") under
   **Other calendars**. A shared team calendar also needs `Calendars.Read.Shared`; sign in
   again after adding one.
+- **Look for résumés in Outlook mail** (off by default) adds `Mail.Read`: when no ATS has the
+  candidate's résumé, Prepare searches the last 90 days of Outlook mail for the candidate's
+  name and email, with the same strict matching as the IMAP mailbox.
 - Attendees can read transcripts. Only the organiser can download recordings.
 - An admin can turn off transcript access for apps. The app then explains this.
 

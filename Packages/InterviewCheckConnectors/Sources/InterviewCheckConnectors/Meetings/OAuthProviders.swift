@@ -23,16 +23,17 @@ public enum MicrosoftConnectorProvider {
     /// Shared calendars (another person's or a team's) need Calendars.Read.Shared,
     /// asked for only when other calendars are named.
     public static func provider(tenant: String = "organizations", transcripts: Bool = false,
-                                sharedCalendars: Bool = false) -> OAuthProvider {
+                                sharedCalendars: Bool = false, mail: Bool = false) -> OAuthProvider {
         OAuthProvider(authorizeURL: URL(string: "https://login.microsoftonline.com/\(tenant)/oauth2/v2.0/authorize")!,
                       tokenURL: URL(string: "https://login.microsoftonline.com/\(tenant)/oauth2/v2.0/token")!,
-                      scopes: baseScopes + (sharedCalendars ? ["Calendars.Read.Shared"] : []) + (transcripts ? transcriptScopes : []),
+                      scopes: baseScopes + (sharedCalendars ? ["Calendars.Read.Shared"] : []) + (mail ? ["Mail.Read"] : [])
+                        + (transcripts ? transcriptScopes : []),
                       scopeOnTokenCalls: true)
     }
 
     public static func provider(_ credentials: ConnectorCredentials) -> OAuthProvider {
         provider(tenant: credentials["tenant"] ?? "organizations", transcripts: credentials["transcripts"] == "true",
-                 sharedCalendars: !OtherCalendars.list(credentials).isEmpty)
+                 sharedCalendars: !OtherCalendars.list(credentials).isEmpty, mail: credentials["mailResumes"] == "true")
     }
 }
 

@@ -10,6 +10,8 @@ public struct MicrosoftGraphConnector: InterviewSource, RecordingSource {
     private let transcripts: Bool
     /// Calendar names read besides the default one (a team "Interviews" calendar).
     let otherCalendars: [String]
+    /// Prepare may look for emailed résumés in Outlook (Mail.Read, opted in).
+    let mailResumes: Bool
 
     public init(credentials: ConnectorCredentials, transport: HTTPTransport, accessToken: AccessTokenProvider?) throws {
         guard let accessToken else { throw ConnectorError.notConnected }
@@ -18,9 +20,10 @@ public struct MicrosoftGraphConnector: InterviewSource, RecordingSource {
         keywords = credentials["keywords"]?.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) } ?? []
         transcripts = credentials["transcripts"] == "true"
         otherCalendars = OtherCalendars.list(credentials)
+        mailResumes = credentials["mailResumes"] == "true"
     }
 
-    private func client() async throws -> APIClient {
+    func client() async throws -> APIClient {
         APIClient(baseURL: URL(string: "https://graph.microsoft.com/v1.0")!,
                   headers: ["Authorization": "Bearer \(try await token())",
                             "Prefer": "outlook.timezone=\"UTC\", outlook.body-content-type=\"text\""],

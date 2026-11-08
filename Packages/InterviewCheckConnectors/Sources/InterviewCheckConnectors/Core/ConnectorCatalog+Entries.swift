@@ -64,9 +64,10 @@ public enum ConnectorCatalog {
                              CredentialField("tenant", "Tenant", placeholder: "organizations, or your tenant ID", optional: true),
                              CredentialField("transcripts", "Teams transcripts and recordings (needs admin consent)", toggle: true),
                              CredentialField("calendars", "Other calendars", placeholder: "Optional: calendar names, e.g. Interviews", optional: true),
+                             CredentialField("mailResumes", "Look for r\u{00E9}sum\u{00E9}s in Outlook mail (Mail.Read)", toggle: true),
                              keywords]),
                          [.upcomingInterviews, .transcripts, .recordings],
-                         setup: "Register an app in Microsoft Entra (Mobile and desktop platform, redirect http://localhost/callback, no secret) with delegated Calendars.Read and OnlineMeetings.Read (and Calendars.Read.Shared to read a shared team calendar named under Other calendars; sign in again after adding one). For Teams transcripts add OnlineMeetingTranscript.Read.All and OnlineMeetingRecording.Read.All and have an admin grant consent.",
+                         setup: "Register an app in Microsoft Entra (Mobile and desktop platform, redirect http://localhost/callback, no secret) with delegated Calendars.Read and OnlineMeetings.Read (and Calendars.Read.Shared to read a shared team calendar named under Other calendars, Mail.Read to look for emailed r\u{00E9}sum\u{00E9}s; sign in again after turning either on). For Teams transcripts add OnlineMeetingTranscript.Read.All and OnlineMeetingRecording.Read.All and have an admin grant consent.",
                          docs: "https://learn.microsoft.com/graph/api/onlinemeeting-list-transcripts")
         case .zoom:
             return entry(kind, "Zoom", .meetings, "Zoom meetings you host and their cloud recordings: the audio-only file is scored like any recording.",

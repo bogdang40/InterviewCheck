@@ -60,24 +60,11 @@ extension MailInviteConnector: ResumeFinder {
         }
     }
 
-    /// 2: the file names the candidate (all of the name, or the surname);
-    /// 1: a CV-looking file in a message whose subject names them; 0: no.
     static func matchStrength(filename: String, subject: String, tokens: [String]) -> Int {
-        guard !tokens.isEmpty else { return 0 }
-        let file = Set(nameTokens(filename))
-        if tokens.allSatisfy(file.contains) || (tokens.count > 1 && tokens.last!.count >= 3 && file.contains(tokens.last!)) {
-            return 2
-        }
-        let looksLikeCV = !file.isDisjoint(with: ["cv", "resume", "lebenslauf", "curriculum", "vitae"])
-        let subjectWords = Set(nameTokens(subject))
-        return looksLikeCV && tokens.allSatisfy(subjectWords.contains) ? 1 : 0
+        ResumeMatching.strength(filename: filename, subject: subject, tokens: tokens)
     }
 
-    /// Lower-case words without accents ("Résumé_Jane-Doe.pdf" → resume, jane, doe, pdf).
-    static func nameTokens(_ text: String) -> [String] {
-        text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
-            .components(separatedBy: CharacterSet.letters.inverted).filter { $0.count >= 2 }
-    }
+    static func nameTokens(_ text: String) -> [String] { ResumeMatching.tokens(text) }
 
     /// "Subject: …", "From: …", "Date: …" (folded lines joined, encoded words decoded).
     static func headers(_ text: String) -> [String: String] {
@@ -92,9 +79,5 @@ extension MailInviteConnector: ResumeFinder {
         return result
     }
 
-    static func safeFileName(_ name: String) -> String {
-        let cleaned = name.components(separatedBy: CharacterSet(charactersIn: "/\\:\0")).joined(separator: "-")
-            .trimmingCharacters(in: CharacterSet(charactersIn: ". "))
-        return cleaned.isEmpty ? "resume.pdf" : String(cleaned.prefix(120))
-    }
+    static func safeFileName(_ name: String) -> String { ResumeMatching.safeFileName(name) }
 }
