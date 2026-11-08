@@ -181,7 +181,15 @@ final class ConnectorManager: ObservableObject {
         var recordingsCheckedAt: Date?
         let started = now()
         do {
-            let connector = try makeConnector(kind)
+            var connector = try makeConnector(kind)
+            // A token the server no longer accepts before its expiry: refresh
+            // once and carry on, instead of reporting the account as broken.
+            if let session = sessions[kind] {
+                do { _ = try await connector.verify() } catch ConnectorError.unauthorized {
+                    await session.expire()
+                    connector = try makeConnector(kind)
+                } catch {}
+            }
             // Interviews and recordings are fetched separately: one failing
             // (a missing scope, say) must not stop the other.
             if let source = connector as? InterviewSource {

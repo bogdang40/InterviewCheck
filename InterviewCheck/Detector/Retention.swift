@@ -10,6 +10,8 @@ enum InterviewRetention {
     @discardableResult
     static func apply(days: Int, database: SessionDatabase, now: Date = Date()) -> Int {
         guard days > 0, let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: now) else { return 0 }
+        // Meeting recordings found by connectors age out with the interviews.
+        database.deleteExternalRecordings(startedBefore: cutoff)
         return database.deleteInterviews(startedBefore: cutoff)
     }
 }

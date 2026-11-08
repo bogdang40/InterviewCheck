@@ -16,6 +16,12 @@ public actor OAuthSession {
         self.onUpdate = onUpdate
     }
 
+    /// Treats the current token as expired, so the next call refreshes it
+    /// (after a server rejected it early).
+    public func expire() {
+        tokens.expiresAt = .distantPast
+    }
+
     public func accessToken() async throws -> String {
         guard tokens.isExpired(now: client.now()) else { return tokens.accessToken }
         if let refreshing { return try await refreshing.value.accessToken }

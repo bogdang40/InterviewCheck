@@ -139,3 +139,46 @@ final class ConnectorSafetyTests: XCTestCase {
         XCTAssertEqual(controller.preparedFrom, "greenhouse:2")
     }
 }
+
+/// Rejects the first token it sees, then accepts any other.
+private struct RejectsOldToken: InterviewSource {
+    let kind = ConnectorKind.google
+    let token: AccessTokenProvider
+    func verify() async throws -> String {
+        guard try await token() != "revoked" else { throw ConnectorError.unauthorized }
+        return "me@acme.com"
+    }
+    func upcomingInterviews(from: Date, to: Date) async throws -> [ExternalInterview] {
+        guard try await token() != "revoked" else { throw ConnectorError.unauthorized }
+        return []
+    }
+}
+
+@MainActor
+final class TokenRecoveryTests: XCTestCase {
+    func testARejectedTokenIsRefreshedOnceAndTheSyncSucceeds() async throws {
+        let path = NSTemporaryDirectory() + "token-\(UUID().uuidString).sqlite"
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let store = MemoryCredentialStore()
+        let manager = ConnectorManager(store: store, database: SessionDatabase(databasePath: path),
+                                       defaults: UserDefaults(suiteName: "token.\(UUID().uuidString)")!)
+        let stub = TokenStub()
+        manager.transport = stub
+        // Signed in an hour ago; the server revoked the token early.
+        try store.save(ConnectorCredentials(fields: ["clientID": "c"],
+                                            tokens: OAuthTokens(accessToken: "revoked", refreshToken: "r1",
+                                                                expiresAt: Date().addingTimeInterval(1800))), for: "google")
+        manager.factory = { _, _, _, token in RejectsOldToken(token: token!) }
+        manager.upsert(ConnectorManager.Account(kind: .google, label: "me@acme.com", connectedAt: Date()))
+        await manager.sync(.google)
+        XCTAssertNil(manager.account(.google)?.lastError, "one refresh fixed it")
+        XCTAssertEqual(store.load("google")?.tokens?.accessToken, "fresh", "the new token is saved")
+    }
+}
+
+final class TokenStub: HTTPTransport, @unchecked Sendable {
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        (Data(#"{"access_token":"fresh","expires_in":3600}"#.utf8),
+         HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+    }
+}

@@ -27,20 +27,26 @@ struct PrivacySettingsTab: View {
             } header: {
                 Text("Interviews")
             } footer: {
-                Text("Older interviews are deleted when the app opens. Roles are kept.")
+                Text("Older interviews, and meeting recordings found by connectors, are deleted when the app opens. Roles are kept.")
             }
 
             Section("What is stored on this Mac") {
                 Label("Transcripts with word timings, the AI answers, scores and reports, in the app's database.",
                       systemImage: "internaldrive")
-                Label("Audio is never saved. It streams to Deepgram for transcription and is not kept by the app.",
+                Label("Audio is never kept. Live audio streams to Deepgram; a meeting recording or r\u{00E9}sum\u{00E9} is downloaded to a temporary file, read, and deleted.",
                       systemImage: "waveform.slash")
-                Label("API keys are kept in the macOS Keychain.", systemImage: "key")
+                Label("From connected systems: upcoming interviews (candidate name and email, job title, meeting link) and the list of meeting recordings, refreshed every 15 minutes and removed when you disconnect.",
+                      systemImage: "point.3.connected.trianglepath.dotted")
+                Label("API keys and sign-ins, for AI providers and connected systems, are kept in the macOS Keychain.", systemImage: "key")
             }
 
             Section("What is sent where") {
                 Label("Deepgram: the audio of both sides of the call, for transcription.", systemImage: "arrow.up.right")
                 Label("Your AI providers: each question, the job description, the resume if added, and the candidate's answer text.",
+                      systemImage: "arrow.up.right")
+                Label("Connected systems are only read, except one thing: Send Summary adds the note you reviewed to the candidate in your ATS, and only when you press Send.",
+                      systemImage: "arrow.up.right")
+                Label("Recordings scored from Zoom, Teams or Meet go to Deepgram and your AI providers like any recording.",
                       systemImage: "arrow.up.right")
                 Label("No interview content goes to \(AppBrand.name)'s own server; it only checks your account or subscription.",
                       systemImage: "hand.raised")

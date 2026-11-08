@@ -108,6 +108,8 @@ extension SessionDatabase {
             "DELETE FROM reference_answers WHERE question_id IN (SELECT id FROM interview_questions WHERE interview_id = ?)",
             "DELETE FROM interview_questions WHERE interview_id = ?",
             "DELETE FROM interview_words WHERE interview_id = ?",
+            "DELETE FROM external_links WHERE ref IN (SELECT external_ref FROM interviews WHERE id = ?)",
+            "UPDATE external_recordings SET interview_id = NULL WHERE interview_id = ?",
             "DELETE FROM interviews WHERE id = ?",
         ] {
             interviewWrite("deleteInterview", sql) { $0.bindText(id, at: 1) }

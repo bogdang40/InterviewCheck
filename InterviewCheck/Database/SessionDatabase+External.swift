@@ -93,6 +93,10 @@ extension SessionDatabase {
         }.first ?? nil
     }
 
+    func deleteExternalRecordings(startedBefore date: Date) {
+        interviewWrite("deleteOldRecordings", "DELETE FROM external_recordings WHERE started_at < ?") { $0.bindMillis(date, at: 1) }
+    }
+
     /// Forgets everything a source brought in (when it is disconnected).
     func deleteExternalData(source: ConnectorKind) {
         for table in ["external_interviews", "external_recordings"] {
