@@ -27,6 +27,9 @@ final class AutoPrepare {
     var openLink: (URL) -> Void = { NSWorkspace.shared.open($0) }
     /// Interviews whose meeting was opened (by hand or automatically).
     private(set) var joinedIDs: Set<String> = []
+    /// Held while one of the user's interviews starts within 15 minutes, so
+    /// App Nap does not delay the 30-second checks (Ready, auto-join).
+    private var activity: NSObjectProtocol?
 
     /// The reminder's lead time, or 10 minutes with reminders off.
     var leadMinutes: () -> Int = { InterviewReminders.minutes > 0 ? InterviewReminders.minutes : 10 }
@@ -73,6 +76,7 @@ final class AutoPrepare {
     /// when its details were filled in.
     @discardableResult
     func tick() async -> ExternalInterview? {
+        stayResponsiveBeforeInterviews()
         joinIfDue()
         guard isEnabled, !isEditingRoles(),
               let next = Self.due(manager.mine, now: now(), leadMinutes: leadMinutes(), prepared: preparedIDs),
@@ -95,6 +99,20 @@ final class AutoPrepare {
         lastFill = fill
         lastPrepared = next
         return next
+    }
+
+    private func stayResponsiveBeforeInterviews() {
+        let now = now()
+        let soon = (isEnabled || joinsAutomatically) && manager.mine.contains {
+            $0.startsAt > now.addingTimeInterval(-5 * 60) && $0.startsAt < now.addingTimeInterval(15 * 60)
+        }
+        if soon, activity == nil {
+            activity = ProcessInfo.processInfo.beginActivity(options: [.userInitiatedAllowingIdleSystemSleep],
+                                                             reason: "An interview starts soon")
+        } else if !soon, let held = activity {
+            ProcessInfo.processInfo.endActivity(held)
+            activity = nil
+        }
     }
 
     /// The Join button was used: the meeting is not opened a second time.
