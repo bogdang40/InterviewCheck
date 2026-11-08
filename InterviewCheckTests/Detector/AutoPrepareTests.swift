@@ -275,10 +275,17 @@ final class AutoPrepareTests: XCTestCase {
         b.startsAt = clock.addingTimeInterval(15 * 60)
         b.candidate = ExternalCandidate(name: "Max Roe", email: "max@example.com")
         XCTAssertFalse(ConnectorManager.sameInterview(a, b), "same personal room, different candidates")
+        var close = b
+        close.startsAt = clock.addingTimeInterval(5 * 60)
+        XCTAssertFalse(ConnectorManager.sameInterview(a, close), "5 minutes apart in one room, two different people")
         var copy = a
         copy.source = .greenhouse
-        copy.meetingURL = nil
-        XCTAssertTrue(ConnectorManager.sameInterview(a, copy), "the ATS copy of the same interview")
+        copy.candidate = ExternalCandidate(name: "Doe, Jane A.", email: "jane.doe@personal.example")
+        XCTAssertTrue(ConnectorManager.sameInterview(a, copy), "the ATS copy: same room, the name written differently, another email")
+        var calendar = a
+        calendar.source = .google
+        calendar.candidate = ExternalCandidate(name: "Jane Doe")
+        XCTAssertTrue(ConnectorManager.sameInterview(calendar, copy))
     }
 
     func testTheInterviewJustRunIsNotPreparedAgain() async throws {

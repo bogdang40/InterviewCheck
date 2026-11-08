@@ -104,7 +104,7 @@ final class AutoPrepare {
     private func stayResponsiveBeforeInterviews() {
         let now = now()
         let soon = (isEnabled || joinsAutomatically) && manager.mine.contains {
-            $0.startsAt > now.addingTimeInterval(-5 * 60) && $0.startsAt < now.addingTimeInterval(15 * 60)
+            $0.startsAt > now.addingTimeInterval(-10 * 60) && $0.startsAt < now.addingTimeInterval(15 * 60)
         }
         if soon, activity == nil {
             activity = ProcessInfo.processInfo.beginActivity(options: [.userInitiatedAllowingIdleSystemSleep],
@@ -154,9 +154,16 @@ final class AutoPrepare {
     /// an hour but released 5 minutes before `next`, never in its first 15 minutes.
     func setupIsFree(for next: ExternalInterview) -> Bool {
         // A finished interview whose scores are all in is saved: the next may come in.
-        // (Not the interview that just ended, prepared by hand or started early.)
+        // Not if `next` is the interview just run: prepared from it, or (typed in
+        // by hand) run during its slot.
         if controller.phase == .ended {
-            return controller.pendingScoring.isEmpty && controller.referencesInFlight.isEmpty && !manager.holds(next, in: controller)
+            guard controller.pendingScoring.isEmpty, controller.referencesInFlight.isEmpty,
+                  !manager.holds(next, in: controller) else { return false }
+            if let ran = controller.interview?.startedAt,
+               (next.startsAt.addingTimeInterval(-15 * 60)...(next.endsAt ?? next.startsAt.addingTimeInterval(3600))).contains(ran) {
+                return false
+            }
+            return true
         }
         guard controller.phase == .setup, controller.pendingScoring.isEmpty, !controller.consentConfirmed else { return false }
         if controller.candidateName.isEmpty, controller.resumeText.isEmpty, controller.externalRef == nil,

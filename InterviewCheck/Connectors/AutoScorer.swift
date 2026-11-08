@@ -58,8 +58,10 @@ final class AutoScorer {
                 // Run live without Prepare: the same candidate's name, started
                 // at this meeting's time (not a second round later that day).
                 let name = InterviewMerger.normalized(interview.candidate?.name ?? "")
-                return !name.isEmpty && InterviewMerger.normalized(report.candidateName) == name
-                    && abs(report.startedAt.timeIntervalSince(interview.startsAt)) < 20 * 60
+                // Start is pressed when the call begins, which may be well after
+                // the booked time (introductions, a late candidate).
+                let slot = interview.startsAt.addingTimeInterval(-15 * 60)...(interview.endsAt ?? interview.startsAt.addingTimeInterval(3600))
+                return !name.isEmpty && InterviewMerger.normalized(report.candidateName) == name && slot.contains(report.startedAt)
             }
             if ref == interview.id { return true }
             return manager.database.loadExternalLink(ref).map { ConnectorManager.sameInterview($0, interview) } ?? false

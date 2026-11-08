@@ -68,14 +68,17 @@ extension ConnectorManager {
         return Self.sameInterview(saved, interview)
     }
 
-    /// Two copies of one interview: within the merge window and, when both
-    /// name a candidate, the same candidate. A shared meeting room alone is not
-    /// enough (back-to-back screens on one personal Zoom link).
+    /// Two copies of one interview: within the merge window, not clearly two
+    /// different candidates, and the same by the rule that merged them (link,
+    /// email or name). The same email settles it; names that cannot be the same
+    /// person ("Jane Doe" vs "Max Roe") rule it out even in a shared meeting
+    /// room, while "Jane Doe", "Jane A. Doe" and "Doe, Jane" are compatible.
     static func sameInterview(_ a: ExternalInterview, _ b: ExternalInterview) -> Bool {
         guard abs(a.startsAt.timeIntervalSince(b.startsAt)) <= 10 * 60 else { return false }
-        if let left = a.candidate?.email?.lowercased(), let right = b.candidate?.email?.lowercased() { return left == right }
-        let left = InterviewMerger.normalized(a.candidate?.name ?? ""), right = InterviewMerger.normalized(b.candidate?.name ?? "")
-        if !left.isEmpty, !right.isEmpty { return left == right }
+        if let left = a.candidate?.email?.lowercased(), let right = b.candidate?.email?.lowercased(), left == right { return true }
+        let words = { (name: String?) in Set(InterviewMerger.normalized(name ?? "").split(separator: " ").map(String.init)) }
+        let left = words(a.candidate?.name), right = words(b.candidate?.name)
+        if !left.isEmpty, !right.isEmpty, !left.isSubset(of: right), !right.isSubset(of: left) { return false }
         return InterviewMerger.isSame(a, b, window: 10 * 60)
     }
 }
