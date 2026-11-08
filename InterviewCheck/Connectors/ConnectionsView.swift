@@ -80,7 +80,7 @@ struct ConnectionsView: View {
                     Label("Score Recordings Automatically", systemImage: "wand.and.stars")
                 }
                 .toggleStyle(.button)
-                .help("Score new Zoom, Teams and Meet recordings of scheduled interviews as they arrive")
+                .help("Score new Zoom, Teams, Meet and Webex recordings of scheduled interviews as they arrive")
             }
             ToolbarItem(placement: .primaryAction) {
                 Picker(selection: $reminderMinutes) {

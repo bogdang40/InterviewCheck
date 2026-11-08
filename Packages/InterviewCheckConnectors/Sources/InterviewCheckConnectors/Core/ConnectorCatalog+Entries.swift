@@ -59,6 +59,15 @@ public enum ConnectorCatalog {
                          .oauth(ZoomConnectorProvider.provider, clientFields: oauthClient + [keywords]), [.upcomingInterviews, .recordings, .transcripts],
                          setup: "In the Zoom App Marketplace create a General app (user-managed), turn on Use Public Client OAuth, add redirect http://127.0.0.1/callback and the scopes user:read:user, meeting:read:list_meetings, cloud_recording:read:list_user_recordings. Cloud recordings need a Pro plan.",
                          docs: "https://developers.zoom.us/docs/api/meetings/")
+        case .webex:
+            return entry(kind, "Webex", .meetings, "Webex meetings you host, their invitees, and afterwards the transcript (with speaker names) and recording audio to score.",
+                         .oauth(WebexConnectorProvider.provider, clientFields: [
+                             CredentialField("clientID", "Integration client ID"),
+                             CredentialField("clientSecret", "Integration client secret", secret: true),
+                             keywords,
+                         ]), [.upcomingInterviews, .recordings, .transcripts],
+                         setup: "On developer.webex.com open My Webex Apps \u{203A} Create a New App \u{203A} Integration. Add the redirect URI http://127.0.0.1:53871/callback and the scopes spark:people_read, meeting:schedules_read, meeting:transcripts_read and meeting:recordings_read. Paste the client ID and secret, then Sign In. Transcripts need Webex Assistant turned on in the meeting; recordings need cloud recording.",
+                         docs: "https://developer.webex.com/docs/meetings")
         case .greenhouse:
             return entry(kind, "Greenhouse", .ats, "Scheduled interviews, candidates, r\u{00E9}sum\u{00E9}s, job posts, and private notes.",
                          .fields([CredentialField("clientID", "Client ID"),

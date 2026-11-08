@@ -46,7 +46,7 @@ struct PrivacySettingsTab: View {
                       systemImage: "arrow.up.right")
                 Label("Connected systems are only read, except one thing: Send Summary adds the note you reviewed to the candidate in your ATS, and only when you press Send.",
                       systemImage: "arrow.up.right")
-                Label("Recordings scored from Zoom, Teams or Meet go to Deepgram and your AI providers like any recording.",
+                Label("Recordings scored from Zoom, Teams, Meet or Webex go to Deepgram and your AI providers like any recording.",
                       systemImage: "arrow.up.right")
                 Label("No interview content goes to \(AppBrand.name)'s own server; it only checks your account or subscription.",
                       systemImage: "hand.raised")

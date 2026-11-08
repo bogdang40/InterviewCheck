@@ -104,6 +104,10 @@ tools; pull finished meeting recordings for scoring; optionally post a private n
 - [x] E12 Booking links: Calendly (personal access token) and Cal.com (API key, self-hosted too):
       bookings → upcoming interviews with the invitee as candidate; never follows paging links off-host.
 
+- [x] E13 Webex: hosted meetings + invitees, transcripts (WebVTT speakers) and recording audio, OAuth with
+      PKCE on a fixed loopback port (Webex matches redirect ports exactly). Downloads now send API keys
+      only to files that need them (pre-signed links never get them).
+
 - [x] E10 Beta: mark questions automatically when the interviewer forgets the key (Settings ›
       Detector, off by default; question end + 12-word answer, tagged "Marked automatically").
 
@@ -151,3 +155,4 @@ tools; pull finished meeting recordings for scoring; optionally post a private n
 - 00:10 Release reinstalled in ~/Applications: window after 2.0 s, 107 MB, 0% CPU at idle.
 - 00:30 E11 Mail (IMAP) connector; ICS cancellations and SEQUENCE. 59 connector tests (+ an opt-in live TLS greeting check).
 - 00:40 E12 Calendly + Cal.com connectors ("Booking links" section). 66 connector tests.
+- 00:50 6dde412 download header fix; E13 Webex. 71 connector tests.

@@ -76,7 +76,7 @@ struct AnalyzeRecordingView: View {
                 ForEach(roles.roles) { Text($0.displayTitle).tag(Optional($0.id)) }
             }
             Toggle("The candidate agreed to this interview being recorded, transcribed and checked", isOn: $consent)
-            Text("Audio or video files (Zoom, Meet and Teams recordings work). Uses your Deepgram and AI keys.")
+            Text("Audio or video files (Zoom, Meet, Teams and Webex recordings work). Uses your Deepgram and AI keys.")
                 .font(.caption).foregroundStyle(.secondary)
         }
         .formStyle(.grouped)

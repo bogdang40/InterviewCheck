@@ -86,7 +86,8 @@ final class ConnectorManager: ObservableObject {
         guard !clientID.isEmpty else { throw ConnectorError.missingCredential("client ID") }
         if kind == .microsoft365 { provider = MicrosoftConnectorProvider.provider(ConnectorCredentials(fields: fields)) }
         let client = OAuthClient(provider: provider, clientID: clientID, clientSecret: fields["clientSecret"], transport: transport)
-        let receiver = try LoopbackReceiver()
+        // Webex matches the redirect exactly, port included.
+        let receiver = try LoopbackReceiver(port: kind == .webex ? WebexConnectorProvider.redirectPort : 0)
         defer { receiver.stop() }
         let redirect = try await receiver.start(host: kind == .microsoft365 ? "localhost" : "127.0.0.1")
         let verifier = PKCE.verifier()

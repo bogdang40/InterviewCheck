@@ -58,6 +58,7 @@ public enum ConnectorFactory {
         case .google: return try GoogleWorkspaceConnector(credentials: credentials, transport: transport, accessToken: accessToken)
         case .microsoft365: return try MicrosoftGraphConnector(credentials: credentials, transport: transport, accessToken: accessToken)
         case .zoom: return try ZoomMeetingsConnector(credentials: credentials, transport: transport, accessToken: accessToken)
+        case .webex: return try WebexMeetingsConnector(credentials: credentials, transport: transport, accessToken: accessToken)
         default: return nil
         }
     }

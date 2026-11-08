@@ -107,6 +107,18 @@ Notes:
 - Only meetings you host are listed.
 - Cloud recording needs a Pro plan. The audio-only file is what gets scored.
 
+**Webex** (hosted meetings, transcripts and recordings)
+1. On developer.webex.com open My Webex Apps › Create a New App › Integration.
+2. Add the redirect URI `http://127.0.0.1:53871/callback` (Webex matches the port exactly,
+   so the app always listens on this one) and the scopes `spark:people_read`,
+   `meeting:schedules_read`, `meeting:transcripts_read` and `meeting:recordings_read`.
+3. Paste the client ID and secret into Connections and Sign In.
+
+Notes:
+- Only meetings you host are listed; the outside invitee is taken as the candidate.
+- Transcripts need Webex Assistant turned on in the meeting. Recordings need cloud
+  recording; the audio file is fetched through Webex's short-lived direct link.
+
 ## Applicant tracking systems
 
 | System | Upcoming interviews | Job text | Résumé | Private note | Credential |
