@@ -26,7 +26,8 @@ struct ConnectionsView: View {
         HSplitView {
             List(selection: $selection) {
                 Section {
-                    TextField("Your work email", text: $myEmails, prompt: Text("you@company.com"))
+                    TextField("Your work email", text: $myEmails, prompt: Text("Your work email"))
+                        .textFieldStyle(.roundedBorder)
                         .onChange(of: myEmails) { _, value in connectors.typedEmails = value }
                         .help("Only interviews you are on are shown. Separate several addresses with commas.")
                     if !connectors.myEmails.isEmpty {
