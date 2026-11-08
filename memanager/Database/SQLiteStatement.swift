@@ -94,6 +94,13 @@ final class SQLiteStatement {
         }
     }
 
+    /// Rewinds the statement and clears its bindings so it can be reused
+    /// for the next row of a batch insert.
+    func reset() {
+        sqlite3_reset(statement)
+        sqlite3_clear_bindings(statement)
+    }
+
     // MARK: - Execution
 
     /// Steps a write statement to completion.

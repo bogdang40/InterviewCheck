@@ -135,12 +135,32 @@ final class SessionDatabaseMigrationLadderTests: XCTestCase {
 
         database = SessionDatabase(databasePath: databasePath)
 
-        XCTAssertEqual(try readUserVersion(), 16)
+        XCTAssertEqual(try readUserVersion(), SessionDatabaseMigrationSteps.currentVersion)
         for table in ["job_workspaces", "workspace_documents", "workspace_journal", "kg_nodes", "kg_edges"] {
             XCTAssertTrue(try tableExists(table), "v16 must recreate \(table)")
         }
         XCTAssertTrue(try indexExists("idx_kg_edges_from"))
         XCTAssertTrue(try indexExists("idx_workspace_journal_workspace"))
+    }
+
+    // MARK: - v17 upgrade path
+
+    func testUpgradeFromV16CreatesInterviewTables() throws {
+        let tables = ["interviews", "interview_words", "interview_questions", "reference_answers",
+                      "answer_scores", "role_profiles"]
+        try database.performSyncThrowing { db in
+            for table in tables { _ = sqlite3_exec(db, "DROP TABLE IF EXISTS \(table)", nil, nil, nil) }
+            _ = sqlite3_exec(db, "PRAGMA user_version = 16", nil, nil, nil)
+        }
+        database = nil
+
+        database = SessionDatabase(databasePath: databasePath)
+
+        XCTAssertEqual(try readUserVersion(), 17)
+        for table in tables {
+            XCTAssertTrue(try tableExists(table), "v17 must create \(table)")
+        }
+        XCTAssertTrue(try indexExists("idx_interview_words_interview"))
     }
 
     func testFreshDatabaseLandsAtCurrentVersionWithV15Indices() throws {

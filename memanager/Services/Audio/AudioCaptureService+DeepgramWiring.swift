@@ -84,6 +84,16 @@ extension AudioCaptureService {
             }
         }
 
+        // Final words on the shared clock feed the cheating detector.
+        // Delivered on the main queue, like the transcript callbacks.
+        dualService.onFinalTimedWords = { [weak self] batch in
+            MainActor.assumeIsolated {
+                guard let self, self.isCaptureTokenActive(captureToken),
+                      self.shouldAcceptIncomingTranscripts() else { return }
+                InterviewTimeline.shared.ingest(batch)
+            }
+        }
+
         dualService.onConnectionStateChanged = { [weak self] state in
             DispatchQueue.main.async {
                 self?.deepgramMicState = state.mic

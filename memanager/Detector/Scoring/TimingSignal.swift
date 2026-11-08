@@ -113,6 +113,18 @@ enum TimingSignal {
         return Double(echoed) / Double(content.count) >= 2.0 / 3.0
     }
 
+    /// A wait that matches how long the fastest AI took to produce its
+    /// first sentence (plus a few seconds to start reading) adds a little.
+    static func pacedToAI(_ timing: TimingResult, fastestFirstSentence: TimeInterval?) -> TimingResult {
+        guard let ai = fastestFirstSentence, let latency = timing.substantiveLatency,
+              latency >= 2.5, latency >= ai, latency <= ai + 5 else { return timing }
+        return TimingResult(
+            firstWordLatency: timing.firstWordLatency, substantiveLatency: timing.substantiveLatency,
+            stallWordCount: timing.stallWordCount, stallText: timing.stallText,
+            substantiveIndex: timing.substantiveIndex, score: min(1, timing.score + 0.1)
+        )
+    }
+
     static func interpolate(_ latency: TimeInterval) -> Double {
         guard let last = curve.last else { return 0 }
         if latency >= last.0 { return last.1 }

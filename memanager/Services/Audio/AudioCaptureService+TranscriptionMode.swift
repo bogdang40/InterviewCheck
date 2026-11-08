@@ -75,6 +75,12 @@ extension AudioCaptureService {
     }
 
     func resolveTranscriptionMode() -> TranscriptionMode {
+        // The cheating detector needs per-word timing on both sides of the
+        // call, which only the two-stream Deepgram mode provides. Use it
+        // whenever a Deepgram key exists, ahead of the on-device engines.
+        if let apiKey = voiceSignatureStore.loadDeepgramApiKey(), !apiKey.isEmpty {
+            return .deepgramSourceBased
+        }
         if settings.forceAppleSpeech {
             return .appleSpeech
         }

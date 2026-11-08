@@ -7,6 +7,7 @@ extension SessionDatabase {
             SessionDatabaseSchema.sessionTables,
             SessionDatabaseSchema.memoryAndPracticeTables,
             SessionDatabaseSchema.workspaceTables,
+            SessionDatabaseSchema.interviewTables,
             SessionDatabaseSchema.indexes
         ].joined(separator: "\n")
         
