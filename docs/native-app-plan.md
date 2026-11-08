@@ -149,11 +149,11 @@ tools; pull finished meeting recordings for scoring; optionally post a private n
 - 22:46 E8 auto-scoring of meeting recordings. 288 app tests.
 - 22:47 accessibility pass: score card one spoken summary, headings, labelled Join/Prepare, list rows combined.
 - 22:50 E9 Shortcuts / Dock menu / URL actions. 290 app tests; Metadata.appintents in the bundle.
-- 23:17 review fixes (independent review of the connectors, 15 findings): 2120ff2, 619ff83, fd988b0. Not done: forced refresh + retry on 401, surfacing truncated syncs as warnings (done 01:00, SyncNotes), MCP protocol-version negotiation, data-protection keychain (needs a signed team ID). 298 app + 48 connector tests.
+- 23:17 review fixes (independent review of the connectors, 15 findings): 2120ff2, 619ff83, fd988b0. Not done: forced refresh + retry on 401, surfacing truncated syncs as warnings (done 00:34, SyncNotes), MCP protocol-version negotiation, data-protection keychain (needs a signed team ID). 298 app + 48 connector tests.
 - 23:28 native polish: last section remembered, Delete key in lists, Share PDF; Open in <ATS>; Import roles from ATS jobs; docs/CONNECTORS.md. 299 app + 49 connector tests.
 - 23:58 core review (14 findings) fixed: early/late keypress, short answers capped (pause alone never flags), transcripts leave fluency out, New Interview waits for pending scores, answer settle delay, stale finals after regenerate dropped, words saved once, double keypress = one question, recording lifecycle/cleanup/endedAt, whole-name voice match (+ AutoScorer skips ambiguous), recovery respects Answer Done, recording interjections. Late-mark overlap fixed after (closes the previous answer at the next question's start). Reconnect gaps fixed after (connection epoch + count drops; gaps checked from 5 s before the question end). Still to check on a live call: diarized speaker numbers after a reconnect. 305 app + 47 kit tests.
 - 00:10 Release reinstalled in ~/Applications: window after 2.0 s, 107 MB, 0% CPU at idle.
-- 00:30 E11 Mail (IMAP) connector; ICS cancellations and SEQUENCE. 59 connector tests (+ an opt-in live TLS greeting check).
-- 00:40 E12 Calendly + Cal.com connectors ("Booking links" section). 66 connector tests.
-- 00:50 6dde412 download header fix; E13 Webex. 71 connector tests.
-- 01:00 Sync notes: a list cut at a page limit (any connector) shows "Stopped after N …; some may be missing." on the account, without counting as a failure. 73 connector + 312 app tests.
+- 00:20 18e9083 E11 Mail (IMAP) connector; ICS cancellations and SEQUENCE. 59 connector tests (+ an opt-in live TLS greeting check).
+- 00:25 798ff92 E12 Calendly + Cal.com connectors ("Booking links" section). 66 connector tests.
+- 00:28–00:31 6dde412 download header fix; 5c7292f E13 Webex. 71 connector tests.
+- 00:34 1be7a1f Sync notes: a list cut at a page limit (any connector) shows "Stopped after N …; some may be missing." on the account, without counting as a failure. 73 connector + 312 app tests.
