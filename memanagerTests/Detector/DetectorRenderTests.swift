@@ -2,7 +2,7 @@ import SwiftUI
 import XCTest
 @testable import memanager
 
-/// Renders the detector screens with sample data, light and dark, to PNG.
+/// Renders the native screens with sample data, light and dark, to PNG.
 /// Opt in with MEMANAGER_RENDER_SMOKE=1; files land in MEMANAGER_RENDER_DIR.
 @MainActor
 final class DetectorRenderTests: XCTestCase {
@@ -14,7 +14,7 @@ final class DetectorRenderTests: XCTestCase {
         try OverlayRenderHarness.skipUnlessEnabled()
     }
 
-    /// A controller mid-interview: one answered question (flagged), one live.
+    /// A controller mid-interview with one answered, flagged question.
     private func liveController() throws -> (InterviewController, InterviewTimeline) {
         let path = NSTemporaryDirectory() + "render-\(UUID().uuidString).sqlite"
         let timeline = InterviewTimeline(uptime: { [unowned self] in self.now })
@@ -26,7 +26,7 @@ final class DetectorRenderTests: XCTestCase {
         controller.startAudio = {}
         controller.stopAudio = {}
         controller.questionSettleDelay = 0
-        controller.roleProvider = { (nil, nil) }
+        controller.roleProvider = { nil }
         controller.candidateName = "Jordan Rivera"
         controller.consentConfirmed = true
         controller.start()
@@ -40,24 +40,27 @@ final class DetectorRenderTests: XCTestCase {
         controller.referenceGeneration[id] = 99
         controller.referencesInFlight.remove(id)
         for (index, sample) in Self.samples.enumerated() {
-            controller.upsertReference(ReferenceAnswerRecord(
+            let record = ReferenceAnswerRecord(
                 id: "r\(index)", questionID: id, provider: sample.0, model: sample.1, promptName: sample.2,
-                text: sample.3, firstSentenceSeconds: 2.4 + Double(index), totalSeconds: 9))
+                text: sample.3, firstSentenceSeconds: 2.4 + Double(index), totalSeconds: 9)
+            controller.upsertReference(record)
+            controller.database.saveReferenceAnswer(record)
         }
         let answer = F.readingAnswer(after: question.last!.end)
         timeline.append(answer)
         now = answer.last!.end + 0.5
         controller.tick()
         let window = controller.window(for: controller.questions[0])
-        var score = controller.evaluate(question: controller.questions[0], window: window)
-        score = CheatScorer.score(
-            timing: score.timing, fluency: score.fluency, similarity: score.similarity,
+        let base = controller.evaluate(question: controller.questions[0], window: window)
+        let score = CheatScorer.score(
+            timing: base.timing, fluency: base.fluency, similarity: base.similarity,
             judge: JudgeResult(likelihood: 86, confidence: "high",
                                evidence: ["Same three points in the same order as the GPT answer, including \u{201C}fail open\u{201D}"],
                                followUpQuestions: ["What bucket size and refill rate would you start with, and why?",
                                                    "Walk me through what happens when two gateways decrement the same key at once."]),
             hasTimingGap: false)
         controller.store(score, questionID: id, window: window, isFinal: true)
+        controller.errorMessage = nil
         return (controller, timeline)
     }
 
@@ -68,53 +71,64 @@ final class DetectorRenderTests: XCTestCase {
         - Keep bucket state in Redis so all gateway nodes agree
         - Refill at a steady rate; capacity allows short bursts
         - Return 429 with Retry-After when the bucket is empty
-        - Tune limits per customer tier from rejection metrics
         """),
         (.openai, "gpt-4o-mini", "STAR story", """
-        At my last company our public API got hammered by one partner's retry loop, which took down checkout. \
-        I owned the fix. I added a Redis-backed token bucket per API key at the gateway, with a Lua script so the \
-        check-and-decrement was atomic, and we returned 429s with a Retry-After header. Errors dropped 90 percent.
+        At my last company our public API got hammered by one partner's retry loop. I added a Redis-backed \
+        token bucket per API key at the gateway, with a Lua script so the check-and-decrement was atomic.
         """),
     ]
 
+    private func native<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        content().background(Color(nsColor: .windowBackgroundColor))
+    }
+
     func testRenderLiveInterview() async throws {
         let (controller, timeline) = try liveController()
-        for width: CGFloat in [1000, 640] {
-            try await OverlayRenderHarness.render("detector-live-\(Int(width))", size: CGSize(width: width, height: 1250), settle: 0.6) {
-                InterviewLiveView(controller: controller, timeline: timeline, plannedQuestions: [
-                    PlannedQuestion(text: F.question, family: nil, strongAnswer: "Token bucket or sliding window, shared state"),
-                    PlannedQuestion(text: "Tell me about the hardest outage you owned end to end.", family: nil, strongAnswer: ""),
-                    PlannedQuestion(text: "Why does this role interest you?", family: nil, strongAnswer: ""),
-                ], width: width)
+        for width: CGFloat in [1000, 700] {
+            try await OverlayRenderHarness.render("native-live-\(Int(width))", size: CGSize(width: width, height: 1200), settle: 0.6) {
+                native { InterviewLiveScreen(controller: controller, timeline: timeline) }
             }
         }
     }
 
-    func testRenderSetup() async throws {
-        let controller = InterviewController()
-        controller.candidateName = "Jordan Rivera"
-        try await OverlayRenderHarness.render("detector-setup", size: CGSize(width: 800, height: 900)) {
-            InterviewSetupView(controller: controller, settings: DetectorSettings.shared, workspace: nil,
-                               readiness: DetectorReadiness(hasDeepgramKey: false, usableLineupCount: 2),
-                               onChooseRole: {}, onOpenSettings: {})
+    func testRenderSetupAndSummary() async throws {
+        let setup = InterviewController()
+        setup.candidateName = "Jordan Rivera"
+        try await OverlayRenderHarness.render("native-setup", size: CGSize(width: 820, height: 900)) {
+            native {
+                InterviewSetupForm(controller: setup,
+                                   readiness: DetectorReadiness(hasDeepgramKey: false, usableLineupCount: 2))
+            }
         }
-    }
-
-    func testRenderReportAndEnded() async throws {
         let (controller, _) = try liveController()
         controller.end()
-        try await OverlayRenderHarness.render("detector-ended", size: CGSize(width: 800, height: 500)) {
-            InterviewEndedView(controller: controller, onOpenReport: {})
+        try await OverlayRenderHarness.render("native-summary", size: CGSize(width: 820, height: 560)) {
+            native { InterviewSummaryView(controller: controller) }
         }
         let report = try XCTUnwrap(controller.database.loadInterviewReport(id: controller.interview!.id))
-        try await OverlayRenderHarness.render("detector-report", size: CGSize(width: 820, height: 1100)) {
-            InterviewReportView(report: report, width: 820, onDelete: {})
+        try await OverlayRenderHarness.render("native-report", size: CGSize(width: 820, height: 1300)) {
+            native { ReportDetail(report: report) }
         }
     }
 
-    func testRenderDetectorSettings() async throws {
-        try await OverlayRenderHarness.render("detector-settings", size: CGSize(width: 720, height: 900)) {
-            SettingsScreen(initialPane: .detector)
+    func testRenderRoleEditorAndSettings() async throws {
+        var role = RoleProfile(name: "Senior Backend Engineer", company: "Acme",
+                               jobDescription: "We run a public payments API in Go and Postgres. You will own rate limiting, idempotency and the on-call rotation.")
+        role.plannedQuestions = [
+            PlannedQuestion(text: F.question, family: "System design", strongAnswer: "Token bucket or sliding window; shared state; 429s"),
+            PlannedQuestion(text: "Tell me about the hardest outage you owned end to end.", family: "Behavioral", strongAnswer: ""),
+        ]
+        try await OverlayRenderHarness.render("native-role-editor", size: CGSize(width: 760, height: 1100)) {
+            native { RoleEditor(role: role) }
+        }
+        try await OverlayRenderHarness.render("native-settings-keys", size: CGSize(width: 640, height: 560)) {
+            native { KeysSettingsTab() }
+        }
+        try await OverlayRenderHarness.render("native-settings-detector", size: CGSize(width: 640, height: 560)) {
+            native { DetectorSettingsTab() }
+        }
+        try await OverlayRenderHarness.render("native-settings-shortcuts", size: CGSize(width: 640, height: 560)) {
+            native { ShortcutsSettingsTab() }
         }
     }
 }

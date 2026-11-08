@@ -1,9 +1,9 @@
 import SwiftUI
 
 enum WorkspaceDetailTab: String, CaseIterable, Identifiable {
-    case kit, overview, documents, journal
+    case overview, documents, journal
     var id: String { rawValue }
-    var title: String { self == .kit ? "Interview kit" : rawValue.capitalized }
+    var title: String { rawValue.capitalized }
 }
 
 /// Role brief, source files and journal each have their own reading surface.
@@ -11,12 +11,12 @@ struct WorkspaceDetailColumn: View {
     @ObservedObject var store: WorkspaceStore
     let workspace: JobWorkspace
     var breakpoint: OverlayLayout.Breakpoint = .regular
-    @State private var selectedTab: WorkspaceDetailTab = .kit
+    @State private var selectedTab: WorkspaceDetailTab = .overview
     @State private var isDeleteConfirmationPresented = false
     @State private var isJournalSheetPresented = false
     @State private var bindMessage: WorkspaceBindMessage?
 
-    init(store: WorkspaceStore, workspace: JobWorkspace, breakpoint: OverlayLayout.Breakpoint = .regular, initialTab: WorkspaceDetailTab = .kit) {
+    init(store: WorkspaceStore, workspace: JobWorkspace, breakpoint: OverlayLayout.Breakpoint = .regular, initialTab: WorkspaceDetailTab = .overview) {
         self.store = store
         self.workspace = workspace
         self.breakpoint = breakpoint
@@ -32,9 +32,6 @@ struct WorkspaceDetailColumn: View {
                 VStack(alignment: .leading, spacing: DesignTokens.Spacing.md) {
                     if let message = bindMessage {
                         ToneBanner(tone: message.tone, message: message.text, onDismiss: { bindMessage = nil })
-                    }
-                    retainedTab(.kit) {
-                        RoleKitSection(workspace: workspace)
                     }
                     retainedTab(.overview) {
                         VStack(alignment: .leading, spacing: DesignTokens.Spacing.md) {
@@ -85,7 +82,7 @@ struct WorkspaceDetailColumn: View {
             }
         }
         .confirmationDialog("Remove \(workspace.displayTitle)?", isPresented: $isDeleteConfirmationPresented, titleVisibility: .visible) {
-            Button("Remove from InterviewCheck, keep folder", role: .destructive) { store.delete(workspace.id, moveFolderToTrash: false) }
+            Button("Remove from Abley, keep folder", role: .destructive) { store.delete(workspace.id, moveFolderToTrash: false) }
             Button("Remove and move folder to Trash", role: .destructive) { store.delete(workspace.id, moveFolderToTrash: true) }
             Button("Cancel", role: .cancel) {}
         } message: {

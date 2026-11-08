@@ -155,7 +155,7 @@ extension InterviewController {
             errorMessage = "Add a Claude or OpenAI key in Settings to generate AI answers."
             return
         }
-        let prompts = roleProvider().profile?.enabledPrompts ?? CheaterPromptLibrary.defaults
+        let prompts = roleProvider()?.enabledPrompts ?? CheaterPromptLibrary.defaults
         let runs = ReferenceAnswerRunner.plan(lineup: lineup, prompts: prompts)
         let generation = (referenceGeneration[questionID] ?? 0) + 1
         referenceGeneration[questionID] = generation

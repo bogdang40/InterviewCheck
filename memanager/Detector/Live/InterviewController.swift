@@ -30,10 +30,8 @@ final class InterviewController: ObservableObject {
     var runner = ReferenceAnswerRunner()
     var startAudio: () -> Void = { SessionController.shared.startSession() }
     var stopAudio: () -> Void = { SessionController.shared.endSession() }
-    var roleProvider: () -> (workspace: JobWorkspace?, profile: RoleProfile?) = {
-        let workspace = WorkspaceStore.shared.activeWorkspace
-        return (workspace, workspace.flatMap { RoleStore.shared.profile(for: $0.id) })
-    }
+    /// The role the interview is for (the one selected in Roles).
+    var roleProvider: () -> RoleProfile? = { RoleStore.shared.selectedRole }
 
     /// Host time the interview started; stored times are relative to it.
     private(set) var origin: TimeInterval = 0
@@ -59,8 +57,8 @@ final class InterviewController: ObservableObject {
 
     var roleContext: RoleContext {
         let role = roleProvider()
-        return RoleContext(roleTitle: role.workspace?.displayTitle ?? "",
-                           jobDescription: role.profile?.jobDescription ?? "", resume: resumeText)
+        return RoleContext(roleTitle: role?.displayTitle ?? "",
+                           jobDescription: role?.jobDescription ?? "", resume: resumeText)
     }
 
     // MARK: - Start and end
@@ -72,8 +70,8 @@ final class InterviewController: ObservableObject {
         }
         let role = roleProvider()
         let record = InterviewRecord(
-            id: UUID().uuidString, workspaceID: role.workspace?.id.uuidString,
-            roleTitle: role.workspace?.displayTitle ?? "", candidateName: candidateName.trimmingCharacters(in: .whitespaces),
+            id: UUID().uuidString, workspaceID: role?.id,
+            roleTitle: role?.displayTitle ?? "", candidateName: candidateName.trimmingCharacters(in: .whitespaces),
             consentConfirmedAt: Date(), startedAt: Date()
         )
         timeline.reset()

@@ -23,7 +23,7 @@ final class InterviewFlowTests: XCTestCase {
         controller.startAudio = {}
         controller.stopAudio = {}
         controller.questionSettleDelay = 0
-        controller.roleProvider = { (nil, nil) }
+        controller.roleProvider = { nil }
         controller.runner = ReferenceAnswerRunner(
             makeClient: { _, _ in FakeTextClient(reply: F.aiAnswer) }, clock: { 0 }, deliver: { $0() })
     }

@@ -1,54 +1,64 @@
 import Combine
 import Foundation
 
-/// The detector's per-role data: the pasted job description, the cheater
-/// prompts, and the planned questions. Each role is a Workspace; this store
-/// keeps what the Workspace folder does not.
+/// All roles, kept in the app database. The selected role is the one the
+/// next interview uses.
 @MainActor
 final class RoleStore: ObservableObject {
     static let shared = RoleStore()
 
-    /// Bumped on every save so screens showing a role redraw.
-    @Published private(set) var revision = 0
-    /// Loaded lazily and silently, so reading a role from a view body never
-    /// publishes a change mid-draw.
-    private var cache: [UUID: RoleProfile] = [:]
+    @Published private(set) var roles: [RoleProfile] = []
+    @Published var selectedRoleID: String? {
+        didSet { defaults.set(selectedRoleID, forKey: Self.selectedKey) }
+    }
+
     private let database: SessionDatabase
+    private let defaults: UserDefaults
+    private static let selectedKey = "interviewcheck.selectedRoleID"
 
-    init(database: SessionDatabase = .shared) {
+    init(database: SessionDatabase = .shared, defaults: UserDefaults = AppDefaults.standard) {
         self.database = database
+        self.defaults = defaults
+        selectedRoleID = defaults.string(forKey: Self.selectedKey)
+        reload()
     }
 
-    func profile(for workspaceID: UUID) -> RoleProfile {
-        if let cached = cache[workspaceID] { return cached }
-        let loaded = database.loadRoleProfile(workspaceID: workspaceID.uuidString)
-            ?? RoleProfile(workspaceID: workspaceID.uuidString)
-        cache[workspaceID] = loaded
-        return loaded
+    var selectedRole: RoleProfile? { roles.first { $0.id == selectedRoleID } }
+
+    func role(id: String?) -> RoleProfile? {
+        guard let id else { return nil }
+        return roles.first { $0.id == id }
     }
 
-    /// Saves the profile and mirrors the job description into the role's
-    /// folder ("Job Description/job-description.md"), so it sits beside the
-    /// interviewer's other files.
-    func save(_ profile: RoleProfile, workspace: JobWorkspace?) {
-        var updated = profile
-        updated.updatedAt = Date()
-        if let id = UUID(uuidString: profile.workspaceID) { cache[id] = updated }
-        revision += 1
-        database.saveRoleProfile(updated)
-        if let workspace { writeJobDescription(updated.jobDescription, into: workspace) }
-    }
-
-    private func writeJobDescription(_ text: String, into workspace: JobWorkspace) {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        let folder = workspace.folderURL.appendingPathComponent("Job Description", isDirectory: true)
-        let file = folder.appendingPathComponent("job-description.md")
-        do {
-            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            try (trimmed + "\n").write(to: file, atomically: true, encoding: .utf8)
-        } catch {
-            NSLog("[RoleStore] Could not write job description: \(error.localizedDescription)")
+    func reload() {
+        roles = database.loadRoleProfiles().sorted { $0.updatedAt > $1.updatedAt }
+        if let selectedRoleID, !roles.contains(where: { $0.id == selectedRoleID }) {
+            self.selectedRoleID = roles.first?.id
         }
+    }
+
+    @discardableResult
+    func create(name: String = "", company: String = "") -> RoleProfile {
+        let role = RoleProfile(name: name, company: company)
+        save(role)
+        if selectedRoleID == nil { selectedRoleID = role.id }
+        return role
+    }
+
+    func save(_ role: RoleProfile) {
+        var updated = role
+        updated.updatedAt = Date()
+        database.saveRoleProfile(updated)
+        if let index = roles.firstIndex(where: { $0.id == updated.id }) {
+            roles[index] = updated
+        } else {
+            roles.insert(updated, at: 0)
+        }
+    }
+
+    func delete(_ id: String) {
+        database.deleteRoleProfile(workspaceID: id)
+        roles.removeAll { $0.id == id }
+        if selectedRoleID == id { selectedRoleID = roles.first?.id }
     }
 }

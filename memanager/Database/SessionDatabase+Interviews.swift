@@ -124,6 +124,17 @@ extension SessionDatabase {
         }
     }
 
+    func loadRoleProfiles() -> [RoleProfile] {
+        interviewRead("loadRoleProfiles", "SELECT profile FROM role_profiles ORDER BY updated_at DESC",
+                      row: { Self.decode(RoleProfile.self, $0.columnText(0)) }).compactMap { $0 }
+    }
+
+    func deleteRoleProfile(workspaceID: String) {
+        interviewWrite("deleteRoleProfile", "DELETE FROM role_profiles WHERE workspace_id = ?") {
+            $0.bindText(workspaceID, at: 1)
+        }
+    }
+
     func loadRoleProfile(workspaceID: String) -> RoleProfile? {
         interviewRead("loadRoleProfile", "SELECT profile FROM role_profiles WHERE workspace_id = ?",
              bind: { $0.bindText(workspaceID, at: 1) },

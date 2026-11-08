@@ -1,4 +1,4 @@
-import SwiftUI
+import Foundation
 
 /// The start of an answer on a time axis: silence after the question,
 /// stalling words, then the real answer. Makes the "Cluely pause" visible.
@@ -48,53 +48,6 @@ struct TimingStripModel: Equatable {
             summary = "First word \(ScoreNotes.seconds(first)) after the question"
         } else {
             summary = "Waiting for the candidate \u{00B7} \(ScoreNotes.seconds(max(0, now - origin)))"
-        }
-    }
-}
-
-struct TimingStripView: View {
-    let model: TimingStripModel
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            GeometryReader { proxy in
-                let scale = proxy.size.width / model.duration
-                ZStack(alignment: .leading) {
-                    Capsule().fill(OverlayPalette.well)
-                    ForEach(Array(model.segments.enumerated()), id: \.offset) { _, segment in
-                        RoundedRectangle(cornerRadius: 3, style: .continuous)
-                            .fill(color(segment.kind))
-                            .frame(width: max(2, CGFloat(min(segment.end, model.duration) - segment.start) * scale))
-                            .offset(x: CGFloat(segment.start) * scale)
-                    }
-                }
-            }
-            .frame(height: 10)
-            .accessibilityHidden(true)
-            HStack(spacing: DesignTokens.Spacing.md) {
-                Text(model.summary)
-                    .font(OverlayType.caption)
-                    .foregroundStyle(OverlayPalette.textSecondary)
-                Spacer(minLength: 0)
-                legend("Silence", .silence)
-                legend("Stalling", .stall)
-                legend("Answer", .speech)
-            }
-        }
-    }
-
-    private func legend(_ title: String, _ kind: TimingStripModel.Segment.Kind) -> some View {
-        HStack(spacing: 4) {
-            Circle().fill(color(kind)).frame(width: 7, height: 7)
-            Text(title).font(OverlayType.caption).foregroundStyle(OverlayPalette.textTertiary)
-        }
-    }
-
-    private func color(_ kind: TimingStripModel.Segment.Kind) -> Color {
-        switch kind {
-        case .silence: return OverlayPalette.warning.opacity(0.55)
-        case .stall: return OverlayPalette.textTertiary.opacity(0.6)
-        case .speech: return OverlayPalette.accent
         }
     }
 }
