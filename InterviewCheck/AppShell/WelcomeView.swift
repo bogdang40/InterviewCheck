@@ -33,7 +33,14 @@ struct WelcomeView: View {
                     onDone()
                 }
             }
-            step(3, done: false, title: "Run the interview",
+            step(3, done: !ConnectorManager.shared.accounts.isEmpty, title: "Connect your calendar or ATS (optional)",
+                 detail: "Upcoming interviews appear with the candidate, job description and r\u{00E9}sum\u{00E9} ready, and recordings come in for scoring.") {
+                Button("Open Connections") {
+                    AppNavigation.shared.show(.connections)
+                    onDone()
+                }
+            }
+            step(4, done: false, title: "Run the interview",
                  detail: "Tell the candidate the interview is checked, then press Question Asked (\u{21E7}\u{2318}\u{21A9}) after each question, even with the call in front.") {
                 EmptyView()
             }

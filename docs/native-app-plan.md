@@ -86,6 +86,9 @@ tools; pull finished meeting recordings for scoring; optionally post a private n
 - [x] E8 Optional automatic scoring of new meeting recordings matched to scheduled interviews
       (off by default, consent confirmation, each recording tried once, "Report ready" notification).
 
+- [x] E9 Automation entry points: Shortcuts actions (Prepare Next Interview, Sync, Latest Report), Dock
+      menu with the next interviews, interviewcheck://prepare-next | sync | report/latest, Welcome step.
+
 ## C. Verify every step
 - build; guarded tests; render native screens light/dark; launch the installed app,
   confirm it stays up, no new crash report, window screenshot.
@@ -123,3 +126,4 @@ tools; pull finished meeting recordings for scoring; optionally post a private n
 - 22:36 E7 MCP connectors. 42 connector tests.
 - 22:46 E8 auto-scoring of meeting recordings. 288 app tests.
 - 22:47 accessibility pass: score card one spoken summary, headings, labelled Join/Prepare, list rows combined.
+- 22:50 E9 Shortcuts / Dock menu / URL actions. 290 app tests; Metadata.appintents in the bundle.

@@ -55,9 +55,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// interviewcheck://billing/... from the Stripe return page.
     func application(_ application: NSApplication, open urls: [URL]) {
-        for url in urls where accessController.handleDeepLink(url) {
-            NSLog("[\(AppBrand.name)] Handled access deep link: \(url.absoluteString)")
+        for url in urls {
+            if InterviewAutomation.handle(url) { continue }
+            if accessController.handleDeepLink(url) {
+                NSLog("[\(AppBrand.name)] Handled access deep link: \(url.absoluteString)")
+            }
         }
+    }
+
+    /// Right-click on the Dock icon: the next interviews, each with Prepare.
+    func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
+        let menu = NSMenu()
+        let upcoming = ConnectorManager.shared.upcoming.filter { ($0.endsAt ?? $0.startsAt.addingTimeInterval(3600)) > Date() }
+        if !upcoming.isEmpty {
+            menu.addItem(withTitle: "Prepare", action: nil, keyEquivalent: "").isEnabled = false
+            for interview in upcoming.prefix(5) {
+                let title = "\(interview.candidate?.name ?? interview.title) \u{00B7} "
+                    + interview.startsAt.formatted(.dateTime.weekday(.abbreviated).hour().minute())
+                let item = NSMenuItem(title: title, action: #selector(prepareFromDock(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = interview.id
+                item.indentationLevel = 1
+                menu.addItem(item)
+            }
+            menu.addItem(.separator())
+        }
+        if !ConnectorManager.shared.accounts.isEmpty {
+            let sync = NSMenuItem(title: "Sync Connections", action: #selector(syncFromDock), keyEquivalent: "")
+            sync.target = self
+            menu.addItem(sync)
+        }
+        return menu.items.isEmpty ? nil : menu
+    }
+
+    @objc private func prepareFromDock(_ item: NSMenuItem) {
+        guard let id = item.representedObject as? String,
+              let interview = ConnectorManager.shared.upcoming.first(where: { $0.id == id }) else { return }
+        NSApp.activate(ignoringOtherApps: true)
+        Task { await InterviewAutomation.prepare(interview) }
+    }
+
+    @objc private func syncFromDock() {
+        Task { await ConnectorManager.shared.syncAll() }
     }
 
     /// Closing the window does not quit: an interview may still be running

@@ -57,7 +57,10 @@ Then: **Interview › Upcoming Interviews** lists the next interviews with
 calendar invite is matched to the ATS candidate by email); a reminder arrives
 before each one; **File › Analyze Recording** offers recent Zoom, Teams and
 Meet recordings; a report prepared from an ATS has **Send to <ATS>** (an
-editable private note, sent only when you press Send). Keys stay in the
+editable private note, sent only when you press Send). Shortcuts has **Prepare Next Interview**, **Sync Interview Connections** and **Open Latest
+Interview Report**; the Dock icon's menu lists the next interviews; links
+`interviewcheck://prepare-next`, `interviewcheck://sync` and `interviewcheck://report/latest`
+work from anywhere. Keys stay in the
 Keychain; synced data stays on this Mac. Connector code and tests live in
 `Packages/InterviewCheckConnectors` (`swift test`).
 
