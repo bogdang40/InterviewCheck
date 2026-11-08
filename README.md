@@ -43,27 +43,39 @@ interviewer to confirm this).
 
 Connect the systems interviews already live in, so the app does the setup:
 
-- **Calendar on this Mac** (no keys) and **.ics invites**; **Google Workspace**
-  (Calendar, Meet transcripts), **Microsoft 365** (Outlook, Teams transcripts),
-  **Zoom** (meetings, cloud recordings). Browser sign-in, no client secret.
+- **Calendars**: Calendar on this Mac (no keys), .ics invites, **Google Workspace**
+  (Calendar and team calendars, Meet transcripts), **Microsoft 365** (Outlook and
+  team calendars, Teams transcripts and recordings).
+- **Mail**: any mailbox over IMAP with an app password (Gmail, iCloud, Yahoo,
+  Fastmail, Zoho, company servers); read-only, follows updates and cancellations.
+- **Booking links**: **Calendly** and **Cal.com** (screens booked through a link).
+- **Meeting recordings**: **Zoom** and **Webex** (meetings, recordings,
+  transcripts), plus Teams and Meet transcripts above.
 - **Applicant tracking**: Greenhouse (Harvest v3), Lever, Ashby, Workable,
   SmartRecruiters, Recruitee, Zoho Recruit, Teamtailor, BambooHR, JazzHR,
-  Breezy HR, Personio; **Workday, iCIMS, SuccessFactors, Taleo, Jobvite** and
-  the long tail through **Merge, Kombo, Unified.to** (or Apideck for jobs).
+  Breezy HR, Personio, and for staffing agencies **Bullhorn** and **JobAdder**;
+  **Workday, iCIMS, SuccessFactors, Taleo, Jobvite** and the long tail through
+  **Merge, Kombo, Unified.to** (or Apideck for jobs).
 - **MCP**: sign in as yourself to Greenhouse's, Ashby's or Workable's official
   MCP servers, or any MCP server.
 
 Then: **Interview › Upcoming Interviews** lists the next interviews with
 **Join** and **Prepare** (candidate, role with the job description, résumé; a
-calendar invite is matched to the ATS candidate by email); a reminder arrives
-before each one; **File › Analyze Recording** offers recent Zoom, Teams and
-Meet recordings; a report prepared from an ATS has **Send to <ATS>** (an
-editable private note, sent only when you press Send). Shortcuts has **Prepare Next Interview**, **Sync Interview Connections** and **Open Latest
+calendar, mail or booking interview is matched to the ATS candidate by email).
+**Connections › Automation**: the next interview is made ready by itself at
+reminder time (never started, consent never ticked, typed setup never
+replaced), the meeting can open when it starts (off by default), and new
+recordings of scheduled interviews can be scored in the background (off by
+default). **Settings › Privacy** can save a PDF of every finished report to a
+folder. **File › Analyze Recording** offers recent Zoom, Webex, Teams and Meet
+recordings; a report prepared from an ATS that keeps private notes has
+**Send to <ATS>** (an editable note, sent only when you press Send). Shortcuts
+has **Prepare Next Interview**, **Sync Interview Connections** and **Open Latest
 Interview Report**; the Dock icon's menu lists the next interviews; links
 `interviewcheck://prepare-next`, `interviewcheck://sync` and `interviewcheck://report/latest`
-work from anywhere. Keys stay in the
-Keychain; synced data stays on this Mac. Connector code and tests live in
-`Packages/InterviewCheckConnectors` (`swift test`). Setup steps for every system: [docs/CONNECTORS.md](docs/CONNECTORS.md).
+work from anywhere. Keys stay in the Keychain; synced data stays on this Mac.
+Connector code and tests live in `Packages/InterviewCheckConnectors`
+(`swift test`). Setup steps for every system: [docs/CONNECTORS.md](docs/CONNECTORS.md).
 
 Keyboard: ⌘1 Interview, ⌘2 Roles, ⌘3 Reports, ⌘4 Connections, ⌘N new interview, ⇧⌘N new
 role, ⌘O analyze a recording, ⌘R start, ⇧⌘↩ question asked, ⇧⌘E answer done,
