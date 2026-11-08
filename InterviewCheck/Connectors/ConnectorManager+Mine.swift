@@ -5,6 +5,16 @@ import InterviewCheckConnectors
 /// the interviewer is on belong in Upcoming, reminders and recording matches.
 extension ConnectorManager {
     static let myEmailsKey = "interviewcheck.myEmails"
+    static let showAllKey = "interviewcheck.showAllInterviews"
+
+    /// Show every ATS interview, not only the user's own.
+    var showsAllInterviews: Bool {
+        get { defaults.bool(forKey: Self.showAllKey) }
+        set {
+            defaults.set(newValue, forKey: Self.showAllKey)
+            reloadCache()
+        }
+    }
 
     /// Typed in Connections, plus the addresses of connected Google,
     /// Microsoft 365, Zoom or Recruitee accounts.
@@ -28,7 +38,7 @@ extension ConnectorManager {
     /// interview counts when one of its interviewers is the user, or when it
     /// names no interviewer emails (nothing to check against).
     func isMine(_ interview: ExternalInterview) -> Bool {
-        guard [.ats, .unified, .mcp].contains(interview.source.descriptor.category) else { return true }
+        guard !showsAllInterviews, [.ats, .unified, .mcp].contains(interview.source.descriptor.category) else { return true }
         let mine = myEmails
         let listed = interview.interviewers.compactMap { $0.email?.lowercased() }
         guard !mine.isEmpty, !listed.isEmpty else { return true }

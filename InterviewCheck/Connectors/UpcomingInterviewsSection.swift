@@ -38,7 +38,20 @@ struct UpcomingInterviewsSection: View {
                         .disabled(connectors.isSyncing)
                 }
             } footer: {
-                Text("From \(sourceNames). Prepare fills in the candidate, the role and job description, and the r\u{00E9}sum\u{00E9}.")
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("From \(sourceNames). Prepare fills in the candidate, the role and job description, and the r\u{00E9}sum\u{00E9}.")
+                    if connectors.hiddenForOthers > 0 || connectors.showsAllInterviews {
+                        HStack(spacing: 6) {
+                            Text(connectors.showsAllInterviews
+                                 ? "Showing every interviewer's interviews."
+                                 : "\(connectors.hiddenForOthers) interview\(connectors.hiddenForOthers == 1 ? "" : "s") for other interviewers hidden.")
+                            Button(connectors.showsAllInterviews ? "Only Mine" : "Show All") {
+                                connectors.showsAllInterviews.toggle()
+                            }
+                            .buttonStyle(.link)
+                        }
+                    }
+                }
             }
         }
     }

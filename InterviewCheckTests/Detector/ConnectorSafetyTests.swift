@@ -69,6 +69,10 @@ final class ConnectorSafetyTests: XCTestCase {
         XCTAssertEqual(manager.upcoming.count, 3, "with no email known, nothing is hidden")
         manager.typedEmails = "Me@Acme.com"
         XCTAssertEqual(Set(manager.upcoming.compactMap(\.candidate?.name)), ["Mine", "No Interviewers Listed"])
+        XCTAssertEqual(manager.hiddenForOthers, 1)
+        manager.showsAllInterviews = true
+        XCTAssertEqual(manager.upcoming.count, 3)
+        XCTAssertEqual(manager.hiddenForOthers, 0)
     }
 
     func testRecordingsNeverGuessBetweenCandidates() throws {

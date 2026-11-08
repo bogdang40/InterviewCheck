@@ -25,6 +25,8 @@ final class ConnectorManager: ObservableObject {
     @Published private(set) var upcoming: [ExternalInterview] = []
     @Published private(set) var recordings: [(recording: ExternalRecording, interviewID: String?)] = []
     @Published private(set) var syncing: Set<ConnectorKind> = []
+    /// Upcoming ATS interviews left out because the user is not on them.
+    @Published private(set) var hiddenForOthers = 0
 
     let store: CredentialStore
     let database: SessionDatabase
@@ -245,8 +247,9 @@ final class ConnectorManager: ObservableObject {
     }
 
     func reloadCache() {
-        upcoming = InterviewMerger.merge(database.loadExternalInterviews(startingAfter: now().addingTimeInterval(-2 * 3600))
-            .filter(isMine))
+        let all = database.loadExternalInterviews(startingAfter: now().addingTimeInterval(-2 * 3600))
+        upcoming = InterviewMerger.merge(all.filter(isMine))
+        hiddenForOthers = InterviewMerger.merge(all.filter { !isMine($0) && $0.startsAt > now() }).count
         recordings = database.loadExternalRecordings()
         onUpcomingChanged?(upcoming)
     }
