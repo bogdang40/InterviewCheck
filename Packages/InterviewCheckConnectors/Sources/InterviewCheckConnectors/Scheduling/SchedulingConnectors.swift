@@ -79,6 +79,7 @@ public struct CalendlyConnector: InterviewSource {
             next = page["pagination"]["next_page"].url.flatMap { $0.host == "api.calendly.com" ? $0.absoluteString : nil }
             query = []
         }
+        if next != nil { SyncNotes.cut("bookings", read: events.count) }
 
         var interviews: [ExternalInterview] = []
         for event in events {
@@ -163,6 +164,7 @@ public struct CalComConnector: InterviewSource {
             pages += 1
             cursor = page["pagination"]["hasMore"].bool == true ? page["pagination"]["nextCursor"].string : nil
         } while cursor != nil && pages < Self.pageLimit
+        if cursor != nil { SyncNotes.cut("bookings", read: bookings.count) }
 
         return bookings.compactMap { booking in
             guard let startsAt = booking["start"].date, startsAt >= start, startsAt <= end,

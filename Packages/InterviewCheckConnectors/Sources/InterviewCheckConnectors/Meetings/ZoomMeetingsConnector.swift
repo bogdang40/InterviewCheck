@@ -33,12 +33,13 @@ public struct ZoomMeetingsConnector: InterviewSource, RecordingSource {
         let api = try await client()
         var meetings: [JSONValue] = []
         var next: String?
-        for _ in 0..<5 {
+        for index in 0..<5 {
             var query = [URLQueryItem(name: "type", value: "upcoming"), URLQueryItem(name: "page_size", value: "100")]
             if let next { query.append(URLQueryItem(name: "next_page_token", value: next)) }
             let page = try await api.getJSON("users/me/meetings", query: query)
             meetings += page["meetings"].array
-            guard let token = page["next_page_token"].string else { break }
+            guard let token = page["next_page_token"].string, !token.isEmpty else { break }
+            if index == 4 { SyncNotes.cut("meetings", read: meetings.count) }
             next = token
         }
         return meetings.compactMap { meeting -> ExternalInterview? in

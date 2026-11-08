@@ -31,9 +31,10 @@ public struct WorkableConnector: InterviewSource, JobSource, CandidateSource, No
         if let memberID { query.append(URLQueryItem(name: "member_id", value: memberID)) }
         var events: [JSONValue] = []
         var page = try await api.getJSON("events", query: query)
-        for _ in 0..<20 {
+        for index in 0..<20 {
             events += page["events"].array
             guard let next = page.at("paging.next").url else { break }
+            guard index < 19 else { SyncNotes.cut("interviews", read: events.count); break }
             page = try JSONValue.parse(try await api.send(method: "GET", url: next, body: nil).0)
         }
         return events.compactMap { event in

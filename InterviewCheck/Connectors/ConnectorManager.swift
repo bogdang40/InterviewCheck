@@ -16,6 +16,8 @@ final class ConnectorManager: ObservableObject {
         var connectedAt: Date
         var lastSync: Date?
         var lastError: String?
+        /// Things the last sync wants known without failing (a list cut short).
+        var notes: [String]?
         /// Recordings were fetched up to here (moves only on success).
         var recordingsCheckedAt: Date?
         var id: String { kind.rawValue }
@@ -178,9 +180,28 @@ final class ConnectorManager: ObservableObject {
         guard account(kind) != nil, !syncing.contains(kind) else { return }
         syncing.insert(kind)
         defer { syncing.remove(kind) }
+        let started = now()
+        let notes = SyncNotes()
+        // Disconnected while waiting: keep nothing.
+        guard let outcome = await SyncNotes.$current.withValue(notes, operation: { await fetch(kind, started: started) }) else {
+            return
+        }
+        if var updated = account(kind) {
+            updated.lastSync = now()
+            updated.lastError = outcome.failures.isEmpty ? nil : outcome.failures.joined(separator: " ")
+            updated.notes = notes.messages.isEmpty ? nil : notes.messages
+            if let checked = outcome.recordingsCheckedAt { updated.recordingsCheckedAt = checked }
+            upsert(updated)
+        }
+        reloadCache()
+        onSynced?()
+    }
+
+    /// Reads one account's interviews and recordings into the cache. Nil when
+    /// the account was disconnected meanwhile.
+    private func fetch(_ kind: ConnectorKind, started: Date) async -> (failures: [String], recordingsCheckedAt: Date?)? {
         var failures: [String] = []
         var recordingsCheckedAt: Date?
-        let started = now()
         do {
             var connector = try makeConnector(kind)
             // A token the server no longer accepts before its expiry: refresh
@@ -198,8 +219,7 @@ final class ConnectorManager: ObservableObject {
                     // A week back too, so finished interviews can be matched to recordings.
                     let found = try await source.upcomingInterviews(from: started.addingTimeInterval(-7 * 86_400),
                                                                      to: started.addingTimeInterval(14 * 86_400))
-                    // Disconnected while waiting: keep nothing.
-                    guard account(kind) != nil else { return }
+                    guard account(kind) != nil else { return nil }
                     database.replaceExternalInterviews(found, source: kind)
                 } catch {
                     failures.append(error.localizedDescription)
@@ -210,7 +230,7 @@ final class ConnectorManager: ObservableObject {
                     let since = account(kind)?.recordingsCheckedAt?.addingTimeInterval(-86_400)
                         ?? started.addingTimeInterval(-7 * 86_400)
                     let found = try await source.recordings(since: since)
-                    guard account(kind) != nil else { return }
+                    guard account(kind) != nil else { return nil }
                     database.addExternalRecordings(found)
                     recordingsCheckedAt = started
                 } catch {
@@ -220,14 +240,7 @@ final class ConnectorManager: ObservableObject {
         } catch {
             failures.append(error.localizedDescription)
         }
-        if var updated = account(kind) {
-            updated.lastSync = now()
-            updated.lastError = failures.isEmpty ? nil : failures.joined(separator: " ")
-            if let recordingsCheckedAt { updated.recordingsCheckedAt = recordingsCheckedAt }
-            upsert(updated)
-        }
-        reloadCache()
-        onSynced?()
+        return (failures, recordingsCheckedAt)
     }
 
     func startAutoSync() {

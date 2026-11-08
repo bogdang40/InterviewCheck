@@ -102,3 +102,24 @@ final class SchedulingTests: XCTestCase {
         XCTAssertNil(CalendlyConnector.profileLink(in: ["I am available after 3pm"]))
     }
 }
+
+final class SyncNotesTests: XCTestCase {
+    func testABookingListCutAtThePageLimitIsNoted() async throws {
+        let stub = StubTransport()
+        stub.on("GET", "users/me", json: #"{"resource":{"uri":"https://api.calendly.com/users/U1"}}"#)
+        stub.on("GET", "/invitees", json: #"{"collection":[]}"#)
+        stub.on("GET", "scheduled_events", json: #"{"collection":[{"uri":"https://api.calendly.com/scheduled_events/E1","name":"Interview","status":"active","start_time":"2026-11-10T15:00:00Z"}],"pagination":{"next_page":"https://api.calendly.com/scheduled_events?page_token=more"}}"#)
+        let connector = try CalendlyConnector(credentials: ConnectorCredentials(fields: ["apiKey": "p"]), transport: stub)
+        let notes = SyncNotes()
+        _ = try await SyncNotes.$current.withValue(notes) {
+            try await connector.upcomingInterviews(from: date("2026-11-07T00:00:00Z"), to: date("2026-11-21T00:00:00Z"))
+        }
+        XCTAssertEqual(notes.messages, ["Stopped after 10 bookings; some may be missing."])
+        XCTAssertEqual(stub.requests(containing: "scheduled_events?").count, CalendlyConnector.pageLimit)
+    }
+
+    func testNotesOutsideASyncGoNowhere() {
+        SyncNotes.note("ignored")
+        XCTAssertNil(SyncNotes.current)
+    }
+}

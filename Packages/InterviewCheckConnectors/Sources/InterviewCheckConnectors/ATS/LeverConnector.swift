@@ -31,6 +31,7 @@ public struct LeverConnector: InterviewSource, JobSource, CandidateSource, NoteD
             items += page["data"].array
             offset = page["hasNext"].bool == true ? page["next"].string : nil
         } while offset != nil && items.count < limit && pages < 50
+        if offset != nil || items.count > limit { SyncNotes.cut("records", read: min(items.count, limit)) }
         return Array(items.prefix(limit))
     }
 

@@ -56,8 +56,34 @@ private struct FakeATS: InterviewSource, JobSource, CandidateSource, NoteDestina
     }
 }
 
+/// A source that reads only part of what is there, the first time.
+private final class PartialSource: InterviewSource, @unchecked Sendable {
+    let kind = ConnectorKind.calendly
+    var cut = true
+    func verify() async throws -> String { "lee@acme.com" }
+    func upcomingInterviews(from: Date, to: Date) async throws -> [ExternalInterview] {
+        if cut { SyncNotes.note("Stopped after 1,000 bookings; some may be missing.") }
+        return []
+    }
+}
+
 @MainActor
 final class ConnectorManagerTests: XCTestCase {
+    func testAListCutShortIsNotedOnTheAccountUntilTheNextFullSync() async throws {
+        let path = NSTemporaryDirectory() + "connectors-\(UUID().uuidString).sqlite"
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let manager = ConnectorManager(store: MemoryCredentialStore(), database: SessionDatabase(databasePath: path),
+                                       defaults: UserDefaults(suiteName: "connectors.\(UUID().uuidString)")!)
+        let source = PartialSource()
+        manager.factory = { _, _, _, _ in source }
+        try await manager.connect(.calendly, fields: ["apiKey": "k"])
+        XCTAssertEqual(manager.account(.calendly)?.notes, ["Stopped after 1,000 bookings; some may be missing."])
+        XCTAssertNil(manager.account(.calendly)?.lastError, "a note is not a failure")
+        source.cut = false
+        await manager.sync(.calendly)
+        XCTAssertNil(manager.account(.calendly)?.notes)
+    }
+
     func testConnectSyncPrepareAndDisconnect() async throws {
         let path = NSTemporaryDirectory() + "connectors-\(UUID().uuidString).sqlite"
         defer { try? FileManager.default.removeItem(atPath: path) }

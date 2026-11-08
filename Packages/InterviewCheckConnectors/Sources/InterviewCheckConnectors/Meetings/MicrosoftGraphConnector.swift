@@ -39,9 +39,10 @@ public struct MicrosoftGraphConnector: InterviewSource, RecordingSource {
             URLQueryItem(name: "$orderby", value: "start/dateTime"),
             URLQueryItem(name: "$top", value: "100"),
         ])
-        for _ in 0..<10 {
+        for index in 0..<10 {
             rows += page["value"].array
             guard let next = page["@odata.nextLink"].url else { break }
+            guard index < 9 else { SyncNotes.cut("calendar events", read: rows.count); break }
             page = try JSONValue.parse(try await api.send(method: "GET", url: next, body: nil).0)
         }
         return rows.compactMap(Self.calendarEvent)

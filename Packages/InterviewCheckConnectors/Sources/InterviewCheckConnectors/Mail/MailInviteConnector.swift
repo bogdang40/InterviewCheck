@@ -97,7 +97,11 @@ public struct MailInviteConnector: InterviewSource {
     private func invites(in session: IMAPSession, from start: Date, to end: Date) async throws -> [ExternalInterview] {
         let since = IMAPSession.searchDate(start.addingTimeInterval(-Self.lookBack))
         let found = try await session.command("UID SEARCH SINCE \(since)")
-        let uids = found.compactMap(IMAPParser.searchResults).flatMap { $0 }.sorted().suffix(Self.messageLimit)
+        let all = found.compactMap(IMAPParser.searchResults).flatMap { $0 }.sorted()
+        if all.count > Self.messageLimit {
+            SyncNotes.note("Only the newest \(Self.messageLimit) of \(all.count) recent messages in \(folder) were checked for invites.")
+        }
+        let uids = all.suffix(Self.messageLimit)
 
         // Which recent messages carry a calendar part.
         var invites: [(uid: Int, parts: [IMAPBodyStructure.Part])] = []
@@ -112,6 +116,7 @@ public struct MailInviteConnector: InterviewSource {
         }
 
         // Newest messages first; each invite keeps its latest revision.
+        if invites.count > Self.inviteLimit { SyncNotes.cut("invites", read: Self.inviteLimit) }
         var latest: [String: (event: CalendarEvent, uid: Int)] = [:]
         for invite in invites.sorted(by: { $0.uid > $1.uid }).prefix(Self.inviteLimit) {
             let sections = invite.parts.map { "BODY.PEEK[\($0.section)]" }.joined(separator: " ")

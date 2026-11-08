@@ -34,10 +34,13 @@ public struct GreenhouseConnector: InterviewSource, JobSource, CandidateSource, 
         let api = try await client()
         var items: [JSONValue] = []
         var (data, response) = try await api.get(path, query: query)
-        for _ in 0..<maxPages {
+        var pages = 1
+        while true {
             items += try JSONValue.parse(data).array
             guard let next = APIClient.nextLink(response) else { break }
+            guard pages < maxPages else { SyncNotes.cut("records", read: items.count); break }
             (data, response) = try await api.send(method: "GET", url: next, body: nil)
+            pages += 1
         }
         return items
     }

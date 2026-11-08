@@ -28,7 +28,7 @@ public struct GoogleWorkspaceConnector: InterviewSource, RecordingSource {
         let api = try await client("https://www.googleapis.com/calendar/v3")
         var events: [JSONValue] = []
         var pageToken: String?
-        for _ in 0..<5 {
+        for index in 0..<5 {
             var query = [URLQueryItem(name: "timeMin", value: DateParsing.iso(start)),
                          URLQueryItem(name: "timeMax", value: DateParsing.iso(end)),
                          URLQueryItem(name: "singleEvents", value: "true"),
@@ -38,6 +38,7 @@ public struct GoogleWorkspaceConnector: InterviewSource, RecordingSource {
             let page = try await api.getJSON("calendars/primary/events", query: query)
             events += page["items"].array
             guard let next = page["nextPageToken"].string else { break }
+            if index == 4 { SyncNotes.cut("calendar events", read: events.count) }
             pageToken = next
         }
         return events.compactMap(Self.calendarEvent)
@@ -98,12 +99,13 @@ public struct GoogleWorkspaceConnector: InterviewSource, RecordingSource {
         }
         var entries: [JSONValue] = []
         var pageToken: String?
-        for _ in 0..<50 {
+        for index in 0..<50 {
             var query = [URLQueryItem(name: "pageSize", value: "100")]
             if let pageToken { query.append(URLQueryItem(name: "pageToken", value: pageToken)) }
             let page = try await meet.getJSON("\(transcript)/entries", query: query)
             entries += page["transcriptEntries"].array
             guard let next = page["nextPageToken"].string else { break }
+            if index == 49 { SyncNotes.cut("transcript lines", read: entries.count) }
             pageToken = next
         }
         let origin = entries.compactMap { $0["startTime"].date }.min() ?? Date()

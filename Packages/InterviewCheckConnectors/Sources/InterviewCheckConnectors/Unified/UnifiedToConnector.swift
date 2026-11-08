@@ -32,6 +32,7 @@ public struct UnifiedToConnector: InterviewSource, JobSource, CandidateSource, N
                                                                    URLQueryItem(name: "offset", value: "\(page * 100)")]).array
             items += rows
             if rows.count < 100 { break }
+            if page == maxPages - 1 { SyncNotes.cut("records", read: items.count) }
         }
         return items
     }

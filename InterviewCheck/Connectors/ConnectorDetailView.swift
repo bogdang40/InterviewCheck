@@ -101,6 +101,10 @@ struct ConnectorDetailView: View {
                 Label(error, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            ForEach(account.notes ?? [], id: \.self) { note in
+                Label(note, systemImage: "info.circle").foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             let count = connectors.upcoming.filter { $0.source == kind }.count
             if descriptor.capabilities.contains(.upcomingInterviews) {
                 LabeledContent("Upcoming interviews", value: "\(count)")

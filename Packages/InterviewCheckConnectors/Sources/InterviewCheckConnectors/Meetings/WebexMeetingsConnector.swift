@@ -92,6 +92,7 @@ public struct WebexMeetingsConnector: InterviewSource, RecordingSource {
         let listed = try await api.getJSON("recordings", query: window)["items"].array.filter {
             $0["topic"].string.map(looksLikeInterview) == true && $0["status"].string != "deleted"
         }
+        if listed.count > Self.detailLimit { SyncNotes.cut("recordings", read: Self.detailLimit) }
         for item in listed.prefix(Self.detailLimit) {
             guard let id = item["id"].string, let meetingID = item["meetingId"].string, let topic = item["topic"].string,
                   let started = item["timeRecorded"].date ?? item["createTime"].date else { continue }

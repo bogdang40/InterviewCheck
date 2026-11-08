@@ -30,10 +30,11 @@ public struct MergeConnector: InterviewSource, JobSource, CandidateSource, NoteD
     func list(_ path: String, _ query: [URLQueryItem], maxPages: Int = 20) async throws -> [JSONValue] {
         var items: [JSONValue] = []
         var cursor: String?
-        for _ in 0..<maxPages {
+        for index in 0..<maxPages {
             let page = try await api.getJSON(path, query: query + (cursor.map { [URLQueryItem(name: "cursor", value: $0)] } ?? []))
             items += page["results"].array
             guard let next = page["next"].string else { break }
+            if index == maxPages - 1 { SyncNotes.cut("records", read: items.count) }
             cursor = next
         }
         return items

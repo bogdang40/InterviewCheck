@@ -33,13 +33,14 @@ public struct AshbyConnector: InterviewSource, JobSource, CandidateSource, NoteD
         // No start-time filter: read schedules created in the last 60 days.
         var schedules: [JSONValue] = []
         var cursor: String?
-        for _ in 0..<20 {
+        for index in 0..<20 {
             var body: [String: JSONValue] = ["limit": 100,
                                              "createdAfter": .number(start.addingTimeInterval(-60 * 86_400).timeIntervalSince1970 * 1000)]
             if let cursor { body["cursor"] = .string(cursor) }
             let page = try await call("interviewSchedule.list", body)
             schedules += page["results"].array
             guard page["moreDataAvailable"].bool == true, let next = page["nextCursor"].string else { break }
+            if index == 19 { SyncNotes.cut("interview schedules", read: schedules.count) }
             cursor = next
         }
         let events = schedules.filter { $0["status"].string == "Scheduled" }.flatMap { schedule in
