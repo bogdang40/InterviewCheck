@@ -194,6 +194,30 @@ final class ConnectionsRenderTests: XCTestCase {
         try RenderHarness.skipUnlessEnabled()
     }
 
+    func testRenderUpcomingInterviews() async throws {
+        let path = NSTemporaryDirectory() + "upcoming-\(UUID().uuidString).sqlite"
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let database = SessionDatabase(databasePath: path)
+        let defaults = UserDefaults(suiteName: "upcoming.\(UUID().uuidString)")!
+        let manager = ConnectorManager(store: MemoryCredentialStore(), database: database, defaults: defaults)
+        let now = Date()
+        database.replaceExternalInterviews([
+            ExternalInterview(source: .greenhouse, externalID: "1", title: "Interview", startsAt: now.addingTimeInterval(25 * 60),
+                              meetingURL: URL(string: "https://acme.zoom.us/j/1"),
+                              candidate: ExternalCandidate(name: "Priya Natarajan"), job: ExternalJob(externalID: "j", title: "Senior Backend Engineer")),
+            ExternalInterview(source: .greenhouse, externalID: "2", title: "Interview", startsAt: now.addingTimeInterval(26 * 3600),
+                              meetingURL: URL(string: "https://meet.google.com/abc-defg-hij"),
+                              candidate: ExternalCandidate(name: "Marcus O'Connell-Whitfield"), job: ExternalJob(externalID: "k", title: "Staff Platform Engineer")),
+        ], source: .greenhouse)
+        manager.reloadCache()
+        let controller = InterviewController(timeline: InterviewTimeline(), database: database, settings: DetectorSettings(defaults: defaults))
+        try await RenderHarness.render("upcoming-interviews", size: CGSize(width: 820, height: 420), settle: 0.4) {
+            Form { UpcomingInterviewsSection(controller: controller, connectors: manager) }
+                .formStyle(.grouped)
+                .background(Color(nsColor: .windowBackgroundColor))
+        }
+    }
+
     func testRenderConnectorDetails() async throws {
         for kind in [ConnectorKind.greenhouse, .microsoft365, .greenhouseMCP, .workday] {
             try await RenderHarness.render("connector-\(kind.rawValue)", size: CGSize(width: 720, height: 760), settle: 0.4) {

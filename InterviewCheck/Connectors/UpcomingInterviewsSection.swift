@@ -6,7 +6,7 @@ import SwiftUI
 /// form. Prepare fills the candidate, role and résumé in one click.
 struct UpcomingInterviewsSection: View {
     @ObservedObject var controller: InterviewController
-    @ObservedObject private var connectors = ConnectorManager.shared
+    @ObservedObject var connectors: ConnectorManager = .shared
     @State private var preparingID: String?
     @State private var notes: [String] = []
 
@@ -44,17 +44,22 @@ struct UpcomingInterviewsSection: View {
     }
 
     private var sourceNames: String {
-        let names = connectors.accounts.map { $0.kind.descriptor.name }
-        return names.isEmpty ? "invites you added" : ListFormatter.localizedString(byJoining: names)
+        var names: [String] = []
+        for kind in connectors.upcoming.map(\.source) + connectors.accounts.map(\.kind) {
+            let name = kind == .icsFile ? "invites you added" : kind.descriptor.vendorName
+            if !names.contains(name) { names.append(name) }
+        }
+        return names.isEmpty ? "your connections" : ListFormatter.localizedString(byJoining: names)
     }
 
     private func row(_ interview: ExternalInterview) -> some View {
         HStack(alignment: .center, spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(interview.candidate?.name ?? interview.title).lineLimit(1)
-                Text([interview.startsAt.formatted(.relative(presentation: .named)),
-                      interview.startsAt.formatted(date: .abbreviated, time: .shortened),
-                      interview.job?.title, interview.source.descriptor.name]
+                HStack(spacing: 6) {
+                    Text(interview.candidate?.name ?? interview.title).lineLimit(1)
+                    if UpcomingTime.isSoon(interview.startsAt) { Tag(text: "Soon", color: .orange) }
+                }
+                Text([UpcomingTime.label(interview.startsAt), interview.job?.title, interview.source.descriptor.vendorName]
                         .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " \u{00B7} "))
                     .font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
