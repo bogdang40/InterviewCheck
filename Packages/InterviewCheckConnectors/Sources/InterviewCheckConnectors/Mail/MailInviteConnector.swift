@@ -15,6 +15,7 @@ public struct MailInviteConnector: InterviewSource {
     /// Every invite in the folder counts (a mailbox kept for interviews).
     let everyInvite: Bool
     let openStream: @Sendable (String, UInt16) async throws -> IMAPStream
+    let cache: MailInviteCache
 
     /// Messages looked at per sync (newest first) and invites read.
     static let messageLimit = 500
@@ -23,7 +24,8 @@ public struct MailInviteConnector: InterviewSource {
     static let lookBack: TimeInterval = 60 * 24 * 3600
 
     init(credentials: ConnectorCredentials,
-         openStream: @escaping @Sendable (String, UInt16) async throws -> IMAPStream = MailInviteConnector.networkStream) throws {
+         openStream: @escaping @Sendable (String, UInt16) async throws -> IMAPStream = MailInviteConnector.networkStream,
+         cache: MailInviteCache = .shared) throws {
         guard let email = credentials["email"]?.trimmingCharacters(in: .whitespaces), !email.isEmpty else {
             throw ConnectorError.missingCredential("Email address")
         }
@@ -43,6 +45,7 @@ public struct MailInviteConnector: InterviewSource {
             .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty } ?? []
         self.everyInvite = credentials["everyInvite"] == "true"
         self.openStream = openStream
+        self.cache = cache
     }
 
     static let networkStream: @Sendable (String, UInt16) async throws -> IMAPStream = { host, port in
@@ -84,7 +87,7 @@ public struct MailInviteConnector: InterviewSource {
     public func verify() async throws -> String {
         let session = try await signIn()
         defer { session.close() }
-        let count = try await examine(session)
+        let count = try await examine(session).count
         _ = try? await session.command("LOGOUT")
         return "\(email) \u{00B7} \(folder)\(count.map { " (\($0) messages)" } ?? "")"
     }
@@ -92,15 +95,16 @@ public struct MailInviteConnector: InterviewSource {
     public func upcomingInterviews(from start: Date, to end: Date) async throws -> [ExternalInterview] {
         let session = try await signIn()
         defer { session.close() }
-        _ = try await examine(session)
+        let validity = try await examine(session).uidValidity
         do {
-            return try await invites(in: session, from: start, to: end)
+            return try await invites(in: session, uidValidity: validity, from: start, to: end)
         } catch {
             throw Self.mapped(error)
         }
     }
 
-    private func invites(in session: IMAPSession, from start: Date, to end: Date) async throws -> [ExternalInterview] {
+    private func invites(in session: IMAPSession, uidValidity: String?, from start: Date,
+                         to end: Date) async throws -> [ExternalInterview] {
         let since = IMAPSession.searchDate(start.addingTimeInterval(-Self.lookBack))
         let found = try await session.command("UID SEARCH SINCE \(since)")
         let all = found.compactMap(IMAPParser.searchResults).flatMap { $0 }.sorted()
@@ -108,40 +112,52 @@ public struct MailInviteConnector: InterviewSource {
             SyncNotes.note("Only the newest \(Self.messageLimit) of \(all.count) recent messages in \(folder) were checked for invites.")
         }
         let uids = all.suffix(Self.messageLimit)
+        // Messages read on an earlier sync are not downloaded again (only when
+        // the server gives a UIDVALIDITY, so UIDs are known to be stable).
+        let cacheKey = uidValidity.map { "\(host)|\(email.lowercased())|\(folder)|\($0)" }
+        let known = cacheKey.map(cache.events) ?? [:]
+        var learned: [Int: [CalendarEvent]] = [:]
 
-        // Which recent messages carry a calendar part.
+        // Which new messages carry a calendar part.
         var invites: [(uid: Int, parts: [IMAPBodyStructure.Part])] = []
-        for chunk in Array(uids).chunked(100) {
+        for chunk in uids.filter({ known[$0] == nil }).chunked(100) {
             let lines = try await session.command("UID FETCH \(chunk.map(String.init).joined(separator: ",")) (UID BODYSTRUCTURE)")
             for line in lines {
                 guard let attributes = IMAPParser.fetchAttributes(line), let uid = attributes["UID"]?.text.flatMap(Int.init),
                       let structure = attributes["BODYSTRUCTURE"] else { continue }
                 let parts = IMAPBodyStructure.calendarParts(structure)
-                if !parts.isEmpty { invites.append((uid, parts)) }
+                if parts.isEmpty { learned[uid] = [] } else { invites.append((uid, parts)) }
             }
         }
 
-        // Newest messages first; each invite keeps its latest revision.
-        if invites.count > Self.inviteLimit { SyncNotes.cut("invites", read: Self.inviteLimit) }
-        var latest: [String: (event: CalendarEvent, uid: Int)] = [:]
+        // Newest first; invites past the limit are read on later syncs.
+        if invites.count > Self.inviteLimit { SyncNotes.cut("new invites", read: Self.inviteLimit) }
         for invite in invites.sorted(by: { $0.uid > $1.uid }).prefix(Self.inviteLimit) {
             let sections = invite.parts.map { "BODY.PEEK[\($0.section)]" }.joined(separator: " ")
             let lines = try await session.command("UID FETCH \(invite.uid) (UID \(sections))")
+            var events: [CalendarEvent] = []
             for line in lines {
                 guard let attributes = IMAPParser.fetchAttributes(line) else { continue }
                 for part in invite.parts {
                     guard case .string(let data)? = attributes["BODY[\(part.section)]"],
                           let text = MIMEDecoding.decode(data, encoding: part.encoding, charset: part.charset) else { continue }
-                    // Replies and counter-proposals are not the organiser's invite.
-                    for event in ICSParser.events(in: text) where event.isRevision {
-                        if let known = latest[event.id],
-                           (known.event.sequence, known.uid) >= (event.sequence, invite.uid) { continue }
-                        latest[event.id] = (event, invite.uid)
-                    }
+                    events += ICSParser.events(in: text)
                 }
             }
+            learned[invite.uid] = events
         }
         _ = try? await session.command("LOGOUT")
+        if let cacheKey { cache.update(cacheKey, with: learned, keeping: Set(uids)) }
+
+        // Each invite keeps its latest revision; replies and counter-proposals
+        // are not the organiser's invite.
+        var latest: [String: (event: CalendarEvent, uid: Int)] = [:]
+        for (uid, events) in known.merging(learned, uniquingKeysWith: { $1 }) where uids.contains(uid) {
+            for event in events where event.isRevision {
+                if let current = latest[event.id], (current.event.sequence, current.uid) >= (event.sequence, uid) { continue }
+                latest[event.id] = (event, uid)
+            }
+        }
 
         return latest.values.map(\.event)
             .filter { !$0.isCancelled && $0.startsAt >= start && $0.startsAt <= end }
@@ -169,15 +185,21 @@ public struct MailInviteConnector: InterviewSource {
         }
     }
 
-    /// Opens the folder read-only; returns its message count when given.
-    private func examine(_ session: IMAPSession) async throws -> Int? {
+    /// Opens the folder read-only; returns its message count and UIDVALIDITY when given.
+    private func examine(_ session: IMAPSession) async throws -> (count: Int?, uidValidity: String?) {
         do {
             let lines = try await session.command("EXAMINE \(try IMAPSession.quoted(folder))")
+            var count: Int?
+            var validity: String?
             for line in lines {
                 let values = IMAPParser.values(line)
-                if values.count == 3, values[2].text?.uppercased() == "EXISTS" { return values[1].text.flatMap(Int.init) }
+                if values.count == 3, values[2].text?.uppercased() == "EXISTS" { count = values[1].text.flatMap(Int.init) }
+                let text = String(decoding: line, as: UTF8.self)
+                if let range = text.range(of: #"\[UIDVALIDITY (\d+)\]"#, options: .regularExpression) {
+                    validity = text[range].filter(\.isNumber)
+                }
             }
-            return nil
+            return (count, validity)
         } catch IMAPError.rejected {
             throw ConnectorError.unsupported("The folder \u{201C}\(folder)\u{201D} was not found in this mailbox.")
         } catch {

@@ -11,9 +11,18 @@ final class FakeIMAPServer: IMAPStream, @unchecked Sendable {
     private(set) var commands: [String] = []
     var chunkSize = 13
 
+    private let greeting: String
+
     init(greeting: String = "* OK [CAPABILITY IMAP4rev1] ready", handler: @escaping Handler) {
         pending = Array("\(greeting)\r\n".utf8)
+        self.greeting = greeting
         self.handler = handler
+    }
+
+    /// A new connection to the same mailbox starts with the greeting again.
+    func reconnect() -> FakeIMAPServer {
+        lock.withLock { pending = Array("\(greeting)\r\n".utf8) }
+        return self
     }
 
     func send(_ data: Data) async throws {
@@ -40,6 +49,8 @@ final class FakeIMAPServer: IMAPStream, @unchecked Sendable {
     }
 
     func close() {}
+
+    func respond(_ command: String) -> (untagged: [String], status: String) { handler(command) }
 }
 
 final class MailInviteTests: XCTestCase {
@@ -119,7 +130,48 @@ final class MailInviteTests: XCTestCase {
     private func connector(_ server: FakeIMAPServer, fields: [String: String] = [:]) throws -> MailInviteConnector {
         var all = ["email": "lee@gmail.com", "password": "abcd efgh ijkl mnop"]
         all.merge(fields) { $1 }
-        return try MailInviteConnector(credentials: ConnectorCredentials(fields: all), openStream: { _, _ in server })
+        return try MailInviteConnector(credentials: ConnectorCredentials(fields: all), openStream: { _, _ in server }, cache: cache)
+    }
+
+    private var cache = MailInviteCache()
+
+    func testASecondSyncDownloadsOnlyNewMessages() async throws {
+        var extra = false
+        let base = mailbox()
+        let cancel = ics(uid: "evt-1@acme", summary: "Interview: Jane Doe - Backend Engineer", start: "20261116T150000Z",
+                         sequence: 2, method: "CANCEL")
+        let server = FakeIMAPServer { command in
+            let upper = command.uppercased()
+            if extra, upper.hasPrefix("UID SEARCH") { return (["* SEARCH 101 102 103 104 105 110 111"], "OK done") }
+            if extra, upper.hasPrefix("UID FETCH 111 ") && upper.contains("BODYSTRUCTURE") {
+                return (["* 7 FETCH (UID 111 BODYSTRUCTURE (\"TEXT\" \"CALENDAR\" NIL NIL NIL \"7BIT\" 400 12 NIL NIL NIL))"], "OK done")
+            }
+            if extra, upper.hasPrefix("UID FETCH 111 ") {
+                return (["* 7 FETCH (UID 111 BODY[1] {\(cancel.utf8.count)}\r\n\(cancel))"], "OK done")
+            }
+            return base.respond(command)
+        }
+        let window = (soon, soon.addingTimeInterval(30 * 24 * 3600))
+        let connector = { [cache] in
+            try MailInviteConnector(credentials: ConnectorCredentials(fields: ["email": "lee@gmail.com", "password": "p"]),
+                                    openStream: { _, _ in server.reconnect() }, cache: cache)
+        }
+        let first = try await connector().upcomingInterviews(from: window.0, to: window.1)
+        XCTAssertEqual(first.count, 1)
+        let before = server.commands.count
+        let second = try await connector().upcomingInterviews(from: window.0, to: window.1)
+        XCTAssertEqual(second, first, "the same result from the cache")
+        let again = server.commands[before...].filter { $0.uppercased().hasPrefix("UID FETCH") }
+        XCTAssertTrue(again.isEmpty, "nothing downloaded twice: \(again)")
+
+        extra = true
+        let third: [ExternalInterview]
+        do { third = try await connector().upcomingInterviews(from: window.0, to: window.1) } catch {
+            XCTFail("third sync: \(error) after \(server.commands.suffix(4))"); return
+        }
+        XCTAssertTrue(third.isEmpty, "the new cancellation is read and applies to the cached invite")
+        let fetched = server.commands.filter { $0.uppercased().hasPrefix("UID FETCH") }.suffix(2)
+        XCTAssertTrue(fetched.allSatisfy { $0.contains("111") }, "only the new message: \(fetched)")
     }
 
     func testInvitesFollowUpdatesAndCancellations() async throws {
@@ -264,7 +316,7 @@ final class InviteRevisionTests: XCTestCase {
             return ([], "OK")
         }
         let connector = try MailInviteConnector(credentials: ConnectorCredentials(fields: ["email": "lee@gmail.com", "password": "p"]),
-                                                openStream: { _, _ in server })
+                                                openStream: { _, _ in server }, cache: MailInviteCache())
         let interviews = try await connector.upcomingInterviews(from: date("2026-11-07T00:00:00Z"), to: date("2026-11-21T00:00:00Z"))
         XCTAssertEqual(interviews.count, 1)
         XCTAssertEqual(interviews.first?.startsAt, date("2026-11-15T15:00:00Z"), "the reply's time is ignored")
