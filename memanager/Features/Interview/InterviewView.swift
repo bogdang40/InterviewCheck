@@ -103,7 +103,7 @@ struct InterviewSetupForm: View {
                         Text(message).foregroundStyle(.red)
                     }
                     Spacer()
-                    Button("Start Interview") { controller.start() }
+                    Button("Start Interview") { Task { await InterviewPermissions.shared.startInterview(controller) } }
                         .buttonStyle(.borderedProminent)
                         .controlSize(.large)
                         .disabled(!controller.consentConfirmed)

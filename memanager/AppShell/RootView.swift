@@ -29,6 +29,7 @@ struct RootView: View {
 struct MainSplitView: View {
     @ObservedObject private var navigation = AppNavigation.shared
     @ObservedObject private var interview = InterviewController.shared
+    @ObservedObject private var permissions = InterviewPermissions.shared
     @State private var columnVisibility = NavigationSplitViewVisibility.all
 
     var body: some View {
@@ -50,6 +51,11 @@ struct MainSplitView: View {
             case .reports:
                 ReportsView()
             }
+        }
+        .alert(item: $permissions.problem) { problem in
+            Alert(title: Text(problem.title), message: Text(problem.message),
+                  primaryButton: .default(Text(problem.actionTitle)) { permissions.openSettings(for: problem) },
+                  secondaryButton: .cancel())
         }
     }
 

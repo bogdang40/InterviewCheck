@@ -42,7 +42,7 @@ private struct InterviewMenuItems: View {
     @ObservedObject private var interview = InterviewController.shared
 
     var body: some View {
-        Button("Start Interview") { interview.start() }
+        Button("Start Interview") { Task { await InterviewPermissions.shared.startInterview(interview) } }
             .keyboardShortcut("r")
             .disabled(!interview.canStart || interview.phase != .setup)
         Divider()

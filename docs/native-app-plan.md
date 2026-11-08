@@ -23,7 +23,7 @@ Status key: [ ] todo · [~] in progress · [x] done (commit)
 - [x] A6 Live Companion: optional small always-on-top window (normal title bar,
       closable) showing the current question and score while the call is in front.
 - [x] A7 App icon + accent colour; install to ~/Applications/InterviewCheck.app.
-- [ ] A8 Permissions asked when starting an interview (mic, screen audio), with
+- [x] A8 Permissions asked when starting an interview (mic, screen audio), with
       an explanation screen; nothing at launch.
 
 ## B. Scalable structure
@@ -46,3 +46,5 @@ Status key: [ ] todo · [~] in progress · [x] done (commit)
   with traffic lights, no crash. Commit 6da0258.
 - 20:22 A7: generated app icon (shield + check), AccentColor, `-InterviewCheckStartSection`
   launch option for screenshots. Window screenshots of Interview / Roles / Reports OK.
+- 20:30 A8: Start checks Deepgram key, asks microphone, checks Screen \& System Audio
+  Recording with System Settings link; interview drives AudioCaptureService directly.

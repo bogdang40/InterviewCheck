@@ -28,8 +28,10 @@ final class InterviewController: ObservableObject {
     let database: SessionDatabase
     let settings: DetectorSettings
     var runner = ReferenceAnswerRunner()
-    var startAudio: () -> Void = { SessionController.shared.startSession() }
-    var stopAudio: () -> Void = { SessionController.shared.endSession() }
+    /// Starts and stops both audio streams (the interviewer's microphone and
+    /// the call's audio). The interview drives capture directly.
+    var startAudio: () -> Void = { AudioCaptureService.shared.requestStart(reason: .newSession) }
+    var stopAudio: () -> Void = { AudioCaptureService.shared.requestStop(clearTranscript: true) }
     /// The role the interview is for (the one selected in Roles).
     var roleProvider: () -> RoleProfile? = { RoleStore.shared.selectedRole }
 
