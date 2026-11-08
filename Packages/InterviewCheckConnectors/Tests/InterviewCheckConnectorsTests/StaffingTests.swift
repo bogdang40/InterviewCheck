@@ -19,7 +19,10 @@ final class StaffingTests: XCTestCase {
         {"start":0,"count":1,"data":[{"id":5501,"subject":"Interview - Jane Doe","dateBegin":1794326400000,"dateEnd":1794330000000,
           "location":"https://teams.microsoft.com/l/meetup-join/19%3ameeting_x%40thread.v2/0","type":"Interview",
           "candidateReference":{"id":88,"firstName":"Jane","lastName":"Doe","email":"jane@example.com"},
-          "jobOrder":{"id":12,"title":"Senior Java Developer"},"owner":{"id":3,"firstName":"Sam","lastName":"Recruiter","email":"sam@acme-staffing.com"}}]}
+          "jobOrder":{"id":12,"title":"Senior Java Developer"},"owner":{"id":3,"firstName":"Sam","lastName":"Recruiter","email":"sam@acme-staffing.com"}},
+         {"id":5502,"subject":"Interview - Jane Doe","dateBegin":1794326400000,"dateEnd":1794330000000,"type":"Interview",
+          "parentAppointment":{"id":5501},"candidateReference":{"id":88,"firstName":"Jane","lastName":"Doe","email":"jane@example.com"},
+          "owner":{"id":4,"firstName":"Lee","lastName":"Engineer","email":"lee@acme-staffing.com"}}]}
         """#)
         stub.on("GET", "settings/corporationName", json: #"{"corporationName":"Acme Staffing"}"#)
         let connector = try bullhorn(stub, fields: ["types": "Interview, Client's Interview"])
@@ -31,12 +34,14 @@ final class StaffingTests: XCTestCase {
         XCTAssertEqual(interview.candidate, ExternalCandidate(externalID: "88", name: "Jane Doe", email: "jane@example.com"))
         XCTAssertEqual(interview.job?.title, "Senior Java Developer")
         XCTAssertEqual(interview.meetingURL?.host, "teams.microsoft.com")
-        XCTAssertEqual(interview.interviewers.first?.email, "sam@acme-staffing.com")
+        XCTAssertEqual(interviews.count, 1, "an invitee's copy joins the original appointment")
+        XCTAssertEqual(interview.interviewers.map(\.email), ["sam@acme-staffing.com", "lee@acme-staffing.com"],
+                       "an invited colleague is an interviewer too, so the interview shows for them")
         let query = try XCTUnwrap(stub.requests(containing: "query/Appointment").first)
         XCTAssertEqual(query.value(forHTTPHeaderField: "BhRestToken"), "bh-123")
         let clause = try XCTUnwrap(URLComponents(url: query.url!, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "where" }?.value)
         XCTAssertTrue(clause.hasPrefix("(type='Interview' OR type='Client''s Interview') AND dateBegin>="), clause)
-        XCTAssertTrue(clause.contains("parentAppointment IS NULL"), "each invitee's copy is skipped")
+        XCTAssertFalse(clause.contains("parentAppointment IS NULL"), "invitees' copies are read")
         let label = try await connector.verify()
         XCTAssertEqual(label, "Acme Staffing")
         XCTAssertEqual(stub.requests(containing: "/login").count, 1, "one REST login per connector")

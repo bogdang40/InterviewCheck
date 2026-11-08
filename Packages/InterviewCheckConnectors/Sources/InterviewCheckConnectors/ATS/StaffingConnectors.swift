@@ -94,11 +94,11 @@ public struct BullhornConnector: InterviewSource, JobSource, CandidateSource, Ca
     public func upcomingInterviews(from start: Date, to end: Date) async throws -> [ExternalInterview] {
         let api = try await client()
         let millis = { (date: Date) in String(Int64(date.timeIntervalSince1970 * 1000)) }
-        // Bullhorn copies an appointment to each invitee; the owner's copy has no parent.
-        let clause = "\(Self.typeClause(types)) AND dateBegin>=\(millis(start)) AND dateBegin<\(millis(end)) "
-            + "AND isDeleted=false AND parentAppointment IS NULL"
+        // Bullhorn copies an appointment to each invitee (a child of the owner's
+        // copy). All copies are read and joined, so each person on it is an interviewer.
+        let clause = "\(Self.typeClause(types)) AND dateBegin>=\(millis(start)) AND dateBegin<\(millis(end)) AND isDeleted=false"
         let fields = "id,subject,dateBegin,dateEnd,location,type,description,candidateReference(id,firstName,lastName,email),"
-            + "jobOrder(id,title),owner(id,firstName,lastName,email)"
+            + "jobOrder(id,title),owner(id,firstName,lastName,email),parentAppointment(id)"
         var rows: [JSONValue] = []
         for page in 0..<Self.pageLimit {
             let data = try await api.getJSON("query/Appointment", query: [
@@ -110,14 +110,30 @@ public struct BullhornConnector: InterviewSource, JobSource, CandidateSource, Ca
             if data.count < Self.pageSize { break }
             if page == Self.pageLimit - 1 { SyncNotes.cut("appointments", read: rows.count) }
         }
-        return rows.compactMap { row in
-            guard let id = row["id"].string, let begin = row["dateBegin"].double else { return nil }
+        // One interview per original appointment, with every copy's owner on it.
+        var order: [String] = []
+        var groups: [String: [JSONValue]] = [:]
+        for row in rows {
+            guard let id = row["id"].string else { continue }
+            let root = row.at("parentAppointment.id").string ?? id
+            if groups[root] == nil { order.append(root) }
+            groups[root, default: []].append(row)
+        }
+        return order.compactMap { root in
+            let copies = groups[root] ?? []
+            // The owner's copy when it was read, else an invitee's copy.
+            guard let row = copies.first(where: { $0.at("parentAppointment.id").string == nil }) ?? copies.first,
+                  let begin = row["dateBegin"].double else { return nil }
             let candidate = row["candidateReference"]
             let job = row["jobOrder"]
-            let owner = row["owner"]
-            let ownerName = [owner["firstName"].string, owner["lastName"].string].compactMap { $0 }.joined(separator: " ")
+            var interviewers: [ExternalPerson] = []
+            for owner in copies.map({ $0["owner"] }) {
+                guard let email = owner["email"].string, !interviewers.contains(where: { $0.email == email }) else { continue }
+                let name = [owner["firstName"].string, owner["lastName"].string].compactMap { $0 }.joined(separator: " ")
+                interviewers.append(ExternalPerson(name: name.isEmpty ? email : name, email: email))
+            }
             return ExternalInterview(
-                source: .bullhorn, externalID: id, title: row["subject"].string ?? "Interview",
+                source: .bullhorn, externalID: root, title: row["subject"].string ?? "Interview",
                 startsAt: Date(timeIntervalSince1970: begin / 1000),
                 endsAt: row["dateEnd"].double.map { Date(timeIntervalSince1970: $0 / 1000) },
                 meetingURL: MeetingLinks.first(in: [row["location"].string, row["description"].string]),
@@ -125,7 +141,7 @@ public struct BullhornConnector: InterviewSource, JobSource, CandidateSource, Ca
                     ExternalCandidate(externalID: $0, name: Self.name(candidate), email: candidate["email"].string)
                 },
                 job: job["id"].string.map { ExternalJob(externalID: $0, title: job["title"].string ?? "Job") },
-                interviewers: owner["email"].string.map { [ExternalPerson(name: ownerName.isEmpty ? $0 : ownerName, email: $0)] } ?? []
+                interviewers: interviewers
             )
         }
     }
@@ -229,10 +245,17 @@ public struct JobAdderConnector: InterviewSource, JobSource, CandidateSource, Ca
         var interviews = rows.compactMap(Self.interview)
         // The newer scheduler keeps its interviews as events.
         do {
-            let events = try await api.getJSON("events", query: [
-                URLQueryItem(name: "EventType", value: "Interview"), URLQueryItem(name: "StartDate", value: DateParsing.iso(start)),
-                URLQueryItem(name: "EndDate", value: DateParsing.iso(end)), URLQueryItem(name: "Limit", value: "100"),
-            ])["items"].array
+            var events: [JSONValue] = []
+            for page in 0..<Self.pageLimit {
+                let items = try await api.getJSON("events", query: [
+                    URLQueryItem(name: "EventType", value: "Interview"), URLQueryItem(name: "StartDate", value: DateParsing.iso(start)),
+                    URLQueryItem(name: "EndDate", value: DateParsing.iso(end)), URLQueryItem(name: "Limit", value: "100"),
+                    URLQueryItem(name: "Offset", value: "\(page * 100)"),
+                ])["items"].array
+                events += items
+                if items.count < 100 { break }
+                if page == Self.pageLimit - 1 { SyncNotes.cut("scheduler interviews", read: events.count) }
+            }
             interviews += events.compactMap(Self.event)
         } catch {
             SyncNotes.note("Interviews from JobAdder\u{2019}s scheduler could not be read: \(error.localizedDescription)")

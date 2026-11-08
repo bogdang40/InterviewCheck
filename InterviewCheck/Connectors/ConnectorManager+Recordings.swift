@@ -37,23 +37,34 @@ extension ConnectorManager {
         guard let source = try makeConnector(recording.source) as? RecordingSource else {
             throw ConnectorError.unsupported("\(recording.source.descriptor.name) has no recordings.")
         }
-        guard let file = recording.bestMediaFile ?? recording.files.first(where: { $0.kind == .transcript }) else {
+        // The audio or video first; if it cannot be downloaded (the host turned
+        // downloads off, say), the transcript.
+        let transcript = recording.files.first(where: { $0.kind == .transcript })
+        let choices = [recording.bestMediaFile, transcript].compactMap { $0 }.reduce(into: [ExternalFile]()) { list, file in
+            if !list.contains(file) { list.append(file) }
+        }
+        guard !choices.isEmpty else {
             throw ConnectorError.unsupported("This meeting has no audio, video or transcript yet.")
         }
-        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("interviewcheck-meeting-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        do {
-            let local = try await source.download(file, into: folder)
-            analyzer.meetingStart = recording.startedAt
-            if file.kind == .transcript {
-                analyzer.startTranscript(file: local, candidateName: candidateName, role: role,
-                                         recordingID: recording.id, cleanup: folder)
-            } else {
-                analyzer.start(file: local, candidateName: candidateName, role: role, recordingID: recording.id, cleanup: folder)
+        var failure: Error?
+        for file in choices {
+            let folder = FileManager.default.temporaryDirectory.appendingPathComponent("interviewcheck-meeting-\(UUID().uuidString)")
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            do {
+                let local = try await source.download(file, into: folder)
+                analyzer.meetingStart = recording.startedAt
+                if file.kind == .transcript {
+                    analyzer.startTranscript(file: local, candidateName: candidateName, role: role,
+                                             recordingID: recording.id, cleanup: folder)
+                } else {
+                    analyzer.start(file: local, candidateName: candidateName, role: role, recordingID: recording.id, cleanup: folder)
+                }
+                return
+            } catch {
+                try? FileManager.default.removeItem(at: folder)
+                failure = error
             }
-        } catch {
-            try? FileManager.default.removeItem(at: folder)
-            throw error
         }
+        throw failure ?? ConnectorError.unsupported("This meeting could not be downloaded.")
     }
 }
