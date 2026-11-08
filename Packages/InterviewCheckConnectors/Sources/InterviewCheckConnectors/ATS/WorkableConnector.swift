@@ -95,3 +95,12 @@ extension WorkableConnector: CandidateLookup {
                               applicationID: id)
     }
 }
+
+extension WorkableConnector: JobListing {
+    public func openJobs() async throws -> [ExternalJob] {
+        try await api.getJSON("jobs", query: [URLQueryItem(name: "state", value: "published"), URLQueryItem(name: "limit", value: "100")])["jobs"]
+            .array.compactMap { job in
+                job["shortcode"].string.map { ExternalJob(externalID: $0, title: job["title"].string ?? "Job") }
+            }
+    }
+}

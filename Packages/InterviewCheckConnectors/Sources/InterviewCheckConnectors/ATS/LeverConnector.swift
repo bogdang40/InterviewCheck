@@ -4,7 +4,7 @@ import Foundation
 /// interviews are read per open opportunity updated in the last 60 days.
 public struct LeverConnector: InterviewSource, JobSource, CandidateSource, NoteDestination {
     public let kind = ConnectorKind.lever
-    private let api: APIClient
+    let api: APIClient
     var maxOpportunities = 300
 
     public init(credentials: ConnectorCredentials, transport: HTTPTransport) throws {
@@ -130,5 +130,13 @@ extension LeverConnector: CandidateLookup {
         let posting = opportunity["applications"][0]["posting"].string
         return CandidateMatch(candidate: ExternalCandidate(externalID: id, name: opportunity["name"].string ?? "Candidate", email: email),
                               job: posting.map { ExternalJob(externalID: $0, title: "Job") }, applicationID: id)
+    }
+}
+
+extension LeverConnector: JobListing {
+    public func openJobs() async throws -> [ExternalJob] {
+        try await list("postings", [URLQueryItem(name: "state", value: "published")], limit: 300).compactMap { posting in
+            posting["id"].string.map { ExternalJob(externalID: $0, title: posting["text"].string ?? "Job") }
+        }
     }
 }

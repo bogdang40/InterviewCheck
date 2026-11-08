@@ -186,3 +186,24 @@ extension SmartRecruitersConnector: CandidateLookup {
                               })
     }
 }
+
+extension TeamtailorConnector: JobListing {
+    public func openJobs() async throws -> [ExternalJob] {
+        try await api.getJSON("jobs", query: [URLQueryItem(name: "filter[status]", value: "open"),
+                                              URLQueryItem(name: "page[size]", value: "30")])["data"].array.compactMap { job in
+            job["id"].string.map {
+                ExternalJob(externalID: $0, title: job.at("attributes.title").string ?? "Job",
+                            description: job.at("attributes.body").string.map(HTMLText.plain) ?? "")
+            }
+        }
+    }
+}
+
+extension SmartRecruitersConnector: JobListing {
+    public func openJobs() async throws -> [ExternalJob] {
+        try await client().getJSON("jobs", query: [URLQueryItem(name: "status", value: "SOURCING"),
+                                                   URLQueryItem(name: "limit", value: "100")])["content"].array.compactMap { job in
+            job["id"].string.map { ExternalJob(externalID: $0, title: job["title"].string ?? "Job") }
+        }
+    }
+}

@@ -4,7 +4,7 @@ import Foundation
 /// Merge serves its own synced copy (daily on its entry plan).
 public struct MergeConnector: InterviewSource, JobSource, CandidateSource, NoteDestination {
     public let kind = ConnectorKind.merge
-    private let api: APIClient
+    let api: APIClient
     private let remoteUserID: String?
 
     public init(credentials: ConnectorCredentials, transport: HTTPTransport) throws {
@@ -124,5 +124,16 @@ extension MergeConnector: CandidateLookup {
                                   ExternalJob(externalID: $0, title: application?.at("job.name").string ?? "Job")
                               },
                               applicationID: application?["id"].string)
+    }
+}
+
+extension MergeConnector: JobListing {
+    public func openJobs() async throws -> [ExternalJob] {
+        try await list("jobs", [URLQueryItem(name: "status", value: "OPEN"), URLQueryItem(name: "page_size", value: "100")], maxPages: 5)
+            .compactMap { job in
+                job["id"].string.map {
+                    ExternalJob(externalID: $0, title: job["name"].string ?? "Job", description: job["description"].string.map(HTMLText.plain) ?? "")
+                }
+            }
     }
 }

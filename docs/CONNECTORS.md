@@ -123,6 +123,8 @@ its results.
 - **Score recordings automatically** (off by default) scores new recordings of scheduled
   interviews in the background and sends a "Report ready" notification.
   Turn it on only if candidates are told interviews are recorded and checked.
+- **Roles › Share › Import from ATS** turns open jobs (Greenhouse, Lever, Ashby, Workable, Recruitee,
+  Teamtailor, SmartRecruiters, Merge, Kombo, Unified.to) into roles with their job descriptions.
 - When Prepare creates a role from an ATS job, the role's questions and tailored
   prompts are drafted in the background.
 - Shortcuts actions: Prepare Next Interview, Sync Interview Connections, Open Latest Interview Report.

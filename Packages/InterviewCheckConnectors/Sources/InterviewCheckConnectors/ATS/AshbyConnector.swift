@@ -4,7 +4,7 @@ import Foundation
 /// can come back as HTTP 200 with `success: false`.
 public struct AshbyConnector: InterviewSource, JobSource, CandidateSource, NoteDestination {
     public let kind = ConnectorKind.ashby
-    private let api: APIClient
+    let api: APIClient
 
     public init(credentials: ConnectorCredentials, transport: HTTPTransport) throws {
         let key = try credentials.required("apiKey", "API key")
@@ -137,5 +137,13 @@ extension AshbyConnector: CandidateLookup {
                                   ExternalJob(externalID: $0, title: application?.at("job.title").string ?? "Job")
                               },
                               applicationID: applicationID)
+    }
+}
+
+extension AshbyConnector: JobListing {
+    public func openJobs() async throws -> [ExternalJob] {
+        try await call("job.list", ["status": ["Open"]])["results"].array.compactMap { job in
+            job["id"].string.map { ExternalJob(externalID: $0, title: job["title"].string ?? "Job") }
+        }
     }
 }

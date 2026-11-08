@@ -152,3 +152,10 @@ extension GreenhouseConnector: CandidateLookup {
                               applicationID: application?["id"].string)
     }
 }
+
+extension GreenhouseConnector: JobListing {
+    public func openJobs() async throws -> [ExternalJob] {
+        try await list("jobs", [URLQueryItem(name: "status", value: "open"), URLQueryItem(name: "per_page", value: "500")], maxPages: 4)
+            .compactMap { job in job["id"].string.map { ExternalJob(externalID: $0, title: job["name"].string ?? "Job") } }
+    }
+}

@@ -150,3 +150,13 @@ extension UnifiedToConnector: CandidateLookup {
         return CandidateMatch(candidate: Self.candidate(json), job: jobID.map { ExternalJob(externalID: $0, title: "Job") })
     }
 }
+
+extension UnifiedToConnector: JobListing {
+    public func openJobs() async throws -> [ExternalJob] {
+        try await list("job", [URLQueryItem(name: "status", value: "OPEN")], maxPages: 5).compactMap { job in
+            job["id"].string.map {
+                ExternalJob(externalID: $0, title: job["name"].string ?? "Job", description: job["description"].string.map(HTMLText.plain) ?? "")
+            }
+        }
+    }
+}

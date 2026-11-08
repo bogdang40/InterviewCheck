@@ -212,3 +212,11 @@ enum ZohoSessions {
         return session
     }
 }
+
+extension RecruiteeConnector: JobListing {
+    public func openJobs() async throws -> [ExternalJob] {
+        try await api.getJSON("offers", query: [URLQueryItem(name: "statuses[]", value: "published")])["offers"].array.compactMap { offer in
+            offer["id"].string.map { ExternalJob(externalID: $0, title: offer["title"].string ?? "Job") }
+        }
+    }
+}

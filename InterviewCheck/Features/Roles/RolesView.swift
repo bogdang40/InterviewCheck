@@ -6,6 +6,7 @@ struct RolesView: View {
     @ObservedObject private var navigation = AppNavigation.shared
     @State private var selection: String?
     @State private var confirmDelete: RoleProfile?
+    @State private var isImportingJobs = false
 
     var body: some View {
         HSplitView {
@@ -65,7 +66,8 @@ struct RolesView: View {
                     Button("Export\u{2026}") { if let role = store.role(id: selection) { RoleTransfer.export(role) } }
                         .disabled(selection == nil)
                     Divider()
-                    Button("Import Role\u{2026}") { if let role = RoleTransfer.importWithPanel() { selection = role.id } }
+                    Button("Import from ATS\u{2026}") { isImportingJobs = true }
+                    Button("Import Role File\u{2026}") { if let role = RoleTransfer.importWithPanel() { selection = role.id } }
                 } label: {
                     Label("Share", systemImage: "square.and.arrow.up")
                 }
@@ -81,6 +83,9 @@ struct RolesView: View {
             handleNewRoleRequest()
         }
         .onChange(of: navigation.newRoleRequest) { _, _ in handleNewRoleRequest() }
+        .sheet(isPresented: $isImportingJobs) {
+            ImportJobsSheet(onImported: { role in if let role { selection = role.id } })
+        }
         .onChange(of: navigation.roleToShow) { _, id in
             guard let id else { return }
             selection = id

@@ -107,3 +107,21 @@ final class MoreATSTests: XCTestCase {
         }
     }
 }
+
+final class JobListingTests: XCTestCase {
+    func testGreenhouseAndMergeOpenJobs() async throws {
+        let stub = StubTransport()
+        stub.on("POST", "auth.greenhouse.io/token", json: #"{"access_token":"t","expires_in":3600}"#)
+        stub.on("GET", "/v3/jobs?", json: #"[{"id":31,"name":"Backend Engineer","status":"open"},{"id":32,"name":"Designer","status":"open"}]"#)
+        let greenhouse = try GreenhouseConnector(credentials: ConnectorCredentials(fields: ["clientID": "c", "clientSecret": "s"]), transport: stub)
+        let jobs = try await greenhouse.openJobs()
+        XCTAssertEqual(jobs.map(\.title), ["Backend Engineer", "Designer"])
+        XCTAssertTrue(stub.requests(containing: "/v3/jobs?").first!.url!.absoluteString.contains("status=open"))
+
+        let merge = StubTransport()
+        merge.on("GET", "/jobs?", json: #"{"next":null,"results":[{"id":"j1","name":"SRE","description":"<p>Keep it up.</p>","status":"OPEN"}]}"#)
+        let connector = try MergeConnector(credentials: ConnectorCredentials(fields: ["apiKey": "k", "accountToken": "a"]), transport: merge)
+        let open = try await connector.openJobs()
+        XCTAssertEqual(open, [ExternalJob(externalID: "j1", title: "SRE", description: "Keep it up.")])
+    }
+}

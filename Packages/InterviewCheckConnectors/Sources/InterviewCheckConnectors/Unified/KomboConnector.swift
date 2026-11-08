@@ -4,7 +4,7 @@ import Foundation
 /// call carries the candidate and job, so this is the cheapest to sync.
 public struct KomboConnector: InterviewSource, JobSource, CandidateSource, NoteDestination {
     public let kind = ConnectorKind.kombo
-    private let api: APIClient
+    let api: APIClient
 
     public init(credentials: ConnectorCredentials, transport: HTTPTransport) throws {
         let key = try credentials.required("apiKey", "API key")
@@ -110,5 +110,17 @@ extension KomboConnector: CandidateLookup {
                                   ExternalJob(externalID: $0, title: application?.at("job.name").string ?? "Job")
                               },
                               applicationID: application?["id"].string)
+    }
+}
+
+extension KomboConnector: JobListing {
+    public func openJobs() async throws -> [ExternalJob] {
+        try await list("ats/jobs", [URLQueryItem(name: "statuses", value: "OPEN"), URLQueryItem(name: "page_size", value: "250")], maxPages: 4)
+            .compactMap { job in
+                job["id"].string.map {
+                    ExternalJob(externalID: $0, title: job["name"].string ?? "Job",
+                                description: (job["description"].string ?? job["job_postings"][0]["description_html"].string).map(HTMLText.plain) ?? "")
+                }
+            }
     }
 }
