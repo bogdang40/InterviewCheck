@@ -80,7 +80,7 @@ if [ "$USE_ADHOC_SIGNING" -eq 1 ]; then
   echo "=== Applying ad-hoc signature ==="
   if [ "$BUILD_CONFIGURATION" = Release ]; then
     # Keep nested code signatures and apply the release app's entitlements.
-    codesign --force --sign - --entitlements "$ENTITLEMENTS" "$STAGED_APP"
+    codesign --force --sign - --options runtime --entitlements "$ENTITLEMENTS" "$STAGED_APP"
   else
     codesign --force --deep --sign - "$STAGED_APP"
   fi

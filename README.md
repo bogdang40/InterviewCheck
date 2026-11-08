@@ -50,6 +50,25 @@ Without `INTERVIEWCHECK_DEVELOPMENT_TEAM` the app is signed ad hoc; macOS then
 asks for permissions again after each rebuild. Set it to your Apple team ID to
 keep permissions between builds.
 
+## Packaging for other Macs
+
+```sh
+./scripts/build-release.sh && ./scripts/package-dmg.sh   # build/InterviewCheck-<version>.dmg
+```
+
+Release builds use the hardened runtime. To install on Macs other than the
+build machine without Gatekeeper warnings, sign with a Developer ID
+Application certificate (`INTERVIEWCHECK_DEVELOPMENT_TEAM` plus a Developer ID
+identity) and notarize the disk image:
+
+```sh
+xcrun notarytool submit build/InterviewCheck-1.0.0.dmg --keychain-profile <profile> --wait
+xcrun stapler staple build/InterviewCheck-1.0.0.dmg
+```
+
+Companies deploying through MDM can pre-approve the microphone with
+`InterviewCheck-permissions.mobileconfig`.
+
 ## Licensing and accounts
 
 The app unlocks with an account on the access server (`server/`, Node 22,
