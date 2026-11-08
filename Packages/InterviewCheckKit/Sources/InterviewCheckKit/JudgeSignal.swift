@@ -67,7 +67,8 @@ public enum JudgeSignal {
         references: [ReferenceText],
         timing: TimingResult,
         fluency: FluencyResult,
-        similarity: SimilarityResult?
+        similarity: SimilarityResult?,
+        phrasing: PhrasingResult? = nil
     ) -> String {
         var lines = ["QUESTION:", question.isEmpty ? "(not captured)" : question, "",
                      "CANDIDATE'S SPOKEN ANSWER (transcribed; [silence Ns] and [um] mark pauses and fillers):",
@@ -83,6 +84,12 @@ public enum JudgeSignal {
         }
         if let best = similarity?.best {
             lines.append("- Closest AI answer: \(best.label), shared 3-word phrases \(Int(best.phraseContainment * 100))%")
+            if let shared = similarity?.bestShared, shared.sharedCount > 0 {
+                lines.append("- Words said in the same order as that AI answer (runs of 4+): \(shared.sharedCount) of \(shared.answerCount)")
+            }
+        }
+        if let phrasing, !phrasing.tells.isEmpty {
+            lines.append("- Wording typical of written AI text: " + phrasing.tells.prefix(5).joined(separator: ", "))
         }
         lines.append("")
         for (index, reference) in references.enumerated() {

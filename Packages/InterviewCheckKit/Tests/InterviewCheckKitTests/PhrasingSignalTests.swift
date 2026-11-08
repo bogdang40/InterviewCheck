@@ -82,3 +82,21 @@ final class PhrasingSignalTests: XCTestCase {
         XCTAssertEqual(weights.phrasing, CheatScoreWeights.default.phrasing)
     }
 }
+
+final class JudgePromptEvidenceTests: XCTestCase {
+    func testTheReviewSeesSharedWordsAndWording() {
+        let words = DetectorFixtures.readingAnswer(after: 100)
+        let timing = TimingSignal.evaluate(answerWords: words, questionEnd: 100, questionText: DetectorFixtures.question)
+        let fluency = FluencySignal.evaluate(answerWords: words, from: timing.substantiveIndex)
+        let reference = ReferenceText(id: UUID(), label: "GPT 5.2 · Full answer", text: DetectorFixtures.aiAnswer, embedding: nil)
+        let answerText = words.map(\.text).joined(separator: " ")
+        let similarity = SimilaritySignal.evaluate(answerText: answerText, answerEmbedding: nil,
+                                                   questionText: DetectorFixtures.question, references: [reference])
+        let prompt = JudgeSignal.userPrompt(
+            question: DetectorFixtures.question, annotatedAnswer: answerText, references: [reference],
+            timing: timing, fluency: fluency, similarity: similarity,
+            phrasing: PhrasingResult(score: 0.8, tells: ["furthermore", "it's worth noting"], wordCount: 80))
+        XCTAssertTrue(prompt.contains("- Words said in the same order as that AI answer (runs of 4+): "), prompt)
+        XCTAssertTrue(prompt.contains("- Wording typical of written AI text: furthermore, it's worth noting"), prompt)
+    }
+}

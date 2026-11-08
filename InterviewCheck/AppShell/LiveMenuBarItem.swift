@@ -11,6 +11,10 @@ struct LiveMenuBarContent: View {
         if let interview = controller.interview {
             Text("Interviewing \(interview.candidateName.isEmpty ? "candidate" : interview.candidateName)")
         }
+        let finals = controller.questions.compactMap { controller.scores[$0.id] }.filter(\.isFinal)
+        if !finals.isEmpty {
+            Text(InterviewSummary.flaggedLine(finals.filter { $0.percent >= 70 }.count, of: finals.count))
+        }
         if let question = controller.activeQuestion ?? controller.questions.last {
             Text("Q\(question.ordinal): \(question.text.isEmpty ? "listening\u{2026}" : String(question.text.prefix(60)))")
             if let score = controller.scores[question.id] {

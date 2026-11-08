@@ -70,7 +70,7 @@ struct AnswerReviewer {
             question: questionText,
             annotatedAnswer: JudgeSignal.annotate(answerWords: window.answerWords, questionEnd: window.questionEnd),
             references: finished.prefix(4).map { ReferenceText(id: UUID(), label: $0.label, text: $0.text, embedding: nil) },
-            timing: quick.timing, fluency: quick.fluency, similarity: quick.similarity
+            timing: quick.timing, fluency: quick.fluency, similarity: quick.similarity, phrasing: quick.phrasing
         )
         let client = try DetectorTextClientFactory.make(provider: entry.provider, model: entry.model,
                                                         settings: providerSettings)
