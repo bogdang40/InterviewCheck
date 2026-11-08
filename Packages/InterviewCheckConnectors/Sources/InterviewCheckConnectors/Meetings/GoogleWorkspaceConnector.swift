@@ -7,12 +7,15 @@ public struct GoogleWorkspaceConnector: InterviewSource, RecordingSource {
     private let token: AccessTokenProvider
     private let transport: HTTPTransport
     private let keywords: [String]
+    /// Calendars read besides the primary one (a team "Interviews" calendar).
+    let otherCalendars: [String]
 
     public init(credentials: ConnectorCredentials, transport: HTTPTransport, accessToken: AccessTokenProvider?) throws {
         guard let accessToken else { throw ConnectorError.notConnected }
         token = accessToken
         self.transport = transport
         keywords = credentials["keywords"]?.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) } ?? []
+        otherCalendars = OtherCalendars.list(credentials)
     }
 
     private func client(_ base: String) async throws -> APIClient {
@@ -26,6 +29,23 @@ public struct GoogleWorkspaceConnector: InterviewSource, RecordingSource {
 
     public func upcomingInterviews(from start: Date, to end: Date) async throws -> [ExternalInterview] {
         let api = try await client("https://www.googleapis.com/calendar/v3")
+        var events = try await events(in: "primary", api: api, from: start, to: end)
+        for calendar in otherCalendars {
+            do {
+                events += try await self.events(in: calendar, api: api, from: start, to: end)
+            } catch {
+                SyncNotes.note("The calendar \u{201C}\(calendar)\u{201D} could not be read: \(error.localizedDescription)")
+            }
+        }
+        // An event on two calendars (yours and the team's) counts once.
+        var seen = Set<String>()
+        return events.compactMap(Self.calendarEvent)
+            .filter { seen.insert($0.id).inserted }
+            .filter { InterviewEventClassifier.isInterview($0, extraKeywords: keywords) }
+            .map { InterviewEventClassifier.interview(from: $0, source: .google) }
+    }
+
+    private func events(in calendar: String, api: APIClient, from start: Date, to end: Date) async throws -> [JSONValue] {
         var events: [JSONValue] = []
         var pageToken: String?
         for index in 0..<5 {
@@ -35,15 +55,13 @@ public struct GoogleWorkspaceConnector: InterviewSource, RecordingSource {
                          URLQueryItem(name: "orderBy", value: "startTime"),
                          URLQueryItem(name: "maxResults", value: "250")]
             if let pageToken { query.append(URLQueryItem(name: "pageToken", value: pageToken)) }
-            let page = try await api.getJSON("calendars/primary/events", query: query)
+            let page = try await api.getJSON("calendars/\(calendar)/events", query: query)
             events += page["items"].array
             guard let next = page["nextPageToken"].string else { break }
             if index == 4 { SyncNotes.cut("calendar events", read: events.count) }
             pageToken = next
         }
-        return events.compactMap(Self.calendarEvent)
-            .filter { InterviewEventClassifier.isInterview($0, extraKeywords: keywords) }
-            .map { InterviewEventClassifier.interview(from: $0, source: .google) }
+        return events
     }
 
     static func calendarEvent(_ item: JSONValue) -> CalendarEvent? {

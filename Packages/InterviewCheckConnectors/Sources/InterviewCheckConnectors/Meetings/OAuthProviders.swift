@@ -20,15 +20,19 @@ public enum MicrosoftConnectorProvider {
     /// Need a tenant admin's consent.
     public static let transcriptScopes = ["OnlineMeetingTranscript.Read.All", "OnlineMeetingRecording.Read.All"]
 
-    public static func provider(tenant: String = "organizations", transcripts: Bool = false) -> OAuthProvider {
+    /// Shared calendars (another person's or a team's) need Calendars.Read.Shared,
+    /// asked for only when other calendars are named.
+    public static func provider(tenant: String = "organizations", transcripts: Bool = false,
+                                sharedCalendars: Bool = false) -> OAuthProvider {
         OAuthProvider(authorizeURL: URL(string: "https://login.microsoftonline.com/\(tenant)/oauth2/v2.0/authorize")!,
                       tokenURL: URL(string: "https://login.microsoftonline.com/\(tenant)/oauth2/v2.0/token")!,
-                      scopes: baseScopes + (transcripts ? transcriptScopes : []),
+                      scopes: baseScopes + (sharedCalendars ? ["Calendars.Read.Shared"] : []) + (transcripts ? transcriptScopes : []),
                       scopeOnTokenCalls: true)
     }
 
     public static func provider(_ credentials: ConnectorCredentials) -> OAuthProvider {
-        provider(tenant: credentials["tenant"] ?? "organizations", transcripts: credentials["transcripts"] == "true")
+        provider(tenant: credentials["tenant"] ?? "organizations", transcripts: credentials["transcripts"] == "true",
+                 sharedCalendars: !OtherCalendars.list(credentials).isEmpty)
     }
 }
 

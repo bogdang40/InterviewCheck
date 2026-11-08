@@ -85,6 +85,9 @@ and Zoom (they are public clients). The redirect is a loopback address on the Ma
 4. Scopes requested: `calendar.events.readonly` and `meetings.space.readonly`.
 
 Notes:
+- Your primary calendar is read. Add a team calendar (for example interviews@acme.com) under
+  **Other calendars**; its ID is in Google Calendar › Settings › Integrate calendar. An event
+  on both calendars counts once, and a calendar that cannot be read is named on the account.
 - Meet transcripts are available for meetings you organised, for 30 days.
 - Gmail and Drive are not used. Their scopes are "restricted" and require a security
   assessment, and interview invites reach Google Calendar anyway.
@@ -95,6 +98,9 @@ Notes:
 3. For Teams transcripts and recordings, also add `OnlineMeetingTranscript.Read.All` and `OnlineMeetingRecording.Read.All`, and have an admin grant consent. Then turn on the Teams transcripts switch in Connections.
 
 Notes:
+- Your default calendar is read. Name other calendars (for example "Interviews") under
+  **Other calendars**. A shared team calendar also needs `Calendars.Read.Shared`; sign in
+  again after adding one.
 - Attendees can read transcripts. Only the organiser can download recordings.
 - An admin can turn off transcript access for apps. The app then explains this.
 

@@ -41,8 +41,10 @@ public enum ConnectorCatalog {
                          docs: "https://cal.com/docs/api-reference/v2/bookings/get-all-bookings")
         case .google:
             return entry(kind, "Google Workspace", .calendar, "Interviews from Google Calendar (including invites from Gmail) and Google Meet transcripts with speakers and timing.",
-                         .oauth(GoogleConnectorProvider.provider, clientFields: oauthClient + [keywords]), [.upcomingInterviews, .transcripts],
-                         setup: "In Google Cloud Console enable the Calendar and Meet APIs and create an OAuth client of type Desktop app. Paste its client ID (and secret), then Sign In. Meet transcripts are available for meetings you organised, for 30 days.",
+                         .oauth(GoogleConnectorProvider.provider, clientFields: oauthClient + [
+                             CredentialField("calendars", "Other calendars", placeholder: "Optional: calendar IDs, e.g. interviews@acme.com", optional: true),
+                             keywords]), [.upcomingInterviews, .transcripts],
+                         setup: "In Google Cloud Console enable the Calendar and Meet APIs and create an OAuth client of type Desktop app. Paste its client ID (and secret), then Sign In. Your primary calendar is read; add a team calendar under Other calendars (its ID is in Google Calendar \u{203A} Settings \u{203A} Integrate calendar). Meet transcripts are available for meetings you organised, for 30 days.",
                          docs: "https://developers.google.com/workspace/calendar/api/v3/reference/events/list")
         case .microsoft365:
             return entry(kind, "Microsoft 365", .calendar, "Interviews from Outlook calendars and Teams meeting transcripts with speakers and timing.",
@@ -50,9 +52,10 @@ public enum ConnectorCatalog {
                              CredentialField("clientID", "Application (client) ID"),
                              CredentialField("tenant", "Tenant", placeholder: "organizations, or your tenant ID", optional: true),
                              CredentialField("transcripts", "Teams transcripts and recordings (needs admin consent)", toggle: true),
+                             CredentialField("calendars", "Other calendars", placeholder: "Optional: calendar names, e.g. Interviews", optional: true),
                              keywords]),
                          [.upcomingInterviews, .transcripts, .recordings],
-                         setup: "Register an app in Microsoft Entra (Mobile and desktop platform, redirect http://localhost/callback, no secret) with delegated Calendars.Read and OnlineMeetings.Read. For Teams transcripts add OnlineMeetingTranscript.Read.All and OnlineMeetingRecording.Read.All and have an admin grant consent.",
+                         setup: "Register an app in Microsoft Entra (Mobile and desktop platform, redirect http://localhost/callback, no secret) with delegated Calendars.Read and OnlineMeetings.Read (and Calendars.Read.Shared to read a shared team calendar named under Other calendars; sign in again after adding one). For Teams transcripts add OnlineMeetingTranscript.Read.All and OnlineMeetingRecording.Read.All and have an admin grant consent.",
                          docs: "https://learn.microsoft.com/graph/api/onlinemeeting-list-transcripts")
         case .zoom:
             return entry(kind, "Zoom", .meetings, "Zoom meetings you host and their cloud recordings: the audio-only file is scored like any recording.",

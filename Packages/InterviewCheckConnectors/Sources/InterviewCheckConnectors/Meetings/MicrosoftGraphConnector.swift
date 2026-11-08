@@ -8,6 +8,8 @@ public struct MicrosoftGraphConnector: InterviewSource, RecordingSource {
     private let transport: HTTPTransport
     private let keywords: [String]
     private let transcripts: Bool
+    /// Calendar names read besides the default one (a team "Interviews" calendar).
+    let otherCalendars: [String]
 
     public init(credentials: ConnectorCredentials, transport: HTTPTransport, accessToken: AccessTokenProvider?) throws {
         guard let accessToken else { throw ConnectorError.notConnected }
@@ -15,6 +17,7 @@ public struct MicrosoftGraphConnector: InterviewSource, RecordingSource {
         self.transport = transport
         keywords = credentials["keywords"]?.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) } ?? []
         transcripts = credentials["transcripts"] == "true"
+        otherCalendars = OtherCalendars.list(credentials)
     }
 
     private func client() async throws -> APIClient {
@@ -31,8 +34,32 @@ public struct MicrosoftGraphConnector: InterviewSource, RecordingSource {
 
     func events(from start: Date, to end: Date) async throws -> [CalendarEvent] {
         let api = try await client()
+        var rows = try await rows(in: "me/calendarView", api: api, from: start, to: end)
+        if !otherCalendars.isEmpty {
+            let calendars = try await api.getJSON("me/calendars", query: [URLQueryItem(name: "$select", value: "id,name"),
+                                                                          URLQueryItem(name: "$top", value: "200")])["value"].array
+            for name in otherCalendars {
+                guard let id = calendars.first(where: { $0["name"].string?.caseInsensitiveCompare(name) == .orderedSame })?["id"].string else {
+                    SyncNotes.note("No calendar named \u{201C}\(name)\u{201D} was found in Outlook.")
+                    continue
+                }
+                do {
+                    rows += try await self.rows(in: "me/calendars/\(id)/calendarView", api: api, from: start, to: end)
+                } catch {
+                    SyncNotes.note("The calendar \u{201C}\(name)\u{201D} could not be read: \(error.localizedDescription)")
+                }
+            }
+        }
+        // An event on two calendars counts once (Graph gives each copy its own id).
+        var seen = Set<String>()
+        return rows.compactMap(Self.calendarEvent).filter { event in
+            seen.insert("\(event.startsAt.timeIntervalSince1970)|\(event.title)|\(event.url?.absoluteString ?? "")").inserted
+        }
+    }
+
+    private func rows(in path: String, api: APIClient, from start: Date, to end: Date) async throws -> [JSONValue] {
         var rows: [JSONValue] = []
-        var page = try await api.getJSON("me/calendarView", query: [
+        var page = try await api.getJSON(path, query: [
             URLQueryItem(name: "startDateTime", value: DateParsing.iso(start)),
             URLQueryItem(name: "endDateTime", value: DateParsing.iso(end)),
             URLQueryItem(name: "$select", value: "id,subject,start,end,organizer,attendees,onlineMeeting,location,bodyPreview,isCancelled"),
@@ -45,7 +72,7 @@ public struct MicrosoftGraphConnector: InterviewSource, RecordingSource {
             guard index < 9 else { SyncNotes.cut("calendar events", read: rows.count); break }
             page = try JSONValue.parse(try await api.send(method: "GET", url: next, body: nil).0)
         }
-        return rows.compactMap(Self.calendarEvent)
+        return rows
     }
 
     public func upcomingInterviews(from start: Date, to end: Date) async throws -> [ExternalInterview] {

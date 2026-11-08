@@ -107,3 +107,40 @@ final class MeetingConnectorTests: XCTestCase {
         XCTAssertTrue(body.contains("OnlineMeetingTranscript.Read.All"), "Microsoft gets the scopes on the token call")
     }
 }
+
+final class OtherCalendarsTests: XCTestCase {
+    private let from = date("2026-11-07T00:00:00Z")
+    private let to = date("2026-11-21T00:00:00Z")
+
+    func testGoogleReadsTeamCalendarsOnceEach() async throws {
+        let stub = StubTransport()
+        let event = #"{"id":"e1","status":"confirmed","summary":"Interview: Jane Doe - Backend Engineer","start":{"dateTime":"2026-11-10T15:00:00Z"},"end":{"dateTime":"2026-11-10T16:00:00Z"}}"#
+        stub.on("GET", "calendars/primary/events", json: #"{"items":[\#(event)]}"#)
+        stub.on("GET", "calendars/interviews@acme.com/events", json: #"{"items":[\#(event),{"id":"e2","status":"confirmed","summary":"Onsite interview - Max Roe","start":{"dateTime":"2026-11-11T15:00:00Z"}}]}"#)
+        stub.on("GET", "calendars/missing@acme.com/events", status: 404, json: #"{"error":{"message":"Not Found"}}"#)
+        let connector = try GoogleWorkspaceConnector(
+            credentials: ConnectorCredentials(fields: ["calendars": "interviews@acme.com, missing@acme.com"]), transport: stub, accessToken: { "t" })
+        let notes = SyncNotes()
+        let interviews = try await SyncNotes.$current.withValue(notes) { try await connector.upcomingInterviews(from: from, to: to) }
+        XCTAssertEqual(interviews.map(\.externalID), ["e1", "e2"], "the shared event counts once")
+        XCTAssertEqual(notes.messages.count, 1)
+        XCTAssertTrue(notes.messages[0].contains("missing@acme.com"), "an unreadable calendar is named, not fatal")
+    }
+
+    func testOutlookFindsCalendarsByNameAndAsksForSharedAccess() async throws {
+        let stub = StubTransport()
+        let row = #"{"id":"%@","subject":"Interview: Jane Doe","start":{"dateTime":"2026-11-10T19:00:00.0000000","timeZone":"UTC"},"end":{"dateTime":"2026-11-10T20:00:00.0000000","timeZone":"UTC"},"organizer":{"emailAddress":{"name":"Sam","address":"sam@contoso.com"}},"attendees":[],"isCancelled":false}"#
+        stub.on("GET", "/me/calendars/CAL2/calendarView", json: #"{"value":[\#(row.replacingOccurrences(of: "%@", with: "copy-in-team-calendar"))]}"#)
+        stub.on("GET", "/me/calendarView", json: #"{"value":[\#(row.replacingOccurrences(of: "%@", with: "mine"))]}"#)
+        stub.on("GET", "/me/calendars?", json: #"{"value":[{"id":"CAL1","name":"Calendar"},{"id":"CAL2","name":"Interviews"}]}"#)
+        let credentials = ConnectorCredentials(fields: ["calendars": "interviews, Hiring panel"])
+        let connector = try MicrosoftGraphConnector(credentials: credentials, transport: stub, accessToken: { "t" })
+        let notes = SyncNotes()
+        let interviews = try await SyncNotes.$current.withValue(notes) { try await connector.upcomingInterviews(from: from, to: to) }
+        XCTAssertEqual(interviews.count, 1, "the same meeting on two calendars counts once")
+        XCTAssertEqual(stub.requests(containing: "/me/calendars/CAL2/calendarView").count, 1, "names match without case")
+        XCTAssertEqual(notes.messages, ["No calendar named \u{201C}Hiring panel\u{201D} was found in Outlook."])
+        XCTAssertTrue(MicrosoftConnectorProvider.provider(credentials).scopes.contains("Calendars.Read.Shared"))
+        XCTAssertFalse(MicrosoftConnectorProvider.provider(ConnectorCredentials(fields: [:])).scopes.contains("Calendars.Read.Shared"))
+    }
+}
