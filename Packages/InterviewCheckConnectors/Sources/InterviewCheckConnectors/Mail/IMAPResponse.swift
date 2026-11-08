@@ -54,18 +54,17 @@ enum IMAPParser {
                 }
                 position += 1
                 append(.string(Data(value)))
-            case 0x7B: // {n} literal, followed by CRLF and n bytes
-                var end = position + 1
-                while end < bytes.count, bytes[end] != 0x7D { end += 1 }
-                let digits = String(decoding: bytes[(position + 1)..<min(end, bytes.count)], as: UTF8.self)
+            case 0x7B where literalEnd(bytes, from: position) != nil: // {n} literal, then CRLF and n bytes
+                let end = literalEnd(bytes, from: position)!
+                let digits = String(decoding: bytes[(position + 1)..<end], as: UTF8.self)
                     .trimmingCharacters(in: CharacterSet(charactersIn: "+"))
-                let count = Int(digits) ?? 0
                 var start = end + 1
                 if start < bytes.count, bytes[start] == 0x0D { start += 1 }
                 if start < bytes.count, bytes[start] == 0x0A { start += 1 }
-                let stop = min(start + count, bytes.count)
-                append(.string(Data(bytes[start..<stop])))
-                position = stop
+                let available = bytes.count - start
+                let count = min(max(Int(digits) ?? 0, 0), available)
+                append(.string(Data(bytes[start..<(start + count)])))
+                position = start + count
             default:
                 var end = position
                 // An atom runs to a space or bracket; BODY[1.2] keeps its brackets.
@@ -86,6 +85,16 @@ enum IMAPParser {
             stack[stack.count - 1].append(.list(list))
         }
         return stack[0]
+    }
+
+    /// The closing brace of `{123}` or `{123+}` that starts at `start`;
+    /// anything else is not a literal (it is read as an atom).
+    static func literalEnd(_ bytes: [UInt8], from start: Int) -> Int? {
+        var index = start + 1
+        while index < bytes.count, (0x30...0x39).contains(bytes[index]) { index += 1 }
+        if index < bytes.count, bytes[index] == 0x2B { index += 1 }
+        guard index > start + 1, index < bytes.count, bytes[index] == 0x7D, index - start <= 12 else { return nil }
+        return index
     }
 
     /// The attribute list of a `* n FETCH (...)` response as name → value.

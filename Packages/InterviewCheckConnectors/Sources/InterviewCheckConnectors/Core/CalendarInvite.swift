@@ -16,10 +16,19 @@ public struct CalendarEvent: Equatable, Sendable {
     public var isCancelled: Bool
     /// The invite's revision (SEQUENCE): a later update has a higher number.
     public var sequence: Int
+    /// The iTIP method of the invite file (REQUEST, CANCEL, REPLY, COUNTER…).
+    public var method: String?
+
+    /// A version of the event from its organiser, not someone's reply or
+    /// proposal: only these replace an earlier version.
+    public var isRevision: Bool {
+        guard let method else { return true }
+        return ["REQUEST", "PUBLISH", "ADD", "CANCEL"].contains(method)
+    }
 
     public init(id: String, title: String, startsAt: Date, endsAt: Date? = nil, location: String? = nil,
                 notes: String? = nil, url: URL? = nil, organizer: ExternalPerson? = nil, attendees: [ExternalPerson] = [],
-                isCancelled: Bool = false, sequence: Int = 0) {
+                isCancelled: Bool = false, sequence: Int = 0, method: String? = nil) {
         self.id = id
         self.title = title
         self.startsAt = startsAt
@@ -31,6 +40,7 @@ public struct CalendarEvent: Equatable, Sendable {
         self.attendees = attendees
         self.isCancelled = isCancelled
         self.sequence = sequence
+        self.method = method
     }
 }
 

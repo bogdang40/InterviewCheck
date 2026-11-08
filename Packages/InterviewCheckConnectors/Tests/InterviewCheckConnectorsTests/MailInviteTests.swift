@@ -230,3 +230,44 @@ final class LiveIMAPGreetingTests: XCTestCase {
         session.close()
     }
 }
+
+final class InviteRevisionTests: XCTestCase {
+    func testRepliesCancellationsWithoutTimesAndAlarms() {
+        let reply = ICSParser.events(in: "BEGIN:VCALENDAR\r\nMETHOD:REPLY\r\nBEGIN:VEVENT\r\nUID:u1\r\nDTSTART:20261115T160000Z\r\nATTENDEE;PARTSTAT=ACCEPTED:mailto:lee@acme.com\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n")
+        XCTAssertEqual(reply.first?.isRevision, false, "an Accepted reply is not the organiser's invite")
+        let cancel = ICSParser.events(in: "BEGIN:VCALENDAR\r\nMETHOD:CANCEL\r\nBEGIN:VEVENT\r\nUID:u1\r\nSEQUENCE:2\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n")
+        XCTAssertEqual(cancel.first?.isCancelled, true, "a cancellation without a time still cancels the UID")
+        XCTAssertEqual(cancel.first?.id, "u1")
+        let alarm = ICSParser.events(in: "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:u2\r\nDTSTART:20261115T160000Z\r\nBEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:Reminder\r\nEND:VALARM\r\nDESCRIPTION:Join https://acme.zoom.us/j/1\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n")
+        XCTAssertEqual(alarm.first?.notes, "Join https://acme.zoom.us/j/1", "the alarm's text is not the event's")
+    }
+
+    func testMalformedLiteralsDoNotCrash() {
+        XCTAssertEqual(IMAPParser.values(Data("* 1 FETCH (BODY[1] {abc".utf8)).count, 4)
+        _ = IMAPParser.values(Data("* 1 FETCH (BODY[1] {99999999999999999999}\r\nx)".utf8))
+        _ = IMAPParser.values(Data("* 1 FETCH (BODY[1] {5}\r\nab)".utf8))
+        _ = IMAPParser.values(Data("{".utf8))
+    }
+
+    func testAReplyInANewerMessageDoesNotReplaceTheInvite() async throws {
+        let invite = "BEGIN:VCALENDAR\r\nMETHOD:REQUEST\r\nBEGIN:VEVENT\r\nUID:u9\r\nSEQUENCE:0\r\nSUMMARY:Interview: Jane Doe - Backend Engineer\r\nDTSTART:20261115T150000Z\r\nLOCATION:https://acme.zoom.us/j/81234567890\r\nORGANIZER:mailto:sam@acme.com\r\nATTENDEE;CN=Jane Doe:mailto:jane@gmail.com\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+        let reply = "BEGIN:VCALENDAR\r\nMETHOD:REPLY\r\nBEGIN:VEVENT\r\nUID:u9\r\nSEQUENCE:0\r\nSUMMARY:Accepted: Interview\r\nDTSTART:20261115T170000Z\r\nATTENDEE;PARTSTAT=ACCEPTED:mailto:lee@acme.com\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+        let server = FakeIMAPServer { command in
+            let upper = command.uppercased()
+            if upper.hasPrefix("UID SEARCH") { return (["* SEARCH 1 2"], "OK") }
+            if upper.contains("BODYSTRUCTURE") {
+                let part = #"("TEXT" "CALENDAR" ("CHARSET" "UTF-8") NIL NIL "7BIT" 400 12 NIL NIL NIL)"#
+                return (["* 1 FETCH (UID 1 BODYSTRUCTURE \(part))", "* 2 FETCH (UID 2 BODYSTRUCTURE \(part))"], "OK")
+            }
+            if upper.hasPrefix("UID FETCH 1 ") { return (["* 1 FETCH (UID 1 BODY[1] {\(invite.utf8.count)}\r\n\(invite))"], "OK") }
+            if upper.hasPrefix("UID FETCH 2 ") { return (["* 2 FETCH (UID 2 BODY[1] {\(reply.utf8.count)}\r\n\(reply))"], "OK") }
+            return ([], "OK")
+        }
+        let connector = try MailInviteConnector(credentials: ConnectorCredentials(fields: ["email": "lee@gmail.com", "password": "p"]),
+                                                openStream: { _, _ in server })
+        let interviews = try await connector.upcomingInterviews(from: date("2026-11-07T00:00:00Z"), to: date("2026-11-21T00:00:00Z"))
+        XCTAssertEqual(interviews.count, 1)
+        XCTAssertEqual(interviews.first?.startsAt, date("2026-11-15T15:00:00Z"), "the reply's time is ignored")
+        XCTAssertEqual(interviews.first?.candidate?.email, "jane@gmail.com")
+    }
+}

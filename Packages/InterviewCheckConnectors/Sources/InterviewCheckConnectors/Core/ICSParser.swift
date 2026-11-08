@@ -8,21 +8,25 @@ public enum ICSParser {
         let unfolded = text.replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\n ", with: "")
             .replacingOccurrences(of: "\n\t", with: "")
-        var events: [CalendarEvent] = []
+        var found: [[(name: String, params: [String: String], value: String)]] = []
         var current: [(name: String, params: [String: String], value: String)]?
-        var cancelsAll = false
+        var method: String?
+        var nested = 0
         for line in unfolded.components(separatedBy: "\n") {
             if line == "BEGIN:VEVENT" { current = []; continue }
             if line == "END:VEVENT" {
-                if let fields = current, let event = event(from: fields) { events.append(event) }
+                if let fields = current { found.append(fields) }
                 current = nil
                 continue
             }
+            // An alarm inside the event has its own DESCRIPTION and SUMMARY.
+            if current != nil, line.hasPrefix("BEGIN:") { nested += 1; continue }
+            if current != nil, line.hasPrefix("END:") { nested = max(0, nested - 1); continue }
             if current == nil, line.uppercased().hasPrefix("METHOD:") {
-                cancelsAll = line.dropFirst(7).trimmingCharacters(in: .whitespaces).uppercased() == "CANCEL"
+                method = line.dropFirst(7).trimmingCharacters(in: .whitespaces).uppercased()
                 continue
             }
-            guard current != nil, let colon = valueSeparator(in: line) else { continue }
+            guard current != nil, nested == 0, let colon = valueSeparator(in: line) else { continue }
             let head = line[..<colon].split(separator: ";").map(String.init)
             var params: [String: String] = [:]
             for param in head.dropFirst() {
@@ -31,15 +35,18 @@ public enum ICSParser {
             }
             current?.append((head.first?.uppercased() ?? "", params, String(line[line.index(after: colon)...])))
         }
-        if cancelsAll { for index in events.indices { events[index].isCancelled = true } }
-        return events
+        return found.compactMap { event(from: $0, method: method) }
     }
 
-    private static func event(from fields: [(name: String, params: [String: String], value: String)]) -> CalendarEvent? {
+    private static func event(from fields: [(name: String, params: [String: String], value: String)],
+                              method: String?) -> CalendarEvent? {
         func field(_ name: String) -> (params: [String: String], value: String)? {
             fields.first { $0.name == name }.map { ($0.params, $0.value) }
         }
-        guard let start = field("DTSTART"), let startsAt = date(start.value, params: start.params) else { return nil }
+        let cancelled = method == "CANCEL" || field("STATUS")?.value.uppercased() == "CANCELLED"
+        // A cancellation may leave out the time (RFC 5546); it still cancels the UID.
+        let startsAt = field("DTSTART").flatMap { date($0.value, params: $0.params) } ?? (cancelled ? Date.distantPast : nil)
+        guard let startsAt, field("DTSTART") != nil || field("UID") != nil else { return nil }
         let person = { (entry: (params: [String: String], value: String)) -> ExternalPerson in
             let email = entry.value.replacingOccurrences(of: "(?i)^mailto:", with: "", options: .regularExpression)
             return ExternalPerson(name: entry.params["CN"].map(unescape) ?? email, email: email.contains("@") ? email : nil)
@@ -54,8 +61,9 @@ public enum ICSParser {
             url: field("URL").flatMap { URL(string: $0.value) },
             organizer: field("ORGANIZER").map(person),
             attendees: fields.filter { $0.name == "ATTENDEE" }.map { person(($0.params, $0.value)) },
-            isCancelled: field("STATUS")?.value.uppercased() == "CANCELLED",
-            sequence: field("SEQUENCE").flatMap { Int($0.value.trimmingCharacters(in: .whitespaces)) } ?? 0
+            isCancelled: cancelled,
+            sequence: field("SEQUENCE").flatMap { Int($0.value.trimmingCharacters(in: .whitespaces)) } ?? 0,
+            method: method
         )
     }
 

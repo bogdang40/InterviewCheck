@@ -47,7 +47,13 @@ public struct MailInviteConnector: InterviewSource {
 
     static let networkStream: @Sendable (String, UInt16) async throws -> IMAPStream = { host, port in
         let stream = NetworkIMAPStream(host: host, port: port)
-        try await stream.open()
+        do {
+            try await stream.open()
+        } catch {
+            // Offline: stop the connection instead of leaving it retrying.
+            stream.close()
+            throw error
+        }
         return stream
     }
 
@@ -126,7 +132,8 @@ public struct MailInviteConnector: InterviewSource {
                 for part in invite.parts {
                     guard case .string(let data)? = attributes["BODY[\(part.section)]"],
                           let text = MIMEDecoding.decode(data, encoding: part.encoding, charset: part.charset) else { continue }
-                    for event in ICSParser.events(in: text) {
+                    // Replies and counter-proposals are not the organiser's invite.
+                    for event in ICSParser.events(in: text) where event.isRevision {
                         if let known = latest[event.id],
                            (known.event.sequence, known.uid) >= (event.sequence, invite.uid) { continue }
                         latest[event.id] = (event, invite.uid)

@@ -66,8 +66,13 @@ public enum InviteFileImporter {
         guard let text = try? String(contentsOf: url, encoding: .utf8) else {
             throw ConnectorError.invalidResponse("not a readable .ics file")
         }
-        let events = ICSParser.events(in: text)
-        guard !events.isEmpty else { throw ConnectorError.invalidResponse("no events in the invite") }
+        let all = ICSParser.events(in: text)
+        guard !all.isEmpty else { throw ConnectorError.invalidResponse("no events in the invite") }
+        let events = all.filter { !$0.isCancelled && $0.isRevision }
+        guard !events.isEmpty else {
+            throw ConnectorError.unsupported(all.contains(where: \.isCancelled) ? "This invite cancels the interview."
+                                             : "This is a reply to an invite, not the invite itself.")
+        }
         return events.map { InterviewEventClassifier.interview(from: $0, source: .icsFile) }
     }
 }
