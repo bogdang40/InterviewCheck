@@ -53,6 +53,10 @@ struct ReportsView: View {
         .navigationTitle("Reports")
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
+                Button { RecordingAnalyzer.shared.present() } label: {
+                    Label("Analyze Recording", systemImage: "waveform.badge.magnifyingglass")
+                }
+                .help("Score a recorded interview (File \u{203A} Analyze Recording\u{2026})")
                 Menu {
                     Button("Markdown\u{2026}") { if let id = selection { export(id, pdf: false) } }
                     Button("PDF\u{2026}") { if let id = selection { export(id, pdf: true) } }

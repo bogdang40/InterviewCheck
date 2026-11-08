@@ -38,6 +38,14 @@ private struct NewItemCommands: View {
             AppNavigation.shared.requestNewRole()
         }
         .keyboardShortcut("n", modifiers: [.command, .shift])
+
+        Divider()
+        Button("Analyze Recording\u{2026}") {
+            openWindow(id: AppWindowID.main)
+            RecordingAnalyzer.shared.present()
+        }
+        .keyboardShortcut("o")
+        .disabled(interview.phase == .live)
     }
 }
 

@@ -30,6 +30,7 @@ struct MainSplitView: View {
     @ObservedObject private var interview = InterviewController.shared
     @ObservedObject private var permissions = InterviewPermissions.shared
     @ObservedObject private var welcome = WelcomePresenter.shared
+    @ObservedObject private var recording = RecordingAnalyzer.shared
     @State private var columnVisibility = NavigationSplitViewVisibility.all
 
     var body: some View {
@@ -51,6 +52,9 @@ struct MainSplitView: View {
             case .reports:
                 ReportsView()
             }
+        }
+        .sheet(isPresented: $recording.isPresented) {
+            AnalyzeRecordingView(analyzer: recording)
         }
         .sheet(isPresented: $welcome.isPresented) {
             WelcomeView(onDone: { welcome.dismiss() })

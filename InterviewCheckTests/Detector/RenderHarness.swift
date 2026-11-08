@@ -28,6 +28,8 @@ enum RenderHarness {
             hosting.appearance = appearance
             hosting.frame = CGRect(origin: .zero, size: size)
             let window = NSWindow(contentRect: hosting.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+            // Swift owns the window; AppKit must not also release it on close.
+            window.isReleasedWhenClosed = false
             window.appearance = appearance
             window.contentView = hosting
             defer { window.close() }

@@ -31,6 +31,8 @@ interviewer to confirm this).
    window above the call.
 5. **Reports**: every interview, each answer and its evidence; export
    Markdown or PDF.
+6. **File › Analyze Recording** (⌘O): score a recorded interview (audio or
+   video). Pick the candidate's voice; questions are found automatically.
 
 The first interview asks for the microphone (your questions) and for Screen
 & System Audio Recording (the candidate's side of the call).

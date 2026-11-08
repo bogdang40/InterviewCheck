@@ -112,6 +112,28 @@ final class DetectorRenderTests: XCTestCase {
         }
     }
 
+    func testRenderAnalyzeRecording() async throws {
+        let analyzer = RecordingAnalyzer()
+        try await RenderHarness.render("native-recording-setup", size: CGSize(width: 560, height: 420)) {
+            AnalyzeRecordingView(analyzer: analyzer).background(Color(nsColor: .windowBackgroundColor))
+        }
+        var sample: [DeepgramWord] = []
+        for index in 0..<30 {
+            let isInterviewer = index % 3 == 0
+            let start = Double(index)
+            sample.append(DeepgramWord(word: "word", start: start, end: start + 0.3, confidence: 0.9,
+                                       speaker: isInterviewer ? 0 : 1,
+                                       punctuatedWord: isInterviewer ? "Question?" : "answer"))
+        }
+        let words = sample
+        analyzer.transcribe = { _ in words }
+        analyzer.start(file: URL(fileURLWithPath: "/tmp/interview.wav"), candidateName: "Ana", role: nil)
+        for _ in 0..<100 where analyzer.step != .chooseSpeaker { try await Task.sleep(nanoseconds: 20_000_000) }
+        try await RenderHarness.render("native-recording-speakers", size: CGSize(width: 560, height: 360)) {
+            AnalyzeRecordingView(analyzer: analyzer).background(Color(nsColor: .windowBackgroundColor))
+        }
+    }
+
     func testRenderRoleEditorAndSettings() async throws {
         var role = RoleProfile(name: "Senior Backend Engineer", company: "Acme",
                                jobDescription: "We run a public payments API in Go and Postgres. You will own rate limiting, idempotency and the on-call rotation.")
