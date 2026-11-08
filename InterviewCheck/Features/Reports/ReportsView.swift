@@ -17,6 +17,7 @@ struct ReportsView: View {
     @State private var roleFilter: String?
     @State private var summaryTarget: SummaryTarget?
     @ObservedObject private var connectors = ConnectorManager.shared
+    @Environment(\.openWindow) private var openWindow
 
     private struct SummaryTarget: Identifiable {
         let report: InterviewReportData
@@ -52,8 +53,13 @@ struct ReportsView: View {
             }
             .overlay {
                 if interviews.isEmpty {
-                    ContentUnavailableView("No Reports Yet", systemImage: "doc.text.magnifyingglass",
-                                           description: Text("Finished interviews appear here."))
+                    ContentUnavailableView {
+                        Label("No Reports Yet", systemImage: "doc.text.magnifyingglass")
+                    } description: {
+                        Text("Finished interviews appear here. The demo interview ends on a sample report.")
+                    } actions: {
+                        Button("Watch the Demo") { openWindow(id: AppWindowID.demo) }
+                    }
                 } else if filtered.isEmpty {
                     ContentUnavailableView {
                         Label("No Matches", systemImage: "line.3.horizontal.decrease.circle")

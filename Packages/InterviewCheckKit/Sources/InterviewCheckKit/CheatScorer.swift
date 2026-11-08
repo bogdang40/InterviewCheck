@@ -99,7 +99,8 @@ public enum CheatScorer {
         phrasing: PhrasingResult? = nil,
         hasTimingGap: Bool,
         weights: CheatScoreWeights = .default,
-        measuresFluency: Bool = true
+        measuresFluency: Bool = true,
+        fallbackFollowUps: [String] = []
     ) -> AnswerScore {
         // A meeting transcript spreads words evenly over each line: its pace
         // and fillers say nothing, so fluency is left out entirely.
@@ -134,7 +135,8 @@ public enum CheatScorer {
             confidence: confidence,
             reasons: notes.reasons,
             counterpoints: notes.counterpoints,
-            followUps: judge?.followUpQuestions ?? [],
+            // The AI review's follow-ups when there is one; otherwise probes from the answer itself.
+            followUps: judge.map(\.followUpQuestions).flatMap { $0.isEmpty ? nil : $0 } ?? fallbackFollowUps,
             timing: timing,
             fluency: fluencyResult,
             similarity: similarity,
