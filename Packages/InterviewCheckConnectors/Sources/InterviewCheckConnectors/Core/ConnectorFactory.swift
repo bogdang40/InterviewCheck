@@ -37,6 +37,10 @@ public enum ConnectorFactory {
         case .lever: return try LeverConnector(credentials: credentials, transport: transport)
         case .ashby: return try AshbyConnector(credentials: credentials, transport: transport)
         case .workable: return try WorkableConnector(credentials: credentials, transport: transport)
+        case .merge: return try MergeConnector(credentials: credentials, transport: transport)
+        case .kombo: return try KomboConnector(credentials: credentials, transport: transport)
+        case .unifiedTo: return try UnifiedToConnector(credentials: credentials, transport: transport)
+        case .apideck: return try ApideckConnector(credentials: credentials, transport: transport)
         default: return nil
         }
     }

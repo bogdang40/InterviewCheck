@@ -72,7 +72,7 @@ tools; pull finished meeting recordings for scoring; optionally post a private n
       résumé) and Join, Calendar on this Mac, .ics invites.
 - [~] E3 ATS direct: Greenhouse (Harvest v3), Lever, Ashby, Workable DONE; SmartRecruiters, BambooHR, Teamtailor,
       Recruitee, JazzHR, Breezy, Personio, Zoho Recruit.
-- [ ] E4 Unified: Merge, Kombo, Apideck, Unified.to (Workday, iCIMS, SuccessFactors, Taleo...).
+- [x] E4 Unified: Merge, Kombo, Unified.to (interviews + notes), Apideck (jobs + applicants only).
 - [ ] E5 Google (Calendar, Gmail invites, Meet recordings), Microsoft 365 (Outlook, Teams
       recordings/transcripts), Zoom (meetings, cloud recordings).
 - [ ] E6 Recordings inbox → Analyze; reminders before interviews; summary note back to the ATS
@@ -109,3 +109,4 @@ tools; pull finished meeting recordings for scoring; optionally post a private n
 - 21:46 D16 reports sort/filter; fixed list centring (frame applied before the inset). 280 app tests.
 - 22:04 E1–E2 connectors core + app wiring. 282 app + 12 connector tests.
 - 22:09 E3a Greenhouse v3 / Lever / Ashby / Workable connectors from the vendors' docs (research in session scratchpad). 21 connector tests.
+- 22:11 E4 unified APIs (Merge, Kombo, Unified.to, Apideck). 25 connector tests.
