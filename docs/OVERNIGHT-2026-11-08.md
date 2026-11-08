@@ -2,7 +2,8 @@
 
 Everything is committed in the local git repository at `~/InterviewCheck` and nothing
 was pushed or sent anywhere. The installed app (`~/Applications/InterviewCheck.app`) is
-the latest Release build. The full step-by-step log is in [native-app-plan.md](native-app-plan.md).
+the latest Release build, and `build/InterviewCheck-1.0.0.dmg` (about 8 MB) packages it
+for another Mac. It is not notarized yet, so macOS warns before opening it there. The full step-by-step log is in [native-app-plan.md](native-app-plan.md).
 
 ## What it is now
 
@@ -44,8 +45,11 @@ the latest Release build. The full step-by-step log is in [native-app-plan.md](n
 
 - **Tests:** about 330 app tests, 94 connector tests and 47 core tests. They run on
   every step through a watchdog that stops at the first crash.
-- **Reviews:** three independent reviews of the night's connector and automation code;
-  every confirmed finding was fixed and tested.
+- **Reviews:** independent reviews of the night's connector and automation code, run
+  after each batch. They found real problems, all fixed and tested, including:
+  - an IMAP command injection through a crafted name in a calendar invite;
+  - a résumé match that could have picked another person's CV;
+  - automation that could swap an interview about to start for the next one.
 - **Installed app:** opens its window in about 2 seconds, uses about 113 MB, and sits
   at 0% CPU when idle. No crash reports after the early-evening fixes.
 
