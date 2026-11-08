@@ -3,8 +3,9 @@
 ```
 Packages/InterviewCheckKit/   pure detector core (Swift package, `swift test`)
 Packages/InterviewCheckConnectors/
-                              ATS, unified HR APIs, calendars, meeting tools,
-                              MCP: one set of types (`swift test`, stub HTTP)
+                              ATS, unified HR APIs, calendars, mail (IMAP),
+                              booking links, meeting tools, MCP: one set of
+                              types (`swift test`, stub HTTP, scripted IMAP)
 InterviewCheck/               the Mac app
   App/                        @main App scenes, AppDelegate, AppBrand
   AppShell/                   root view, sidebar, menus, shortcuts, permissions
@@ -13,7 +14,8 @@ InterviewCheck/               the Mac app
                               Demo, Recording
   Connectors/                 ConnectorManager (accounts, sync, Prepare,
                               recordings, notes), Connections screen,
-                              reminders, auto-scoring, Shortcuts/Dock/URL actions
+                              reminders, automatic Prepare, auto-scoring,
+                              Shortcuts/Dock/URL actions
   Detector/                   app-side detector: live controller, timeline,
                               roles, AI clients and prompts, reports
   Services/                   audio capture and transcription (Deepgram, Apple)
@@ -65,10 +67,11 @@ call ┘   (StreamClock maps   └─ candidate words ───┘          │
 ## Connectors
 
 ```
-EventKit / .ics / Google / Microsoft / Zoom ─┐                  ┌─ Upcoming Interviews (Prepare, Join)
-ATS (12 direct) / Merge · Kombo · Unified.to ─┼─ ConnectorManager ┼─ reminders · Dock · Shortcuts
-MCP (Greenhouse · Ashby · Workable · any)    ─┘  (sync every 15m,  ├─ Analyze Recording / AutoScorer
-                                                  cache in SQLite) └─ Send Summary (NoteDestination)
+EventKit / .ics / Google / Microsoft       ─┐                  ┌─ Upcoming Interviews (Prepare, Join)
+Mail (IMAP) / Calendly · Cal.com            ─┤                  ├─ AutoPrepare at reminder time
+Zoom · Webex (recordings, transcripts)      ─┼─ ConnectorManager ┼─ reminders · Dock · Shortcuts
+ATS (12 direct) / Merge · Kombo · Unified.to ─┤  (sync every 15m,  ├─ Analyze Recording / AutoScorer
+MCP (Greenhouse · Ashby · Workable · any)   ─┘  cache in SQLite) └─ Send Summary (NoteDestination)
 ```
 
 - Every connector maps its API onto the same types (`ExternalInterview`,
@@ -77,7 +80,12 @@ MCP (Greenhouse · Ashby · Workable · any)    ─┘  (sync every 15m,  ├─
   `RecordingSource`, `NoteDestination`, `CandidateLookup`. Adding a system is
   one file plus a catalog entry and a factory line.
 - `APIClient` handles auth headers, Retry-After, errors and Link paging;
-  `JSONValue` reads vendors' JSON without a struct per endpoint.
+  `JSONValue` reads vendors' JSON without a struct per endpoint. Files are
+  downloaded with the API's headers only when they need them (`needsAuth`).
+- `SyncNotes` is a task-local collector: a connector that stops at a page
+  limit says so, and the account shows it without counting as a failure.
+- Mail is read over IMAP (`IMAPSession` on a Network.framework TLS stream):
+  EXAMINE and BODY.PEEK only, calendar parts only.
 - Sign-in: API keys and client-credentials tokens; OAuth 2.0 public clients
   with PKCE and a loopback redirect (`LoopbackReceiver`); MCP sign-in with
   discovery, dynamic client registration and the RFC 8707 resource.
