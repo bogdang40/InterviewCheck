@@ -15,7 +15,7 @@ enum InterviewAutomation {
     static func prepareNext(manager: ConnectorManager = .shared, controller: InterviewController = .shared) async -> String {
         guard controller.phase != .live else { return "An interview is live." }
         guard let interview = nextInterview(manager: manager) else {
-            return manager.accounts.isEmpty ? "Connect a calendar or ATS in Connections first." : "No upcoming interviews."
+            return manager.accounts.isEmpty ? "Connect a calendar, mailbox or ATS in Connections first." : "No upcoming interviews."
         }
         return await prepare(interview, manager: manager, controller: controller)
     }

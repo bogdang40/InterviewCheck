@@ -33,8 +33,8 @@ struct WelcomeView: View {
                     onDone()
                 }
             }
-            step(3, done: !ConnectorManager.shared.accounts.isEmpty, title: "Connect your calendar or ATS (optional)",
-                 detail: "Upcoming interviews appear with the candidate, job description and r\u{00E9}sum\u{00E9} ready, and recordings come in for scoring.") {
+            step(3, done: !ConnectorManager.shared.accounts.isEmpty, title: "Connect your calendar, mail or ATS (optional)",
+                 detail: "Upcoming interviews appear and are made ready a few minutes before they start, with the candidate, job description and r\u{00E9}sum\u{00E9}; recordings come in for scoring. Quickest: Calendar on this Mac, your mailbox with an app password, or a Calendly or Cal.com key.") {
                 Button("Open Connections") {
                     AppNavigation.shared.show(.connections)
                     onDone()

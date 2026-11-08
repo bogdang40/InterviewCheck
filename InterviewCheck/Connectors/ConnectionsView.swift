@@ -59,7 +59,7 @@ struct ConnectionsView: View {
                     ConnectorDetailView(kind: kind, select: { selection = $0 }).id(kind)
                 } else {
                     ContentUnavailableView("Select a System", systemImage: "point.3.connected.trianglepath.dotted",
-                                           description: Text("Connect your ATS, calendar and meeting tools."))
+                                           description: Text("Connect your calendar, mail, booking links, ATS and meeting tools."))
                 }
             }
             .frame(minWidth: 460, maxWidth: .infinity, maxHeight: .infinity)

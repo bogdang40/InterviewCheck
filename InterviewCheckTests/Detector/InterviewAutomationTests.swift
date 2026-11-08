@@ -25,7 +25,7 @@ final class InterviewAutomationTests: XCTestCase {
         let controller = InterviewController(timeline: InterviewTimeline(), database: database, settings: DetectorSettings(defaults: defaults))
 
         let none = await InterviewAutomation.prepareNext(manager: manager, controller: controller)
-        XCTAssertEqual(none, "Connect a calendar or ATS in Connections first.")
+        XCTAssertEqual(none, "Connect a calendar, mailbox or ATS in Connections first.")
 
         manager.factory = { _, _, _, _ in OneInterview(start: Date().addingTimeInterval(1800)) }
         try await manager.connect(.appleCalendar, fields: [:])
