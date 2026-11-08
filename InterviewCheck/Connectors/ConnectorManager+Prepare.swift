@@ -7,7 +7,7 @@ extension ConnectorManager {
     /// not be filled, in plain words.
     @discardableResult
     func prepare(_ interview: ExternalInterview, controller: InterviewController,
-                 roles: RoleStore = .shared) async -> [String] {
+                 roles: RoleStore = .shared, navigate: Bool = true) async -> [String] {
         guard controller.phase != .live else { return ["An interview is live."] }
         prepareGeneration += 1
         let generation = prepareGeneration
@@ -70,7 +70,7 @@ extension ConnectorManager {
                 missing.append("The r\u{00E9}sum\u{00E9} could not be downloaded: \(error.localizedDescription)")
             }
         }
-        AppNavigation.shared.show(.interview)
+        if navigate { AppNavigation.shared.show(.interview) }
         return missing
     }
 

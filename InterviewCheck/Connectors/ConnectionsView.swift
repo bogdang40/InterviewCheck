@@ -9,6 +9,7 @@ struct ConnectionsView: View {
     @State private var search = ""
     @State private var reminderMinutes = InterviewReminders.minutes
     @State private var autoScore = AutoScorer.shared.isEnabled
+    @State private var autoPrepare = AutoPrepare.shared.isEnabled
     @State private var confirmAutoScore = false
     @State private var myEmails = ConnectorManager.shared.typedEmails
 
@@ -81,6 +82,17 @@ struct ConnectionsView: View {
                 }
                 .toggleStyle(.button)
                 .help("Score new Zoom, Teams, Meet and Webex recordings of scheduled interviews as they arrive")
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Toggle(isOn: $autoPrepare) {
+                    Label("Get Next Interview Ready", systemImage: "person.crop.circle.badge.clock")
+                }
+                .toggleStyle(.button)
+                .help("A few minutes before each interview, fill in the candidate, role and r\u{00E9}sum\u{00E9} by itself (never over setup you typed, never starts the interview)")
+                .onChange(of: autoPrepare) { _, on in
+                    AutoPrepare.shared.isEnabled = on
+                    if on { Task { await AutoPrepare.shared.tick() } }
+                }
             }
             ToolbarItem(placement: .primaryAction) {
                 Picker(selection: $reminderMinutes) {

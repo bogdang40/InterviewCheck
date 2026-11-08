@@ -175,6 +175,11 @@ its results.
 
 - Upcoming interviews refresh at launch, every 15 minutes, and when the app comes to the front.
 - Reminders arrive 10 minutes before each interview (adjustable or off in Connections), with **Prepare**.
+- **Get Next Interview Ready** (on by default, in the Connections toolbar) prepares the next
+  interview by itself at reminder time: candidate, role with job description, and résumé.
+  It never starts the interview or ticks the consent box, never switches the window, waits
+  while the Roles editor is open, and never replaces setup the interviewer typed. A setup it
+  filled and nobody touched moves on to the next interview.
 - **Score recordings automatically** (off by default) scores new recordings of scheduled
   interviews in the background and sends a "Report ready" notification.
   Turn it on only if candidates are told interviews are recorded and checked.

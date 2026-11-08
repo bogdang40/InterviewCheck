@@ -35,6 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         AutoScorer.shared.onReport = { InterviewReminders.shared.notifyReport($0) }
         ConnectorManager.shared.onSynced = { Task { await AutoScorer.shared.run() } }
         ConnectorManager.shared.startAutoSync()
+        AutoPrepare.shared.start()
         Task { @MainActor [weak self] in
             await self?.accessController.evaluate()
         }

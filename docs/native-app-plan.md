@@ -108,6 +108,9 @@ tools; pull finished meeting recordings for scoring; optionally post a private n
       PKCE on a fixed loopback port (Webex matches redirect ports exactly). Downloads now send API keys
       only to files that need them (pre-signed links never get them).
 
+- [x] E14 Get Next Interview Ready: automatic Prepare at reminder time (on by default; never starts,
+      never ticks consent, never over typed setup, no window switch, waits while editing Roles).
+
 - [x] E10 Beta: mark questions automatically when the interviewer forgets the key (Settings ›
       Detector, off by default; question end + 12-word answer, tagged "Marked automatically").
 
@@ -157,3 +160,4 @@ tools; pull finished meeting recordings for scoring; optionally post a private n
 - 00:25 798ff92 E12 Calendly + Cal.com connectors ("Booking links" section). 66 connector tests.
 - 00:28–00:31 6dde412 download header fix; 5c7292f E13 Webex. 71 connector tests.
 - 00:34 1be7a1f Sync notes: a list cut at a page limit (any connector) shows "Stopped after N …; some may be missing." on the account, without counting as a failure. 73 connector + 312 app tests.
+- 00:45 E14 automatic Prepare before each interview. 318 app tests.
