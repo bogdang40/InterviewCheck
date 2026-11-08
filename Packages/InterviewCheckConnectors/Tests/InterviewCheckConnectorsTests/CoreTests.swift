@@ -42,6 +42,10 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(DateParsing.parse("2026-11-08T15:00:00.250Z")?.timeIntervalSince1970 ?? 0, 1_794_150_000.25, accuracy: 0.001)
         XCTAssertEqual(DateParsing.parse("1794150000000")?.timeIntervalSince1970, 1_794_150_000)
         XCTAssertNotNil(DateParsing.parse("2026-11-08"))
+        XCTAssertEqual(DateParsing.parse("2026-11-10T14:00:00"), DateParsing.parse("2026-11-10T14:00:00Z"), "no offset means UTC, not midnight")
+        XCTAssertEqual(DateParsing.parse("2026-11-10T19:00Z"), DateParsing.parse("2026-11-10T19:00:00Z"))
+        XCTAssertEqual(DateParsing.parse("2026-11-10 19:00:00"), DateParsing.parse("2026-11-10T19:00:00Z"))
+        XCTAssertNil(DateParsing.parse("Tuesday"))
     }
 
     func testHTMLToText() {

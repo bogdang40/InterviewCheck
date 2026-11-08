@@ -17,7 +17,7 @@ public enum ICSParser {
                 current = nil
                 continue
             }
-            guard current != nil, let colon = line.firstIndex(of: ":") else { continue }
+            guard current != nil, let colon = valueSeparator(in: line) else { continue }
             let head = line[..<colon].split(separator: ";").map(String.init)
             var params: [String: String] = [:]
             for param in head.dropFirst() {
@@ -61,10 +61,21 @@ public enum ICSParser {
             formatter.timeZone = .current
             formatter.dateFormat = "yyyyMMdd"
         } else {
-            formatter.timeZone = params["TZID"].flatMap { TimeZone(identifier: $0) } ?? .current
+            formatter.timeZone = params["TZID"].flatMap(WindowsTimeZones.zone) ?? .current
             formatter.dateFormat = "yyyyMMdd'T'HHmmss"
         }
         return formatter.date(from: value)
+    }
+
+    /// The colon that starts the value: the first one outside quoted
+    /// parameters (`ORGANIZER;SENT-BY="mailto:a@b.com":mailto:c@d.com`).
+    static func valueSeparator(in line: String) -> String.Index? {
+        var quoted = false
+        for index in line.indices {
+            if line[index] == "\"" { quoted.toggle() }
+            if line[index] == ":", !quoted { return index }
+        }
+        return nil
     }
 
     static func unescape(_ value: String) -> String {

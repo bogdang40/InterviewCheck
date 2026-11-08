@@ -37,7 +37,11 @@ public struct UnifiedToConnector: InterviewSource, JobSource, CandidateSource, N
     }
 
     public func upcomingInterviews(from start: Date, to end: Date) async throws -> [ExternalInterview] {
-        let rows = try await list("interview").filter { row in
+        // Recently changed interviews first; not every ATS takes the filter.
+        let since = [URLQueryItem(name: "updated_gte", value: DateParsing.iso(start.addingTimeInterval(-60 * 86_400)))]
+        var all: [JSONValue]
+        do { all = try await list("interview", since) } catch { all = try await list("interview") }
+        let rows = all.filter { row in
             guard let startsAt = row["start_at"].date else { return false }
             return startsAt >= start && startsAt <= end && !["CANCELED", "COMPLETE"].contains(row["status"].string ?? "")
         }

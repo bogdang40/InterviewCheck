@@ -36,6 +36,23 @@ final class CalendarParsingTests: XCTestCase {
         XCTAssertEqual(interview.id, "icsFile:gh-123@greenhouse.io")
     }
 
+    func testOutlookZonesQuotedColonsAndGuestEmail() {
+        let ics = """
+        BEGIN:VEVENT
+        UID:o1
+        SUMMARY:Interview - Jane Doe - Backend Engineer
+        DTSTART;TZID=Pacific Standard Time:20261110T100000
+        ORGANIZER;SENT-BY="mailto:assistant@acme.com";CN=Sam:mailto:sam@acme.com
+        ATTENDEE:mailto:jane.doe@gmail.com
+        END:VEVENT
+        """
+        let event = ICSParser.events(in: ics)[0]
+        XCTAssertEqual(event.startsAt, date("2026-11-10T18:00:00Z"), "Windows zone names are understood")
+        XCTAssertEqual(event.organizer?.email, "sam@acme.com", "a colon inside quotes is not the value separator")
+        let interview = InterviewEventClassifier.interview(from: event, source: .icsFile)
+        XCTAssertEqual(interview.candidate?.email, "jane.doe@gmail.com", "the one outside guest is the candidate")
+    }
+
     func testTimeZoneAndAllDayDates() {
         let berlin = ICSParser.date("20261110T160000", params: ["TZID": "Europe/Berlin"])
         XCTAssertEqual(berlin, date("2026-11-10T15:00:00Z"))
@@ -44,7 +61,9 @@ final class CalendarParsingTests: XCTestCase {
 
     func testTitlesFromCommonSchedulers() {
         let cases: [(String, String?, String?)] = [
-            ("Jane Doe <> Acme | Backend Engineer Interview", "Jane Doe", "Acme"),
+            ("Jane Doe <> Acme | Backend Engineer Interview", "Jane Doe", "Backend Engineer"),
+            ("Callum Smith - Backend Engineer - Onsite", "Callum Smith", "Backend Engineer"),
+            ("Interview: Priya Chatterjee", "Priya Chatterjee", nil),
             ("Phone Screen: Priya Natarajan - Data Scientist", "Priya Natarajan", "Data Scientist"),
             ("Interview with Marcus Lee", "Marcus Lee", nil),
             ("Technical Interview - Staff Engineer - Ana Silva", "Ana Silva", "Staff Engineer"),

@@ -59,26 +59,29 @@ public enum InterviewEventClassifier {
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
         var candidate: String?
-        var role: String?
+        var roles: [String] = []
         for part in parts {
             let lower = part.lowercased()
             let isKeyword = keywords.contains { lower == $0 || lower.hasSuffix(" \($0)") || lower.hasPrefix("\($0) ") }
             if isPersonName(part), candidate == nil {
                 candidate = part
             } else if !isKeyword || lower.split(separator: " ").count > 2 {
-                let stripped = cleanRole(part)
-                if role == nil, let stripped, !stripped.isEmpty, !isPersonName(stripped) { role = stripped }
+                if let stripped = cleanRole(part), !stripped.isEmpty, !isPersonName(stripped) { roles.append(stripped) }
             }
         }
         if candidate == nil { candidate = outsideAttendee(event)?.name }
+        // A part that names a job ("Backend Engineer") beats a company name ("Acme").
+        let role = roles.first { hasRoleWord($0) } ?? roles.first
         return (candidate, role)
     }
 
     public static func interview(from event: CalendarEvent, source: ConnectorKind) -> ExternalInterview {
         let (candidateName, role) = guess(event)
+        // With exactly one outside guest, that guest is the candidate, whether
+        // or not the calendar knows their display name.
         let outside = outsideAttendee(event)
-        let candidate = candidateName.map {
-            ExternalCandidate(name: $0, email: outside?.name == $0 ? outside?.email : nil)
+        let candidate = (candidateName ?? outside?.name).map {
+            ExternalCandidate(name: $0, email: outside?.email)
         }
         return ExternalInterview(
             source: source, externalID: event.id, title: event.title, startsAt: event.startsAt, endsAt: event.endsAt,
@@ -100,14 +103,21 @@ public enum InterviewEventClassifier {
         return outside.count == 1 ? outside[0] : nil
     }
 
+    static let roleWords: Set<String> = ["engineer", "engineering", "developer", "manager", "designer", "analyst", "interview",
+                                         "screen", "lead", "director", "scientist", "intern", "specialist", "architect",
+                                         "consultant", "senior", "staff", "head", "team", "round", "call", "sync", "chat",
+                                         "onsite", "panel", "technical", "recruiter", "product", "associate", "officer",
+                                         "coordinator", "administrator", "representative", "executive", "sre", "devops"]
+
+    /// Whole words only: "Callum" and "Chatterjee" are not "call" and "chat".
+    static func hasRoleWord(_ text: String) -> Bool {
+        text.lowercased().components(separatedBy: CharacterSet.letters.inverted).contains { roleWords.contains($0) }
+    }
+
     static func isPersonName(_ text: String) -> Bool {
         let words = text.split(separator: " ")
         guard (2...4).contains(words.count) else { return false }
-        let lower = text.lowercased()
-        let roleWords = ["engineer", "developer", "manager", "designer", "analyst", "interview", "screen", "lead", "director",
-                         "scientist", "intern", "specialist", "architect", "consultant", "senior", "staff", "head", "team",
-                         "round", "call", "sync", "chat", "onsite", "panel", "technical", "recruiter", "product"]
-        guard !roleWords.contains(where: { lower.contains($0) }) else { return false }
+        guard !hasRoleWord(text) else { return false }
         return words.allSatisfy { word in
             guard let first = word.unicodeScalars.first else { return false }
             return CharacterSet.uppercaseLetters.contains(first) && word.count <= 20

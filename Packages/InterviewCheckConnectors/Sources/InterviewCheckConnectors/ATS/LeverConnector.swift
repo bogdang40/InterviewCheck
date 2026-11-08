@@ -22,13 +22,15 @@ public struct LeverConnector: InterviewSource, JobSource, CandidateSource, NoteD
     func list(_ path: String, _ query: [URLQueryItem], limit: Int) async throws -> [JSONValue] {
         var items: [JSONValue] = []
         var offset: String?
+        var pages = 0
         repeat {
+            pages += 1
             var pageQuery = query + [URLQueryItem(name: "limit", value: "100")]
             if let offset { pageQuery.append(URLQueryItem(name: "offset", value: offset)) }
             let page = try await api.getJSON(path, query: pageQuery)
             items += page["data"].array
             offset = page["hasNext"].bool == true ? page["next"].string : nil
-        } while offset != nil && items.count < limit
+        } while offset != nil && items.count < limit && pages < 50
         return Array(items.prefix(limit))
     }
 

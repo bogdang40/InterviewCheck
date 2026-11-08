@@ -34,17 +34,26 @@ public enum InterviewJSONMapper {
         }
     }
 
+    /// The first key holding a usable value: text or a number, not an
+    /// object where a name was expected.
     static func first(_ object: JSONValue, _ keys: [String]) -> JSONValue? {
-        keys.lazy.map { object.at($0) }.first { !$0.isNull }
+        keys.lazy.map { object.at($0) }.first { value in
+            switch value {
+            case .null, .array: return false
+            case .object: return !value["dateTime"].isNull || !value["date_time"].isNull
+            default: return true
+            }
+        }
     }
 
     static func interview(from object: JSONValue, source: ConnectorKind) -> ExternalInterview? {
         guard let start = first(object, startKeys), let startsAt = start.date ?? start["dateTime"].date ?? start["date_time"].date
         else { return nil }
         let candidateName = first(object, ["candidate.name", "candidateName", "candidate_name", "Candidate_Name.name",
-                                           "application.candidate.name"])?.string
-            ?? [object.at("candidate.firstName").string, object.at("candidate.lastName").string].compactMap { $0 }
-                .joined(separator: " ").nilIfEmpty
+                                           "application.candidate.name", "candidate"])?.string
+            ?? [object.at("candidate.firstName").string ?? object.at("candidate.first_name").string,
+                object.at("candidate.lastName").string ?? object.at("candidate.last_name").string]
+                .compactMap { $0 }.joined(separator: " ").nilIfEmpty
         let title = first(object, titleKeys)?.string
         guard candidateName != nil || title != nil else { return nil }
         let id = first(object, ["id", "uuid", "interview_id", "interviewId", "event_id"])?.string
@@ -59,7 +68,9 @@ public enum InterviewJSONMapper {
             meetingURL: MeetingLinks.first(in: linkText) ?? linkText.compactMap { URL(string: $0) }.first(where: { $0.scheme == "https" }),
             candidate: candidateName.map {
                 ExternalCandidate(externalID: first(object, ["candidate.id", "candidateId", "candidate_id"])?.string, name: $0,
-                                  email: first(object, ["candidate.email", "candidateEmail", "candidate.primaryEmailAddress.value"])?.string)
+                                  email: first(object, ["candidate.email", "candidateEmail", "candidate_email",
+                                                        "candidate.primaryEmailAddress.value", "candidate.email_addresses.0.value",
+                                                        "candidate.emails.0"])?.string)
             },
             job: (jobID ?? jobTitle).map { _ in ExternalJob(externalID: jobID ?? "", title: jobTitle ?? "Job") },
             applicationID: first(object, ["application.id", "applicationId", "application_id"])?.string

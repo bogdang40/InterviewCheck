@@ -8,6 +8,8 @@ public final class LoopbackReceiver: @unchecked Sendable {
     private let listener: NWListener
     private let queue = DispatchQueue(label: "interviewcheck.oauth.loopback")
     private var continuation: CheckedContinuation<URL, Error>?
+    /// A result that arrived before anyone was waiting for it.
+    private var early: Result<URL, Error>?
     private var finished = false
 
     public init(port: UInt16 = 0) throws {
@@ -23,14 +25,25 @@ public final class LoopbackReceiver: @unchecked Sendable {
         try await withCheckedThrowingContinuation { (ready: CheckedContinuation<URL, Error>) in
             var resumed = false
             listener.stateUpdateHandler = { [weak self] state in
-                guard let self, !resumed else { return }
+                guard let self else { return }
                 switch state {
-                case .ready:
+                case .ready where !resumed:
                     resumed = true
                     ready.resume(returning: URL(string: "http://\(host):\(self.listener.port?.rawValue ?? 0)/callback")!)
-                case .failed(let error):
-                    resumed = true
-                    ready.resume(throwing: error)
+                case .failed(let error), .waiting(let error):
+                    if !resumed {
+                        resumed = true
+                        ready.resume(throwing: error)
+                    } else {
+                        self.finish(.failure(error))
+                    }
+                case .cancelled:
+                    if !resumed {
+                        resumed = true
+                        ready.resume(throwing: CancellationError())
+                    } else {
+                        self.finish(.failure(CancellationError()))
+                    }
                 default:
                     break
                 }
@@ -41,12 +54,24 @@ public final class LoopbackReceiver: @unchecked Sendable {
     }
 
     /// Waits for the browser to come back; returns the full callback URL.
+    /// Cancelling the calling task (closing the sheet) ends the wait at once.
     public func waitForCallback(timeout: TimeInterval = 300) async throws -> URL {
         queue.asyncAfter(deadline: .now() + timeout) { [weak self] in
             self?.finish(.failure(ConnectorError.unsupported("Sign-in timed out. Try connecting again.")))
         }
-        return try await withCheckedThrowingContinuation { continuation in
-            queue.async { self.continuation = continuation }
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                queue.async {
+                    if let early = self.early {
+                        self.early = nil
+                        continuation.resume(with: early)
+                    } else {
+                        self.continuation = continuation
+                    }
+                }
+            }
+        } onCancel: {
+            self.finish(.failure(CancellationError()))
         }
     }
 
@@ -81,10 +106,14 @@ public final class LoopbackReceiver: @unchecked Sendable {
 
     private func finish(_ result: Result<URL, Error>) {
         queue.async {
-            guard !self.finished, let continuation = self.continuation else { return }
+            guard !self.finished else { return }
             self.finished = true
-            self.continuation = nil
-            continuation.resume(with: result)
+            if let continuation = self.continuation {
+                self.continuation = nil
+                continuation.resume(with: result)
+            } else {
+                self.early = result
+            }
             self.listener.cancel()
         }
     }

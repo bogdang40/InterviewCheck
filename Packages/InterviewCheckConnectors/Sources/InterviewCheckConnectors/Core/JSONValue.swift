@@ -122,9 +122,21 @@ public enum DateParsing {
         if let seconds = Double(string), seconds > 1_000_000_000 {
             return Date(timeIntervalSince1970: seconds > 10_000_000_000 ? seconds / 1000 : seconds)
         }
+        // A date and time with no offset, or without seconds, is read as UTC;
+        // only a bare date (yyyy-MM-dd) means midnight.
+        let trimmed = string.trimmingCharacters(in: .whitespaces)
+        for format in ["yyyy-MM-dd'T'HH:mm:ss.SSS", "yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd'T'HH:mmXXXXX",
+                       "yyyy-MM-dd'T'HH:mm"] {
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.timeZone = TimeZone(identifier: "UTC")
+            formatter.dateFormat = format
+            if let date = formatter.date(from: trimmed) { return date }
+        }
+        guard trimmed.count == 10 else { return nil }
         let day = ISO8601DateFormatter()
         day.formatOptions = [.withFullDate]
-        return day.date(from: string)
+        return day.date(from: trimmed)
     }
 
     public static func iso(_ date: Date) -> String {

@@ -90,10 +90,21 @@ public actor MCPClient {
 
     /// The JSON-RPC answer with this id, from a JSON body or an SSE stream.
     static func message(from data: Data, contentType: String, id: Int) throws -> JSONValue {
-        guard contentType.contains("text/event-stream") else { return try JSONValue.parse(data) }
+        let isAnswer = { (message: JSONValue) in
+            message["id"].double == Double(id) && (!message["result"].isNull || !message["error"].isNull)
+        }
+        guard contentType.contains("text/event-stream") else {
+            let message = try JSONValue.parse(data)
+            // A batch, or a single answer.
+            if case .array(let items) = message, let answer = items.first(where: isAnswer) { return answer }
+            return message
+        }
         var payload = ""
         var messages: [JSONValue] = []
-        for line in String(decoding: data, as: UTF8.self).components(separatedBy: "\n") {
+        // SSE allows CRLF, LF or CR line endings.
+        let text = String(decoding: data, as: UTF8.self).replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+        for line in text.components(separatedBy: "\n") {
             if line.hasPrefix("data:") {
                 payload += line.dropFirst(5).trimmingCharacters(in: .whitespaces)
             } else if line.trimmingCharacters(in: .whitespaces).isEmpty, !payload.isEmpty {
@@ -102,8 +113,9 @@ public actor MCPClient {
             }
         }
         if !payload.isEmpty, let message = try? JSONValue.parse(Data(payload.utf8)) { messages.append(message) }
-        guard let answer = messages.first(where: { $0["id"].double == Double(id) }) ?? messages.last else {
-            throw ConnectorError.invalidResponse("empty event stream")
+        // Notifications and progress events may come first: only the answer counts.
+        guard let answer = messages.first(where: isAnswer) else {
+            throw ConnectorError.invalidResponse("no answer in the event stream")
         }
         return answer
     }

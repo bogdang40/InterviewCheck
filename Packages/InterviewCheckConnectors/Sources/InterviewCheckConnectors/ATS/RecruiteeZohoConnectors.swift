@@ -103,8 +103,12 @@ public struct ZohoRecruitConnector: InterviewSource, JobSource, CandidateSource,
         let client = OAuthClient(provider: provider, clientID: try credentials.required("clientID", "client ID"),
                                  clientSecret: try credentials.required("clientSecret", "client secret"), transport: transport)
         let refresh = try credentials.required("refreshToken", "refresh token")
-        session = OAuthSession(tokens: OAuthTokens(accessToken: "", refreshToken: refresh, expiresAt: .distantPast),
-                               client: client, onUpdate: { _ in })
+        // One session per refresh token for the app's lifetime, so each sync
+        // reuses the hour-long access token instead of minting a new one.
+        session = ZohoSessions.session(for: refresh) {
+            OAuthSession(tokens: OAuthTokens(accessToken: "", refreshToken: refresh, expiresAt: .distantPast),
+                         client: client, onUpdate: { _ in })
+        }
         self.transport = transport
         base = URL(string: "https://recruit.\(domain)/recruit/v2")!
     }
@@ -192,5 +196,18 @@ extension RecruiteeConnector: CandidateLookup {
         let offer = json["placements"][0]["offer_id"].string
         return CandidateMatch(candidate: ExternalCandidate(externalID: id, name: json["name"].string ?? "Candidate", email: email),
                               job: offer.map { ExternalJob(externalID: $0, title: "Job") }, applicationID: id)
+    }
+}
+
+enum ZohoSessions {
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var sessions: [String: OAuthSession] = [:]
+
+    static func session(for refreshToken: String, make: () -> OAuthSession) -> OAuthSession {
+        lock.lock(); defer { lock.unlock() }
+        if let session = sessions[refreshToken] { return session }
+        let session = make()
+        sessions[refreshToken] = session
+        return session
     }
 }

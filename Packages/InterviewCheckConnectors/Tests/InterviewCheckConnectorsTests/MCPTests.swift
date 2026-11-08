@@ -16,7 +16,7 @@ final class MCPTests: XCTestCase {
     }
 
     func testHandshakeSessionHeaderToolsAndSSEResult() async throws {
-        let call = "event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"[{\\\"id\\\":\\\"e1\\\",\\\"startTime\\\":\\\"2026-11-10T15:00:00Z\\\",\\\"candidate\\\":{\\\"name\\\":\\\"Adam Hart\\\"}}]\"}]}}\n\n"
+        let call = "event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"[{\\\"id\\\":\\\"e1\\\",\\\"startTime\\\":\\\"2026-11-10T15:00:00Z\\\",\\\"candidate\\\":{\\\"name\\\":\\\"Adam Hart\\\"}}]\"}]}}\n\n"
         let stub = mcpStub(toolsResult: #"{"jsonrpc":"2.0","id":3,"result":{"tools":[{"name":"get_upcoming_interviews","description":"Upcoming interviews","inputSchema":{"type":"object"}}]}}"#,
                            callResult: call, sse: true)
         let client = MCPClient(url: URL(string: server)!, transport: stub, token: { "tok" })
