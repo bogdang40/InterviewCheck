@@ -171,3 +171,27 @@ def test_invalid_parent_graph_and_invalid_role_rejected_before_restore(workspace
     doc["roles"][0]["questions"] = [""] * 101
     assert submit(client, "preview", json.dumps(doc).encode()).status_code == 422
     assert client.get("/api/sessions").json() == []
+
+
+def test_full_length_review_note_survives_answer_edit_and_recovery(workspace, tmp_path, monkeypatch):
+    client, raw, route = workspace
+    token = submit(client, "preview", raw).json()["fingerprint"]
+    submit(client, "restore", raw, token).raise_for_status()
+    client.post(route + "/reopen").raise_for_status()
+    answer = client.get(route).json()["answers"][0]
+    path = route + "/answers/" + answer["id"]
+    note = "a" * 12000
+    client.patch(path, json={"note": note, "disposition": "explained"}).raise_for_status()
+    revised = client.put(path, json={"question": "What changed?", "answer": "The procedure changed."}).json()
+    assert revised["note"].endswith(note) and len(revised["note"]) > 12000
+    raw = client.get("/api/backups/workspace").content
+    target = tmp_path / "restored-note.sqlite"
+    store.initialize(target)
+    monkeypatch.setenv("INTERVIEWCHECK_DB", str(target))
+    preview = submit(client, "preview", raw)
+    preview.raise_for_status()
+    submit(client, "restore", raw, preview.json()["fingerprint"]).raise_for_status()
+    assert client.get(path).json()["note"] == revised["note"]
+    client.patch(path, json={"note": revised["note"], "disposition": "unresolved"}).raise_for_status()
+    for invalid in (note + "x", revised["note"] + "x"):
+        assert client.patch(path, json={"note": invalid, "disposition": "pending"}).status_code == 422

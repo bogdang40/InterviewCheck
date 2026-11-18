@@ -84,3 +84,9 @@ The transaction and migration tests cover two plan slots with the same question,
 ### Audio preflight acceptance
 
 Chrome decoded generated tone and silence through the browser's real Web Audio analyser. The operator had to start each check. A selected shared surface carried separate video and audio tracks, and both ended when the check stopped. The tests exercised denied permission, a surface without audio, a cancelled picker that returned tracks late, an ended source and a hidden tab. The browser created no MediaRecorder and issued no content writes during the measurement. Physical microphone, picker behavior and live calls still need field checks on each target operating system.
+
+### Role conflicts and note recovery
+
+The browser sends the version of the role it displayed when it saves a template or starts an interview. The service compares the editable fields inside the write transaction. A stale editor can keep its draft as a separate role or discard it and load the saved role. Interview setup keeps the candidate name and requires fresh notice after loading the revised template. A retry of an interview that was already created returns its original snapshot. Older API clients can still submit an edit without a version check.
+
+A workspace backup can also recover a 12,000 character review note after an answer edit. The service applies the length limit to the note text and preserves the label it added to identify the earlier answer version.

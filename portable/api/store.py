@@ -11,7 +11,7 @@ from fastapi import HTTPException
 
 from . import lineage, role_kits
 from .role_kits import role_row, create_role
-from .models import AnswerEdit, AnswerInput, ReviewInput, SessionInput
+from .models import EARLIER_NOTE_PREFIX, AnswerEdit, AnswerInput, ReviewInput, SessionInput
 
 DEFAULT_DB = Path(__file__).resolve().parents[1] / "data" / "review.sqlite3"
 SCHEMA = """
@@ -241,8 +241,8 @@ def write_answer(db, key, item: AnswerInput, replace_id=None, *, session=None):
     fields = (item.question, item.answer, refs, json.dumps(result), result["status"], parent, slot)
     if replace_id:
         note = current["note"]
-        if note and not note.startswith("Note from an earlier answer version:\n"):
-            note = "Note from an earlier answer version:\n" + note
+        if note and not note.startswith(EARLIER_NOTE_PREFIX):
+            note = EARLIER_NOTE_PREFIX + note
         db.execute("UPDATE answers SET question=?,answer=?,refs=?,result=?,status=?,parent_answer_id=?,planned_slot=?,disposition='pending',note=?,revision=revision+1 WHERE id=?",
                    (*fields, note, aid))
     else:

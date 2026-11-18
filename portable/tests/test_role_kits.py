@@ -181,3 +181,28 @@ def test_imported_exchange_uses_session_materials_when_later_compared(client):
     )
     revised.raise_for_status()
     assert revised.json()["result"]["status"] == "no_match" and "import_origin" in revised.json()
+
+
+def test_stale_role_edit_and_stale_setup_preserve_the_saved_plan(client):
+    initial = client.post("/api/roles", json=ROLE).json()
+    route = "/api/roles/" + initial["id"]
+    setup = {
+        "id": str(uuid4()), "candidate": "Fixture", "consent": True,
+        "role": ROLE["name"], "role_id": initial["id"], "role_version": initial["version"],
+        "policy": ROLE["policy"], "permitted_sources": [SOURCE],
+    }
+    original = client.post("/api/sessions", json=setup)
+    original.raise_for_status()
+    edited = {**ROLE, "questions": ["What changed?"], "policy": "Use the checklist.", "permitted_sources": [ALT]}
+    # An edit from an older client must also invalidate current forms.
+    latest = client.put(route, json=edited).json()
+    assert latest["version"] != initial["version"]
+    stale_edit = client.put(route, json={**initial, "description": "Other tab"})
+    stale_setup = client.post("/api/sessions", json={**setup, "id": str(uuid4())})
+    for response in (stale_edit, stale_setup):
+        assert response.status_code == 409
+        assert response.headers["X-InterviewCheck-Conflict"] == "role-version"
+    assert client.get(route).json() == latest
+    assert len(client.get("/api/sessions").json()) == 1
+    assert client.post("/api/sessions", json=setup).json() == original.json()
+    assert client.put(route, json={**latest, "description": "Reviewed"}).is_success

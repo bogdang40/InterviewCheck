@@ -6,6 +6,8 @@ import ConflictReview from "./ConflictReview"
 import { Button } from "./ui/button"
 import { Textarea } from "./ui/textarea"
 
+const earlierNotePrefix = "Note from an earlier answer version:\n"
+
 export function Findings({ result }: { result: Answer["result"] }) {
   return (
     <div className="findings">
@@ -163,7 +165,7 @@ export default function Evidence({
           <Textarea
             disabled={busy}
             required={disposition === "disclosed"}
-            maxLength={12000}
+            maxLength={12000 + (note.startsWith(earlierNotePrefix) ? earlierNotePrefix.length : 0)}
             value={note}
             onChange={(e) => setNote(e.target.value)}
             placeholder="Record the candidate’s explanation and your observations."
