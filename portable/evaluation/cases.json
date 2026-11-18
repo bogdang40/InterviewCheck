@@ -1,0 +1,25 @@
+{
+  "references": {
+    "lease": "Each writer persists its fencing token alongside the payment record before publishing a retry.",
+    "thermal": "A ceramic spacer isolates the temperature probe from the copper shielding during calibration.",
+    "cache": "Cache invalidation and naming things are two hard problems in computer science.",
+    "sharedA": "We measure the ninety ninth percentile before and after the rollout. Then we cool the pressure vessel before replacing that valve.",
+    "sharedB": "We measure the ninety ninth percentile before and after the rollout. I schedule one maintenance window per region."
+  },
+  "cases": [
+    {"id":"known_verbatim","condition":"outside","question":"Explain retry safety.","answer":"Each writer persists its fencing token alongside the payment record before publishing a retry.","compare":["lease"],"expected":"match"},
+    {"id":"embedded_excerpt","condition":"outside","question":"How would you run the experiment?","answer":"I would take two different measurements. A ceramic spacer isolates the temperature probe from the copper shielding during calibration. I would record the changes.","compare":["thermal"],"expected":"match"},
+    {"id":"stitch","condition":"outside","question":"Which notes did you use?","answer":"Each writer persists its fencing token alongside the payment record. A ceramic spacer isolates the temperature probe from the copper shielding.","compare":["lease","thermal"],"expected":"match"},
+    {"id":"case_noise","condition":"outside","question":"Explain retry safety.","answer":"Each WRITER persists its fencing token, alongside the payment record: before publishing a retry.","compare":["lease"],"expected":"match"},
+    {"id":"paraphrased","condition":"outside","question":"How did you avoid a duplicate payment?","answer":"We tied a generation number to each transaction so old clients could never submit the same charge twice.","compare":["lease"],"expected":"no_match"},
+    {"id":"unobserved_coaching","condition":"outside","question":"How did you improve latency?","answer":"The hot path waited on the logger so I moved it to a queue.","compare":["thermal"],"expected":"no_match"},
+    {"id":"unavailable_source","condition":"outside","question":"Explain how your approach works.","answer":"Each writer persists its fencing token alongside the payment record before publishing a retry.","compare":[],"expected":"insufficient"},
+    {"id":"independent_reasoning","condition":"independent","question":"How did you improve latency?","answer":"The hot path waited on the logger so I moved it to a queue.","compare":["thermal"],"expected":"no_match"},
+    {"id":"shares_subject","condition":"independent","question":"How did you run the experiment?","answer":"The shielding made our readings too consistent with the board temperature. I moved the probe above the fixture.","compare":["thermal"],"expected":"no_match"},
+    {"id":"prompt_echo","condition":"independent","question":"A ceramic spacer isolates the temperature probe from the copper shielding during calibration.","answer":"A ceramic spacer isolates the temperature probe from the copper shielding during calibration. Is the spacer thermal insulation?","compare":["thermal"],"expected":"no_match"},
+    {"id":"known_common","condition":"independent","question":"What is the first measurement?","answer":"We measure the ninety ninth percentile before and after the rollout.","compare":["sharedA","sharedB"],"expected":"no_match"},
+    {"id":"permitted_manual","condition":"permitted","question":"What does the manual say about the test fixture?","answer":"A ceramic spacer isolates the temperature probe from the copper shielding during calibration.","compare":["thermal"],"allowed":["thermal"],"expected":"no_match"},
+    {"id":"merely_brief","condition":"independent","question":"Which store?","answer":"PostgreSQL with a unique constraint.","compare":["lease"],"expected":"insufficient"},
+    {"id":"common_unsupplied","condition":"independent","question":"Which two problems are commonly cited?","answer":"Cache invalidation and naming things are two hard problems in computer science.","compare":["cache"],"expected":"match"}
+  ]
+}

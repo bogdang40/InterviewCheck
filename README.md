@@ -1,5 +1,28 @@
 # InterviewCheck
 
+InterviewCheck is a Next.js and FastAPI web application for reviewing interview answers. Capture an exchange, compare its wording with named sources, ask a follow up and record the candidate's explanation. The browser uses shadcn/ui, Three.js and Framer Motion. FastAPI owns the review service, SQLite storage, provider integrations and optional accounts and billing.
+
+## Run the web app
+
+Install Node.js 22.13 or later, npm, and Python 3.11 or later. From the repository root run:
+
+```sh
+npm run dev
+```
+
+Open [InterviewCheck](http://localhost:3000). FastAPI serves the [API documentation](http://127.0.0.1:8000/docs). The launcher installs the project dependencies on first use. To run the production build:
+
+```sh
+npm run build
+npm start
+```
+
+The sample review and the manual interview workflow run without provider keys. Start an interview with a saved role or your own role title, record the agreed resources, and add answers. Finish capture when the interview ends. Review notes and report exports remain available after capture ends.
+
+See the [web runtime guide](portable/WEB.md), [connection guide](portable/CONNECTIONS.md), and [review and migration guide](portable/CORE.md). An optional [downloadable edition](portable/README.md) serves the built browser interface from FastAPI. The [implementation plan](PLAN.md) records the original detector findings.
+
+## Original macOS application
+
 A Mac app for interviewers that helps spot candidates who read their answers
 from AI tools (Cluely, Interview Coder, ChatGPT on a second screen).
 
