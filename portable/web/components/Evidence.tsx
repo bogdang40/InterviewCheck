@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react"
 import { ClipboardCheck, Pencil, Quote } from "lucide-react"
 import { api, message, RevisionConflict, statusText, type Answer, type Disposition } from "@/lib/api"
+import CandidateResponse from "./CandidateResponse"
 import MarkedText from "./MarkedText"
 import ConflictReview from "./ConflictReview"
 import { Button } from "./ui/button"
@@ -116,7 +117,7 @@ export default function Evidence({
         )}
       </div>
       <h2>{item.question}</h2>
-      <p className="transcript-text"><MarkedText text={item.answer} passages={item.result.passages}/></p>
+      <CandidateResponse item={item}/>
       <Findings result={item.result} />
       {onFollowUp && (
         <Button variant="outline" size="sm" onClick={onFollowUp}>

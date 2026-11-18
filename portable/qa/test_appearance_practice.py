@@ -8,10 +8,13 @@ from playwright.sync_api import expect
 
 def test_theme_keyboard_reload_and_cross_tab_sync(workspace_url, browser_page):
     page = browser_page
-    page.emulate_media(color_scheme="dark", reduced_motion="reduce")
+    page.emulate_media(color_scheme="light", reduced_motion="reduce")
     page.goto(workspace_url + "/account/")
     system = page.get_by_role("radio", name="System")
-    expect(system).to_be_checked()
+    expect(page.get_by_role("radio", name="Dark")).to_be_checked()
+    expect(page.locator("html")).to_have_css("color-scheme", "dark")
+    system.check()
+    expect(page.locator("html")).to_have_css("color-scheme", "light")
     system.focus()
     page.keyboard.press("ArrowRight")
     expect(page.get_by_role("radio", name="Light")).to_be_checked()
@@ -49,6 +52,10 @@ def test_theme_keyboard_reload_and_cross_tab_sync(workspace_url, browser_page):
             assert (bright + 0.05) / (dark + 0.05) >= 4.5
         page.get_by_role("radio", name="System").check()
         expect(other.get_by_role("radio", name="System")).to_be_checked()
+        page.reload()
+        expect(system).to_be_checked()
+        page.emulate_media(color_scheme="dark")
+        expect(page.locator("html")).to_have_css("color-scheme", "dark")
     finally:
         other.close()
 

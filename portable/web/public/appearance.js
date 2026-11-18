@@ -3,9 +3,9 @@
   function apply() {
     try {
       var theme = localStorage.getItem("interviewcheck.appearance")
-      document.documentElement.dataset.theme = theme === "dark" || theme === "light" ? theme : "system"
+      document.documentElement.dataset.theme = theme === "system" || theme === "light" ? theme : "dark"
     } catch {
-      document.documentElement.dataset.theme = "system"
+      document.documentElement.dataset.theme = "dark"
     }
   }
   apply()

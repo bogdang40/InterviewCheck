@@ -98,3 +98,30 @@ def test_archive_page_is_bounded_and_role_deep_link_focuses_its_record(workspace
         page.goto(workspace_url + "/roles/?role=" + rid)
         expect(page.get_by_role("heading", name="Timing verifier")).to_be_focused()
         expect(page.get_by_text("1. How do clocks drift?")).to_be_visible()
+
+
+def test_overview_counts_open_the_matching_archives(workspace_url, browser_page):
+    with httpx.Client(base_url=workspace_url, headers={"X-InterviewCheck": "1"}) as client:
+        for name in ("Active fixture", "Finished fixture"):
+            created = client.post("/api/sessions", json={
+                "candidate": name, "role": "Research", "consent": True, "policy": "Notes permitted.",
+            })
+            created.raise_for_status()
+        client.post(f"/api/sessions/{created.json()['id']}/finish").raise_for_status()
+
+    page = browser_page
+    page.set_viewport_size({"width": 320, "height": 800})
+    page.goto(workspace_url)
+    counts = page.get_by_role("navigation", name="Interview counts")
+    expect(counts.get_by_role("link", name="Total interviews 2")).to_be_visible()
+    expect(counts.get_by_role("link", name="Pending matches 0")).to_be_visible()
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    counts.get_by_role("link", name="In progress 1").click()
+    expect(page.get_by_label("Capture status")).to_have_value("active")
+    expect(page.get_by_role("link", name="Open Active fixture")).to_be_visible()
+    expect(page.get_by_role("link", name="Open Finished fixture")).to_have_count(0)
+    page.go_back()
+    counts.get_by_role("link", name="Pending matches 0").click()
+    expect(page.get_by_label("Evidence review")).to_have_value("pending")
+    expect(page.get_by_label("Sort interviews")).to_have_value("pending")
+    expect(page.get_by_role("status").filter(has_text="0 of 2 shown")).to_be_visible()

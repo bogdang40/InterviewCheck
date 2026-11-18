@@ -2,6 +2,7 @@ import Script from "next/script"
 import WorkspaceShell from "@/components/WorkspaceShell"
 import type { Metadata } from "next"
 import "@fontsource-variable/dm-sans"
+import "@fontsource/instrument-serif/latin-400-italic.css"
 import "@fontsource/ibm-plex-mono/400.css"
 import "./globals.css"
 import "./shell.css"
@@ -14,6 +15,7 @@ import "./workspace-data.css"
 import "./workspace-search.css"
 import "./report-controls.css"
 import "./theme.css"
+import "./studio.css"
 
 export const metadata: Metadata = {
   title: "InterviewCheck | Workspace",
@@ -22,7 +24,7 @@ export const metadata: Metadata = {
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" data-theme="dark" suppressHydrationWarning>
       <head><Script src="/appearance.js" strategy="beforeInteractive"/></head>
       <body>
         <WorkspaceShell>{children}</WorkspaceShell>

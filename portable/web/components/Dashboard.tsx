@@ -1,7 +1,9 @@
 import Link from "next/link"
-import { ArrowRight, ClipboardList, FolderOpen, Plus } from "lucide-react"
+import { ArrowRight, Plus } from "lucide-react"
 import { Button } from "./ui/button"
 import SignalField from "./SignalField"
+import WorkspaceMetrics from "./WorkspaceMetrics"
+import SessionLog from "./SessionLog"
 import SessionRow from "./SessionRow"
 import type { Overview } from "@/lib/interview-list"
 
@@ -22,25 +24,23 @@ export default function Dashboard({ overview, onCreate, onSample, onOpen }: Prop
   const populated = total > 0
 
   return <div className={"queue-home" + (populated ? " populated" : "")}>
-    <section className="hero queue-hero">
-      <div className="hero-copy">
-        <h1>Interview workspace</h1>
-        <p>{populated
-          ? `${activeCount} active ${activeCount === 1 ? "interview" : "interviews"} · ${pendingAnswers} ${pendingAnswers === 1 ? "answer" : "answers"} pending review`
-          : "Capture interview answers, compare sources and record the candidate’s explanation."}</p>
-        <div className="row">
+    <section className="studio-hero">
+      <div className="studio-copy">
+        <h1>Interview <em>workspace</em></h1>
+        {!populated && <p>Capture interview answers, compare sources and record the candidate’s explanation.</p>}
+        <div className="studio-actions">
           <Button onClick={onCreate}><Plus/>New interview</Button>
-          <Button variant="ghost" className="hero-secondary" onClick={onSample}>Open sample <ArrowRight/></Button>
+          <Button variant="ghost" onClick={onSample}>Open sample <ArrowRight/></Button>
         </div>
       </div>
-      <SignalField/>
+      <div className="studio-art" aria-hidden="true">
+        <SignalField/>
+        <img src="/studio-microphone.webp" alt="" width="830" height="850" fetchPriority="high"/>
+      </div>
     </section>
-    {!overview ? <p className="queue-loading" role="status">Loading interviews…</p>
-      : !populated ? <section className="panel queue-empty-start" aria-labelledby="start-log">
-        <div className="queue-illustration"><ClipboardList size={26}/></div>
-        <div><h2 id="start-log">Your session log is empty</h2>
-          <p>Start an interview to collect its questions, sources and follow up notes in one place.</p></div>
-      </section> : <>
+    {!overview ? <p className="queue-loading" role="status">Loading interviews…</p> : <>
+      <WorkspaceMetrics overview={overview}/>
+      {!populated ? <SessionLog/> : <>
         <section className="panel queue-panel" aria-labelledby="pending-heading">
           <div className="queue-head"><div><h2 id="pending-heading">Review queue</h2>
             <p>{pendingAnswers ? `${pendingAnswers} pending ${pendingAnswers === 1 ? "match" : "matches"} across ${pendingSessions} ${pendingSessions === 1 ? "interview" : "interviews"}`
@@ -61,8 +61,7 @@ export default function Dashboard({ overview, onCreate, onSample, onOpen }: Prop
             <li key={s.id}><SessionRow session={s} resume={() => onOpen(s.id)}/></li>)}</ul>}
           {activeCount > active.length && <Link className="queue-more" href="/interviews/?status=active">View all {activeCount} active interviews <ArrowRight size={14}/></Link>}
         </section>
-        <p className="archive-total"><FolderOpen size={15}/>
-          {total} {total === 1 ? "interview" : "interviews"} in this workspace</p>
       </>}
+    </>}
   </div>
 }

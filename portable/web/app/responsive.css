@@ -5,9 +5,6 @@
   .brand {
     font-size: 20px;
   }
-  .hero-copy {
-    padding: 28px;
-  }
   .overview-grid {
     grid-template-columns: minmax(0, 1.45fr) minmax(220px, 1fr);
   }
@@ -49,17 +46,11 @@
   .top {
     height: 47px;
   }
-  .hero {
-    min-height: 250px;
-  }
   .overview-grid {
     grid-template-columns: minmax(0, 1.55fr) minmax(190px, 1fr);
   }
   .panel-head {
     padding: 18px;
-  }
-  .hero-copy {
-    width: 62%;
   }
 }
 @media (max-width: 590px) {
@@ -85,24 +76,6 @@
   }
   .host-label {
     font-size: 10px;
-  }
-  .hero-copy {
-    width: 100%;
-    padding: 22px 19px;
-  }
-  .hero h1 {
-    font-size: 35px;
-  }
-  .hero p {
-    font-size: 14px;
-    max-width: 85%;
-  }
-  .signal-field {
-    inset: 0 -36% 0 30%;
-    opacity: 0.17;
-  }
-  .hero-kicker {
-    font-size: 9px;
   }
   .stats {
     gap: 7px;
@@ -133,9 +106,6 @@
   }
   .page-title h1 {
     font-size: 36px;
-  }
-  .hero {
-    min-height: 230px;
   }
   .role-row {
     flex-wrap: wrap;
