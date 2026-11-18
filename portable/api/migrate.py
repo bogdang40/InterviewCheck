@@ -118,6 +118,14 @@ def import_db(source_path, target):
                 (key, interview["candidate_name"], interview["role_title"], "Resource policy unavailable in native report.",
                  interview["consent_confirmed_at"] is not None, created, json.dumps(dict(interview)))).rowcount
             if inserted:
+                original = dict(interview)
+                native_role = original.get("workspace_id")
+                role = target.execute("SELECT id,questions FROM roles WHERE id=?",
+                                      (portable_id("role", native_role),)).fetchone() if native_role else None
+                end = original.get("ended_at")
+                ended_at = datetime.fromtimestamp(end / 1000, timezone.utc).isoformat() if end is not None else None
+                target.execute("INSERT INTO session_context(session_id,role_id,questions,ended_at) VALUES (?,?,?,?)",
+                               (key, role["id"] if role else None, role["questions"] if role else "[]", ended_at))
                 counts["sessions"] += 1
                 for q in source.execute("SELECT * FROM interview_questions WHERE interview_id=? ORDER BY ordinal,rowid",
                                         (interview["id"],)):

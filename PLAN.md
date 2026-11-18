@@ -52,3 +52,10 @@ The upstream path is `InterviewTimeline` to `QuestionTracker` to `AnswerEvaluato
 The portable API stores named sources per exchange. The operator marks permitted sources, and the matcher excludes prompt and common wording before quoting the two passages. It offers a changed constraint or asks about a claim from the candidate's answer, even when no passage can be attributed. The interviewer can record an explanation, an unresolved question or a disclosure of assistance. These are separate from machine observations.
 
 The fixed evaluation includes a coached and an independent case with identical observations. No detector receiving those inputs can distinguish them. In a pilot, record the tool actually used and which materials were permitted before analysis. Count valid reviews of known incidents, missed incidents, reviews raised on independent answers, and cases with insufficient data. Stratify by interview task and capture quality. A proxy candidate, a human coach, or unobserved work on another device can leave no attributable text at all. Test these with a supervised work sample and an explanation of the candidate's own changes.
+
+
+## Web application acceptance
+
+The primary application runs Next.js and FastAPI as separate processes with one browser origin. The repository root provides development, production build and start commands. The static bundle is an optional delivery format.
+
+The browser routes cover setup, capture, follow up, review, finish, reopen and export. Each interview takes a snapshot of its selected role template. The reviewer checks those paths in both server modes, including saved records, live audio transport and access control. Optional FastAPI accounts and billing replace the external Node account service for new deployments.

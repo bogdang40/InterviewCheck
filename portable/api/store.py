@@ -33,11 +33,15 @@ CREATE INDEX IF NOT EXISTS export_session ON note_exports(session_id);
 CREATE TABLE IF NOT EXISTS roles (
  id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT NOT NULL, questions TEXT NOT NULL, legacy TEXT
 );
+CREATE TABLE IF NOT EXISTS session_context (
+ session_id TEXT PRIMARY KEY REFERENCES sessions(id), role_id TEXT REFERENCES roles(id),
+ questions TEXT NOT NULL DEFAULT '[]', ended_at TEXT
+);
 """
 SUMMARY = """
-SELECT s.id,s.candidate,s.role,s.policy,s.consent,s.created_at,COUNT(a.id) answer_count,
+SELECT s.id,s.candidate,s.role,s.policy,s.consent,s.created_at,c.role_id,c.ended_at,COUNT(a.id) answer_count,
  COUNT(CASE WHEN a.status='match' AND a.disposition='pending' THEN 1 END) review_count
-FROM sessions s LEFT JOIN answers a ON a.session_id=s.id
+FROM sessions s LEFT JOIN session_context c ON c.session_id=s.id LEFT JOIN answers a ON a.session_id=s.id
 """
 
 
@@ -56,6 +60,15 @@ def initialize(path):
     with closing(sqlite3.connect(path)) as db:
         db.execute("PRAGMA journal_mode=WAL")
         db.executescript(SCHEMA)
+        # Freeze plans for workspaces created before role IDs were recorded. Only
+        # an unambiguous title can recover the original plan from that edition.
+        db.execute("""INSERT OR IGNORE INTO session_context(session_id,role_id,questions,ended_at)
+            SELECT s.id,r.id,COALESCE(r.questions,'[]'),
+                   strftime('%Y-%m-%dT%H:%M:%fZ',json_extract(s.legacy,'$.ended_at')/1000.0,'unixepoch')
+            FROM sessions s LEFT JOIN
+              (SELECT name,id,questions FROM roles GROUP BY name HAVING count(*)=1) r ON r.name=s.role
+            WHERE NOT EXISTS (SELECT 1 FROM session_context c WHERE c.session_id=s.id)""")
+        db.commit()
 
 
 @contextmanager
@@ -102,6 +115,8 @@ def get_session(db, key):
     item = get_summary(db, key)
     item["answers"] = [answer_row(row) for row in db.execute(
         "SELECT * FROM answers WHERE session_id=? ORDER BY rowid", (key,))]
+    context = db.execute("SELECT questions FROM session_context WHERE session_id=?", (key,)).fetchone()
+    item["planned_questions"] = json.loads(context[0]) if context else []
     legacy = db.execute("SELECT legacy FROM sessions WHERE id=?", (key,)).fetchone()[0]
     if legacy:
         item["legacy"] = json.loads(legacy)
@@ -112,16 +127,29 @@ def create_session(db, item: SessionInput):
     key = str(item.id or uuid4())
     existing = db.execute("SELECT * FROM sessions WHERE id=?", (key,)).fetchone()
     if existing:
+        if item.role_id and get_summary(db, key)["role_id"] != str(item.role_id):
+            raise HTTPException(409, "The session ID already belongs to a different role.")
         if any(existing[field] != getattr(item, field) for field in ("candidate", "role", "policy", "consent")):
             raise HTTPException(409, "The session ID already belongs to different content.")
     else:
+        selected = None
+        if item.role_id:
+            selected = db.execute("SELECT * FROM roles WHERE id=?", (str(item.role_id),)).fetchone()
+            if selected is None or selected["name"] != item.role:
+                raise HTTPException(409, "The selected role has changed. Refresh the role list.")
+        elif "role_id" not in item.model_fields_set:
+            matches = db.execute("SELECT * FROM roles WHERE name=? LIMIT 2", (item.role,)).fetchall()
+            selected = matches[0] if len(matches) == 1 else None
         db.execute("INSERT INTO sessions(id,candidate,role,policy,consent,created_at) VALUES (?,?,?,?,?,?)",
                    (key, item.candidate, item.role, item.policy, item.consent, timestamp()))
+        db.execute("INSERT INTO session_context(session_id,role_id,questions) VALUES (?,?,?)",
+                   (key, selected["id"] if selected else None, selected["questions"] if selected else "[]"))
     return get_session(db, key)
 
 
 def write_answer(db, key, item: AnswerInput, replace_id=None):
-    if not get_summary(db, key)["consent"]:
+    session = get_summary(db, key)
+    if not session["consent"]:
         raise HTTPException(409, "This archived session has no recorded notice. Create a new session for capture.")
     aid = str(replace_id or item.id or uuid4())
     if replace_id and item.id and aid != str(item.id):
@@ -134,6 +162,8 @@ def write_answer(db, key, item: AnswerInput, replace_id=None):
         fresh = not (current["legacy"] and json.loads(current["result"]).get("archived"))
         if same_input and fresh:
             return answer_row(current)
+    if session["ended_at"]:
+        raise HTTPException(409, "Reopen the interview before changing an exchange.")
     if replace_id and (current is None or current["session_id"] != key):
         raise HTTPException(404, "Answer does not exist in this session.")
     if current and not replace_id:

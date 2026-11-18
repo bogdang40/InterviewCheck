@@ -19,6 +19,7 @@ class SessionInput(Input):
     id: RequestID | None = None
     candidate: Name
     role: Name
+    role_id: RequestID | None = None
     policy: Question
     consent: bool
 

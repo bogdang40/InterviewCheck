@@ -1,9 +1,9 @@
 name: Portable interview workspace
 on:
   push:
-    paths: ["portable/**", "server/**", ".github/workflows/portable.yml"]
+    paths: ["portable/**", "server/**", "package.json", ".github/workflows/portable.yml"]
   pull_request:
-    paths: ["portable/**", "server/**", ".github/workflows/portable.yml"]
+    paths: ["portable/**", "server/**", "package.json", ".github/workflows/portable.yml"]
   workflow_dispatch:
 
 permissions:
@@ -16,7 +16,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: 30
     env:
       NEXT_TELEMETRY_DISABLED: "1"
     defaults:
@@ -36,6 +36,7 @@ jobs:
       - run: npm ci --prefix ../server --ignore-scripts
       - run: npm run build --prefix ../server
       - run: python run.py --build-only
+      - run: python qa/smoke_next.py
       - run: npm run typecheck --prefix web
       - run: python evaluate.py
       - run: python -m pytest tests -q
@@ -43,7 +44,9 @@ jobs:
         if: runner.os == 'Linux'
       - run: python -m playwright install chromium
         if: runner.os == 'Windows'
-      - run: python -m pytest qa -q
+      - run: python -m pytest qa -q --frontend=start
+      - run: python -m pytest qa/test_session_lifecycle.py qa/test_capture.py qa/test_webhook_transport.py qa/test_connected_ui.py::test_admin_grants_access_through_account_page -q --frontend=dev
+      - run: python -m pytest qa/test_browser.py -q --frontend=static
       - run: python package_release.py ../build/InterviewCheck-portable.zip
       - run: python qa/smoke_archive.py ../build/InterviewCheck-portable.zip
       - uses: actions/upload-artifact@v4

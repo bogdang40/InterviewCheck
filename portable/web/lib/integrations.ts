@@ -2,6 +2,7 @@ export type ProviderStatus = {
   transcription: boolean;
   reference: boolean;
   access: boolean;
+  inviteRequired?: boolean;
   ats: string[];
   calendars: string[];
   meetings: string[];

@@ -121,7 +121,7 @@ export default function Dashboard({ sessions, loaded, archive, onCreate, onSampl
                 </small>
               </span>
               <span className="entry-state">
-                {s.review_count ? `${s.review_count} pending` : "Open"} <ArrowRight size={14} />
+                {s.review_count ? `${s.review_count} pending` : s.ended_at ? "Finished" : "In progress"} <ArrowRight size={14} />
               </span>
             </button>
           ))}

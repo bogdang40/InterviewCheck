@@ -1,35 +1,49 @@
-import { useState, type FormEvent } from "react"
+import { useEffect, useState, type FormEvent } from "react"
 import { Plus, Trash2, ScanText } from "lucide-react"
-import { api, message, type Answer, type Interview, type Role, type Source } from "@/lib/api"
+import { api, message, type Answer, type Interview, type Source } from "@/lib/api"
 import { Button } from "./ui/button"
 import { Input } from "./ui/input"
 import { Textarea } from "./ui/textarea"
 import Authoring from "./Authoring"
+import LiveComparison from "./LiveComparison"
 import Capture from "./Capture"
 import TranscriptImport from "./TranscriptImport"
 
 const emptySource = () => ({ label: "", text: "", permitted: false })
 export default function AnswerEditor({
   session,
-  role,
+  onDirty,
   initial,
+  firstQuestion = "",
   onSave,
   onCancel,
 }: {
   session: Interview
-  role?: Role
+  onDirty: (id: string, value: boolean) => void
+  firstQuestion?: string
   initial?: Answer
   onSave: (a: Answer) => void
   onCancel?: () => void
 }) {
   const [id] = useState(() => initial?.id || crypto.randomUUID())
-  const [question, setQuestion] = useState(initial?.question || "")
+  const [question, setQuestion] = useState(initial?.question || firstQuestion)
   const [answer, setAnswer] = useState(initial?.answer || "")
   const [sources, setSources] = useState<Source[]>(initial?.references || [])
   const [capturePending, setCapturePending] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [busy, setBusy] = useState("")
   const [error, setError] = useState("")
+  const dirty =
+    question !== (initial?.question ?? "") ||
+    answer !== (initial?.answer ?? "") ||
+    JSON.stringify(sources) !== JSON.stringify(initial?.references ?? []) ||
+    capturePending ||
+    generating ||
+    !!busy
+  useEffect(() => {
+    onDirty("editor", dirty)
+    return () => onDirty("editor", false)
+  }, [onDirty, dirty])
   function change(index: number, update: Partial<Source>) {
     setSources((s) => s.map((r, i) => (i === index ? { ...r, ...update } : r)))
   }
@@ -60,12 +74,12 @@ export default function AnswerEditor({
             setAnswer(a)
           }}
         />
-        {role && role.questions.length > 0 && (
+        {session.planned_questions.length > 0 && (
           <label className="field">
             Planned question
             <select defaultValue="" onChange={(e) => setQuestion(e.target.value)}>
               <option value="">Choose a question</option>
-              {role.questions.map((q, i) => (
+              {session.planned_questions.map((q, i) => (
                 <option key={i}>{q}</option>
               ))}
             </select>
@@ -165,6 +179,7 @@ export default function AnswerEditor({
             append: (s) => setSources((list) => [...list, s]),
           }}
         />
+        <LiveComparison question={question} answer={answer} sources={sources} />
         {initial && <small className="muted">An edit reopens the review and keeps the existing note.</small>}
         {capturePending && <p className="notice">Apply or discard the captured excerpt before saving.</p>}
         {error && (
@@ -178,7 +193,12 @@ export default function AnswerEditor({
             {busy === "save" ? "Saving…" : "Save and compare"}
           </Button>
           {onCancel && (
-            <Button type="button" variant="ghost" disabled={capturePending || generating || !!busy} onClick={onCancel}>
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={capturePending || generating || !!busy}
+              onClick={onCancel}
+            >
               Cancel
             </Button>
           )}

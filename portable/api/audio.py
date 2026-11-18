@@ -1,7 +1,7 @@
 """Transcribe a selected audio stream or a recording through the same provider as the Mac app."""
 import asyncio
 import json
-from urllib.parse import urlsplit
+from .origin import browser_origin
 
 from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect
 from websockets.asyncio.client import connect
@@ -57,13 +57,8 @@ async def transcribe_bytes(data: bytes, kind: str):
 
 
 def same_local_origin(ws: WebSocket) -> bool:
-    try:
-        origin = urlsplit(ws.headers.get("origin", ""))
-        return (ws.url.hostname in {"localhost", "127.0.0.1", "::1"}
-                and origin.scheme == ("https" if ws.url.scheme == "wss" else "http")
-                and origin.netloc == ws.headers.get("host"))
-    except ValueError:
-        return False
+    expected = browser_origin(ws.headers, ws.url.scheme)
+    return expected is not None and ws.headers.get("origin") == expected
 
 
 async def relay_audio(browser: WebSocket, provider):

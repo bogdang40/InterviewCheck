@@ -5,12 +5,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
-from . import access, ats, audio, booking_sources, meeting_files, oauth_tokens
+from . import access, access_admin, ats, audio, booking_sources, meeting_files, oauth_tokens
 from .calendar_sources import calendar_file, cloud_calendar
 from .provider_http import configured, fetch_json, setting
 
 router = APIRouter(prefix="/api/integrations")
 router.include_router(access.router)
+router.include_router(access_admin.router)
 router.include_router(audio.router)
 router.include_router(meeting_files.router)
 workspace = APIRouter(dependencies=[Depends(access.require_entitlement)])
@@ -23,7 +24,7 @@ def status():
         calendars.append("imap")
     return {"transcription": configured("DEEPGRAM_API_KEY"),
             "reference": configured("OPENAI_API_KEY") and configured("INTERVIEWCHECK_REFERENCE_MODEL"),
-            "access": configured("INTERVIEWCHECK_ACCESS_URL"),
+            "access": access.account_enabled(), "inviteRequired": configured("INTERVIEWCHECK_SIGNUP_SECRET") or configured("INTERVIEWCHECK_PUBLIC_ORIGIN"),
             "ats": ats.sources(), "calendars": calendars + [name for name, key in booking_sources.KEYS.items() if configured(key)],
             "meetings": [name for name in ("zoom", "webex") if configured(booking_sources.KEYS[name])]
             + [name for name in ("meet", "teams") if oauth_tokens.available(name)]}

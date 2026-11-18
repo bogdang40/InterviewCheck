@@ -104,7 +104,7 @@ def print_view(sid: UUID):
         session = store.get_session(db, str(sid))
     heading = "Interview review for " + (session["candidate"] or "unnamed candidate")
     meta = "".join(f"<dt>{label}</dt><dd>{escape(value)}</dd>" for label, value in [
-        ("Role", session["role"]), ("Date", session["created_at"]), ("Resource policy", session["policy"]),
+        ("Role", session["role"]), ("Date", session["created_at"]), ("Finished", session["ended_at"] or "In progress"), ("Resource policy", session["policy"]),
         ("Candidate notice recorded", "Yes" if session["consent"] else "Unknown")])
     answers = "".join(print_answer(i, item) for i, item in enumerate(session["answers"], 1))
     legacy = session.get("legacy")

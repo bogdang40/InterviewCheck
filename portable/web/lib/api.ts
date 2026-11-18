@@ -22,16 +22,19 @@ export type Session = {
   role: string
   policy: string
   consent: boolean
+  ended_at: string | null
+  role_id: string | null
   created_at: string
   answer_count: number
   review_count: number
 }
-export type Interview = Session & { answers: Answer[] }
+export type Interview = Session & { answers: Answer[]; planned_questions: string[] }
 export type Role = { id: string; name: string; description: string; questions: string[] }
 
-export async function api<T>(path: string, method = "GET", body?: unknown): Promise<T> {
+export async function api<T>(path: string, method = "GET", body?: unknown, signal?: AbortSignal): Promise<T> {
   const response = await fetch("/api/" + path, {
     method,
+    signal,
     cache: "no-store",
     headers: { "Content-Type": "application/json", "X-InterviewCheck": "1" },
     body: body === undefined ? undefined : JSON.stringify(body),

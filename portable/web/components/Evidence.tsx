@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react"
+import { useEffect, useState, type FormEvent } from "react"
 import { ClipboardCheck, Pencil, Quote } from "lucide-react"
 import { api, message, statusText, type Answer, type Disposition } from "@/lib/api"
 import { Button } from "./ui/button"
@@ -44,11 +44,15 @@ export default function Evidence({
   sessionId,
   onSave,
   onEdit,
+  onDirty,
+  onFollowUp,
 }: {
   item: Answer
   index: number
   sessionId: string
   onSave: (a: Answer) => void
+  onFollowUp?: () => void
+  onDirty: (id: string, value: boolean) => void
   onEdit?: () => void
 }) {
   const [note, setNote] = useState(item.note)
@@ -56,6 +60,11 @@ export default function Evidence({
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [saved, setSaved] = useState(false)
+  const dirty = note !== item.note || disposition !== item.disposition
+  useEffect(() => {
+    onDirty(item.id, dirty)
+    return () => onDirty(item.id, false)
+  }, [item.id, dirty, onDirty])
   async function save(e: FormEvent) {
     e.preventDefault()
     setError("")
@@ -83,6 +92,11 @@ export default function Evidence({
       <h2>{item.question}</h2>
       <p className="transcript-text">{item.answer}</p>
       <Findings result={item.result} />
+      {onFollowUp && (
+        <Button variant="outline" size="sm" onClick={onFollowUp}>
+          Ask this follow up
+        </Button>
+      )}
       {item.references.length > 0 && (
         <details>
           <summary>Source texts ({item.references.length})</summary>
@@ -107,7 +121,11 @@ export default function Evidence({
         <div className="dual">
           <label className="field">
             Review outcome
-            <select value={disposition} onChange={(e) => setDisposition(e.target.value as Disposition)}>
+            <select
+              disabled={busy}
+              value={disposition}
+              onChange={(e) => setDisposition(e.target.value as Disposition)}
+            >
               <option value="pending">Pending review</option>
               <option value="explained">Explained</option>
               <option value="unresolved">Unresolved</option>
@@ -118,6 +136,7 @@ export default function Evidence({
         <label className="field">
           Interviewer note
           <Textarea
+            disabled={busy}
             required={disposition === "disclosed"}
             maxLength={12000}
             value={note}
@@ -135,6 +154,21 @@ export default function Evidence({
             <ClipboardCheck />
             Save review
           </Button>
+          {dirty && (
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={busy}
+              onClick={() => {
+                setNote(item.note)
+                setDisposition(item.disposition)
+                setError("")
+                setSaved(false)
+              }}
+            >
+              Discard review changes
+            </Button>
+          )}
           {saved && <small role="status">Review saved</small>}
         </div>
       </form>

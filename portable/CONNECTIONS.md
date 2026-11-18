@@ -12,7 +12,8 @@ Stop capture to flush the final words. Edit the excerpt before applying it to th
 | --- | --- |
 | Transcription | DEEPGRAM_API_KEY |
 | OpenAI reference | OPENAI_API_KEY and INTERVIEWCHECK_REFERENCE_MODEL |
-| Account service | INTERVIEWCHECK_ACCESS_URL and INTERVIEWCHECK_OPERATOR_EMAIL |
+| Embedded accounts | INTERVIEWCHECK_ACCESS_MODE=embedded and INTERVIEWCHECK_OPERATOR_EMAIL |
+| Remote account service | INTERVIEWCHECK_ACCESS_URL and INTERVIEWCHECK_OPERATOR_EMAIL |
 
 A generated reference sends the question and role to the provider. The operator can inspect and edit it before comparison. Supplied references and local transcripts work without credentials.
 
@@ -58,9 +59,21 @@ Under **Capture audio**, **Meeting recordings** lists recent Zoom and Webex file
 
 ## Accounts and billing
 
-Run the existing access service with its documented settings and point INTERVIEWCHECK_ACCESS_URL at its origin. Use HTTPS for a remote service. Assign the allowed email with INTERVIEWCHECK_OPERATOR_EMAIL. Sign up or sign in from **Connections**. FastAPI checks account membership on workspace requests and when a live transcription stream starts. Only an active entitlement for the operator opens the workspace. The access token is stored in an HTTP only session cookie.
+Set `INTERVIEWCHECK_ACCESS_MODE=embedded` and `INTERVIEWCHECK_OPERATOR_EMAIL` to run accounts in the workspace FastAPI process. Start the workspace, open **Account**, and create the operator account. A local review database has one operator. The service enforces the configured email before returning workspace data. Set `TRIAL_DAYS` to grant new accounts a trial. The default is zero days. For public operation also set `INTERVIEWCHECK_SIGNUP_SECRET` to a strong invitation code before registration. Public embedded registration requires this code. The account service stores only scrypt password hashes and hashed session tokens. The browser receives a session cookie with HttpOnly and SameSite Strict attributes. Public HTTPS mode sets Secure.
 
-**Open checkout** and **Billing portal** use the existing Stripe service. After returning from Stripe, open the portable workspace and select **Refresh access**. The native billing return page also offers its macOS application link. Without Stripe configuration the access server reports that billing is unavailable. Personal provider tokens and billing credentials are separate. [Access server setup](../server/README.md).
+The default account database is `access.sqlite3` beside the review database. Set `INTERVIEWCHECK_ACCESS_DB` to override it. Stop the original Node access service and use a consistent SQLite backup to migrate existing users, device sessions, grants and subscriptions. The Python service reads schema versions 1 to 3, updates older versions to 3, and adds tables for rate limits and concurrent webhook updates. The native production scrypt format is compatible. Keep this file separate from the review database. `SESSION_TTL_DAYS` defaults to 30. Disabled accounts and revoked or expired sessions lose access.
+
+For subscriptions, set `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and at least one of `STRIPE_PRICE_MONTHLY` and `STRIPE_PRICE_ANNUAL`. Enable the Stripe customer portal. Set `PUBLIC_BASE_URL` to the externally reachable service origin, or use the configured public workspace origin. During local testing set it to the browser entry origin including the port, and run `stripe listen --forward-to http://localhost:3000/v1/billing/webhook` for the Next.js app. Use port 8765 for the packaged edition. Configure Stripe to deliver checkout.session.completed and customer.subscription.created, updated, paused, resumed, and deleted events to `/v1/billing/webhook`. The service verifies the raw request signature and timestamp before it processes a delivery. It rechecks changed subscriptions with Stripe and commits the entitlement update and replay record in one transaction.
+
+**Open checkout** opens the selected plan in Stripe. **Billing portal** opens the customer portal. When Stripe returns, open **Account** and choose **Refresh access**. A checkout return alone does not grant access. The signed subscription event must have arrived. Past due grace starts when the status changed and defaults to three days, configurable with `PAST_DUE_GRACE_DAYS`. Only configured subscription prices qualify.
+
+For a separate account service, run `python -m uvicorn api.account_server:app --host 127.0.0.1 --port 8787` from the portable directory, with the account environment above and an invitation code. Configure the reverse proxy for HTTPS before exposing that service. Its `/v1` routes serve accounts and billing only. Point the workspace at it with `INTERVIEWCHECK_ACCESS_URL` and set the operator email. An existing compatible Node access service can also serve this remote mode. The packaged app needs no Node account service.
+
+## Account administration
+
+An administrator can search users, grant or revoke complimentary access, change a role, disable an account, and inspect recent audit entries in **Account**. The UI asks for confirmation before applying changes. Disabling an account revokes its sessions. The service protects the last active administrator from demotion or removal. To provision an initial administrator, configure the email in `ADMIN_EMAILS` and set `ADMIN_BOOTSTRAP_SECRET`, then enter that secret under **Administrator setup** at signup. In public mode the separate operator invitation is also required. Existing native administrator roles are retained when an access database is migrated.
+
+The Python access API provides the native admin operations at `/v1/admin/stats`, `/v1/admin/users`, `/v1/admin/users/{id}` and `/v1/admin/audit`. An authenticated admin bearer token is required. An embedded workspace admits only the assigned operator. A separately deployed access service can manage membership for multiple workstations.
 
 ## Verification
 

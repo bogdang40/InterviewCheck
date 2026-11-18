@@ -9,14 +9,18 @@ export default function SessionSetup({
   roles,
   candidate,
   role,
+  roleId,
   onStart,
 }: {
   roles: Role[]
   candidate: string
   role: string
+  roleId?: string
   onStart: (session: Interview) => void
 }) {
   const [id] = useState(() => crypto.randomUUID())
+  const [selectedId, setSelectedId] = useState(roleId ?? "")
+  const [roleName, setRoleName] = useState(role)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
   async function start(e: FormEvent<HTMLFormElement>) {
@@ -29,7 +33,8 @@ export default function SessionSetup({
         await api<Interview>("sessions", "POST", {
           id,
           candidate: data.get("candidate"),
-          role: data.get("role"),
+          role: roleName,
+          role_id: selectedId || null,
           policy: data.get("policy"),
           consent: data.has("consent"),
         }),
@@ -48,6 +53,29 @@ export default function SessionSetup({
         <p>Record the rules agreed with the candidate before collecting an answer.</p>
       </div>
       <form className="panel form-panel stack" onSubmit={start}>
+        {roles.length > 0 && (
+          <label className="field">
+            Saved role template
+            <select
+              value={selectedId}
+              onChange={(e) => {
+                const selected = roles.find((r) => r.id === e.target.value)
+                setSelectedId(selected?.id ?? "")
+                setRoleName(selected?.name ?? "")
+              }}
+            >
+              <option value="">Enter a role manually</option>
+              {roles.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name}
+                  {roles.some((other) => other.id !== r.id && other.name === r.name)
+                    ? " · " + (r.description.slice(0, 55) || "Template") + " · " + r.id.slice(0, 8)
+                    : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <div className="dual">
           <label className="field">
             Candidate
@@ -63,17 +91,13 @@ export default function SessionSetup({
             Role
             <Input
               required
-              list="role-list"
               name="role"
-              defaultValue={role}
+              value={roleName}
+              readOnly={!!selectedId}
+              onChange={(e) => setRoleName(e.target.value)}
               maxLength={180}
               placeholder="Role title"
             />
-            <datalist id="role-list">
-              {roles.map((r) => (
-                <option key={r.id} value={r.name} />
-              ))}
-            </datalist>
           </label>
         </div>
         <label className="field">

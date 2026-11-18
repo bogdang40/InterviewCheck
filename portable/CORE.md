@@ -1,12 +1,12 @@
 # Review service
 
-The FastAPI service keeps interviews and roles in a local SQLite file. Start it from the portable directory with the command below. Build the browser application before starting the service so it can mount the exported pages. The API documentation is available at /docs on the same port.
+The FastAPI service keeps interviews and roles in a local SQLite file. Start it from the portable directory with the command below. The Next.js runtime forwards workspace API requests to this service. The standalone archive serves its built pages directly from FastAPI. The API documentation is available at /docs on the same port.
 
 ```sh
 python -m uvicorn api.main:app --host 127.0.0.1 --port 8000
 ```
 
-The default database is `portable/data/review.sqlite3`. Set `INTERVIEWCHECK_DB` to select another file. Set up the existing access service and operator email as described in the portable setup guide to require account entitlement on the workstation. Local mode uses the workstation account as its trust boundary. Multiple people who share the same OS account also share the workspace.
+The default database is `portable/data/review.sqlite3`. Set `INTERVIEWCHECK_DB` to select another file. Enable embedded FastAPI accounts or configure a remote access service and the operator email to enforce membership. [Account and billing setup](CONNECTIONS.md). Local mode uses the workstation account as its trust boundary. Multiple people who share the same OS account also share the workspace.
 
 ## Review flow
 
@@ -39,6 +39,12 @@ All workspace actions use the local origin. Include `X-InterviewCheck: 1` with P
 | POST /api/roles/import | Read the JSON object exported by the native role editor |
 
 For create operations a client can supply an optional UUID as `id`. Replaying the same ID with identical content returns the existing object. Reusing the ID for different input returns HTTP 409. Use an answer's PUT route for intentional edits. Writes use SQLite transactions.
+
+## Interview lifecycle
+
+`POST /api/sessions/{id}/finish` records the end of capture. `POST /api/sessions/{id}/reopen` allows capture again when notice was recorded. Both operations can be retried. Review notes and exports remain available when capture has ended. An outstanding edit in the browser must be saved or discarded before exporting.
+
+A new session can select a saved role using its UUID in `role_id`. Its planned questions are copied into the interview. `PUT /api/roles/{id}` edits the reusable template. Existing interviews retain the questions they started with. For sessions from earlier editions, the upgrade recovers a plan from the role title only when exactly one saved template has that name.
 
 ## Native migration
 

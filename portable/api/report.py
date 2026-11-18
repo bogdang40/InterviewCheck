@@ -15,6 +15,7 @@ def heading(text):
 def report(session):
     lines = ["# Interview review", "", "## Session", "", literal(
         f"{session['candidate']}\n{session['role']}\n{session['created_at']}"), "",
+        f"Interview status: {session.get('ended_at') or 'In progress'}", "",
         f"Candidate notice recorded: {'Yes' if session['consent'] else 'Unknown'}", "",
         "### Agreed resources", "", literal(session["policy"]), "",
         "Shared wording requires interpretation against the interview rules.", ""]

@@ -1,0 +1,12 @@
+{
+  "name": "interviewcheck",
+  "private": true,
+  "engines": { "node": ">=22.13.0" },
+  "scripts": {
+    "setup": "node portable/web-runtime.mjs setup",
+    "dev": "node portable/web-runtime.mjs dev",
+    "build": "node portable/web-runtime.mjs build",
+    "start": "node portable/web-runtime.mjs start",
+    "export": "node portable/web-runtime.mjs export"
+  }
+}

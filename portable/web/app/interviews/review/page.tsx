@@ -1,0 +1,52 @@
+"use client"
+
+import { Suspense } from "react"
+import Link from "next/link"
+import { useSearchParams } from "next/navigation"
+import InterviewView from "@/components/InterviewView"
+import WorkspaceError from "@/components/WorkspaceError"
+import type { Answer, Interview } from "@/lib/api"
+import { useResource } from "@/lib/workspace"
+
+function Record() {
+  const id = useSearchParams().get("id")
+  const valid = id && /^[\da-f-]{36}$/i.test(id)
+  const session = useResource<Interview>(valid ? "sessions/" + id : null)
+  if (!valid)
+    return (
+      <p role="alert">
+        Choose a session from <Link href="/interviews/">Interviews</Link>.
+      </p>
+    )
+  if (session.error) return <WorkspaceError text={session.error} retry={session.reload} />
+  if (!session.data) return <p role="status">Loading interview…</p>
+  function change(_: string, item: Answer) {
+    session.update((previous) => {
+      const answers = previous.answers.some((a) => a.id === item.id)
+        ? previous.answers.map((a) => (a.id === item.id ? item : a))
+        : [...previous.answers, item]
+      return {
+        ...previous,
+        answers,
+        answer_count: answers.length,
+        review_count: answers.filter((a) => a.result.status === "match" && a.disposition === "pending")
+          .length,
+      }
+    })
+  }
+  return (
+    <InterviewView
+      key={id}
+      session={session.data}
+      changed={change}
+      onTransition={(next) => session.update(() => next)}
+    />
+  )
+}
+export default function ReviewPage() {
+  return (
+    <Suspense fallback={<p role="status">Loading interview…</p>}>
+      <Record />
+    </Suspense>
+  )
+}

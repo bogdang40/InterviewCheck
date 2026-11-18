@@ -13,16 +13,26 @@ export default function Roles({
 }: {
   roles: Role[]
   onSave: (r: Role) => void
-  prepare: (role: string) => void
+  prepare: (role: Role) => void
 }) {
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
   const [questions, setQuestions] = useState("")
   const [generating, setGenerating] = useState(false)
+  const [editing, setEditing] = useState(false)
   const [adding, setAdding] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
   const [id, setId] = useState(() => crypto.randomUUID())
+  function open(role?: Role) {
+    setAdding(true)
+    setEditing(!!role)
+    setError("")
+    setId(role?.id ?? crypto.randomUUID())
+    setName(role?.name ?? "")
+    setDescription(role?.description ?? "")
+    setQuestions(role?.questions.join("\n") ?? "")
+  }
   async function save(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
     if (generating || busy) return
@@ -30,7 +40,7 @@ export default function Roles({
     setBusy(true)
     setError("")
     try {
-      const role = await api<Role>("roles", "POST", {
+      const role = await api<Role>(editing ? "roles/" + id : "roles", editing ? "PUT" : "POST", {
         id,
         name: form.get("name"),
         description: form.get("description"),
@@ -61,7 +71,12 @@ export default function Roles({
       <section className="panel">
         <div className="panel-head">
           <h2>Saved roles</h2>
-          <Button size="sm" onClick={() => setAdding(!adding)} variant={adding ? "outline" : "default"}>
+          <Button
+            size="sm"
+            disabled={busy || generating}
+            onClick={() => (adding ? setAdding(false) : open())}
+            variant={adding ? "outline" : "default"}
+          >
             {!adding && <Plus />}
             {adding ? "Cancel" : "Add role"}
           </Button>
@@ -116,7 +131,10 @@ export default function Roles({
               <strong>{r.name}</strong>
               <p>{r.description || `${r.questions.length} planned questions`}</p>
             </div>
-            <Button variant="ghost" onClick={() => prepare(r.name)}>
+            <Button disabled={adding} variant="outline" size="sm" onClick={() => open(r)}>
+              Edit role
+            </Button>
+            <Button variant="ghost" onClick={() => prepare(r)}>
               Prepare <ArrowRight />
             </Button>
           </div>

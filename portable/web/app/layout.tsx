@@ -1,3 +1,4 @@
+import WorkspaceShell from "@/components/WorkspaceShell"
 import type { Metadata } from "next"
 import "@fontsource-variable/dm-sans"
 import "@fontsource/ibm-plex-mono/400.css"
@@ -15,7 +16,9 @@ export const metadata: Metadata = {
 export default function Layout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <WorkspaceShell>{children}</WorkspaceShell>
+      </body>
     </html>
   )
 }

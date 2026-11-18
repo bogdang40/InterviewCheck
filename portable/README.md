@@ -1,6 +1,6 @@
 # InterviewCheck portable edition
 
-Run the interview workspace on one Windows or Linux workstation. The browser loads a local production build of Next.js. FastAPI stores the interview in SQLite. The sample review and manual interview workflow work without vendor accounts.
+This directory contains the web frontend, Python API and an optional distribution for a single workstation. To start the Next.js and FastAPI development servers from the repository root, run `npm run dev` and open [InterviewCheck](http://localhost:3000). See the [web runtime guide](WEB.md). In the packaged edition, the browser loads a local production build of Next.js. FastAPI stores the interview in SQLite. The sample review and manual interview workflow work without vendor accounts.
 
 ## Start from the distribution
 
@@ -13,17 +13,17 @@ Extract the entire InterviewCheck folder to a writable location. Install Python 
 
 Open [the workspace](http://127.0.0.1:8765). Leave the terminal open while using it. Ctrl+C stops the service. To use another local port, pass `--port 8766`. Start in the same extracted folder to reopen your interviews.
 
-## Start from source
+## Build the optional distribution from source
 
-Install Node.js 22.13 or later with npm and Python 3.11 or later. Run the Windows or Linux command above from the repository's `portable` directory. The launcher builds the Next.js export, checks changes to its inputs at each start and serves it from FastAPI. Use `--build-only` for a build without a server. The API and interface share one origin. Run the production export for testing the full workflow.
+Install Node.js 22.13 or later with npm and Python 3.11 or later. Run the Windows or Linux command above from the repository's `portable` directory. The launcher builds the Next.js export, checks changes to its inputs at each start and serves it from FastAPI. Use `--build-only` for a build without a server. The API and interface share one origin.
 
 ## Review an interview
 
 1. Open **Open sample** to compare a fictional answer. Mark the reference as permitted and inspect the change. The sample does not enter the session log.
 2. Select **New interview**. Enter a candidate name or alias, a role and the agreed assistance policy. Confirm the notice. Add a question and answer by typing, selecting a speaker and exchange from WebVTT, or using a configured transcription provider.
 3. Add named sources. Mark permitted sources explicitly. The comparison uses these designations. A free text description of the policy cannot classify a source automatically.
-4. Select **Save and compare**. For a passage match, inspect the candidate and source text. Ask the suggested follow up and save the candidate's explanation under the review outcome. If the candidate discloses assistance, select that outcome and record what they said. **Limited evidence** means a comparison could not establish overlap. **No passage match** refers only to the supplied sources.
-5. Reopen the interview in **Interviews**. Export a Markdown report, print to PDF or export the archive as CSV. The role library accepts native role exports. The migration command imports a snapshot of the native Mac database and retains original scores and notes.
+4. Open **Live comparison** to preview the current exchange. Select **Save and compare** to keep it. For a passage match, inspect the candidate and source text. Ask the suggested follow up and save the candidate's explanation under the review outcome. If the candidate discloses assistance, select that outcome and record what they said. **Limited evidence** means a comparison could not establish overlap. **No passage match** refers only to the supplied sources.
+5. Use **Ask this follow up** to start another exchange. Select **Finish interview** when capture is complete. You can still review evidence and save notes. Select **Reopen interview** to resume capture. Export a Markdown report, print to PDF or export the archive as CSV. The role library accepts native role exports. The migration command imports a snapshot of the native Mac database and retains original scores and notes.
 
 ## Data and services
 
@@ -37,7 +37,7 @@ Optional generation uses the selected provider's configured model. Set one group
 | Anthropic | `ANTHROPIC_API_KEY`, `INTERVIEWCHECK_ANTHROPIC_MODEL` |
 | Azure OpenAI | `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_DEPLOYMENT`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_VERSION` |
 
-See [connection setup and limits](CONNECTIONS.md) for live audio, calendars, ATS and account services. Accounts and Stripe reuse the repository's existing Node access service. The standalone distribution includes its source in the access-server directory and can connect to a configured instance. Full [access server setup](../server/README.md) is in the source repository.
+See [connection setup and limits](CONNECTIONS.md) for live audio, calendars, ATS and account services. FastAPI can serve accounts and Stripe billing directly. The original access service is also supported for existing deployments.
 
 ## Native migration coverage
 

@@ -1,4 +1,5 @@
 """Record a synthetic microphone and return a scripted transcript over the browser socket."""
+import asyncio
 import json
 import re
 
@@ -8,7 +9,9 @@ from playwright.sync_api import expect
 
 
 @pytest.mark.parametrize("audio_source", ["microphone", "call"])
-def test_live_audio_transcript_requires_transfer_and_application(workspace_url, browser_page, audio_source):
+def test_live_audio_transcript_requires_transfer_and_application(workspace_url, browser_page, audio_source, monkeypatch):
+    from api import audio
+    monkeypatch.setenv("DEEPGRAM_API_KEY", "fixture")
     form = {"candidate": "Audio fixture", "role": "Engineer", "policy": "Notes allowed.", "consent": True}
     response = httpx.post(workspace_url + "/api/sessions", headers={"X-InterviewCheck": "1"}, json=form)
     response.raise_for_status()
@@ -30,27 +33,35 @@ def test_live_audio_transcript_requires_transfer_and_application(workspace_url, 
                 }
             };
         """)
-    page.route("**/api/integrations/status", lambda route: route.fulfill(json={
-        "transcription": True, "reference": False, "access": False, "ats": [], "calendars": [], "meetings": [],
-    }))
     packets = []
     tail = "Final words after stop."
     transcript = "This microphone contains only generated audio."
 
-    def mock_stream(socket):
-        def packet(value):
-            if value == "send-audio-to-deepgram":
-                socket.send(json.dumps({"ready": True}))
-            elif isinstance(value, bytes):
-                if not packets and value:
-                    socket.send(json.dumps({"text": transcript}))
-                packets.append(len(value))
-            elif value == "finish":
-                socket.send(json.dumps({"text": tail}))
-                socket.close(code=1000)
-        socket.on_message(packet)
+    class SyntheticProvider:
+        async def __aenter__(self):
+            self.results = asyncio.Queue()
+            return self
 
-    page.route_web_socket("**/api/integrations/live", mock_stream)
+        async def __aexit__(self, *args):
+            pass
+
+        async def send(self, data):
+            if isinstance(data, bytes):
+                if not packets and data:
+                    self.results.put_nowait(transcript)
+                packets.append(len(data))
+            elif data == '{"type":"CloseStream"}':
+                self.results.put_nowait(tail)
+                self.results.put_nowait(None)
+
+        async def __aiter__(self):
+            while (text := await self.results.get()) is not None:
+                yield json.dumps({"type": "Results", "is_final": True,
+                                  "channel": {"alternatives": [{"transcript": text}]}})
+
+    # Keep the browser, Next proxy (when selected) and FastAPI socket real.
+    # Replace only the final vendor transport.
+    monkeypatch.setattr(audio, "connect", lambda *args, **kwargs: SyntheticProvider())
     page.goto(workspace_url + "/#session/" + response.json()["id"])
     page.get_by_role("textbox", name="Question", exact=True).fill("What was measured?")
     page.get_by_role("textbox", name="Candidate answer").fill("First pass.")

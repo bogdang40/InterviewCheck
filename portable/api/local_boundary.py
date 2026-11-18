@@ -1,5 +1,5 @@
 """Same origin access to the single operator service on the loopback interface."""
-from urllib.parse import urlsplit
+from .origin import browser_origin
 
 from starlette.datastructures import Headers
 from starlette.responses import JSONResponse
@@ -14,24 +14,16 @@ class LocalBoundary:
             await self.app(scope, receive, send)
             return
         headers = Headers(scope=scope)
-        host = headers.get("host", "").lower()
-        try:
-            authority = urlsplit("//" + host)
-            valid_host = (authority.hostname in {"localhost", "127.0.0.1", "::1"} and
-                          not authority.username and not authority.password and not authority.path and
-                          not authority.query and not authority.fragment)
-            _ = authority.port
-        except ValueError:
-            valid_host = False
+        expected = browser_origin(headers, scope["scheme"])
 
         async def reject(status, detail):
             await JSONResponse({"detail": detail}, status_code=status)(scope, receive, send)
 
-        if not valid_host:
+        if expected is None:
             await reject(400, "Open InterviewCheck on its local address.")
             return
         origin = headers.get("origin")
-        if origin and origin != scope["scheme"] + "://" + host:
+        if origin and origin != expected:
             await reject(403, "The request must originate from this workspace.")
             return
         if scope["method"] not in {"GET", "HEAD", "OPTIONS"} and scope["path"].startswith("/api/"):

@@ -93,6 +93,6 @@ export default function Connections({ onPrepare }: { onPrepare: (candidate: stri
       <label className="field">Role<Input required disabled={busy} value={selected.role} onChange={e => setSelected({ ...selected, role: e.target.value })} /></label>
       <Button>Prepare interview</Button>
     </form>}
-    {status && <AccountConnection enabled={status.access} />}
+    {status && <AccountConnection enabled={status.access} inviteRequired={status.inviteRequired} />}
   </div>;
 }

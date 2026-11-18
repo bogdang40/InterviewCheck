@@ -12,14 +12,17 @@ from .access import require_entitlement
 from .evidence import compare
 from .integrations import router as integrations
 from .local_boundary import LocalBoundary
+from .origin import public_origin
 from .migrate import import_role, preview_role
 from .exports import router as exports
 from .models import AnswerInput, ReviewInput, RoleInput, SessionInput
 from .report import report
+from .session_workflow import router as session_workflow
 
 
 @asynccontextmanager
 async def lifespan(_):
+    public_origin()  # Validate configured web exposure before opening the database.
     store.initialize(store.db_path())
     yield
 
@@ -131,6 +134,7 @@ def preview_exported_role(document: dict):
             raise HTTPException(422, str(error)) from error
 
 
+workspace.include_router(session_workflow)
 workspace.include_router(ats_notes.router)
 workspace.include_router(exports)
 app.include_router(authoring.router)
@@ -138,10 +142,15 @@ app.include_router(workspace)
 app.include_router(integrations)
 
 
-@app.api_route("/api/{unknown:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
+@app.api_route("/api/{unknown:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"], include_in_schema=False)
 def missing(unknown: str):
     raise HTTPException(404, "Unknown API route.")
 
+
+
+from .account_server import local_service
+
+app.mount("/v1", local_service)
 
 static = Path(__file__).resolve().parents[1] / "web" / "out"
 if static.is_dir():

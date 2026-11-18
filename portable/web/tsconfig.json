@@ -26,16 +26,26 @@
         "./*"
       ]
     },
-    "allowJs": true
+    "allowJs": true,
+    "types": [
+      "node",
+      "next",
+      "next/image-types/global"
+    ]
   },
   "include": [
-    "next-env.d.ts",
-    "**/*.ts",
-    "**/*.tsx",
-    ".next/types/**/*.ts",
-    ".next/dev/types/**/*.ts"
+    "app/**/*.tsx",
+    "app/**/*.ts",
+    "components/**/*.tsx",
+    "components/**/*.ts",
+    "lib/**/*.ts",
+    "*.ts"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    ".next",
+    ".next-server",
+    "out",
+    "next-env.d.ts"
   ]
 }
