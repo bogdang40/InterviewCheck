@@ -1,0 +1,106 @@
+import { useState, type FormEvent } from "react"
+import { ArrowRight } from "lucide-react"
+import { Button } from "./ui/button"
+import { Input } from "./ui/input"
+import { Textarea } from "./ui/textarea"
+import { api, message, type Interview, type Role } from "@/lib/api"
+
+export default function SessionSetup({
+  roles,
+  candidate,
+  role,
+  onStart,
+}: {
+  roles: Role[]
+  candidate: string
+  role: string
+  onStart: (session: Interview) => void
+}) {
+  const [id] = useState(() => crypto.randomUUID())
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState("")
+  async function start(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    const data = new FormData(e.currentTarget)
+    setBusy(true)
+    setError("")
+    try {
+      onStart(
+        await api<Interview>("sessions", "POST", {
+          id,
+          candidate: data.get("candidate"),
+          role: data.get("role"),
+          policy: data.get("policy"),
+          consent: data.has("consent"),
+        }),
+      )
+    } catch (e) {
+      setError(message(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <>
+      <div className="page-title">
+        <div className="eyebrow">INTERVIEW SETUP</div>
+        <h1>New interview</h1>
+        <p>Record the rules agreed with the candidate before collecting an answer.</p>
+      </div>
+      <form className="panel form-panel stack" onSubmit={start}>
+        <div className="dual">
+          <label className="field">
+            Candidate
+            <Input
+              required
+              name="candidate"
+              defaultValue={candidate}
+              maxLength={180}
+              placeholder="Name or alias"
+            />
+          </label>
+          <label className="field">
+            Role
+            <Input
+              required
+              list="role-list"
+              name="role"
+              defaultValue={role}
+              maxLength={180}
+              placeholder="Role title"
+            />
+            <datalist id="role-list">
+              {roles.map((r) => (
+                <option key={r.id} value={r.name} />
+              ))}
+            </datalist>
+          </label>
+        </div>
+        <label className="field">
+          Assistance policy
+          <Textarea
+            required
+            name="policy"
+            maxLength={4000}
+            placeholder="Which tools, notes or references may the candidate use?"
+          />
+        </label>
+        <label className="check">
+          <input type="checkbox" name="consent" required />I confirmed that the candidate knows how their
+          answers will be captured and reviewed.
+        </label>
+        {error && (
+          <p role="alert" className="error">
+            {error}
+          </p>
+        )}
+        <div>
+          <Button disabled={busy}>
+            {busy ? "Starting…" : "Start interview"}
+            <ArrowRight />
+          </Button>
+        </div>
+      </form>
+    </>
+  )
+}

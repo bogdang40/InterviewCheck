@@ -1,5 +1,7 @@
 # InterviewCheck
 
+The [portable edition](portable/README.md) runs the interview workspace on Windows and Linux with Next.js and FastAPI. The [implementation plan](PLAN.md) explains the evidence rules and migration scope. The native Mac app is described below.
+
 A Mac app for interviewers that helps spot candidates who read their answers
 from AI tools (Cluely, Interview Coder, ChatGPT on a second screen).
 

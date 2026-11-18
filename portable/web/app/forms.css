@@ -1,0 +1,256 @@
+.page-title {
+  margin-bottom: 25px;
+}
+.page-title h1 {
+  margin-top: 6px;
+}
+.page-title p,
+.muted {
+  color: var(--muted);
+}
+.page-title p {
+  margin-top: 9px;
+}
+.back {
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 18px;
+}
+.form-panel,
+.evidence,
+.inset {
+  padding: 24px;
+}
+.form-panel {
+  max-width: 900px;
+}
+.form-heading {
+  margin-bottom: 15px;
+}
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.dual {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.field input,
+.field textarea,
+.field select {
+  font-size: 14px;
+  font-weight: 400;
+}
+textarea {
+  resize: vertical;
+}
+select,
+.field input[type="file"] {
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 6px;
+  padding: 8px 10px;
+  width: 100%;
+}
+.check {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  font-size: 14px;
+}
+.check input {
+  accent-color: var(--green);
+}
+.source-box,
+.policy,
+.notice,
+.probe,
+.import {
+  border: 1px solid var(--line);
+  background: #f5f8f2;
+  border-radius: 8px;
+  padding: 16px;
+}
+.source-box legend {
+  font: 11px var(--mono);
+  padding: 0 5px;
+  color: var(--muted);
+}
+.source-box > p {
+  margin: 7px 0 12px;
+}
+.policy,
+.notice,
+.evidence,
+.form-panel {
+  margin-bottom: 18px;
+}
+.policy strong {
+  font-size: 13px;
+}
+.policy p {
+  margin-top: 4px;
+}
+.import summary,
+details summary {
+  font-weight: 560;
+  font-size: 14px;
+}
+details[open] > summary {
+  margin-bottom: 14px;
+}
+.error {
+  color: #862d21;
+  background: #fff1ec;
+  border: 1px solid #ebc0b6;
+  padding: 12px;
+  border-radius: 7px;
+  margin-bottom: 12px;
+}
+.error a {
+  text-decoration: underline;
+}
+.session-entry,
+.role-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 22px;
+  width: 100%;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+}
+.session-entry:hover {
+  background: #f1f6ee;
+}
+.session-entry:last-child,
+.role-row:last-child {
+  border: 0;
+}
+.session-avatar {
+  width: 33px;
+  height: 33px;
+  display: grid;
+  place-items: center;
+  background: #e7f0e5;
+  border-radius: 8px;
+  color: #315d3b;
+}
+.entry-copy {
+  min-width: 0;
+}
+.entry-copy b,
+.entry-copy small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.entry-copy small,
+.entry-state {
+  font-size: 12px;
+  color: var(--muted);
+}
+.entry-state {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  white-space: nowrap;
+}
+.search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 7px 12px;
+  margin: 0 22px 14px;
+}
+.search input {
+  width: 100%;
+  outline: 0;
+}
+.role-row > svg {
+  width: 18px;
+  flex: none;
+}
+.role-row > button {
+  margin-left: auto;
+}
+.role-row p {
+  white-space: pre-line;
+}
+.evidence h2 {
+  margin: 8px 0;
+}
+.transcript-text {
+  line-height: 1.65;
+  color: #49594f;
+  white-space: pre-wrap;
+}
+.findings {
+  margin: 20px 0;
+  padding: 18px 0;
+  border-block: 1px solid var(--line);
+}
+.findings > p {
+  margin: 8px 0;
+  color: var(--muted);
+}
+.status {
+  font: 11px var(--mono);
+  padding: 5px 9px;
+  color: #334a3b;
+  border: 1px solid #d1ded1;
+  background: #edf3ec;
+  border-radius: 5px;
+}
+.status.match {
+  color: #71440d;
+  background: #fcf0d7;
+  border-color: #e8d1a1;
+}
+.passage {
+  padding: 15px;
+  background: #faf5e8;
+  border: 1px solid #e8dec6;
+  border-radius: 6px;
+  margin: 13px 0;
+}
+.passage-meta {
+  color: #755526;
+  font-size: 10px;
+  margin-bottom: 10px;
+}
+.passage blockquote {
+  margin: 5px 0 0;
+  font-size: 14px;
+}
+.probe {
+  margin-top: 15px;
+}
+.probe .eyebrow {
+  margin-bottom: 5px;
+}
+.evidence details {
+  margin-bottom: 15px;
+}
+.evidence pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+.evidence,
+.form-panel,
+.panel {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
