@@ -80,7 +80,7 @@
 }
 .stat,
 .panel {
-  background: #fdfefb;
+  background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 11px;
 }
@@ -91,7 +91,7 @@
   padding: 18px 22px;
 }
 .stat > svg {
-  color: #63816a;
+  color: var(--icon);
   margin-top: 2px;
 }
 .stat strong {
@@ -106,7 +106,7 @@
   font-family: inherit;
   letter-spacing: 0;
   font-size: 13px;
-  color: #52665a;
+  color: var(--secondary-ink);
   font-weight: 530;
 }
 .overview-grid {
@@ -123,20 +123,20 @@
   gap: 12px;
 }
 .eyebrow {
-  color: #587660;
+  color: var(--secondary-ink);
   font-size: 10px;
   margin-bottom: 8px;
 }
 .panel-head > svg,
 .empty-icon {
-  color: #6c8b74;
+  color: var(--icon);
 }
 .session-head {
   display: flex;
   justify-content: space-between;
-  background: #f1f5ef;
+  background: var(--subtle);
   padding: 8px 23px;
-  color: #65766a;
+  color: var(--secondary-ink);
   font: 10px var(--mono);
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -155,7 +155,7 @@
   height: 42px;
   display: grid;
   place-items: center;
-  background: #edf3ec;
+  background: var(--subtle);
   border-radius: 50%;
   margin-bottom: 6px;
 }
@@ -177,7 +177,7 @@
 .method-item > svg {
   width: 18px;
   flex-shrink: 0;
-  color: #496c54;
+  color: var(--icon);
 }
 .method-item strong {
   display: block;
@@ -187,7 +187,7 @@
 .text-action {
   font-size: 13px;
   font-weight: 600;
-  color: #265d3c;
+  color: var(--green-ink);
   margin: 0 23px 20px;
 }
 .bottom {
@@ -195,7 +195,7 @@
   justify-content: space-between;
   align-items: center;
   border-top: 1px solid var(--line);
-  color: #64766a;
+  color: var(--secondary-ink);
   padding-top: 15px;
   margin-top: 28px;
   font-size: 12px;

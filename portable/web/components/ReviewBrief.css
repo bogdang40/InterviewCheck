@@ -1,0 +1,95 @@
+.brief-layout {
+  display: grid;
+  gap: 20px;
+}
+.brief-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.brief-heading p {
+  color: var(--muted);
+  margin-top: 8px;
+}
+.brief-body {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.67fr) minmax(320px, 1.4fr);
+  gap: 17px;
+  align-items: start;
+}
+.brief-options,
+.brief-preview {
+  padding: clamp(17px, 2.4vw, 32px);
+}
+.brief-options {
+  display: grid;
+  gap: 16px;
+}
+.brief-options p,
+.brief-choices label {
+  color: var(--muted);
+  font-size: 14px;
+}
+.brief-choices {
+  margin: 12px 0;
+  display: grid;
+  gap: 10px;
+  max-height: 420px;
+  overflow: auto;
+}
+.brief-choices fieldset {
+  border-block-start: 1px solid var(--line);
+  margin: 0;
+  padding-block: 6px;
+}
+.brief-choices legend {
+  font-weight: 620;
+  font-size: 13px;
+  padding-right: 5px;
+}
+.brief-options > button {
+  justify-self: start;
+}
+.brief-preview {
+  background: var(--surface);
+}
+.brief-preview-label {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding-bottom: 12px;
+  margin-bottom: 16px;
+  color: var(--muted);
+  font-size: 13px;
+  border-bottom: 1px solid var(--line);
+}
+.brief-preview h2 {
+  font-size: clamp(24px, 3vw, 33px);
+  margin-bottom: 10px;
+}
+.brief-preview h3 {
+  margin: 22px 0 6px;
+}
+.brief-preview h4 {
+  font-size: 15px;
+  font-weight: 650;
+  margin: 10px 0 4px;
+}
+.brief-preview p {
+  margin: 5px 0;
+}
+.brief-preview pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: 12px;
+  background: var(--subtle);
+  font: inherit;
+  border-radius: 5px;
+}
+@media (max-width: 850px) {
+  .brief-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

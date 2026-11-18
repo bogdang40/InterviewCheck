@@ -1,4 +1,5 @@
 """Generate editable interview questions and comparison sources on explicit request."""
+import asyncio
 import json
 import re
 from typing import Literal
@@ -61,7 +62,10 @@ async def complete(provider, instructions, prompt):
         messages = [{"role": "system", "content": instructions}, {"role": "user", "content": prompt}]
         body = {"messages": messages, "max_completion_tokens": 2000}
         if provider == "Azure OpenAI":
-            root = urlsplit(setting("AZURE_OPENAI_ENDPOINT"))
+            try:
+                root = urlsplit(setting("AZURE_OPENAI_ENDPOINT"))
+            except ValueError as error:
+                raise HTTPException(503, "Configure a valid Azure OpenAI HTTPS endpoint.") from error
             if root.scheme != "https" or not root.hostname or not root.hostname.endswith(".openai.azure.com") or root.netloc != root.hostname:
                 raise HTTPException(503, "Configure a valid Azure OpenAI HTTPS endpoint.")
             url = f"https://{root.hostname}/openai/deployments/{quote(model, safe='')}/chat/completions"
@@ -104,3 +108,37 @@ async def questions(form: Draft):
 async def reference(form: Example):
     model, text = await complete(form.provider, STYLES[form.style], json.dumps({"role": form.role, "question": form.question}))
     return {"label": f"{form.provider} · {model} · {form.style}"[:180], "text": text, "permitted": False}
+
+
+class Recipient(Input):
+    provider: Provider
+    style: Literal["Spoken answer", "Talking points", "Worked example"]
+
+
+class Lineup(Input):
+    role: Name
+    question: Question
+    pairs: list[Recipient] = Field(min_length=1, max_length=3)
+    existing_reference_count: int = Field(ge=0, le=12)
+
+
+@router.post("/references")
+async def references(form: Lineup):
+    pairs = {(item.provider, item.style) for item in form.pairs}
+    if len(pairs) != len(form.pairs):
+        raise HTTPException(422, "Choose each provider and format only once.")
+    if form.existing_reference_count + len(pairs) > 12:
+        raise HTTPException(422, "The selected requests exceed the twelve reference limit.")
+    available = set(providers())
+    if any(provider not in available for provider, _ in pairs):
+        raise HTTPException(503, "Configure all selected providers before starting the request.")
+
+    async def generate(item):
+        pair = item.model_dump()
+        try:
+            source = await reference(Example(**pair, role=form.role, question=form.question))
+        except HTTPException as error:
+            return {**pair, "error": str(error.detail)}
+        return {**pair, "source": source}
+
+    return {"results": await asyncio.gather(*(generate(item) for item in form.pairs))}

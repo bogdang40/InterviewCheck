@@ -1,5 +1,36 @@
 # Portable edition acceptance
 
+## Interview workbench
+
+Independent acceptance used fictional interviews in temporary databases. For the UI comparison, eight interviews contained 13 exchanges and three pending passage matches. Both affected interviews were absent from the five most recent rows in the original workspace. The new queue linked directly to each pending exchange, including one in a finished interview. At a 390 pixel viewport width, the first pending question in the six exchange record moved from 2,789 pixels below the top to 546 pixels below the top.
+
+| Workflow | Independent check |
+| --- | --- |
+| Review | Archive filters survived browser Back. Refresh retained the selected exchange. Mobile navigation stayed disabled during unsaved changes. A match following a Unicode emoji highlighted the correct text in the correct one of two sources with identical names. |
+| Updates from two tabs | A stale save preserved the local note, kept the current selection and left the stored version intact. The reviewer could compare versions, reconcile the note and advance. A separate check covered competing saved drafts. |
+| Transcript import | A three speaker WebVTT file produced only the selected interviewer and candidate exchanges. A new host selection or display ordinal could not duplicate an existing cue. Concurrent repeated imports produced one set of answers. An error in the final row left earlier rows unwritten. |
+| Policy and history | Revisions to a role left an existing interview's permitted sources intact. Selecting the second of two identical planned questions preserved its slot. An edited follow up retained its parent after saving and resuming a draft. |
+| Drafts and backup | Two separate FastAPI processes reopened the same saved draft. It stayed out of evidence and exports until publication. A backup restored the draft, source snapshots and imported cue identities. The Next.js proxy accepted a valid file above 2 MiB and rejected one byte above 20 MiB. |
+| Local media | Synthetic WAV playback and input checks used browser media APIs. A short or unreadable recording produced an error. A different transcript required a fresh file selection. Stopping a check before permission resolved released late tracks, and leaving the page closed the active audio context. |
+| Briefs and delivery | The default brief omitted private names, source labels, prompts, transcript and notes. Selecting a note enabled its export. A changed note invalidated the prior download approval. |
+| Data lifecycle | Purge required the current Trash version and exact interview ID. A previous version could not remove a restored interview. A delayed synthetic ATS callback did not update the receipt after a move and restore. |
+| Search and setup | A literal search containing percent and underscore matched one answer. Keyboard reopening, focus return, and answer navigation were checked. A partially configured ATS displayed a separate state for each operation. The catalog exposed no credential values and made no vendor calls. |
+| Practice | The three fictional exchanges used only the local preview endpoint. Practice notes, outcomes and reset did not create real interview records. |
+
+### Archive load
+
+A local Chrome test compared the archive before and after pagination with 5,000 synthetic interviews, six exchanges per interview and 30 role names. Each frontend measurement used a fresh 1440 pixel browser page. API time is the median of five local reads.
+
+| Metric at 5,000 sessions | Original full list | First page of 25 |
+| --- | ---: | ---: |
+| JSON returned | 1,697,607 bytes | 6,731 bytes |
+| Median API time | 76 ms | 5 ms |
+| DOM nodes | About 65,465 | About 513 |
+| Time until the expected rows were present, two runs | 389 ms in both runs | 97 and 103 ms |
+
+These figures describe this fixture, browser and workstation. They do not establish hosted throughput, physical capture compatibility or detection accuracy.
+
+
 ## Next.js server and FastAPI
 
 On November 18, 2026, Chrome on macOS exercised the Next.js development server and production server against separate FastAPI processes or listeners. Each scenario used a temporary SQLite database. The production browser suite exercised interview capture, review, exports, migrations, account access, and the actual WebSocket proxy. The combined backend and production acceptance run passed 122 tests. Five dedicated development checks passed, including the same audio transfer, interview lifecycle, role selection, signed webhook path and account administration. A scripted provider accepted real encoded audio frames and returned final words. No test sent audio or notes to a vendor.

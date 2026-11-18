@@ -1,5 +1,6 @@
 "use client"
 
+import WorkspaceSearch from "./WorkspaceSearch"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
@@ -12,6 +13,7 @@ import {
   LayoutGrid,
   Plug,
   AudioLines,
+  Database,
   ArrowLeft,
 } from "lucide-react"
 import { MotionConfig, motion } from "framer-motion"
@@ -22,12 +24,15 @@ const menu = [
   { path: "/interviews/", label: "Interviews", icon: FolderClock },
   { path: "/roles/", label: "Role library", icon: BriefcaseBusiness },
   { path: "/connections/", label: "Connections", icon: Plug },
+  { path: "/data/", label: "Data", icon: Database },
 ]
 const pages: Record<string, string> = Object.fromEntries(menu.map((item) => [item.path, item.label]))
 Object.assign(pages, {
   "/interviews/new/": "New interview",
   "/interviews/review/": "Interview record",
+  "/interviews/brief/": "Review brief",
   "/sample/": "Sample review",
+  "/trash/": "Trash",
   "/account/": "Account",
 })
 const bookmarks: Record<string, string> = {
@@ -64,6 +69,7 @@ export default function WorkspaceShell({ children }: { children: React.ReactNode
     <PreparationContext.Provider value={{ preparation, prepare }}>
       <MotionConfig reducedMotion="user">
         <div className="shell">
+          <a href="#main-content" className="skip-content">Skip to content</a>
           <aside className="sidebar">
             <Link className="brand" href="/" aria-label="InterviewCheck overview">
               <span className="brand-mark">
@@ -71,6 +77,7 @@ export default function WorkspaceShell({ children }: { children: React.ReactNode
               </span>
               Interview<span className="brand-light">Check</span>
             </Link>
+            <div className="mobile-tools"><WorkspaceSearch compact/><Link className="mobile-account" href="/account/"><UserRound size={15}/>Account</Link></div>
             <span className="side-caption">WORKSPACE</span>
             <nav aria-label="Workspace">
               {menu.map(({ path: href, label, icon: Icon }) => (
@@ -93,7 +100,7 @@ export default function WorkspaceShell({ children }: { children: React.ReactNode
               </Link>
             </div>
           </aside>
-          <main className="main">
+          <main className="main" id="main-content" tabIndex={-1}>
             <header className="top">
               <div className="breadcrumb">
                 <LayoutGrid size={15} />
@@ -101,7 +108,7 @@ export default function WorkspaceShell({ children }: { children: React.ReactNode
                 <ChevronRight size={13} />
                 <b>{pages[path] ?? "Page"}</b>
               </div>
-              <Link className="row" href="/account/"><UserRound size={16}/>Account</Link>
+              <div className="header-tools"><WorkspaceSearch/><Link className="row" href="/account/"><UserRound size={16}/>Account</Link></div>
             </header>
             <motion.div
               className="content"

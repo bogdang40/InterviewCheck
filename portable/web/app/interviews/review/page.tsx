@@ -9,7 +9,8 @@ import type { Answer, Interview } from "@/lib/api"
 import { useResource } from "@/lib/workspace"
 
 function Record() {
-  const id = useSearchParams().get("id")
+  const query = useSearchParams()
+  const id = query.get("id")
   const valid = id && /^[\da-f-]{36}$/i.test(id)
   const session = useResource<Interview>(valid ? "sessions/" + id : null)
   if (!valid)
@@ -38,7 +39,9 @@ function Record() {
     <InterviewView
       key={id}
       session={session.data}
+      answerId={query.get("answer")}
       changed={change}
+      onDraftChange={draft=>session.update(previous=>({...previous,draft}))}
       onTransition={(next) => session.update(() => next)}
     />
   )

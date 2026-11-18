@@ -73,10 +73,10 @@ def probe(question, spoken):
     return "Which assumption in your answer matters most? Walk through what changes if it fails."
 
 
-def compare(question: str, answer: str, references: list[Reference]) -> dict:
+def compare(question: str, answer: str, references: list[Reference], *, inherited_grams=None, legacy_labels=False) -> dict:
     spoken = Words(answer)
-    sources = [(ref.label, Words(ref.text)) for ref in references if not ref.permitted]
-    usable = [(label, words) for label, words in sources if len(words.tokens) >= MIN_RUN]
+    sources = [(i, ref.label, Words(ref.text)) for i, ref in enumerate(references) if not ref.permitted]
+    usable = [(i, label, words) for i, label, words in sources if len(words.tokens) >= MIN_RUN]
     result = {
         "status": "insufficient",
         "explanation": "Supply a comparison source with at least six words.",
@@ -94,14 +94,16 @@ def compare(question: str, answer: str, references: list[Reference]) -> dict:
         if ref.permitted:
             allowed.update(Words(ref.text).grams(4))
     excluded = mask_grams(spoken, 4, allowed)
+    if inherited_grams:
+        excluded.update(mask_grams(spoken, 4, inherited_grams))
     owners = Counter()
-    for _, source in usable:
+    for _, _, source in usable:
         owners.update(set(source.grams(MIN_RUN)))
     common = {gram for gram, count in owners.items() if count > 1}
     excluded.update(mask_grams(spoken, MIN_RUN, common))
 
     matches = []
-    for label, source in usable:
+    for source_index, label, source in usable:
         # Ambiguous repeated seeds within one source are omitted. Adjacent unique
         # seeds merge only when both answer and reference offsets advance together.
         seeds = {}
@@ -119,21 +121,25 @@ def compare(question: str, answer: str, references: list[Reference]) -> dict:
                     segments[-1] = (a, b, pos - a + MIN_RUN)
                     continue
             segments.append((pos, start, MIN_RUN))
-        matches.extend((length, pos, start, label, source) for pos, start, length in segments)
+        matches.extend((length, pos, start, source_index, label, source) for pos, start, length in segments)
 
     result.update(status="no_match", explanation="No eligible shared passage was found in the supplied sources.")
     if not matches:
         return result
     reported = set()
-    for length, pos, start, label, source in sorted(matches, key=lambda item: (-item[0], item[1])):
+    for length, pos, start, source_index, label, source in sorted(matches, key=lambda item: (-item[0], item[1])):
         # Suppress reuse of a single source passage repeated in the answer.
-        key = (label, start, length)
+        # Portable records predating source spans deduplicated by display label.
+        # Recovery replays that selection only when checking those stored findings.
+        key = (label if legacy_labels else source_index, start, length)
         if key in reported:
             continue
         reported.add(key)
         shown = min(length, MAX_EXCERPT)
         result["passages"].append({
-            "label": label, "words": length,
+            "label": label, "words": length, "source_index": source_index,
+            "answer_span": [spoken.spans[pos][0], spoken.spans[pos + length - 1][1]],
+            "source_span": [source.spans[start][0], source.spans[start + length - 1][1]],
             "answer_excerpt": spoken.excerpt(pos, shown), "source_excerpt": source.excerpt(start, shown),
         })
         if len(result["passages"]) == 3:

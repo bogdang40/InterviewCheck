@@ -78,3 +78,15 @@ The Python access API provides the native admin operations at `/v1/admin/stats`,
 ## Verification
 
 The integration tests replace network transport and exercise request construction, error handling, speaker selection data, provider consent, schedule and CSV parsing, access cookies, entitlement checks, recording selection and streaming flush. They do not measure detection accuracy, hardware audio support or tenant permissions.
+
+## Connection setup directory
+
+Open **Connections** and find a provider or task under **Connection setup**. Select a provider and expand its operation. Each operation lists its own required settings and any alternative credential group. The directory displays server setting names and whether each is present. Keys, service URLs, local paths, account identities and token values stay out of the response. Set variables in the process environment and restart the service after changing its environment.
+
+**Configured** means the required setup is present for that operation. It establishes neither successful authentication nor sufficient vendor permissions. For example, Workable lookup can be configured while private notes still require the workstation member setting. Zoom transcripts can be configured while transcribing a recording also requires Deepgram. Remote billing is labeled **Managed by account service** because the workspace cannot infer the remote Stripe configuration. File imports are labeled **Ready locally**. The directory performs no vendor authentication, OAuth refresh, transcription, generation, payment or send operation. In a gated workspace, the authenticated operator can inspect the directory.
+
+## Local audio preflight
+
+Use **Audio preflight** in New interview or Connections to test your own voice or a test call. **Test microphone** requests a microphone. **Test shared call audio** opens the browser's surface picker. Choose a call tab and enable audio if the browser offers it. The check measures the root mean square signal level for three seconds. A quiet result can mean that the selected source was silent. The result describes the selected stream during that interval.
+
+The test uses the browser's audio analyser. It creates no recording or transcript, stores no measurements and sends no audio to a service. **Stop audio check**, permission cancellation, an ended source, closing the panel, hiding the tab or leaving the page releases the tracks and audio context. A permission result arriving after cancellation is discarded. Browser and operating system support determine whether a selected sharing surface provides an audio track.

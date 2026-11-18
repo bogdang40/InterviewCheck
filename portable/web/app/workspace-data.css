@@ -1,0 +1,47 @@
+.data-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  align-items: start;
+}
+.data-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+  padding: clamp(18px, 2.5vw, 32px);
+}
+.data-symbol {
+  color: var(--green);
+}
+.data-panel .field,
+.restore-plan {
+  width: 100%;
+}
+.data-panel p,
+.data-panel small {
+  color: var(--muted);
+}
+.restore-plan {
+  display: grid;
+  gap: 12px;
+}
+.restore-plan table {
+  border-collapse: collapse;
+  width: 100%;
+  text-align: left;
+  font-size: 13px;
+}
+.restore-plan th,
+.restore-plan td {
+  padding: 6px;
+  border-bottom: 1px solid var(--line);
+}
+.restore-plan button {
+  justify-self: start;
+}
+@media (max-width: 760px) {
+  .data-grid {
+    grid-template-columns: 1fr;
+  }
+}

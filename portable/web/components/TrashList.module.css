@@ -1,0 +1,27 @@
+.list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.item {
+  padding: 14px 2px;
+  border-bottom: 1px solid var(--line);
+}
+.item:last-child {
+  border-bottom: none;
+}
+.identity {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.meta {
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+.confirm {
+  max-width: 38rem;
+}
+.confirm code {
+  user-select: all;
+  overflow-wrap: anywhere;
+}

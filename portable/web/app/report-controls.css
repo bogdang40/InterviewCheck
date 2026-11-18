@@ -1,0 +1,33 @@
+.report-toggle {
+  display: none;
+}
+@media (max-width: 590px) {
+  .report-exports {
+    position: relative;
+  }
+  .report-toggle {
+    display: inline-flex;
+  }
+  .report-links {
+    display: none;
+    position: absolute;
+    z-index: 3;
+    top: calc(100% + 5px);
+    left: 0;
+    padding: 7px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    box-shadow: 0 5px 16px #101d1920;
+    min-width: 10rem;
+  }
+  .report-links[data-expanded="true"] {
+    display: grid;
+  }
+  .report-links a,
+  .report-links button {
+    justify-content: flex-start;
+    min-height: 40px;
+    width: 100%;
+  }
+}

@@ -9,7 +9,7 @@ export default function ConnectionsPage() {
     <>
       <div className="page-title">
         <h1>Connections</h1>
-        <p>Prepare interviews from connected systems and manage account access.</p>
+        <p>Find setup requirements and prepare interviews from calendars or applicant tracking systems.</p>
       </div>
       <Connections onPrepare={(candidate, role) => prepare({ candidate, role })} />
     </>

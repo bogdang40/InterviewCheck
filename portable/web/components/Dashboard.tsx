@@ -1,184 +1,68 @@
-import {
-  ArrowDownRight,
-  ArrowRight,
-  BookOpen,
-  CirclePlus,
-  FileSearch,
-  Layers3,
-  MessageSquareText,
-  Plus,
-  ScanText,
-  Search,
-} from "lucide-react"
-import { useState } from "react"
+import Link from "next/link"
+import { ArrowRight, ClipboardList, FolderOpen, Plus } from "lucide-react"
 import { Button } from "./ui/button"
-import ReportExport from "./ReportExport"
 import SignalField from "./SignalField"
-import { dateLabel, type Session } from "@/lib/api"
+import SessionRow from "./SessionRow"
+import type { Overview } from "@/lib/interview-list"
 
 type Props = {
-  sessions: Session[]
-  loaded: boolean
-  archive: boolean
+  overview: Overview | null
   onCreate: () => void
   onSample: () => void
   onOpen: (id: string) => void
 }
 
-export default function Dashboard({ sessions, loaded, archive, onCreate, onSample, onOpen }: Props) {
-  const [query, setQuery] = useState("")
-  const list = sessions.filter((s) =>
-    (s.candidate + " " + s.role).toLowerCase().includes(query.toLowerCase()),
-  )
-  const stats = [
-    { name: "Interviews", value: sessions.length, icon: Layers3 },
-    {
-      name: "Answers captured",
-      value: sessions.reduce((n, s) => n + s.answer_count, 0),
-      icon: MessageSquareText,
-    },
-    { name: "Pending review", value: sessions.reduce((n, s) => n + s.review_count, 0), icon: FileSearch },
-  ]
-  return (
-    <>
-      {!archive && (
-        <section className="hero">
-          <div className="hero-copy">
-            <h1>Interview workspace</h1>
-            <p>
-              Compare interview answers with their sources and keep a record of what the candidate explains.
-            </p>
-            <div className="row">
-              <Button onClick={onCreate}>
-                <Plus />
-                New interview
-              </Button>
-              <Button variant="ghost" className="hero-secondary" onClick={onSample}>
-                Open sample <ArrowRight />
-              </Button>
-            </div>
-          </div>
-          <SignalField />
-        </section>
-      )}
-      {archive ? (
-        <div className="page-title">
-          <div className="eyebrow">LIBRARY</div>
-          <h1>Interviews</h1>
-          <p>Open a session to review its evidence or export the report.</p>
+export default function Dashboard({ overview, onCreate, onSample, onOpen }: Props) {
+  const active = overview?.active ?? []
+  const pending = overview?.pending ?? []
+  const pendingAnswers = overview?.pending_count ?? 0
+  const pendingSessions = overview?.pending_sessions ?? 0
+  const total = overview?.total ?? 0
+  const activeCount = overview?.active_count ?? 0
+  const populated = total > 0
+
+  return <div className={"queue-home" + (populated ? " populated" : "")}>
+    <section className="hero queue-hero">
+      <div className="hero-copy">
+        <h1>Interview workspace</h1>
+        <p>{populated
+          ? `${activeCount} active ${activeCount === 1 ? "interview" : "interviews"} · ${pendingAnswers} ${pendingAnswers === 1 ? "answer" : "answers"} pending review`
+          : "Capture interview answers, compare sources and record the candidate’s explanation."}</p>
+        <div className="row">
+          <Button onClick={onCreate}><Plus/>New interview</Button>
+          <Button variant="ghost" className="hero-secondary" onClick={onSample}>Open sample <ArrowRight/></Button>
         </div>
-      ) : (
-        <div className="stats">
-          {stats.map(({ name, value, icon: Icon }) => (
-            <div className="stat" key={name}>
-              <div>
-                <span className="small-label">{name}</span>
-                <strong>{loaded ? String(value).padStart(2, "0") : "··"}</strong>
-              </div>
-              <Icon size={19} />
-            </div>
-          ))}
-        </div>
-      )}
-      <div className={archive ? "" : "overview-grid"}>
-        <section className="panel sessions-panel">
-          <div className="panel-head">
-            <div>
-              <h2>{archive ? "All interviews" : "Recent interviews"}</h2>
-            </div>
-            {archive && (
-              <div className="row">
-                <ReportExport />
-                <Button size="sm" onClick={onCreate}>
-                  <Plus />
-                  New interview
-                </Button>
-              </div>
-            )}
-          </div>
-          {(archive || sessions.length > 5) && (
-            <label className="search">
-              <Search size={16} />
-              <input
-                aria-label="Search interviews"
-                placeholder="Search candidate or role"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-              />
-            </label>
-          )}
-          <div className="session-head">
-            <span>Candidate / role</span>
-            <span>Review</span>
-          </div>
-          {list.slice(0, archive ? undefined : 5).map((s) => (
-            <button className="session-entry" key={s.id} onClick={() => onOpen(s.id)}>
-              <span className="session-avatar">{(s.candidate || "I").slice(0, 1).toUpperCase()}</span>
-              <span className="entry-copy">
-                <b>{s.candidate || "Untitled interview"}</b>
-                <small>
-                  {s.role || "Role unspecified"} · {dateLabel(s.created_at)}
-                </small>
-              </span>
-              <span className="entry-state">
-                {s.review_count ? `${s.review_count} pending` : s.ended_at ? "Finished" : "In progress"} <ArrowRight size={14} />
-              </span>
-            </button>
-          ))}
-          {!list.length && (
-            <div className="empty">
-              <div className="empty-icon">
-                <Layers3 size={23} />
-              </div>
-              <strong>
-                {!loaded
-                  ? "Loading interviews"
-                  : query
-                    ? "No matching interviews"
-                    : "Your session log is empty"}
-              </strong>
-              <p>
-                {query
-                  ? "Try another candidate name or role."
-                  : "Saved interviews and their evidence appear here."}
-              </p>
-              {loaded && !query && (
-                <Button variant="outline" size="sm" onClick={onCreate}>
-                  <CirclePlus />
-                  Create interview
-                </Button>
-              )}
-            </div>
-          )}
-        </section>
-        {!archive && (
-          <aside className="panel method">
-            <div className="panel-head">
-              <div>
-                <h2>Review method</h2>
-              </div>
-              <BookOpen size={19} />
-            </div>
-            <div className="method-item">
-              <ScanText />
-              <div>
-                <strong>Compare wording</strong>
-                <p>Inspect matched passages against named references.</p>
-              </div>
-            </div>
-            <div className="method-item">
-              <ArrowDownRight />
-              <div>
-                <strong>Test the reasoning</strong>
-                <p>Change a constraint and ask the candidate to explain.</p>
-              </div>
-            </div>
-            <button className="text-action" onClick={onSample}>
-              Explore a sample review <ArrowRight size={15} />
-            </button>
-          </aside>
-        )}
       </div>
-    </>
-  )
+      <SignalField/>
+    </section>
+    {!overview ? <p className="queue-loading" role="status">Loading interviews…</p>
+      : !populated ? <section className="panel queue-empty-start" aria-labelledby="start-log">
+        <div className="queue-illustration"><ClipboardList size={26}/></div>
+        <div><h2 id="start-log">Your session log is empty</h2>
+          <p>Start an interview to collect its questions, sources and follow up notes in one place.</p></div>
+      </section> : <>
+        <section className="panel queue-panel" aria-labelledby="pending-heading">
+          <div className="queue-head"><div><h2 id="pending-heading">Review queue</h2>
+            <p>{pendingAnswers ? `${pendingAnswers} pending ${pendingAnswers === 1 ? "match" : "matches"} across ${pendingSessions} ${pendingSessions === 1 ? "interview" : "interviews"}`
+              : "No passage matches are waiting for review."}</p></div>
+            {pending.length > 0 && <Link className="queue-link" href="/interviews/?review=pending&sort=pending">
+              View all pending <ArrowRight size={15}/></Link>}
+          </div>
+          {pending.length > 0 && <ul className="work-list pending-rows">{pending.map(s =>
+            <li key={s.id}><SessionRow session={s} review/></li>)}</ul>}
+          {pendingSessions > pending.length && <p className="queue-cap">Showing the first {pending.length} interviews with the most pending matches.</p>}
+        </section>
+        <section className="panel queue-panel" aria-labelledby="active-heading">
+          <div className="queue-head"><div><h2 id="active-heading">Active interviews</h2>
+            <p>{active.length ? "Resume capture or add an exchange." : "No interviews are in progress."}</p></div>
+            <Link className="queue-link" href="/interviews/">Interview archive <ArrowRight size={15}/></Link>
+          </div>
+          {active.length > 0 && <ul className="work-list">{active.map(s =>
+            <li key={s.id}><SessionRow session={s} resume={() => onOpen(s.id)}/></li>)}</ul>}
+          {activeCount > active.length && <Link className="queue-more" href="/interviews/?status=active">View all {activeCount} active interviews <ArrowRight size={14}/></Link>}
+        </section>
+        <p className="archive-total"><FolderOpen size={15}/>
+          {total} {total === 1 ? "interview" : "interviews"} in this workspace</p>
+      </>}
+  </div>
 }

@@ -1,6 +1,7 @@
-import { useState, type FormEvent } from "react"
+import { useRef, useState, type FormEvent } from "react"
 import { ArrowRight, BriefcaseBusiness, Plus } from "lucide-react"
-import { api, message, type Role } from "@/lib/api"
+import { api, message, type PermittedMaterial, type Role } from "@/lib/api"
+import ResourcePolicy from "./ResourcePolicy"
 import Authoring from "./Authoring"
 import { Button } from "./ui/button"
 import { Input } from "./ui/input"
@@ -15,8 +16,11 @@ export default function Roles({
   onSave: (r: Role) => void
   prepare: (role: Role) => void
 }) {
+  const authoringVersion = useRef(0)
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
+  const [policy, setPolicy] = useState("")
+  const [materials, setMaterials] = useState<PermittedMaterial[]>([])
   const [questions, setQuestions] = useState("")
   const [generating, setGenerating] = useState(false)
   const [editing, setEditing] = useState(false)
@@ -25,12 +29,15 @@ export default function Roles({
   const [error, setError] = useState("")
   const [id, setId] = useState(() => crypto.randomUUID())
   function open(role?: Role) {
+    authoringVersion.current += 1
     setAdding(true)
     setEditing(!!role)
     setError("")
     setId(role?.id ?? crypto.randomUUID())
     setName(role?.name ?? "")
     setDescription(role?.description ?? "")
+    setPolicy(role?.policy ?? "")
+    setMaterials(role?.permitted_sources ?? [])
     setQuestions(role?.questions.join("\n") ?? "")
   }
   async function save(e: FormEvent<HTMLFormElement>) {
@@ -41,7 +48,7 @@ export default function Roles({
     setError("")
     try {
       const role = await api<Role>(editing ? "roles/" + id : "roles", editing ? "PUT" : "POST", {
-        id,
+        id, policy, permitted_sources: materials,
         name: form.get("name"),
         description: form.get("description"),
         questions: String(form.get("questions"))
@@ -66,7 +73,7 @@ export default function Roles({
       <div className="page-title">
         <span className="eyebrow">LIBRARY</span>
         <h1>Role library</h1>
-        <p>Reuse role descriptions and planned questions across interviews.</p>
+        <p>Prepare interview questions, assistance policies and permitted sources for each role.</p>
       </div>
       <section className="panel">
         <div className="panel-head">
@@ -87,7 +94,7 @@ export default function Roles({
               Role name
               <Input
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={e => { authoringVersion.current += 1; setName(e.target.value) }}
                 name="name"
                 required
                 maxLength={180}
@@ -97,7 +104,7 @@ export default function Roles({
               Description
               <Textarea
                 value={description}
-                onChange={(e) => setDescription(e.target.value)}
+                onChange={e => { authoringVersion.current += 1; setDescription(e.target.value) }}
                 name="description"
                 maxLength={24000}
               />
@@ -106,12 +113,18 @@ export default function Roles({
               Planned questions, one per line
               <Textarea value={questions} onChange={(e) => setQuestions(e.target.value)} name="questions" />
             </label>
+            <ResourcePolicy policy={policy} onPolicy={setPolicy} materials={materials} onMaterials={setMaterials}/>
             <Authoring
               pending={setGenerating}
+              disabled={questions.split("\n").filter(line => line.trim()).length >= 100}
               task={{
                 mode: "questions",
-                inputs: () => ({ role: name, description }),
-                append: (q) => setQuestions((old) => [old, ...q].filter(Boolean).join("\n")),
+                id, role: name, description, version: authoringVersion,
+                append: generated => setQuestions(old => {
+                  const existing = old.split("\n").map(line => line.trim()).filter(Boolean)
+                  const added = generated.filter(question => !existing.includes(question)).slice(0, Math.max(0, 100 - existing.length))
+                  return [old, ...added].filter(Boolean).join("\n")
+                }),
               }}
             />
             {error && (
@@ -130,6 +143,7 @@ export default function Roles({
             <div>
               <strong>{r.name}</strong>
               <p>{r.description || `${r.questions.length} planned questions`}</p>
+              {!!r.permitted_sources?.length && <small>{r.permitted_sources.length} permitted {r.permitted_sources.length === 1 ? "source" : "sources"}</small>}
             </div>
             <Button disabled={adding} variant="outline" size="sm" onClick={() => open(r)}>
               Edit role

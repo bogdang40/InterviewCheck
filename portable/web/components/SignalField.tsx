@@ -121,7 +121,11 @@ export default function SignalField() {
           const z = (i / 43 - 0.5) * 4.6
           const points = Array.from({ length: 95 }, (_, j) => {
             const x = (j / 94 - 0.5) * 8
-            return `${250 + x * 64 - z * 17},${120 + z * 20 - height(x, z, 0) * 78 - x * 4}`
+            // Different JS engines can round trigonometric results differently.
+            // Subpixel precision is enough for the static fallback at any UI size.
+            const px = (250 + x * 64 - z * 17).toFixed(2)
+            const py = (120 + z * 20 - height(x, z, 0) * 78 - x * 4).toFixed(2)
+            return `${px},${py}`
           })
           return (
             <polyline key={i} points={points.join(" ")} fill="none" stroke="#8edbad" strokeWidth="1.05" />

@@ -117,7 +117,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: #fafbf8;
+  background: var(--surface);
 }
 .breadcrumb,
 .host-label,
@@ -132,19 +132,19 @@
   align-items: center;
 }
 .breadcrumb {
-  color: #58685d;
+  color: var(--secondary-ink);
   font-size: 13px;
 }
 .breadcrumb b {
   font-weight: 580;
-  color: #23372b;
+  color: var(--green-ink);
 }
 .host-label {
   font: 11px var(--mono);
-  color: #47644f;
+  color: var(--secondary-ink);
 }
 .host-label svg {
-  color: #427f55;
+  color: var(--icon);
 }
 .content {
   max-width: 1510px;

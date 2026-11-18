@@ -16,10 +16,12 @@ router = APIRouter()
 Provider = Literal["ashby", "lever", "greenhouse", "merge", "workable", "recruitee"]
 
 
+NOTE_KEYS = {"ashby": (), "lever": (), "greenhouse": (), "merge": ("MERGE_REMOTE_USER_ID",),
+             "workable": ("WORKABLE_MEMBER_ID",), "recruitee": ()}
+
+
 def destinations():
-    requirements = {"ashby": (), "lever": (), "greenhouse": (), "merge": ("MERGE_REMOTE_USER_ID",),
-                    "workable": ("WORKABLE_MEMBER_ID",), "recruitee": ()}
-    return [name for name in ats.sources() if name in requirements and all(configured(k) for k in requirements[name])]
+    return [name for name in ats.sources() if name in NOTE_KEYS and all(configured(k) for k in NOTE_KEYS[name])]
 
 
 class RecipientQuery(Input):
@@ -37,7 +39,8 @@ class Delivery(Input):
 
 
 def receipt(db, sid, draft_id):
-    row = db.execute("SELECT * FROM note_exports WHERE id=? AND session_id=?", (draft_id, sid)).fetchone()
+    row = db.execute("""SELECT n.* FROM note_exports n JOIN active_sessions s ON s.id=n.session_id
+                        WHERE n.id=? AND n.session_id=?""", (draft_id, sid)).fetchone()
     if row is None:
         raise HTTPException(404, "Note draft does not exist in this session.")
     return dict(row)
@@ -61,23 +64,47 @@ def state(sid: UUID):
         return {"providers": destinations(), "history": [dict(r) for r in rows]}
 
 
-@router.post("/sessions/{sid}/ats/recipients")
-async def recipients(sid: UUID, query: RecipientQuery):
-    with store.connection() as db:
-        store.get_summary(db, str(sid))
+def begin_operation(db, sid):
+    store.get_summary(db, sid)
+    db.execute("INSERT OR IGNORE INTO ats_access_versions(session_id,version) VALUES(?,?)", (sid, str(uuid4())))
+    return db.execute("SELECT version FROM ats_access_versions WHERE session_id=?", (sid,)).fetchone()[0]
+
+
+def check_operation(db, sid, version):
+    allowed = db.execute("""SELECT 1 FROM ats_access_versions v JOIN active_sessions s ON s.id=v.session_id
+                            WHERE v.session_id=? AND v.version=?""", (sid, version)).fetchone()
+    if not allowed:
+        raise HTTPException(404, "The original interview is no longer available for this operation.")
+
+
+async def find_recipients(query):
     if query.provider not in destinations():
         raise HTTPException(503, "Configure a provider with private note access.")
-    return [r for r in await ats.lookup(query.provider, query.email, with_id=True) if r.get("target_id")]
+    found = await ats.lookup(query.provider, query.email, with_id=True)
+    return [r for r in found if r.get("target_id")]
+
+
+@router.post("/sessions/{sid}/ats/recipients")
+async def recipients(sid: UUID, query: RecipientQuery):
+    with store.connection(write=True) as db:
+        version = begin_operation(db, str(sid))
+    options = await find_recipients(query)
+    with store.connection() as db:
+        check_operation(db, str(sid), version)
+    return options
 
 
 @router.post("/sessions/{sid}/ats/drafts")
 async def prepare(sid: UUID, form: Draft):
     # Re-resolve at preview so the destination is a provider record with an actual name.
-    options = await recipients(sid, form)
-    target = next((r for r in options if r["target_id"] == form.target_id), None)
-    if target is None:
-        raise HTTPException(409, "The selected candidate is no longer in the provider search results.")
     with store.connection(write=True) as db:
+        version = begin_operation(db, str(sid))
+    options = await find_recipients(form)
+    with store.connection(write=True) as db:
+        check_operation(db, str(sid), version)
+        target = next((r for r in options if r["target_id"] == form.target_id), None)
+        if target is None:
+            raise HTTPException(409, "The selected candidate is no longer in the provider search results.")
         session = store.get_session(db, str(sid))
         key = str(uuid4())
         db.execute("INSERT INTO note_exports VALUES (?,?,?,?,?,?,?,?)",
@@ -85,19 +112,24 @@ async def prepare(sid: UUID, form: Draft):
         return receipt(db, str(sid), key)
 
 
-async def send_private(provider, target, text):
+async def send_private(provider, target, text, *, before_send=None):
+    async def deliver(name, url, **kwargs):
+        if before_send is not None:
+            before_send()
+        return await fetch_json(name, "POST", url, **kwargs)
+
     if provider == "ashby":
-        result = await fetch_json("Ashby", "POST", "https://api.ashbyhq.com/candidate.createNote",
+        result = await deliver("Ashby", "https://api.ashbyhq.com/candidate.createNote",
             auth=(setting("ASHBY_API_KEY"), ""), headers={"Accept": "application/json; version=1"},
             json={"candidateId": target, "note": {"type": "text/plain", "value": text}, "isPrivate": True, "sendNotifications": False})
         if not isinstance(result, dict) or result.get("success") is not True:
             raise HTTPException(502, "Ashby did not confirm note creation.")
     elif provider == "lever":
-        await fetch_json("Lever", "POST", f"https://api.lever.co/v1/opportunities/{target}/notes",
+        await deliver("Lever", f"https://api.lever.co/v1/opportunities/{target}/notes",
                          auth=(setting("LEVER_API_KEY"), ""), json={"value": text, "secret": True, "notifyFollowers": False})
     elif provider == "workable":
         host = subdomain("WORKABLE_SUBDOMAIN") + ".workable.com"
-        await fetch_json("Workable", "POST", f"https://{host}/spi/v3/candidates/{target}/comments",
+        await deliver("Workable", f"https://{host}/spi/v3/candidates/{target}/comments",
                          headers={"Authorization": "Bearer " + setting("WORKABLE_API_KEY")},
                          json={"member_id": setting("WORKABLE_MEMBER_ID"), "comment": {"body": text, "policy": ["admin"]}})
     elif provider == "recruitee":
@@ -108,7 +140,7 @@ async def send_private(provider, target, text):
         admin = record.get("id") if isinstance(record, dict) else None
         if type(admin) is not int or admin <= 0:
             raise HTTPException(502, "Recruitee did not identify the account for protected visibility.")
-        await fetch_json("Recruitee", "POST", f"{base}/candidates/{target}/notes", headers=headers,
+        await deliver("Recruitee", f"{base}/candidates/{target}/notes", headers=headers,
                          json={"note": {"body": text, "visibility": {"level": "protected", "admin_ids": [admin], "role_ids": []}},
                                "attachments": []})
     elif provider == "merge":
@@ -121,7 +153,7 @@ async def send_private(provider, target, text):
             visibility = None
         if not isinstance(visibility, dict) or ("enum" in visibility and "PRIVATE" not in (visibility["enum"] or [])):
             raise HTTPException(422, "The linked ATS does not advertise private activity visibility.")
-        result = await fetch_json("Merge", "POST", url, headers=headers,
+        result = await deliver("Merge", url, headers=headers,
             json={"remote_user_id": setting("MERGE_REMOTE_USER_ID"), "model": {
                 "candidate": target, "activity_type": "NOTE", "subject": "InterviewCheck", "body": text, "visibility": "PRIVATE"}})
         model = result.get("model") if isinstance(result, dict) else None
@@ -135,7 +167,7 @@ async def send_private(provider, target, text):
         access = token.get("access_token") if isinstance(token, dict) else None
         if not isinstance(access, str) or not access:
             raise HTTPException(502, "Greenhouse did not return an access token.")
-        await fetch_json("Greenhouse", "POST", "https://harvest.greenhouse.io/v3/notes", headers={"Authorization": "Bearer " + access},
+        await deliver("Greenhouse", "https://harvest.greenhouse.io/v3/notes", headers={"Authorization": "Bearer " + access},
             json={"candidate_id": int(target), "note_type": "NOTE", "visibility": "private", "body": text})
 
 
@@ -143,6 +175,7 @@ async def send_private(provider, target, text):
 async def send(sid: UUID, draft_id: UUID, form: Delivery):
     session_id, key = str(sid), str(draft_id)
     with store.connection(write=True) as db:
+        version = begin_operation(db, session_id)
         row = receipt(db, session_id, key)
         if row["state"] == "sent" and row["draft"] == form.note:
             return row
@@ -155,10 +188,18 @@ async def send(sid: UUID, draft_id: UUID, form: Delivery):
         db.execute("UPDATE note_exports SET state='attempted',draft=? WHERE id=?", (form.note, key))
     # Persist the attempt before the network call. A crash, concurrent send or
     # lost response must not cause an automatic duplicate note upstream.
+    def before_send():
+        with store.connection() as db:
+            check_operation(db, session_id, version)
     try:
-        await send_private(row["provider"], row["remote_id"], form.note)
+        await send_private(row["provider"], row["remote_id"], form.note, before_send=before_send)
     except HTTPException as error:
+        before_send()
         raise HTTPException(error.status_code, f"{error.detail} Delivery unconfirmed. Check the ATS before preparing another note.") from error
     with store.connection(write=True) as db:
-        db.execute("UPDATE note_exports SET state='sent' WHERE id=?", (key,))
+        # The vendor can finish after the operator has removed the session.
+        # Never recreate an export or disclose its destination from Trash.
+        check_operation(db, session_id, version)
+        receipt(db, session_id, key)
+        db.execute("UPDATE note_exports SET state='sent' WHERE id=? AND session_id=? AND state='attempted'", (key, session_id))
         return receipt(db, session_id, key)

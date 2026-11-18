@@ -56,7 +56,7 @@ textarea {
 select,
 .field input[type="file"] {
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--surface);
   border-radius: 6px;
   padding: 8px 10px;
   width: 100%;
@@ -76,7 +76,7 @@ select,
 .probe,
 .import {
   border: 1px solid var(--line);
-  background: #f5f8f2;
+  background: var(--subtle);
   border-radius: 8px;
   padding: 16px;
 }
@@ -109,9 +109,9 @@ details[open] > summary {
   margin-bottom: 14px;
 }
 .error {
-  color: #862d21;
-  background: #fff1ec;
-  border: 1px solid #ebc0b6;
+  color: var(--error-text);
+  background: var(--error-bg);
+  border: 1px solid var(--error-line);
   padding: 12px;
   border-radius: 7px;
   margin-bottom: 12px;
@@ -130,7 +130,7 @@ details[open] > summary {
   border-bottom: 1px solid var(--line);
 }
 .session-entry:hover {
-  background: #f1f6ee;
+  background: var(--subtle);
 }
 .session-entry:last-child,
 .role-row:last-child {
@@ -141,9 +141,9 @@ details[open] > summary {
   height: 33px;
   display: grid;
   place-items: center;
-  background: #e7f0e5;
+  background: var(--selected-bg);
   border-radius: 8px;
-  color: #315d3b;
+  color: var(--green-ink);
 }
 .entry-copy {
   min-width: 0;
@@ -193,7 +193,7 @@ details[open] > summary {
 }
 .transcript-text {
   line-height: 1.65;
-  color: #49594f;
+  color: var(--secondary-ink);
   white-space: pre-wrap;
 }
 .findings {
@@ -208,25 +208,25 @@ details[open] > summary {
 .status {
   font: 11px var(--mono);
   padding: 5px 9px;
-  color: #334a3b;
-  border: 1px solid #d1ded1;
-  background: #edf3ec;
+  color: var(--green-ink);
+  border: 1px solid var(--selected-line);
+  background: var(--subtle);
   border-radius: 5px;
 }
 .status.match {
-  color: #71440d;
-  background: #fcf0d7;
-  border-color: #e8d1a1;
+  color: var(--attention);
+  background: var(--warning-bg);
+  border-color: var(--warning-line);
 }
 .passage {
   padding: 15px;
-  background: #faf5e8;
-  border: 1px solid #e8dec6;
+  background: var(--warning-soft);
+  border: 1px solid var(--warning-line);
   border-radius: 6px;
   margin: 13px 0;
 }
 .passage-meta {
-  color: #755526;
+  color: var(--attention);
   font-size: 10px;
   margin-bottom: 10px;
 }

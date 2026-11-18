@@ -1,5 +1,5 @@
 """Delivery tests use synthetic records and mocked provider calls only."""
-from unittest.mock import AsyncMock
+from unittest.mock import ANY, AsyncMock
 from uuid import uuid4
 
 from fastapi import HTTPException
@@ -47,7 +47,7 @@ def test_operator_confirm_and_retry_receipt(client, monkeypatch):
         saved = client.post(endpoint, json={"confirmed": True, "note": NOTE})
         saved.raise_for_status()
         assert saved.json()["draft"] == NOTE
-    post.assert_awaited_once_with("lever", TARGET["target_id"], NOTE)
+    post.assert_awaited_once_with("lever", TARGET["target_id"], NOTE, before_send=ANY)
     assert client.get(path).json()["history"][0]["state"] == "sent"
     assert client.post(endpoint, json={"confirmed": True, "note": "Different"}).status_code == 409
 
