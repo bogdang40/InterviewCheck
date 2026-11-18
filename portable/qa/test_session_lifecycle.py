@@ -5,7 +5,7 @@ import httpx
 from playwright.sync_api import expect
 
 
-def test_role_snapshot_pending_exports_and_finish(workspace_url, browser_page):
+def test_role_snapshot_pending_exports_and_finish(workspace_url, browser_page, pytestconfig):
     with httpx.Client(base_url=workspace_url, headers={"X-InterviewCheck": "1"}) as client:
         roles = []
         for team in ("Alpha", "Beta"):
@@ -15,7 +15,9 @@ def test_role_snapshot_pending_exports_and_finish(workspace_url, browser_page):
             roles.append(saved.json())
         page = browser_page
         page.goto(workspace_url + "/#roles")
-        expect(page).to_have_url(re.compile(r"/roles/?$"))
+        # The development server compiles the roles page on its first visit.
+        redirect_timeout = 30_000 if pytestconfig.getoption("--frontend") == "dev" else None
+        expect(page).to_have_url(re.compile(r"/roles/?$"), timeout=redirect_timeout)
         page.get_by_text("Beta rotation", exact=True).locator("..").locator("..").get_by_role("button", name="Prepare").click()
         expect(page.get_by_label("Saved role template")).to_have_value(roles[1]["id"])
         page.get_by_label("Candidate", exact=True).fill("Workflow fixture")
