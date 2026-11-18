@@ -2,7 +2,7 @@ import type { Database } from "./Database.js";
 
 export interface MigrationStep {
   readonly version: number;
-  readonly statements: readonly string[];
+  readonly statements: readonly string[] | ((database: Database) => readonly string[]);
 }
 
 /**
@@ -81,6 +81,21 @@ export const MIGRATION_STEPS: readonly MigrationStep[] = [
       `ALTER TABLE stripe_events ADD COLUMN applied_at INTEGER`,
     ],
   },
+  {
+    version: 4,
+    statements: [
+      `CREATE TABLE IF NOT EXISTS subscription_versions (id TEXT PRIMARY KEY,version INTEGER NOT NULL)`,
+      `CREATE TABLE IF NOT EXISTS checkout_requests (
+        user_id TEXT PRIMARY KEY REFERENCES users(id),plan TEXT NOT NULL,request_id TEXT NOT NULL,
+        expires_at INTEGER NOT NULL,return_base TEXT NOT NULL,url TEXT)`,
+      `CREATE TABLE IF NOT EXISTS login_windows (address TEXT PRIMARY KEY,start INTEGER NOT NULL,hits INTEGER NOT NULL)`,
+    ],
+  },
+  {
+    version: 5,
+    statements: (database) => database.get("SELECT 1 FROM pragma_table_info('subscriptions') WHERE name = ?", "stripe_customer_id")
+      ? [] : ["ALTER TABLE subscriptions ADD COLUMN stripe_customer_id TEXT"],
+  },
 ];
 
 export class MigrationRunner {
@@ -88,10 +103,15 @@ export class MigrationRunner {
 
   run(database: Database): void {
     const sorted = [...this.steps].sort((a, b) => a.version - b.version);
+    if (database.userVersion() > (sorted.at(-1)?.version ?? 0)) {
+      throw new Error("This account database version is unsupported.");
+    }
     for (const step of sorted) {
       if (database.userVersion() >= step.version) continue;
       database.transaction(() => {
-        for (const statement of step.statements) {
+        if (database.userVersion() >= step.version) return;
+        const statements = typeof step.statements === "function" ? step.statements(database) : step.statements;
+        for (const statement of statements) {
           database.exec(statement);
         }
         database.setUserVersion(step.version);

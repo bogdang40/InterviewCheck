@@ -50,14 +50,14 @@ export class EntitlementResolver {
     return this.inactive(subscription, now);
   }
 
-  private subscriptionExpiry(subscription: Subscription | null, now: Date): Date | null {
-    if (!subscription) return null;
+  subscriptionExpiry(subscription: Subscription | null, now: Date): Date | null {
+    if (!subscription?.plan) return null;
     const periodEnd = subscription.currentPeriodEnd;
     switch (subscription.status) {
       case "active":
       case "trialing":
-        if (!periodEnd) return new Date(now.getTime() + this.policy.offlineGraceDays * MILLISECONDS_PER_DAY);
-        return periodEnd > now ? periodEnd : null;
+        const end = periodEnd ?? new Date(subscription.updatedAt.getTime() + this.policy.offlineGraceDays * MILLISECONDS_PER_DAY);
+        return end > now ? end : null;
       case "past_due": {
         // Stripe already advanced the period when the charge failed, so the
         // grace window is measured from the moment the row went past_due.

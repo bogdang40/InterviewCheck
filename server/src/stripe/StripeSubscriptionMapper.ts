@@ -8,10 +8,11 @@ import type { GatewaySubscription } from "./StripeGateway.js";
  * item field so it works across Stripe API versions.
  */
 export class StripeSubscriptionMapper {
-  static map(subscription: Stripe.Subscription): GatewaySubscription {
-    const firstItem = subscription.items?.data?.[0];
+  static map(subscription: Stripe.Subscription, priceIds: readonly string[] = []): GatewaySubscription {
+    const items = subscription.items?.data ?? [];
+    const item = items.find((candidate) => priceIds.includes(candidate.price?.id)) ?? items[0];
     const legacy = subscription as unknown as { current_period_end?: number | null };
-    const periodEndSeconds = firstItem?.current_period_end ?? legacy.current_period_end ?? null;
+    const periodEndSeconds = item?.current_period_end ?? legacy.current_period_end ?? null;
     if (periodEndSeconds === null) {
       console.warn(`[stripe] subscription ${subscription.id} carries no current_period_end in either location`);
     }
@@ -19,7 +20,7 @@ export class StripeSubscriptionMapper {
       id: subscription.id,
       customerId: StripeSubscriptionMapper.idOf(subscription.customer),
       status: subscription.status as SubscriptionStatus,
-      priceId: firstItem?.price?.id ?? null,
+      priceId: item?.price?.id ?? null,
       currentPeriodEnd: periodEndSeconds ? new Date(periodEndSeconds * 1000) : null,
       cancelAtPeriodEnd: Boolean(subscription.cancel_at_period_end),
       metadataUserId: subscription.metadata?.["userId"] ?? null,

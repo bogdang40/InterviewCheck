@@ -1,7 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SignedInResponse } from "../src/services/AuthService.js";
 import type { AccessSnapshot } from "../src/services/EntitlementService.js";
-import type { GatewaySubscription } from "../src/stripe/StripeGateway.js";
+import { CheckoutExpiryRejected, type GatewaySubscription } from "../src/stripe/StripeGateway.js";
 import { buildHarness, get, json, post, type TestHarness } from "./support/TestContainer.js";
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -51,6 +51,50 @@ describe("billing", () => {
     expect(harness.container.users.findById(userId)?.stripeCustomerId).toBe(request?.customerId);
   });
 
+  it("reuses an open checkout and prevents another plan from opening", async () => {
+    const first = await post(harness.app, "/v1/billing/checkout", { plan: "monthly" }, token);
+    const repeated = await post(harness.app, "/v1/billing/checkout", { plan: "monthly" }, token);
+    expect(await json(repeated)).toEqual(await json(first));
+    expect((await post(harness.app, "/v1/billing/checkout", { plan: "annual" }, token)).status).toBe(409);
+    expect(harness.gateway.checkouts).toHaveLength(1);
+  });
+
+  it("retries the same provider request after a lost response", async () => {
+    const checkout = vi.spyOn(harness.gateway, "createCheckoutSession");
+    checkout.mockRejectedValueOnce(new Error("test transport interruption"));
+    const user = harness.container.users.requireById(userId);
+    await expect(harness.container.billing.createCheckout(user, "monthly")).rejects.toThrow("transport interruption");
+    harness.clock.now = new Date(harness.clock.now.getTime() + 1000);
+    await expect(harness.container.billing.createCheckout(user, "monthly")).resolves.toHaveProperty("url");
+    expect(checkout.mock.calls[1]).toEqual(checkout.mock.calls[0]);
+    expect(harness.gateway.customers.size).toBe(1);
+  });
+
+  it("blocks a new checkout after the first expires if Stripe has a subscription and the webhook is late", async () => {
+    await post(harness.app, "/v1/billing/checkout", { plan: "monthly" }, token);
+    harness.gateway.seedSubscription(liveSubscription(harness.gateway.checkouts[0]!.customerId));
+    harness.clock.now = new Date(harness.clock.now.getTime() + 3_600_000);
+    expect((await post(harness.app, "/v1/billing/checkout", { plan: "annual" }, token)).status).toBe(409);
+    expect(harness.gateway.checkouts).toHaveLength(1);
+    expect(harness.container.subscriptions.currentForUser(userId)).toBeNull();
+  });
+
+  it("replaces a pending checkout after Stripe rejects the stale expiration on retry", async () => {
+    const checkout = vi.spyOn(harness.gateway, "createCheckoutSession");
+    checkout.mockRejectedValueOnce(new Error("test transport interruption")).mockRejectedValueOnce(new CheckoutExpiryRejected());
+    const user = harness.container.users.requireById(userId);
+    await expect(harness.container.billing.createCheckout(user, "monthly")).rejects.toThrow("transport interruption");
+    harness.clock.now = new Date(harness.clock.now.getTime() + 31 * 60_000);
+    await expect(harness.container.billing.createCheckout(user, "monthly")).resolves.toHaveProperty("url");
+    expect(checkout).toHaveBeenCalledTimes(3);
+    const original = checkout.mock.calls[0]![0];
+    const retry = checkout.mock.calls[1]![0];
+    const replacement = checkout.mock.calls[2]![0];
+    expect(retry).toEqual(original);
+    expect(replacement.requestId).not.toBe(original.requestId);
+    expect(replacement.expiresAt).toBe(original.expiresAt + 31 * 60);
+  });
+
   it("rejects unknown plans and unauthenticated checkout", async () => {
     expect((await post(harness.app, "/v1/billing/checkout", { plan: "lifetime" }, token)).status).toBe(400);
     expect((await post(harness.app, "/v1/billing/checkout", { plan: "monthly" })).status).toBe(401);
@@ -67,7 +111,8 @@ describe("billing", () => {
     await post(harness.app, "/v1/billing/checkout", { plan: "annual" }, token);
     const customerId = harness.gateway.checkouts[0]!.customerId;
     harness.gateway.seedSubscription(liveSubscription(customerId));
-    harness.gateway.nextEvent = { id: "evt_1", type: "checkout.completed", customerId, subscriptionId: "sub_live", clientReferenceId: userId };
+    harness.gateway.nextEvent = { id: "evt_1", type: "checkout.completed", customerId, subscriptionId: "sub_live", clientReferenceId: userId,
+      checkoutRequestId: harness.gateway.checkouts[0]!.requestId };
 
     const webhook = await harness.app.request("/v1/billing/webhook", { method: "POST", body: "{}", headers: { "stripe-signature": "sig" } });
     expect(webhook.status).toBe(200);
@@ -76,6 +121,7 @@ describe("billing", () => {
     const me = await json<AccessSnapshot>(await get(harness.app, "/v1/me", token));
     expect(me.entitlement).toMatchObject({ active: true, source: "subscription", plan: "annual" });
     expect(me.subscription?.status).toBe("active");
+    expect((await post(harness.app, "/v1/billing/checkout", { plan: "monthly" }, token)).status).toBe(409);
   });
 
   it("is idempotent for redelivered events", async () => {
@@ -115,12 +161,62 @@ describe("billing", () => {
     expect(harness.container.subscriptions.findById("sub_meta")?.userId).toBe(userId);
   });
 
-  it("rejects webhooks for unknown customers and releases the idempotency claim", async () => {
+  it("renews a known legacy subscription without rebinding its customer", async () => {
+    await post(harness.app, "/v1/billing/checkout", { plan: "monthly" }, token);
+    const preferred = harness.gateway.checkouts[0]!.customerId;
+    const sub = liveSubscription("cus_legacy", { priceId: "price_legacy" });
+    harness.container.subscriptions.upsert({ ...sub, userId, plan: "monthly", status: "past_due" }, harness.clock.now);
+    harness.gateway.seedSubscription(sub);
+    harness.gateway.nextEvent = { id: "evt_legacy", type: "subscription.changed", subscription: sub };
+    expect((await harness.app.request("/v1/billing/webhook", { method: "POST", body: "{}" })).status).toBe(200);
+    expect(harness.container.subscriptions.findById(sub.id)).toMatchObject({ status: "active", plan: "monthly", stripeCustomerId: "cus_legacy" });
+    expect(harness.container.users.requireById(userId).stripeCustomerId).toBe(preferred);
+    const mismatched = { ...sub, customerId: "cus_unrelated" };
+    harness.gateway.seedSubscription(mismatched);
+    harness.gateway.nextEvent = { id: "evt_wrong_customer", type: "subscription.changed", subscription: mismatched };
+    expect((await harness.app.request("/v1/billing/webhook", { method: "POST", body: "{}" })).status).toBe(422);
+    expect(harness.container.stripeEvents.isApplied("evt_wrong_customer")).toBe(false);
+  });
+
+  it("rejects webhooks for unknown customers without recording a receipt", async () => {
     const stranger = liveSubscription("cus_unknown", { id: "sub_x", metadataUserId: null });
     harness.gateway.seedSubscription(stranger);
     harness.gateway.nextEvent = { id: "evt_x", type: "subscription.changed", subscription: stranger };
     expect((await harness.app.request("/v1/billing/webhook", { method: "POST", body: "{}" })).status).toBe(422);
-    expect(harness.container.stripeEvents.claim("evt_x", "subscription.changed")).toBe(true);
+    expect(harness.container.stripeEvents.isApplied("evt_x")).toBe(false);
+  });
+
+  it("rejects an in flight change if cancellation commits during the Stripe read", async () => {
+    await post(harness.app, "/v1/billing/checkout", { plan: "monthly" }, token);
+    const sub = liveSubscription(harness.gateway.checkouts[0]!.customerId);
+    const service = harness.container.billingWebhook;
+    let finishRead!: (value: GatewaySubscription) => void;
+    vi.spyOn(harness.gateway, "retrieveSubscription").mockReturnValue(new Promise((resolve) => { finishRead = resolve; }));
+    const change = { id: "evt_early", type: "subscription.changed", subscription: sub } as const;
+    const pending = service.apply(change);
+    const stale = expect(pending).rejects.toMatchObject({ status: 503 });
+    await service.apply({ id: "evt_cancel", type: "subscription.deleted", subscription: sub });
+    finishRead(sub);
+    await stale;
+    expect(harness.container.stripeEvents.isApplied(change.id)).toBe(false);
+    await expect(service.apply(change)).resolves.toMatchObject({ handled: true });
+    expect(harness.container.subscriptions.findById(sub.id)?.status).toBe("canceled");
+  });
+
+  it("rolls back event effects when the receipt cannot be written", async () => {
+    await post(harness.app, "/v1/billing/checkout", { plan: "monthly" }, token);
+    const sub = liveSubscription(harness.gateway.checkouts[0]!.customerId);
+    harness.gateway.seedSubscription(sub);
+    const event = { id: "evt_failed", type: "subscription.changed", subscription: sub } as const;
+    const { database, subscriptions, stripeEvents, billingWebhook } = harness.container;
+    database.exec(`CREATE TRIGGER reject_receipt BEFORE INSERT ON stripe_events BEGIN SELECT RAISE(ABORT, 'receipt failed'); END`);
+    await expect(billingWebhook.apply(event)).rejects.toThrow("receipt failed");
+    expect(subscriptions.findById(sub.id)).toBeNull();
+    expect(subscriptions.version(sub.id)).toBe(0);
+    expect(stripeEvents.isApplied(event.id)).toBe(false);
+    expect(database.get("SELECT 1 FROM audit_log WHERE action = 'billing.subscription_synced'")).toBeUndefined();
+    database.exec("DROP TRIGGER reject_receipt");
+    await expect(billingWebhook.apply(event)).resolves.toMatchObject({ handled: true });
   });
 
   it("applies Stripe's current state when an older 'active' event arrives after deletion", async () => {
@@ -152,7 +248,7 @@ describe("billing", () => {
     expect(response.status).toBe(200);
     const html = await response.text();
     expect(html).toContain("interviewcheck://billing/success");
-    expect(html).toContain("Subscription active");
+    expect(html).toContain("check whether your subscription is active");
   });
 });
 
@@ -169,21 +265,21 @@ describe("stripe event ledger", () => {
 
   it("treats an applied event as a duplicate forever", () => {
     const events = harness.container.stripeEvents;
-    expect(events.claim("evt_done", "subscription.changed", harness.clock.now)).toBe(true);
-    events.markApplied("evt_done", harness.clock.now);
+    const write = vi.fn();
+    expect(events.apply("evt_done", "subscription.changed", harness.clock.now, write)).toBe(true);
     const muchLater = new Date(harness.clock.now.getTime() + 24 * 3600 * 1000);
-    expect(events.claim("evt_done", "subscription.changed", muchLater)).toBe(false);
+    expect(events.apply("evt_done", "subscription.changed", muchLater, write)).toBe(false);
     expect(events.isApplied("evt_done")).toBe(true);
+    expect(write).toHaveBeenCalledTimes(1);
   });
 
-  it("lets a stale pending claim be taken again after a crash mid apply", () => {
-    const events = harness.container.stripeEvents;
-    expect(events.claim("evt_crash", "checkout.completed", harness.clock.now)).toBe(true);
-    // A concurrent redelivery inside the window is still refused.
-    const soon = new Date(harness.clock.now.getTime() + 1000);
-    expect(events.claim("evt_crash", "checkout.completed", soon)).toBe(false);
-    const afterWindow = new Date(harness.clock.now.getTime() + 6 * 60 * 1000);
-    expect(events.claim("evt_crash", "checkout.completed", afterWindow)).toBe(true);
+  it("retries a pending receipt left by an older version", () => {
+    const { database, stripeEvents } = harness.container;
+    database.run("INSERT INTO stripe_events (id, type, received_at) VALUES (?, ?, ?)", "evt_crash", "checkout.completed", harness.clock.now.getTime());
+    const write = vi.fn();
+    expect(stripeEvents.apply("evt_crash", "checkout.completed", harness.clock.now, write)).toBe(true);
+    expect(stripeEvents.isApplied("evt_crash")).toBe(true);
+    expect(write).toHaveBeenCalledOnce();
   });
 
   it("marks a webhook applied only after its effects landed", async () => {

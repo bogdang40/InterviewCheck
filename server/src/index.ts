@@ -8,8 +8,8 @@ const container = new Container(config);
 container.prepare();
 
 const app = AppFactory.create(container);
-const server = serve({ fetch: app.fetch, port: config.PORT }, (info) => {
-  console.log(`[server] InterviewCheck access server listening on http://localhost:${info.port}`);
+const server = serve({ fetch: app.fetch, hostname: config.HOST, port: config.PORT }, (info) => {
+  console.log(`[server] InterviewCheck access server listening on ${info.address}:${info.port}`);
   console.log(`[server] billing ${container.billing.isConfigured ? "configured" : "NOT configured (set STRIPE_* env vars)"}`);
   if (!container.bootstrap.isConfigured) {
     console.warn("[server] ADMIN_EMAILS or ADMIN_BOOTSTRAP_SECRET missing: no signup can claim admin (promote via SQL instead)");

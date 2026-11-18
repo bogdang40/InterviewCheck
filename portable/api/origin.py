@@ -1,8 +1,9 @@
 """Determine the browser origin through the Next.js rewrite on this workstation."""
 import os
+from ipaddress import ip_address
 from urllib.parse import urlsplit
 
-from .access import account_enabled
+from .access import account_enabled, operator_id, public_remote
 
 
 LOOPBACK = {"localhost", "127.0.0.1", "::1"}
@@ -33,6 +34,8 @@ def public_origin():
         raise ValueError("INTERVIEWCHECK_PUBLIC_ORIGIN requires a single external HTTPS origin.")
     if not os.getenv("INTERVIEWCHECK_OPERATOR_EMAIL", "").strip() or not account_enabled():
         raise ValueError("A public origin requires an access service and a configured operator email.")
+    if public_remote():
+        operator_id()
     return "https://" + parsed.netloc.lower()
 
 
@@ -55,3 +58,18 @@ def browser_origin(headers, scheme):
     if frontend.hostname in LOOPBACK and str(frontend.port) == port:
         return "http://" + forwarded
     return None
+
+
+def workspace_client(request):
+    peer = request.client.host if request.client else "local"
+    forwarded = request.headers.get("x-interviewcheck-client-ip")
+    if not forwarded or "%" in forwarded or peer not in LOOPBACK or os.getenv("INTERVIEWCHECK_TRUST_PROXY_CLIENT_IP") != "1":
+        return peer
+    public = public_origin()
+    if not public or browser_origin(request.headers, request.url.scheme) != public:
+        return peer
+    try:
+        address = ip_address(forwarded)
+        return str(getattr(address, "ipv4_mapped", None) or address)
+    except ValueError:
+        return peer

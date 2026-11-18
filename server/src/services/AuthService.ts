@@ -1,4 +1,5 @@
 import { AccessPolicy, MILLISECONDS_PER_DAY } from "../config/AppConfig.js";
+import type { Database } from "../db/Database.js";
 import { AuthSessionRules, type AuthSession } from "../domain/Session.js";
 import { EmailNormalizer, type User } from "../domain/User.js";
 import { HttpError } from "../http/HttpError.js";
@@ -30,6 +31,7 @@ export interface AuthenticatedRequest {
 
 export class AuthService {
   constructor(
+    private readonly database: Database,
     private readonly users: UserRepository,
     private readonly sessions: SessionRepository,
     private readonly audit: AuditLogRepository,
@@ -49,21 +51,21 @@ export class AuthService {
     const now = this.clock();
     const trialEndsAt = this.policy.trialDays > 0 ? new Date(now.getTime() + this.policy.trialDays * MILLISECONDS_PER_DAY) : null;
     const passwordHash = await this.hasher.hash(credentials.password);
-    let user: User;
-    try {
-      user = this.users.create(
-        { email, passwordHash, role: this.bootstrap.roleForNewAccount(email, credentials.adminSecret), trialEndsAt },
-        now,
-      );
-    } catch (error) {
-      // Two signups raced past the existence check while hashing.
-      if ((error as { errcode?: number }).errcode === SQLITE_CONSTRAINT_UNIQUE) {
-        throw new HttpError(409, "email_taken", "An account with this email already exists.");
+    return this.database.transaction(() => {
+      let user: User;
+      try {
+        user = this.users.create(
+          { email, passwordHash, role: this.bootstrap.roleForNewAccount(email, credentials.adminSecret), trialEndsAt }, now,
+        );
+      } catch (error) {
+        if ((error as { errcode?: number }).errcode === SQLITE_CONSTRAINT_UNIQUE) {
+          throw new HttpError(409, "email_taken", "An account with this email already exists.");
+        }
+        throw error;
       }
-      throw error;
-    }
-    this.audit.record({ actorUserId: user.id, action: "auth.signup", targetUserId: user.id, details: { role: user.role } }, now);
-    return this.issueSession(user, credentials.deviceName ?? null, now);
+      this.audit.record({ actorUserId: user.id, action: "auth.signup", targetUserId: user.id, details: { role: user.role } }, now);
+      return this.issueSession(user, credentials.deviceName ?? null, now);
+    });
   }
 
   async login(credentials: Credentials): Promise<SignedInResponse> {
@@ -74,13 +76,14 @@ export class AuthService {
     if (!user || !verified) {
       throw new HttpError(401, "invalid_credentials", "Email or password is incorrect.");
     }
-    if (user.disabled) {
-      throw new HttpError(403, "account_disabled", "This account has been disabled.");
-    }
     const now = this.clock();
-    const updated = this.users.update(user.id, { lastLoginAt: now }, now);
-    this.audit.record({ actorUserId: user.id, action: "auth.login", targetUserId: user.id }, now);
-    return this.issueSession(updated, credentials.deviceName ?? null, now);
+    return this.database.transaction(() => {
+      const current = this.users.findById(user.id);
+      if (!current || current.disabled) throw new HttpError(403, "account_disabled", "This account has been disabled.");
+      const updated = this.users.update(current.id, { lastLoginAt: now }, now);
+      this.audit.record({ actorUserId: current.id, action: "auth.login", targetUserId: current.id }, now);
+      return this.issueSession(updated, credentials.deviceName ?? null, now);
+    });
   }
 
   async authenticate(token: string): Promise<AuthenticatedRequest | null> {
@@ -102,8 +105,10 @@ export class AuthService {
 
   logout(request: AuthenticatedRequest): void {
     const now = this.clock();
-    this.sessions.revoke(request.session.id, now);
-    this.audit.record({ actorUserId: request.user.id, action: "auth.logout", targetUserId: request.user.id }, now);
+    this.database.transaction(() => {
+      this.sessions.revoke(request.session.id, now);
+      this.audit.record({ actorUserId: request.user.id, action: "auth.logout", targetUserId: request.user.id }, now);
+    });
   }
 
   private issueSession(user: User, deviceName: string | null, now: Date): SignedInResponse {

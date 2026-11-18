@@ -1,7 +1,7 @@
 """Single operator membership using the native access service."""
 import os
 from typing import Literal
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import httpx
 from urllib.parse import urlsplit
@@ -40,7 +40,7 @@ def access_url(path: str) -> str:
     return root + "/v1/" + path
 
 
-async def upstream(path, method="GET", *, token=None, body=None, idempotency=None):
+async def upstream(path, method="GET", *, token=None, body=None, idempotency=None, client_address=None):
     options = {"headers": {"Authorization": f"Bearer {token}"}} if token else {}
     if body is not None:
         options["json"] = body
@@ -48,7 +48,8 @@ async def upstream(path, method="GET", *, token=None, body=None, idempotency=Non
         options.setdefault("headers", {})["Idempotency-Key"] = idempotency
     if account_enabled() and embedded_enabled():
         from .account_server import local_service
-        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=local_service), base_url="http://127.0.0.1") as client:
+        transport = httpx.ASGITransport(app=local_service, client=(client_address or "127.0.0.1", 0))
+        async with httpx.AsyncClient(transport=transport, base_url="http://127.0.0.1") as client:
             response = await client.request(method, "/" + path, **options)
         data = response.json() if response.content else {}
         if response.is_error:
@@ -57,9 +58,29 @@ async def upstream(path, method="GET", *, token=None, body=None, idempotency=Non
     return await fetch_json("Access service", method, access_url(path), **options)
 
 
-def verify_operator(snapshot):
-    email = (snapshot.get("user") or {}).get("email", "")
-    if not email or email.casefold() != setting("INTERVIEWCHECK_OPERATOR_EMAIL").casefold():
+def verify_operator_email(email):
+    if not isinstance(email, str) or email.casefold() != setting("INTERVIEWCHECK_OPERATOR_EMAIL").casefold():
+        raise HTTPException(403, "Sign in with the operator account assigned to this workstation.")
+
+
+def public_remote():
+    return configured("INTERVIEWCHECK_PUBLIC_ORIGIN") and not embedded_enabled()
+
+
+def operator_id():
+    try:
+        return str(UUID(os.getenv("INTERVIEWCHECK_OPERATOR_ID", "").strip()))
+    except ValueError as error:
+        raise ValueError("A public workspace with remote access requires INTERVIEWCHECK_OPERATOR_ID as a UUID.") from error
+
+
+def verify_account(data):
+    user = data.get("user") if isinstance(data, dict) else None
+    entitlement = data.get("entitlement") if isinstance(data, dict) else None
+    if not isinstance(user, dict) or not isinstance(entitlement, dict) or type(entitlement.get("active")) is not bool:
+        raise HTTPException(502, "The access service returned an invalid account.")
+    verify_operator_email(user.get("email"))
+    if public_remote() and user.get("id") != operator_id():
         raise HTTPException(403, "Sign in with the operator account assigned to this workstation.")
 
 
@@ -68,9 +89,7 @@ async def snapshot(connection: HTTPConnection):
     if not token:
         raise HTTPException(401, "Sign in under Account.")
     result = await upstream("me", token=token)
-    if not isinstance(result, dict) or not isinstance(result.get("user"), dict):
-        raise HTTPException(502, "The access service returned an invalid account.")
-    verify_operator(result)
+    verify_account(result)
     return result
 
 
@@ -94,15 +113,18 @@ class Checkout(BaseModel):
 
 @router.post("/access/{action}")
 async def sign_in(action: Literal["login", "signup"], form: Credentials, request: Request, response: Response):
-    verify_operator({"user": {"email": form.email.strip()}})
+    if action == "signup" and public_remote():
+        raise HTTPException(403, "Create the operator account on the assigned access service first.")
+    verify_operator_email(form.email.strip())
+    from .origin import workspace_client
     data = await upstream("auth/" + action, "POST", body={
         "email": form.email.strip(), "password": form.password.get_secret_value(), "deviceName": "Portable workspace",
         **({"inviteCode": form.inviteCode.get_secret_value()} if form.inviteCode else {}),
         **({"adminSecret": form.adminSecret.get_secret_value()} if form.adminSecret else {})
-    })
+    }, client_address=workspace_client(request) if embedded_enabled() else None)
     if not isinstance(data, dict) or not isinstance(data.get("token"), str) or not data["token"]:
         raise HTTPException(502, "The access service returned an invalid session.")
-    verify_operator(data)
+    verify_account(data)
     response.set_cookie(COOKIE, data["token"], httponly=True, secure=bool(os.getenv("INTERVIEWCHECK_PUBLIC_ORIGIN")) or request.url.scheme == "https", samesite="strict", path="/api")
     return {"email": data["user"]["email"], "active": data["entitlement"]["active"],
             **({"admin": True} if data["user"].get("role") == "admin" else {})}

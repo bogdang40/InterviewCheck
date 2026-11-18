@@ -16,22 +16,34 @@ def setting(key: str) -> str:
     return value
 
 
-async def fetch_json(provider: str, method: str, url: str, *, timeout=30, limit=4_000_000, **options):
+async def read_json(response, provider, limit):
+    data = bytearray()
+    async for chunk in response.aiter_bytes():
+        if len(data) + len(chunk) > limit:
+            raise HTTPException(502, f"{provider} response exceeds the size limit.")
+        data.extend(chunk)
+    return json.loads(data)
+
+
+async def fetch_json(provider: str, method: str, url: str, *, timeout=30, limit=4_000_000, classify_bad_request=None, **options):
     try:
         async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
             async with client.stream(method, url, **options) as response:
                 if not 200 <= response.status_code < 300:
                     status = response.status_code
+                    if status == 400 and classify_bad_request:
+                        try:
+                            data = await read_json(response, provider, min(limit, 65_536))
+                        except (ValueError, HTTPException):
+                            data = None
+                        failure = classify_bad_request(data)
+                        if failure:
+                            raise failure
                     code = status if status in {400, 401, 402, 403, 404, 409, 422, 429, 503} else 502
                     raise HTTPException(code, f"{provider} returned HTTP {status}.")
                 if response.status_code == 204:
                     return {}
-                data = bytearray()
-                async for chunk in response.aiter_bytes():
-                    if len(data) + len(chunk) > limit:
-                        raise HTTPException(502, f"{provider} response exceeds the size limit.")
-                    data.extend(chunk)
-                return json.loads(data)
+                return await read_json(response, provider, limit)
     except (ValueError, UnicodeError) as exc:
         raise HTTPException(502, f"{provider} returned invalid JSON.") from exc
     except httpx.TimeoutException as exc:

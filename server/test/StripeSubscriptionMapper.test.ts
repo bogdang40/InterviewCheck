@@ -45,8 +45,11 @@ describe("StripeSubscriptionMapper", () => {
     expect(StripeSdkGateway.toBillingEvent(event("customer.subscription.paused", subscription({ current_period_end: 1 }))).type).toBe("subscription.changed");
     expect(StripeSdkGateway.toBillingEvent(event("invoice.paid", {}))).toMatchObject({ type: "ignored", rawType: "invoice.paid" });
     const checkout = StripeSdkGateway.toBillingEvent(
-      event("checkout.session.completed", { customer: "cus_9", subscription: { id: "sub_9" }, client_reference_id: null, metadata: { userId: "u9" } }),
+      event("checkout.session.completed", { mode: "subscription", customer: "cus_9", subscription: { id: "sub_9" },
+        client_reference_id: null, metadata: { userId: "u9", checkoutRequestId: "r9" } }),
     );
-    expect(checkout).toMatchObject({ type: "checkout.completed", customerId: "cus_9", subscriptionId: "sub_9", clientReferenceId: "u9" });
+    expect(checkout).toMatchObject({ type: "checkout.completed", customerId: "cus_9", subscriptionId: "sub_9",
+      clientReferenceId: "u9", checkoutRequestId: "r9" });
+    expect(StripeSdkGateway.toBillingEvent(event("checkout.session.completed", { mode: "payment" })).type).toBe("ignored");
   });
 });

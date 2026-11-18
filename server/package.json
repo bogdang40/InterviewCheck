@@ -12,20 +12,20 @@
     "build": "tsc -p tsconfig.json",
     "start": "node --disable-warning=ExperimentalWarning dist/index.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "NODE_OPTIONS=--disable-warning=ExperimentalWarning vitest run",
-    "test:watch": "NODE_OPTIONS=--disable-warning=ExperimentalWarning vitest",
+    "test": "node --disable-warning=ExperimentalWarning ./node_modules/vitest/vitest.mjs run",
+    "test:watch": "node --disable-warning=ExperimentalWarning ./node_modules/vitest/vitest.mjs",
     "owner-license": "tsx src/tools/owner-license.ts"
   },
   "dependencies": {
-    "@hono/node-server": "^1.14.0",
-    "hono": "^4.7.0",
+    "@hono/node-server": "^2.1.9",
+    "hono": "^4.13.19",
     "stripe": "^18.0.0",
-    "zod": "^3.24.0"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",
     "tsx": "^4.19.0",
     "typescript": "^5.8.0",
-    "vitest": "^3.1.0"
+    "vitest": "^5.1.1"
   }
 }

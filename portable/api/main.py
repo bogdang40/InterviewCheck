@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from . import ats_notes, authoring, backup, drafts, store, trash
-from .access import require_entitlement
+from .access import embedded_enabled, require_entitlement
 from .evidence import compare
 from .integrations import router as integrations
 from .local_boundary import LocalBoundary
@@ -26,6 +26,9 @@ from .transcript_import import router as transcript_import
 @asynccontextmanager
 async def lifespan(_):
     public_origin()  # Validate configured web exposure before opening the database.
+    if embedded_enabled():
+        from .account_db import check_database
+        check_database()
     store.initialize(store.db_path())
     yield
 
@@ -55,6 +58,8 @@ async def private_content(request: Request, call_next):
 
 @app.get("/api/health")
 def health():
+    with store.connection() as db:
+        db.execute("SELECT 1 FROM sessions LIMIT 1").fetchone()
     return {"ok": True}
 
 

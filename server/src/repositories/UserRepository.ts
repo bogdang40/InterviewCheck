@@ -24,9 +24,9 @@ export interface CreateUserInput {
 }
 
 export interface UserPatch {
-  role?: UserRole;
-  disabled?: boolean;
-  complimentaryUntil?: Date | null;
+  role?: UserRole | undefined;
+  disabled?: boolean | undefined;
+  complimentaryUntil?: Date | null | undefined;
   stripeCustomerId?: string | null;
   lastLoginAt?: Date;
 }
@@ -76,6 +76,11 @@ export class UserRepository {
   findByStripeCustomerId(customerId: string): User | null {
     const row = this.db.get<UserRow>(`SELECT ${COLUMNS} FROM users WHERE stripe_customer_id = ?`, customerId);
     return row ? UserRepository.toUser(row) : null;
+  }
+
+  bindStripeCustomer(id: string, customerId: string, now: Date): string {
+    this.db.run("UPDATE users SET stripe_customer_id = ?, updated_at = ? WHERE id = ? AND stripe_customer_id IS NULL", customerId, now.getTime(), id);
+    return this.requireById(id).stripeCustomerId ?? customerId;
   }
 
   /** Password hashes are only ever read here, never through the User type. */
