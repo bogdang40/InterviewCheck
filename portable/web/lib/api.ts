@@ -40,10 +40,11 @@ export type Session = {
 export type DraftSummary = {id:string;revision:number;updated_at:string}
 export type Draft = QuestionOrigin & DraftSummary & {question:string;answer:string;references:Source[]}
 export type Interview = Session & { draft:DraftSummary|null; answers: Answer[]; planned_questions: string[]; permitted_sources: PermittedMaterial[] }
-export type Role = { id: string; name: string; description: string; questions: string[]; policy: string; permitted_sources: PermittedMaterial[] }
+export type Role = { id: string; version: string; name: string; description: string; questions: string[]; policy: string; permitted_sources: PermittedMaterial[] }
 
 export class RevisionConflict extends Error {}
 export class DraftConflict extends Error {}
+export class RoleConflict extends Error {}
 
 export async function api<T>(path: string, method = "GET", body?: unknown, signal?: AbortSignal): Promise<T> {
   const response = await fetch("/api/" + path, {
@@ -56,6 +57,9 @@ export async function api<T>(path: string, method = "GET", body?: unknown, signa
   if (!response.ok) {
     const data = await response.json().catch(() => ({}))
     const detail = typeof data.detail === "string" ? data.detail : data.detail?.[0]?.msg
+    if (response.status === 409 && response.headers.get("X-InterviewCheck-Conflict") === "role-version") {
+      throw new RoleConflict(detail)
+    }
     if(response.status===409 && response.headers.get("X-InterviewCheck-Conflict")==="draft-revision") throw new DraftConflict(detail || "Draft conflict.")
     if (response.status === 409 && response.headers.get("X-InterviewCheck-Conflict") === "answer-revision") {
       throw new RevisionConflict(detail || "The saved exchange changed.")

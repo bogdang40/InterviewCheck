@@ -4,7 +4,7 @@ from uuid import UUID
 
 from .evidence import Words, compare
 from .lineage import validate_graph
-from .models import AnswerInput, Reference, RoleInput, SessionInput
+from .models import AnswerInput, Reference, RoleInput, SessionInput, validate_note_length
 
 
 def verify_finding(answer, session, inherited_grams):
@@ -117,8 +117,7 @@ def verify_records(backup):
                 AnswerInput.model_validate(
                     answer.model_dump(include={"id", "question", "answer", "references"})
                 )
-                if len(answer.note) > 12000:
-                    raise ValueError("Invalid reviewer note.")
+                validate_note_length(answer.note)
             if answer.import_origin and answer.import_origin.end_ms < answer.import_origin.start_ms:
                 raise ValueError("The transcript interval is invalid.")
             verify_finding(answer, session, inherited_grams)

@@ -4,7 +4,8 @@ import { Button } from "./ui/button"
 import { Input } from "./ui/input"
 import AudioPreflight from "./AudioPreflight"
 import ResourcePolicy from "./ResourcePolicy"
-import { api, message, type Interview, type PermittedMaterial, type Role } from "@/lib/api"
+import { api, message, RoleConflict, type Interview, type PermittedMaterial, type Role } from "@/lib/api"
+import ReloadRole from "./ReloadRole"
 
 export default function SessionSetup({
   roles,
@@ -12,24 +13,37 @@ export default function SessionSetup({
   role,
   roleId,
   onStart,
+  onRoleLoad,
 }: {
   roles: Role[]
   candidate: string
   role: string
   roleId?: string
   onStart: (session: Interview) => void
+  onRoleLoad: (role: Role) => void
 }) {
   const [id] = useState(() => crypto.randomUUID())
   const initialRole = roles.find(item => item.id === roleId)
   const [policy, setPolicy] = useState(initialRole?.policy || "")
   const [materials, setMaterials] = useState<PermittedMaterial[]>(initialRole?.permitted_sources || [])
   const [notice, setNotice] = useState(false)
-  const [selectedId, setSelectedId] = useState(roleId ?? "")
-  const [roleName, setRoleName] = useState(role)
+  const [selected, setSelected] = useState(initialRole)
+  const [roleName, setRoleName] = useState(initialRole?.name ?? role)
+  const [conflict, setConflict] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
+  function selectRole(next?: Role) {
+    setSelected(next)
+    setRoleName(next?.name ?? "")
+    setPolicy(next?.policy ?? "")
+    setMaterials(next?.permitted_sources ?? [])
+    setNotice(false)
+    setConflict(false)
+    setError("")
+  }
   async function start(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
+    if (busy || conflict) return
     const data = new FormData(e.currentTarget)
     setBusy(true)
     setError("")
@@ -39,12 +53,17 @@ export default function SessionSetup({
           id,
           candidate: data.get("candidate"),
           role: roleName,
-          role_id: selectedId || null,
+          role_id: selected?.id ?? null,
+          role_version: selected?.version,
           policy, permitted_sources: materials,
           consent: data.has("consent"),
         }),
       )
     } catch (e) {
+      if (e instanceof RoleConflict) {
+        setConflict(true)
+        setNotice(false)
+      }
       setError(message(e))
     } finally {
       setBusy(false)
@@ -62,15 +81,9 @@ export default function SessionSetup({
           <label className="field">
             Saved role template
             <select
-              value={selectedId}
-              onChange={(e) => {
-                const selected = roles.find((r) => r.id === e.target.value)
-                setSelectedId(selected?.id ?? "")
-                setRoleName(selected?.name ?? "")
-                setPolicy(selected?.policy || "")
-                setMaterials(selected?.permitted_sources || [])
-                setNotice(false)
-              }}
+              value={selected?.id ?? ""}
+              disabled={busy}
+              onChange={(e) => selectRole(roles.find(r => r.id === e.target.value))}
             >
               <option value="">Enter a role manually</option>
               {roles.map((r) => (
@@ -102,13 +115,17 @@ export default function SessionSetup({
               required
               name="role"
               value={roleName}
-              readOnly={!!selectedId}
+              readOnly={!!selected}
               onChange={(e) => { setRoleName(e.target.value); setNotice(false) }}
               maxLength={180}
               placeholder="Role title"
             />
           </label>
         </div>
+        {!!selected?.questions.length && <details>
+          <summary>Planned questions ({selected.questions.length})</summary>
+          <ol>{selected.questions.map((q, i) => <li key={i}>{q}</li>)}</ol>
+        </details>}
         <ResourcePolicy policy={policy} required materials={materials}
           onPolicy={value => { setPolicy(value); setNotice(false) }}
           onMaterials={items => { setMaterials(items); setNotice(false) }}/>
@@ -122,7 +139,9 @@ export default function SessionSetup({
           </p>
         )}
         <div>
-          <Button disabled={busy}>
+          {conflict && selected && <ReloadRole id={selected.id} label="Replace setup with saved role"
+            onLoad={next => { onRoleLoad(next); selectRole(next) }} />}
+          <Button disabled={busy || conflict}>
             {busy ? "Starting…" : "Start interview"}
             <ArrowRight />
           </Button>

@@ -12,5 +12,7 @@ export default function NewInterviewPage() {
   const roles = useResource<Role[]>("roles")
   if (roles.error) return <WorkspaceError text={roles.error} retry={roles.reload} />
   if (!roles.data) return <p role="status">Loading setup…</p>
-  return <SessionSetup roles={roles.data} {...preparation} onStart={(s) => router.push(interviewURL(s.id))} />
+  return <SessionSetup roles={roles.data} {...preparation}
+    onRoleLoad={role => roles.update(list => list.map(item => item.id === role.id ? role : item))}
+    onStart={(s) => router.push(interviewURL(s.id))} />
 }

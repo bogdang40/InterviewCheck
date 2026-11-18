@@ -1,5 +1,6 @@
 """Role defaults and the permitted material that applied when a session began."""
 
+import hashlib
 import json
 from uuid import uuid4
 
@@ -34,7 +35,16 @@ def role_row(row):
         role["legacy"] = json.loads(role["legacy"])
     else:
         del role["legacy"]
+    # Bind open forms to the editable content, including templates restored from a backup.
+    fields = {key: role[key] for key in ("id", "name", "description", "questions", "policy", "permitted_sources")}
+    role["version"] = hashlib.sha256(json.dumps(fields, sort_keys=True).encode()).hexdigest()
     return role
+
+
+def check_role_version(row, version):
+    if version is not None and role_row(row)["version"] != version:
+        raise HTTPException(409, "The saved role changed after you opened it.",
+                            headers={"X-InterviewCheck-Conflict": "role-version"})
 
 
 def create_role(db, role: RoleInput):
@@ -65,6 +75,7 @@ def update_role(db, key, role: RoleInput):
     existing = db.execute("SELECT * FROM roles WHERE id=?", (key,)).fetchone()
     if existing is None:
         raise HTTPException(404, "Role does not exist.")
+    check_role_version(existing, role.version)
     # Clients predating role materials can still edit their supported fields.
     policy = role.policy if "policy" in role.model_fields_set else existing["policy"]
     sources = (
@@ -83,6 +94,8 @@ def session_defaults(db, item: SessionInput):
     selected = None
     if item.role_id:
         selected = db.execute("SELECT * FROM roles WHERE id=?", (str(item.role_id),)).fetchone()
+        if selected is not None:
+            check_role_version(selected, item.role_version)
         if selected is None or selected["name"] != item.role:
             raise HTTPException(409, "The selected role has changed. Refresh the role list.")
     elif "role_id" not in item.model_fields_set:

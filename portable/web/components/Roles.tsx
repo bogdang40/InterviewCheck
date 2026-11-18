@@ -1,6 +1,7 @@
 import { useRef, useState, type FormEvent } from "react"
 import { ArrowRight, BriefcaseBusiness, Plus } from "lucide-react"
-import { api, message, type PermittedMaterial, type Role } from "@/lib/api"
+import { api, message, RoleConflict, type PermittedMaterial, type Role } from "@/lib/api"
+import ReloadRole from "./ReloadRole"
 import ResourcePolicy from "./ResourcePolicy"
 import Authoring from "./Authoring"
 import { Button } from "./ui/button"
@@ -23,7 +24,8 @@ export default function Roles({
   const [materials, setMaterials] = useState<PermittedMaterial[]>([])
   const [questions, setQuestions] = useState("")
   const [generating, setGenerating] = useState(false)
-  const [editing, setEditing] = useState(false)
+  const [version, setVersion] = useState<string>()
+  const [conflict, setConflict] = useState(false)
   const [adding, setAdding] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
@@ -31,7 +33,8 @@ export default function Roles({
   function open(role?: Role) {
     authoringVersion.current += 1
     setAdding(true)
-    setEditing(!!role)
+    setVersion(role?.version)
+    setConflict(false)
     setError("")
     setId(role?.id ?? crypto.randomUUID())
     setName(role?.name ?? "")
@@ -42,13 +45,13 @@ export default function Roles({
   }
   async function save(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
-    if (generating || busy) return
+    if (generating || busy || conflict) return
     const form = new FormData(e.currentTarget)
     setBusy(true)
     setError("")
     try {
-      const role = await api<Role>(editing ? "roles/" + id : "roles", editing ? "PUT" : "POST", {
-        id, policy, permitted_sources: materials,
+      const role = await api<Role>(version ? "roles/" + id : "roles", version ? "PUT" : "POST", {
+        id, version, policy, permitted_sources: materials,
         name: form.get("name"),
         description: form.get("description"),
         questions: String(form.get("questions"))
@@ -63,6 +66,7 @@ export default function Roles({
       setQuestions("")
       setId(crypto.randomUUID())
     } catch (e) {
+      setConflict(e instanceof RoleConflict)
       setError(message(e))
     } finally {
       setBusy(false)
@@ -116,7 +120,7 @@ export default function Roles({
             <ResourcePolicy policy={policy} onPolicy={setPolicy} materials={materials} onMaterials={setMaterials}/>
             <Authoring
               pending={setGenerating}
-              disabled={questions.split("\n").filter(line => line.trim()).length >= 100}
+              disabled={busy || conflict || questions.split("\n").filter(line => line.trim()).length >= 100}
               task={{
                 mode: "questions",
                 id, role: name, description, version: authoringVersion,
@@ -133,7 +137,15 @@ export default function Roles({
               </p>
             )}
             <div>
-              <Button disabled={busy || generating}>Save role</Button>
+              {conflict ? <div className="stack">
+                <ReloadRole id={id} label="Discard edits and load saved role" onLoad={role => { onSave(role); open(role) }} />
+                <Button type="button" variant="outline" onClick={() => {
+                  setId(crypto.randomUUID())
+                  setVersion(undefined)
+                  setConflict(false)
+                  setError("")
+                }}>Keep edits as a new role</Button>
+              </div> : <Button disabled={busy || generating}>Save role</Button>}
             </div>
           </form>
         )}
