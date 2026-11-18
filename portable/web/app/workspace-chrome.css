@@ -114,3 +114,8 @@
   }
   .mobile-account span { display: none; }
 }
+.compact-role-label { display: none; }
+@media (max-width: 360px) {
+  .sidebar nav .compact-role-label { display: inline; }
+  .sidebar nav .full-role-label { display: none; }
+}

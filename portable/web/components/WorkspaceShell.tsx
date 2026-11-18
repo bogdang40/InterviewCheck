@@ -84,12 +84,13 @@ export default function WorkspaceShell({ children }: { children: React.ReactNode
                 <Link
                   key={href}
                   href={href}
+                  aria-label={label}
                   aria-current={
                     path === href || (href === "/interviews/" && path.startsWith(href)) ? "page" : undefined
                   }
                 >
                   <Icon />
-                  {label}
+                  {href === "/roles/" ? <><span className="full-role-label">{label}</span><span className="compact-role-label">Roles</span></> : label}
                 </Link>
               ))}
             </nav>
