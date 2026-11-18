@@ -94,19 +94,8 @@ def smoke(modes):
                     wait_for_health(base, child, logfile)
                     verify(base)
                 finally:
-                    stop_launcher(child)
-            deadline = time.monotonic() + 8
-            while time.monotonic() < deadline:
-                if not any(listening(p) for p in (web_port, api_port)):
-                    break
-                time.sleep(0.1)
-            assert not any(listening(p) for p in (web_port, api_port)), "A child service remained after shutdown."
+                    stop_launcher(child, (web_port, api_port))
             print(f"npm run {mode} passed HTTP, WebSocket and shutdown checks.", flush=True)
-
-
-def listening(port):
-    with socket.socket() as client:
-        return client.connect_ex(("127.0.0.1", port)) == 0
 
 
 if __name__ == "__main__":

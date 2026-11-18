@@ -138,4 +138,8 @@ def test_backup_size_through_real_ingress(workspace_url):
         assert c.get("/api/roles").json() == []
         too_big = raw.ljust(20 * 1024 * 1024 + 1, b" ")
         assert c.post("/api/backups/preview", content=too_big).status_code == 413
-        assert c.get("/api/roles").json() == []
+
+    # The proxy can close the upload connection after an early size rejection.
+    roles_after_rejection = httpx.get(f"{workspace_url}/api/roles", timeout=15)
+    assert roles_after_rejection.status_code == 200
+    assert roles_after_rejection.json() == []

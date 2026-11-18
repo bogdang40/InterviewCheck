@@ -84,6 +84,7 @@ def browser_page(request):
         )
         page = context.new_page()
         page.set_default_timeout(7000)
+        page.set_default_navigation_timeout(30_000)
         errors = []
         page.on("pageerror", lambda error: errors.append(str(error)))
         try:

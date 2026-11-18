@@ -16,16 +16,34 @@ from urllib.request import HTTPCookieProcessor, Request, build_opener, urlopen
 import zipfile
 
 
-def stop_launcher(process):
-    if process.poll() is not None:
-        return
-    if os.name == "nt":
-        # Stop both the launcher and its uvicorn child on the Windows runner.
-        subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"],
-                       stdout=subprocess.DEVNULL, check=True)
-    else:
-        os.killpg(process.pid, signal.SIGINT)
-    process.wait(timeout=15)
+def listening(port):
+    with socket.socket() as client:
+        return client.connect_ex(("127.0.0.1", port)) == 0
+
+
+def stop_launcher(process, ports):
+    kill_result = None
+    if process.poll() is None:
+        if os.name == "nt":
+            # A child can exit while taskkill is walking the process tree.
+            kill_result = subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                                         stdout=subprocess.DEVNULL, check=False)
+        else:
+            os.killpg(process.pid, signal.SIGINT)
+        try:
+            process.wait(timeout=15)
+        except subprocess.TimeoutExpired:
+            if kill_result is not None:
+                kill_result.check_returncode()
+            raise
+
+    deadline = time.monotonic() + 8
+    while any(listening(port) for port in ports):
+        if time.monotonic() >= deadline:
+            if kill_result is not None:
+                kill_result.check_returncode()
+            raise AssertionError("A child service remained after shutdown.")
+        time.sleep(0.1)
 
 
 def smoke(archive):
@@ -87,7 +105,7 @@ def smoke(archive):
                 assert (root / "data/review.sqlite3").exists()
                 assert (root / "data/access.sqlite3").exists()
             finally:
-                stop_launcher(process)
+                stop_launcher(process, (port,))
     print("Release launched without Node.js. Health, browser entry, embedded signup and durable interview creation passed.")
 
 
