@@ -94,3 +94,23 @@
     height: 15px;
   }
 }
+@media (max-width: 360px) {
+  .sidebar {
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding-inline: 10px;
+  }
+  .sidebar .brand {
+    min-width: 0;
+    padding-inline: 0;
+    font-size: 18px;
+  }
+  .mobile-tools { gap: 2px; }
+  .mobile-tools .mobile-account,
+  .mobile-tools .search-launch.compact {
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0;
+  }
+  .mobile-account span { display: none; }
+}

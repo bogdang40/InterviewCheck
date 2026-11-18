@@ -77,7 +77,7 @@ export default function WorkspaceShell({ children }: { children: React.ReactNode
               </span>
               Interview<span className="brand-light">Check</span>
             </Link>
-            <div className="mobile-tools"><WorkspaceSearch compact/><Link className="mobile-account" href="/account/"><UserRound size={15}/>Account</Link></div>
+            <div className="mobile-tools"><WorkspaceSearch compact/><Link className="mobile-account" href="/account/" aria-label="Account"><UserRound size={15}/><span>Account</span></Link></div>
             <span className="side-caption">WORKSPACE</span>
             <nav aria-label="Workspace">
               {menu.map(({ path: href, label, icon: Icon }) => (
