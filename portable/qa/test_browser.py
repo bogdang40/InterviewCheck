@@ -21,6 +21,7 @@ def test_notice_import_review_and_download(workspace_url, browser_page, tmp_path
     expect(page.get_by_role("heading", name="New interview")).to_be_visible()
     page.get_by_role("checkbox", name=re.compile("candidate knows")).check()
     page.get_by_role("button", name="Start interview").click()
+    page.wait_for_url(re.compile(r"/interviews/review/\?id=[0-9a-f-]+$"), wait_until="commit")
     expect(page.get_by_role("heading", name="Browser fixture")).to_be_visible()
 
     question = "Which measurement would you take first?"
