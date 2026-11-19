@@ -94,25 +94,32 @@ def workspace_url(tmp_path, monkeypatch, frontend):
             assert not thread.is_alive(), "FastAPI did not stop"
 
 
-@pytest.fixture
-def browser_page(request):
+@pytest.fixture(scope="session")
+def qa_browser(request):
     root = Path(__file__).resolve().parents[1]
     if request.config.getoption("--frontend") == "static" and not (root / "web/out/index.html").is_file():
         pytest.fail("Build the UI with npm run build in portable/web before running browser tests.")
     with sync_playwright() as playwright:
         browser = launch_chromium(playwright)
-        context = browser.new_context(
-            viewport={"width": 1440, "height": 960},
-            reduced_motion="reduce",
-        )
-        page = context.new_page()
-        page.set_default_timeout(7000)
-        page.set_default_navigation_timeout(30_000)
-        errors = []
-        page.on("pageerror", lambda error: errors.append(str(error)))
         try:
-            yield page
-            assert not errors, f"Browser runtime errors: {errors}"
+            yield browser
         finally:
-            context.close()
             browser.close()
+
+
+@pytest.fixture
+def browser_page(qa_browser):
+    context = qa_browser.new_context(
+        viewport={"width": 1440, "height": 960},
+        reduced_motion="reduce",
+    )
+    page = context.new_page()
+    page.set_default_timeout(7000)
+    page.set_default_navigation_timeout(30_000)
+    errors = []
+    page.on("pageerror", lambda error: errors.append(str(error)))
+    try:
+        yield page
+        assert not errors, f"Browser runtime errors: {errors}"
+    finally:
+        context.close()
