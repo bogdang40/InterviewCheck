@@ -1,6 +1,6 @@
 "use client"
 
-import { useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { ArchiveRestore, Download, FileCheck2 } from "lucide-react"
 import Link from "next/link"
 import { useWorkspaceSearch } from "@/lib/search"
@@ -52,14 +52,13 @@ export default function WorkspaceBackup() {
         }))
   const [scope, setScope] = useState("")
   const fileInput = useRef<HTMLInputElement>(null)
+  const [hydrated, setHydrated] = useState(false)
   const [file, setFile] = useState<File>()
   const [preview, setPreview] = useState<Preview>()
   const [busy, setBusy] = useState<"preview" | "restore" | null>(null)
   const [error, setError] = useState("")
   const [success, setSuccess] = useState("")
-  if (sessions.error) return <WorkspaceError text={sessions.error} retry={sessions.reload} />
-  const applyAllowed = preview && !preview.conflicts.length && preview.roles.new + preview.sessions.new > 0
-  function selectFile(f?: File) {
+  const selectFile = useCallback((f?: File) => {
     setPreview(undefined)
     setError("")
     setSuccess("")
@@ -69,7 +68,14 @@ export default function WorkspaceBackup() {
       return
     }
     setFile(f)
-  }
+  }, [])
+  useEffect(() => {
+    setHydrated(true)
+    const preselected = fileInput.current?.files?.[0]
+    if (preselected) selectFile(preselected)
+  }, [selectFile])
+  if (sessions.error) return <WorkspaceError text={sessions.error} retry={sessions.reload} />
+  const applyAllowed = preview && !preview.conflicts.length && preview.roles.new + preview.sessions.new > 0
   async function submit(action: "preview" | "restore") {
     if (busy || !file || (action === "restore" && !applyAllowed)) return
     setBusy(action)
@@ -164,6 +170,7 @@ export default function WorkspaceBackup() {
             type="file"
             ref={fileInput}
             accept=".json,application/json"
+            data-hydrated={hydrated ? "true" : "false"}
             disabled={!!busy}
             onChange={(e) => selectFile(e.target.files?.[0])}
           />
