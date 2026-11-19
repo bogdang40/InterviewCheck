@@ -25,8 +25,6 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "tier2: Tier 2 functional and security validation.")
     config.addinivalue_line("markers", "tier3: Tier 3 cross-viewport and persistence integrity.")
     config.addinivalue_line("markers", "tier4: Tier 4 real-world end-to-end scenarios.")
-    config.addinivalue_line("markers", "m2_gated: Requires M2 security hardening changes.")
-    config.addinivalue_line("markers", "m3_gated: Requires M3 UI redesign and /admin/ route.")
 
 
 @pytest.fixture(scope="session")

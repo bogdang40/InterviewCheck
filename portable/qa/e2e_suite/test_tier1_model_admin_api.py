@@ -189,8 +189,6 @@ def test_admin_login_after_logout_preserves_model_access(e2e_workspace):
 
 
 @pytest.mark.tier1
-@pytest.mark.m2_gated
-@pytest.mark.xfail(strict=False, reason="Requires M2 CSRF enforcement on /v1/* routes.")
 def test_m2_v1_mutations_require_csrf_header(e2e_workspace):
     e2e_workspace.configure_embedded_auth(admin_emails=ADMIN_EMAILS, bootstrap_secret=BOOTSTRAP_SECRET)
     with e2e_workspace.client(headers={"X-InterviewCheck": ""}) as raw:

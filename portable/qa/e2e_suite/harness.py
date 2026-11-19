@@ -222,25 +222,62 @@ class IsolatedWorkspace:
         else:
             self.monkeypatch.delenv("INTERVIEWCHECK_OPERATOR_EMAIL", raising=False)
 
+    @staticmethod
+    def _bind_listener(target_port: int, deadline: float) -> socket.socket:
+        while True:
+            try:
+                return socket.create_server(("127.0.0.1", target_port), backlog=2048)
+            except OSError:
+                if target_port == 0 or time.monotonic() >= deadline:
+                    raise
+                time.sleep(0.05)
+
+    def _wait_ready(self, deadline: float) -> None:
+        health_urls = [f"http://127.0.0.1:{self._bound_api_port}/api/health"]
+        if self.public_url:
+            health_urls.append(f"{self.public_url}/api/health")
+        while time.monotonic() < deadline:
+            all_ready = True
+            for url in health_urls:
+                try:
+                    response = httpx.get(url, headers={"Connection": "close"}, trust_env=False, timeout=2.0)
+                    if response.status_code != 200 or response.json().get("ok") is not True:
+                        all_ready = False
+                        break
+                except (httpx.HTTPError, ValueError):
+                    all_ready = False
+                    break
+            if all_ready:
+                return
+            time.sleep(0.05)
+        raise RuntimeError("FastAPI health check did not become ready within 15 seconds.")
+
     def start(self) -> str:
         if self._server is not None:
             return self.base_url
         from api.main import app
 
-        target_port = self._bound_api_port
-        listener = socket.create_server(("127.0.0.1", target_port))
+        deadline = time.monotonic() + 15.0
+        listener = self._bind_listener(self._bound_api_port, deadline)
         self._bound_api_port = listener.getsockname()[1]
         server = uvicorn.Server(uvicorn.Config(app, access_log=False, log_level="warning"))
         thread = threading.Thread(target=server.run, kwargs={"sockets": [listener]}, daemon=True)
         thread.start()
-        deadline = time.monotonic() + 15
         while not server.started:
             if not thread.is_alive() or time.monotonic() >= deadline:
+                server.should_exit = True
                 listener.close()
+                if thread.is_alive():
+                    thread.join(timeout=5)
                 raise RuntimeError("FastAPI did not start within 15 seconds.")
             time.sleep(0.05)
         self._server = server
         self._thread = thread
+        try:
+            self._wait_ready(deadline)
+        except Exception:
+            self.stop()
+            raise
         return self.base_url
 
     def stop(self) -> None:

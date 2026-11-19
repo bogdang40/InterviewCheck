@@ -85,8 +85,6 @@ def test_baseline_security_headers_on_api_and_html(e2e_workspace):
 
 
 @pytest.mark.tier1
-@pytest.mark.m2_gated
-@pytest.mark.xfail(strict=False, reason="Requires M2 security header middleware (CSP and Permissions-Policy).")
 def test_m2_security_headers_csp_and_permissions_policy(e2e_workspace):
     with e2e_workspace.client() as client:
         resp = client.get("/api/health")
@@ -96,14 +94,14 @@ def test_m2_security_headers_csp_and_permissions_policy(e2e_workspace):
 
 
 @pytest.mark.tier1
-@pytest.mark.m3_gated
-@pytest.mark.xfail(strict=False, reason="Requires M3 /admin/ Model Admin Panel UI route.")
-def test_m3_admin_route_renders_without_errors(e2e_workspace, desktop_page):
-    page, collector = desktop_page
-    response = page.goto(e2e_workspace.base_url + "/admin/", wait_until="domcontentloaded")
-    if response is None or response.status != 200:
-        collector.reset()
-    assert response is not None and response.status == 200
-    expect(page.locator("main#main-content")).to_be_visible()
-    assert_no_horizontal_overflow(page)
-    collector.assert_clean()
+def test_m3_admin_route_renders_without_errors(e2e_workspace, desktop_page, mobile_page):
+    for page, collector, viewport_label in (
+        (*desktop_page, "1440x900"),
+        (*mobile_page, "390x844"),
+    ):
+        response = page.goto(e2e_workspace.base_url + "/admin/", wait_until="domcontentloaded")
+        assert response is not None and response.status == 200
+        expect(page.locator("main#main-content")).to_be_visible()
+        assert_no_horizontal_overflow(page)
+        capture_screenshot(page, e2e_workspace.screenshot_dir, "route_admin", viewport_label)
+        collector.assert_clean()
