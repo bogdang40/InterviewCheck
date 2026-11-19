@@ -8,7 +8,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import access, ats_notes, authoring, backup, bulk_operations, candidate_compare, drafts, health_probes, model_admin, model_execution, model_playground, rate_limit, role_analytics, role_versions, scoring_hooks, secret_box, store, trash
+from . import access, alert_rules, ats_notes, authoring, backup, bulk_operations, candidate_compare, drafts, health_probes, model_admin, model_execution, model_playground, rate_limit, role_analytics, role_versions, scoring_hooks, secret_box, store, trash
 from .access import embedded_enabled, require_entitlement
 from .error_sanitizer import sanitize_error_text
 from .evidence import compare
@@ -179,6 +179,7 @@ app.include_router(health_probes.router)
 app.include_router(authoring.router)
 app.include_router(model_admin.router)
 app.include_router(model_playground.router)
+app.include_router(alert_rules.router)
 app.include_router(scoring_hooks.router)
 app.include_router(workspace)
 app.include_router(integrations)

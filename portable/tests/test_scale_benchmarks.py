@@ -168,7 +168,7 @@ def test_explain_query_plans_use_scale_indexes(scale_workspace):
         assert "USE TEMP B-TREE FOR ORDER BY" not in feed_plan
 
     with account_db.connection() as adb:
-        assert adb.execute("PRAGMA user_version").fetchone()[0] == 6
+        assert adb.execute("PRAGMA user_version").fetchone()[0] == 7
         v6_indexes = {
             row[0]
             for row in adb.execute(

@@ -74,11 +74,12 @@ CREATE INDEX IF NOT EXISTS idx_model_audit_action_id ON model_audit(action, id D
 
 
 def migrate(db: sqlite3.Connection) -> None:
-    from . import model_telemetry
+    from . import alert_rules, model_telemetry
 
     db.executescript(SCHEMA)
     model_telemetry.migrate(db)
     model_budgets.migrate(db)
+    alert_rules.migrate(db)
 
 
 def parse_parameters(config_json: str | None) -> dict[str, Any]:

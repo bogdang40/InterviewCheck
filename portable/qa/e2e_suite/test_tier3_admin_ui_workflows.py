@@ -329,7 +329,7 @@ def test_account_password_rotation_revokes_other_browser_context_session(e2e_wor
         page_b.get_by_label("Operator email").fill(ADMIN1_EMAIL)
         page_b.get_by_label("Password", exact=True).fill(ADMIN_PASS)
         page_b.get_by_role("button", name="Sign in", exact=True).click()
-        expect(page_b.get_by_role("alert")).to_be_visible()
+        expect(page_b.locator("main").get_by_role("alert")).to_be_visible()
         page_b.wait_for_timeout(150)
         assert all("401" in msg for msg in collector_b.console_errors), collector_b.console_errors
         collector_b.reset()

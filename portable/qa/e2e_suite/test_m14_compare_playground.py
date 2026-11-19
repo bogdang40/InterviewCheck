@@ -299,6 +299,8 @@ def test_m14_responsive_compare_and_playground_viewports_and_themes(e2e_workspac
             expect(tablist).to_be_visible()
             tablist.get_by_role("tab", name="Models").focus()
             page.keyboard.press("End")
+            expect(tablist.get_by_role("tab").last).to_be_focused()
+            tablist.get_by_role("tab", name="Playground").click()
             pg = page.locator("#panel-playground")
             expect(pg.get_by_role("heading", name="Model playground")).to_be_visible()
             pg.get_by_label("Benchmark preset").select_option("authoring_questions")
