@@ -1,7 +1,9 @@
 """Portable recovery of review records, separated from credentials and delivery state."""
 
 import hashlib
+import hmac
 import json
+import re
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Header, HTTPException, Request, Response
@@ -13,6 +15,8 @@ router = APIRouter(prefix="/backups")
 ROLE_FIELDS = set(schema.Role.model_fields)
 SESSION_FIELDS = set(schema.Session.model_fields)
 ANSWER_FIELDS = set(schema.Answer.model_fields)
+_HEX_64_LOWER = re.compile(r"^[a-f0-9]{64}$")
+_HEX_64_ANY = re.compile(r"^[a-fA-F0-9]{64}$")
 
 
 def encode(data):
@@ -80,11 +84,15 @@ def download(session_id: UUID | None = None):
     body = encode(doc).encode("utf-8")
     if len(body) > schema.LIMIT:
         raise HTTPException(413, size_error)
+    digest = hashlib.sha256(body).hexdigest()
     name = "interview-" + str(session_id) if session_id else "interviewcheck-workspace"
     return Response(
         body,
         media_type="application/json",
-        headers={"Content-Disposition": f'attachment; filename="{name}.json"'},
+        headers={
+            "Content-Disposition": f'attachment; filename="{name}.json"',
+            "X-Backup-SHA256": digest,
+        },
     )
 
 
@@ -203,10 +211,18 @@ def restore_records(db, actions):
             )
 
 
-def process(raw, fingerprint=None):
+def process(raw, fingerprint=None, expected_sha256=None):
     digest = hashlib.sha256(raw).hexdigest()
-    if fingerprint is not None and fingerprint != digest:
-        raise HTTPException(409, "The file differs from the preview. Preview it again.")
+    if expected_sha256 is not None:
+        if not _HEX_64_ANY.fullmatch(expected_sha256):
+            raise HTTPException(422, "Invalid X-Backup-SHA256 header.")
+        if not hmac.compare_digest(expected_sha256.lower(), digest):
+            raise HTTPException(409, "Backup SHA-256 checksum does not match the uploaded file.")
+    if fingerprint is not None:
+        if not _HEX_64_LOWER.fullmatch(fingerprint):
+            raise HTTPException(422, "Invalid X-Backup-Preview header.")
+        if not hmac.compare_digest(fingerprint, digest):
+            raise HTTPException(409, "The file differs from the preview. Preview it again.")
     backup = schema.parse(raw)
     apply = fingerprint is not None
     with store.connection(write=apply) as db:
@@ -215,14 +231,23 @@ def process(raw, fingerprint=None):
             if summary["conflicts"]:
                 raise HTTPException(409, "Existing records conflict with the file. Preview the backup again.")
             restore_records(db, actions)
+            if db.execute("PRAGMA foreign_key_check").fetchall():
+                raise HTTPException(422, "Backup restore failed referential integrity check.")
     return {**summary, "fingerprint": digest}
 
 
 @router.post("/preview")
-async def preview(request: Request):
-    return await run_in_threadpool(process, await request.body())
+async def preview(
+    request: Request,
+    x_backup_sha256: str | None = Header(default=None, pattern=r"^[a-fA-F0-9]{64}$"),
+):
+    return await run_in_threadpool(process, await request.body(), None, x_backup_sha256)
 
 
 @router.post("/restore")
-async def restore(request: Request, x_backup_preview: str = Header(min_length=64, max_length=64)):
-    return await run_in_threadpool(process, await request.body(), x_backup_preview)
+async def restore(
+    request: Request,
+    x_backup_preview: str = Header(min_length=64, max_length=64, pattern=r"^[a-f0-9]{64}$"),
+    x_backup_sha256: str | None = Header(default=None, pattern=r"^[a-fA-F0-9]{64}$"),
+):
+    return await run_in_threadpool(process, await request.body(), x_backup_preview, x_backup_sha256)

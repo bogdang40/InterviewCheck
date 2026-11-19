@@ -6,6 +6,7 @@ import Link from "next/link"
 import { useWorkspaceSearch } from "@/lib/search"
 import { useResource } from "@/lib/workspace"
 import { dateLabel, message, type Session } from "@/lib/api"
+import { extractApiError } from "@/lib/adminModels"
 import { Button } from "./ui/button"
 import { Input } from "./ui/input"
 import WorkspaceError from "./WorkspaceError"
@@ -18,12 +19,20 @@ type Preview = {
   drafts: number
   trashed: number
   fingerprint: string
+  sha256?: string
   conflicts: { kind: string; id: string; label: string }[]
 }
 
-async function submitFile(action: "preview" | "restore", file: File, token?: string): Promise<Preview> {
+async function submitFile(
+  action: "preview" | "restore",
+  file: File,
+  token?: string,
+  expectedSha256?: string,
+): Promise<Preview> {
   const headers: Record<string, string> = { "Content-Type": "application/json", "X-InterviewCheck": "1" }
   if (token) headers["X-Backup-Preview"] = token
+  const checksum = expectedSha256?.trim()
+  if (checksum) headers["X-Backup-SHA256"] = checksum
   const response = await fetch("/api/backups/" + action, {
     method: "POST",
     headers,
@@ -31,11 +40,9 @@ async function submitFile(action: "preview" | "restore", file: File, token?: str
     cache: "no-store",
   })
   const result = await response.json().catch(() => ({}))
-  if (!response.ok)
-    throw new Error(
-      typeof result.detail === "string" ? result.detail : `Backup request failed (HTTP ${response.status}).`,
-    )
-  return result
+  if (!response.ok) throw new Error(extractApiError(result, response.status))
+  const headerDigest = response.headers.get("X-Backup-SHA256")?.trim()
+  return { ...(result as Preview), sha256: headerDigest || (result as Preview).fingerprint }
 }
 
 export default function WorkspaceBackup() {
@@ -53,6 +60,7 @@ export default function WorkspaceBackup() {
   const [scope, setScope] = useState("")
   const fileInput = useRef<HTMLInputElement>(null)
   const [file, setFile] = useState<File>()
+  const [expectedSha256, setExpectedSha256] = useState("")
   const [preview, setPreview] = useState<Preview>()
   const [busy, setBusy] = useState<"preview" | "restore" | null>(null)
   const [error, setError] = useState("")
@@ -76,7 +84,7 @@ export default function WorkspaceBackup() {
     setError("")
     setSuccess("")
     try {
-      const result = await submitFile(action, file, preview?.fingerprint)
+      const result = await submitFile(action, file, preview?.fingerprint, expectedSha256)
       if (action === "preview") setPreview(result)
       else {
         setSuccess(
@@ -84,6 +92,7 @@ export default function WorkspaceBackup() {
         )
         setPreview(undefined)
         setFile(undefined)
+        setExpectedSha256("")
         if (fileInput.current) fileInput.current.value = ""
         sessions.reload()
       }
@@ -97,7 +106,7 @@ export default function WorkspaceBackup() {
   return (
     <div className="data-grid">
       <section className="panel data-panel">
-        <Download className="data-symbol" size={22} />
+        <Download className="data-symbol" size={22} aria-hidden="true" />
         <h2>Download a backup</h2>
         <p>
           Save role plans, interviews, sources, saved drafts and review notes in one JSON file. It contains
@@ -142,7 +151,7 @@ export default function WorkspaceBackup() {
             href={"/api/backups/workspace" + (scope ? "?session_id=" + encodeURIComponent(scope) : "")}
             download
           >
-            <Download />
+            <Download aria-hidden="true" />
             Download backup
           </a>
         </Button>
@@ -152,7 +161,7 @@ export default function WorkspaceBackup() {
         </Link>
       </section>
       <section className="panel data-panel">
-        <ArchiveRestore className="data-symbol" size={22} />
+        <ArchiveRestore className="data-symbol" size={22} aria-hidden="true" />
         <h2>Restore from a backup</h2>
         <p>
           Preview the records before importing. Identical records are skipped. If an ID contains different
@@ -168,8 +177,23 @@ export default function WorkspaceBackup() {
             onChange={(e) => selectFile(e.target.files?.[0])}
           />
         </label>
+        <label className="field">
+          Expected SHA-256 checksum (optional)
+          <Input
+            type="text"
+            value={expectedSha256}
+            disabled={!!busy}
+            placeholder="64-character hex digest"
+            spellCheck={false}
+            autoComplete="off"
+            onChange={(e) => {
+              setExpectedSha256(e.target.value)
+              setError("")
+            }}
+          />
+        </label>
         <Button variant="outline" disabled={!file || !!busy} onClick={() => submit("preview")}>
-          <FileCheck2 />
+          <FileCheck2 aria-hidden="true" />
           {busy === "preview" ? "Checking file…" : "Preview restore"}
         </Button>
         {error && (
@@ -185,6 +209,12 @@ export default function WorkspaceBackup() {
         {preview && (
           <div className="restore-plan">
             <h3>Restore preview</h3>
+            <div className="field">
+              <span>Backup SHA-256 fingerprint</span>
+              <code className="code-block" data-testid="backup-sha256">
+                {preview.sha256 || preview.fingerprint}
+              </code>
+            </div>
             <div className="table-wrap">
               <table>
                 <caption className="sr-only">Backup record counts</caption>

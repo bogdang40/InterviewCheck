@@ -14,11 +14,14 @@ from pydantic import (
     StringConstraints,
     ValidationError,
     field_validator,
+    model_validator,
 )
 
-from .backup_validation import unique, verify_records
+from .backup_validation import check_session_chronology, unique, verify_records
 
 LIMIT = 20 * 1024 * 1024
+LEGACY_MAX_DEPTH = 16
+LEGACY_MAX_NODES = 2000
 ID = Annotated[
     str, StringConstraints(pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 ]
@@ -30,8 +33,56 @@ HistoricalQuestions = Annotated[list[HistoricalText], Field(max_length=1000)]
 Span = Annotated[list[int], Field(min_length=2, max_length=2)]
 
 
+def _reject_null_bytes(value: object) -> None:
+    if isinstance(value, str):
+        if "\x00" in value:
+            raise ValueError("Null bytes are not allowed in text fields.")
+    elif isinstance(value, list):
+        for item in value:
+            if isinstance(item, str) and "\x00" in item:
+                raise ValueError("Null bytes are not allowed in text fields.")
+
+
+def _validate_legacy_tree(value: object) -> object:
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise ValueError("Legacy metadata must be a JSON object.")
+    stack: list[tuple[object, int]] = [(value, 1)]
+    nodes = 0
+    while stack:
+        current, depth = stack.pop()
+        nodes += 1
+        if nodes > LEGACY_MAX_NODES:
+            raise ValueError("Legacy metadata exceeds maximum node count.")
+        if isinstance(current, dict):
+            if depth > LEGACY_MAX_DEPTH:
+                raise ValueError("Legacy metadata exceeds maximum nesting depth.")
+            for key, item in current.items():
+                if not isinstance(key, str):
+                    raise ValueError("Legacy metadata keys must be strings.")
+                if "\x00" in key:
+                    raise ValueError("Null bytes are not allowed in text fields.")
+                stack.append((item, depth + 1))
+        elif isinstance(current, list):
+            if depth > LEGACY_MAX_DEPTH:
+                raise ValueError("Legacy metadata exceeds maximum nesting depth.")
+            for item in current:
+                stack.append((item, depth + 1))
+        elif isinstance(current, str) and "\x00" in current:
+            raise ValueError("Null bytes are not allowed in text fields.")
+    return value
+
+
 class Record(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
+
+    @model_validator(mode="after")
+    def reject_null_bytes(self):
+        for name, value in self.__dict__.items():
+            if name != "legacy":
+                _reject_null_bytes(value)
+        return self
 
 
 class Material(Record):
@@ -54,6 +105,11 @@ class Role(Record):
     permitted_sources: list[Material] = Field(default_factory=list, max_length=8)
     legacy: dict[str, JsonValue] | None = None
 
+    @field_validator("legacy", mode="before")
+    @classmethod
+    def check_legacy(cls, value):
+        return _validate_legacy_tree(value)
+
 
 class Passage(Record):
     label: Label
@@ -63,6 +119,13 @@ class Passage(Record):
     source_index: int | None = Field(default=None, ge=0)
     answer_span: Span | None = None
     source_span: Span | None = None
+
+    @field_validator("answer_span", "source_span")
+    @classmethod
+    def valid_span(cls, span):
+        if span is not None and (span[0] < 0 or span[1] <= span[0]):
+            raise ValueError("Passage span must satisfy 0 <= start < end.")
+        return span
 
 
 class Finding(Record):
@@ -100,6 +163,11 @@ class Answer(Record):
     import_origin: Origin | None = None
     legacy: dict[str, JsonValue] | None = None
 
+    @field_validator("legacy", mode="before")
+    @classmethod
+    def check_legacy(cls, value):
+        return _validate_legacy_tree(value)
+
 
 class SavedDraft(Record):
     parent_answer_id: ID | None = None
@@ -135,6 +203,11 @@ class Session(Record):
     answers: list[Answer] = Field(max_length=20000)
     legacy: dict[str, JsonValue] | None = None
 
+    @field_validator("legacy", mode="before")
+    @classmethod
+    def check_legacy(cls, value):
+        return _validate_legacy_tree(value)
+
     @field_validator("created_at", "ended_at", "trashed_at")
     @classmethod
     def timestamp(cls, stamp):
@@ -143,6 +216,11 @@ class Session(Record):
             if parsed.utcoffset() is None:
                 raise ValueError("Timestamp needs a time zone.")
         return stamp
+
+    @model_validator(mode="after")
+    def valid_chronology(self):
+        check_session_chronology(self.created_at, self.ended_at, self.trashed_at)
+        return self
 
 
 class Backup(Record):
