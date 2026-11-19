@@ -103,6 +103,16 @@ def serve_next(web, mode, api_port, log_path):
                 )
                 if build.returncode != 0:
                     raise RuntimeError(f"Next.js build failed.\n{build.stdout[-1800:]}")
+                inject = subprocess.run(
+                    ["node", "inject-csp.mjs"],
+                    cwd=web,
+                    env=environment,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                )
+                if inject.returncode != 0:
+                    raise RuntimeError(f"CSP hash injection failed.\n{inject.stdout[-1800:]}")
         with log_path.open("w", encoding="utf-8") as log:
             process = subprocess.Popen(command, cwd=web, env=environment, stdout=log, stderr=subprocess.STDOUT, **options)
             try:
