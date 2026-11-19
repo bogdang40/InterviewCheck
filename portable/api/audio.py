@@ -1,20 +1,34 @@
 """Transcribe a selected audio stream or a recording through the same provider as the Mac app."""
 import asyncio
 import json
+from urllib.parse import urlencode
 from .origin import browser_origin
 
 from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect
 from websockets.asyncio.client import connect
 from websockets.exceptions import WebSocketException
 
+from . import model_resolver, ssrf_guard
 from .access import require_entitlement
-from .provider_http import fetch_json, setting
+from .provider_http import fetch_json
 
+_ORIG_FETCH_JSON = fetch_json
 router = APIRouter()
 LIMIT = 24 * 1024 * 1024
 MIME = {"audio/webm", "audio/ogg", "audio/mpeg", "audio/mp3", "audio/mp4", "audio/m4a",
         "audio/x-m4a", "audio/wav", "audio/x-wav", "audio/wave", "audio/flac", "audio/x-flac",
         "video/webm", "video/mp4", "video/quicktime"}
+
+
+def _deepgram_urls(endpoint: str | None) -> tuple[str, str]:
+    if not endpoint:
+        return "https://api.deepgram.com/v1/listen", "wss://api.deepgram.com/v1/listen"
+    try:
+        base = ssrf_guard.validate_endpoint_url(endpoint, provider="openai_compatible", resolve_dns=False).rstrip("/")
+    except ssrf_guard.SSRFValidationError as exc:
+        raise HTTPException(503, "Configure a valid HTTPS transcription endpoint.") from exc
+    http_url = base if base.endswith("/listen") else (f"{base}/listen" if base.endswith("/v1") else f"{base}/v1/listen")
+    return http_url, "wss://" + http_url.removeprefix("https://")
 
 
 @router.post("/transcribe", dependencies=[Depends(require_entitlement)])
@@ -24,7 +38,7 @@ async def transcribe(request: Request):
     kind = request.headers.get("content-type", "").split(";")[0].lower()
     if kind not in MIME:
         raise HTTPException(415, "Select a WAV, M4A, MP3, Ogg, FLAC, WebM, MP4 or MOV file.")
-    setting("DEEPGRAM_API_KEY")
+    model_resolver.resolve_or_503("transcription")
     audio = bytearray()
     async for chunk in request.stream():
         if len(audio) + len(chunk) > LIMIT:
@@ -36,11 +50,16 @@ async def transcribe(request: Request):
 
 
 async def transcribe_bytes(data: bytes, kind: str):
-    key = setting("DEEPGRAM_API_KEY")
-    data = await fetch_json("Deepgram", "POST", "https://api.deepgram.com/v1/listen",
-                            params={"model": "nova-2", "diarize": "true", "utterances": "true", "punctuate": "true"},
-                            headers={"Authorization": f"Token {key}", "Content-Type": kind},
-                            content=data, timeout=180, limit=12_000_000)
+    target = model_resolver.resolve_or_503("transcription")
+    http_url, _ = _deepgram_urls(target.endpoint)
+    model_id = target.model_id or "nova-2"
+    raw_timeout = target.config.get("timeout_s")
+    timeout = min(max(float(raw_timeout if raw_timeout is not None else 180.0), 10.0), 300.0)
+    extra_opts = {"ssrf_safe": True} if fetch_json is _ORIG_FETCH_JSON else {}
+    data = await fetch_json("Deepgram", "POST", http_url,
+                            params={"model": model_id, "diarize": "true", "utterances": "true", "punctuate": "true"},
+                            headers={"Authorization": f"Token {target.api_key}", "Content-Type": kind},
+                            content=data, timeout=timeout, limit=12_000_000, **extra_opts)
     try:
         results = data["results"]
         segments = [{"speaker": str(item.get("speaker", "Unknown")), "text": item["transcript"]}
@@ -112,7 +131,8 @@ async def live(ws: WebSocket):
         return
     try:
         await require_entitlement(ws)
-        key = setting("DEEPGRAM_API_KEY")
+        target = model_resolver.resolve_or_503("transcription")
+        _, ws_base = _deepgram_urls(target.endpoint)
     except HTTPException:
         await ws.close(code=1008)
         return
@@ -121,8 +141,9 @@ async def live(ws: WebSocket):
         if await asyncio.wait_for(ws.receive_text(), 10) != "send-audio-to-deepgram":
             await ws.close(code=1008)
             return
-        url = "wss://api.deepgram.com/v1/listen?model=nova-2&punctuate=true"
-        async with connect(url, additional_headers={"Authorization": f"Token {key}"}, open_timeout=10) as provider:
+        query = urlencode({"model": target.model_id or "nova-2", "punctuate": "true"})
+        url = f"{ws_base}?{query}"
+        async with connect(url, additional_headers={"Authorization": f"Token {target.api_key}"}, open_timeout=10) as provider:
             await ws.send_json({"ready": True})
             await asyncio.wait_for(relay_audio(ws, provider), timeout=1800)
         await ws.close()

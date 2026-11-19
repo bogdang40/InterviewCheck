@@ -59,6 +59,8 @@ async def upstream(path, method="GET", *, token=None, body=None, idempotency=Non
 
 
 def verify_operator_email(email):
+    if not configured("INTERVIEWCHECK_OPERATOR_EMAIL") and not public_remote():
+        return
     if not isinstance(email, str) or email.casefold() != setting("INTERVIEWCHECK_OPERATOR_EMAIL").casefold():
         raise HTTPException(403, "Sign in with the operator account assigned to this workstation.")
 

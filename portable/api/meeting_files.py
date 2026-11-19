@@ -11,7 +11,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from . import meeting_artifacts, oauth_tokens
+from . import meeting_artifacts, model_resolver, oauth_tokens
 from .access import require_entitlement
 from .audio import LIMIT, transcribe_bytes
 from .booking_sources import KEYS
@@ -164,7 +164,7 @@ async def import_file(handle: UUID, body: ImportSelection):
     if file.kind != "transcript":
         if not body.send_to_deepgram:
             raise HTTPException(400, "Confirm transfer of this recording to Deepgram.")
-        setting("DEEPGRAM_API_KEY")
+        model_resolver.resolve_or_503("transcription")
     raw, mime = await download(file, 2_000_000 if file.kind == "transcript" else LIMIT)
     if file.kind != "transcript":
         return await transcribe_bytes(raw, mime)

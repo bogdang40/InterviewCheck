@@ -71,7 +71,8 @@ def login(action: Literal["login", "signup", "logout"], request: Request, form: 
         return Response(status_code=204)
     if form is None:
         raise HTTPException(422, "Credentials are required.")
-    if request.app.state.embedded and form.email != os.getenv("INTERVIEWCHECK_OPERATOR_EMAIL", "").strip().lower():
+    operator_email = os.getenv("INTERVIEWCHECK_OPERATOR_EMAIL", "").strip().lower()
+    if request.app.state.embedded and operator_email and form.email != operator_email:
         raise HTTPException(403, "Use the operator email assigned to this workspace.")
     public = not request.app.state.embedded or bool(os.getenv("INTERVIEWCHECK_PUBLIC_ORIGIN"))
     address = workspace_client(request) if request.app.state.embedded else (request.client.host if request.client else "local")

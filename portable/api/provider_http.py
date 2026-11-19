@@ -4,6 +4,8 @@ import json
 import httpx
 from fastapi import HTTPException
 
+from .ssrf_guard import SSRFValidationError, SafeAsyncTransport
+
 
 def configured(key: str) -> bool:
     return bool(os.getenv(key, "").strip())
@@ -25,9 +27,23 @@ async def read_json(response, provider, limit):
     return json.loads(data)
 
 
-async def fetch_json(provider: str, method: str, url: str, *, timeout=30, limit=4_000_000, classify_bad_request=None, **options):
+async def fetch_json(
+    provider: str,
+    method: str,
+    url: str,
+    *,
+    timeout=30,
+    limit=4_000_000,
+    classify_bad_request=None,
+    ssrf_safe: bool = False,
+    **options,
+):
+    client_kwargs = {"timeout": timeout, "follow_redirects": False}
+    if ssrf_safe:
+        client_kwargs["trust_env"] = False
+        client_kwargs["transport"] = SafeAsyncTransport()
     try:
-        async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
+        async with httpx.AsyncClient(**client_kwargs) as client:
             async with client.stream(method, url, **options) as response:
                 if not 200 <= response.status_code < 300:
                     status = response.status_code
@@ -44,6 +60,8 @@ async def fetch_json(provider: str, method: str, url: str, *, timeout=30, limit=
                 if response.status_code == 204:
                     return {}
                 return await read_json(response, provider, limit)
+    except SSRFValidationError as exc:
+        raise HTTPException(502, str(exc)) from exc
     except (ValueError, UnicodeError) as exc:
         raise HTTPException(502, f"{provider} returned invalid JSON.") from exc
     except httpx.TimeoutException as exc:

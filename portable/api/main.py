@@ -7,7 +7,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import ats_notes, authoring, backup, drafts, store, trash
+from . import ats_notes, authoring, backup, drafts, model_admin, scoring_hooks, store, trash
 from .access import embedded_enabled, require_entitlement
 from .evidence import compare
 from .integrations import router as integrations
@@ -158,6 +158,8 @@ workspace.include_router(discovery)
 workspace.include_router(interview_catalog)
 workspace.include_router(exports)
 app.include_router(authoring.router)
+app.include_router(model_admin.router)
+app.include_router(scoring_hooks.router)
 app.include_router(workspace)
 app.include_router(integrations)
 

@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from . import access, account_stripe, ats, ats_notes, authoring, booking_sources, mailbox, oauth_tokens
+from . import access, account_stripe, ats, ats_notes, authoring, booking_sources, mailbox, model_resolver, oauth_tokens
 from .provider_http import configured
 
 router = APIRouter()
@@ -53,8 +53,15 @@ def operation(task, name, where, groups=(), *, optional=(), state=None):
     }
 
 
-def card(key, name, operations):
-    return {"id": key, "name": name, "operations": operations}
+def card(key, name, operations, **extra):
+    return {"id": key, "name": name, "operations": operations, **extra}
+
+
+def _catalog_model_meta(row):
+    return {
+        key: row[key]
+        for key in ("id", "slug", "display_name", "model_id", "capability", "status", "enabled", "last_latency_ms", "last_checked_at", "key_hint")
+    }
 
 
 def calendar_and_meetings():
@@ -122,12 +129,19 @@ def calendar_and_meetings():
 
 
 def recording_transcription(groups, optional=()):
+    db_rows = model_resolver.list_model_summaries(capability="transcription")
+    state = None
+    if db_rows:
+        source_ready = any(all(configured(k) for k in keys) for keys in groups)
+        tx_ready = model_resolver.resolve_capability("transcription") is not None
+        state = "configured" if (source_ready and tx_ready) else "needs_setup"
     return operation(
         "Transcription",
         "Transcribe a selected recording",
         "Interview · Capture audio · Meeting recordings",
         [(*keys, "DEEPGRAM_API_KEY") for keys in groups],
         optional=optional,
+        state=state,
     )
 
 
@@ -219,6 +233,8 @@ def account_operations():
 
 @router.get("/catalog")
 def catalog():
+    dg_rows = model_resolver.list_model_summaries(provider="deepgram", capability="transcription")
+    dg_state = ("configured" if model_resolver.resolve_capability("transcription") is not None else "needs_setup") if dg_rows else None
     result = [
         card(
             "files",
@@ -248,31 +264,47 @@ def catalog():
                     "Transcribe a call or microphone",
                     "Interview · Capture audio",
                     [("DEEPGRAM_API_KEY",)],
+                    state=dg_state,
                 ),
                 operation(
                     "Transcription",
                     "Transcribe an audio or video file",
                     "Interview · Capture audio",
                     [("DEEPGRAM_API_KEY",)],
+                    state=dg_state,
                 ),
             ],
+            **({"models": [_catalog_model_meta(r) for r in dg_rows]} if dg_rows else {}),
         ),
     ]
     for name, keys in authoring.MODEL_KEYS.items():
-        result.append(
-            card(
-                name.lower().replace(" ", "_"),
-                name,
-                [
-                    operation(
-                        "References", "Generate reference answers", "Interview · Add an exchange", [keys]
-                    ),
-                    operation(
-                        "Question planning", "Draft planned questions", "Role library · Edit role", [keys]
-                    ),
-                ],
+        prov_key = name.lower().replace(" ", "_")
+        prov_rows = model_resolver.list_model_summaries(provider=prov_key)
+        ref_rows = [r for r in prov_rows if r["capability"] == "reference"]
+        qp_rows = [r for r in prov_rows if r["capability"] == "question_planning"]
+        ref_state = ("configured" if model_resolver.resolve_capability("reference", provider=prov_key) is not None else "needs_setup") if ref_rows else None
+        qp_state = ("configured" if model_resolver.resolve_capability("question_planning", provider=prov_key, allow_reference_fallback=True) is not None else "needs_setup") if (qp_rows or ref_rows) else None
+        ops = [
+            operation("References", "Generate reference answers", "Interview · Add an exchange", [keys], state=ref_state),
+            operation("Question planning", "Draft planned questions", "Role library · Edit role", [keys], state=qp_state),
+        ]
+        for cap, task_label, op_name in (("embedding", "Embeddings", "Compute semantic similarity"), ("judge", "AI Judge", "Evaluate answer quality")):
+            cap_rows = [r for r in prov_rows if r["capability"] == cap]
+            if cap_rows:
+                ops.append(operation(task_label, op_name, "Interview · Scoring", state="configured" if any(r["enabled"] for r in cap_rows) else "needs_setup"))
+        result.append(card(prov_key, name, ops, **({"models": [_catalog_model_meta(r) for r in prov_rows]} if prov_rows else {})))
+    compat_rows = model_resolver.list_model_summaries(provider="openai_compatible")
+    if compat_rows:
+        compat_ops = [
+            operation(
+                r["capability"].replace("_", " ").title(),
+                f"{r['display_name']} ({r['model_id']})",
+                "Admin · Models",
+                state="configured" if r["enabled"] else "needs_setup",
             )
-        )
+            for r in compat_rows
+        ]
+        result.append(card("openai_compatible", "OpenAI-Compatible", compat_ops, models=[_catalog_model_meta(r) for r in compat_rows]))
     result.extend(calendar_and_meetings())
     for key, required in ats.KEYS.items():
         regions = {

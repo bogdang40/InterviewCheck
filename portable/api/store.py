@@ -9,7 +9,7 @@ from uuid import uuid4
 
 from fastapi import HTTPException
 
-from . import lineage, role_kits
+from . import lineage, model_registry, role_kits
 from .role_kits import role_row, create_role
 from .models import EARLIER_ANSWER_NOTE, AnswerEdit, AnswerInput, ReviewInput, SessionInput
 
@@ -104,6 +104,7 @@ def initialize(path):
             db.execute("ALTER TABLE answers ADD COLUMN revision INTEGER NOT NULL DEFAULT 1")
         lineage.migrate(db)
         role_kits.migrate_columns(db)
+        model_registry.migrate(db)
         # Freeze plans for workspaces created before role IDs were recorded. Only
         # an unambiguous title can recover the original plan from that edition.
         db.execute("""INSERT OR IGNORE INTO session_context(session_id,role_id,questions,ended_at)
