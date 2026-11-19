@@ -66,6 +66,19 @@ function ReviewerTable({ rows, caption }: { rows: ReviewerSummary[]; caption: st
   )
 }
 
+function RetryAlert({ message, disabled, onRetry }: { message: string; disabled: boolean; onRetry: () => void }) {
+  return (
+    <div className="error stack" role="alert">
+      <p>{message}</p>
+      <div>
+        <Button type="button" variant="outline" size="sm" className="min-h-[44px] md:min-h-8" disabled={disabled} onClick={onRetry}>
+          Retry
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 export default function RoleAnalyticsPanel({ refreshKey = 0 }: { refreshKey?: number }) {
   const [analytics, setAnalytics] = useState<RolesAnalyticsResponse | null>(null)
   const [loading, setLoading] = useState(true)
@@ -74,12 +87,15 @@ export default function RoleAnalyticsPanel({ refreshKey = 0 }: { refreshKey?: nu
   const [calibration, setCalibration] = useState<RoleCalibrationResponse | null>(null)
   const [calLoading, setCalLoading] = useState(false)
   const [calError, setCalError] = useState("")
+  const [statusText, setStatusText] = useState("")
 
   const loadAnalytics = useCallback(async (signal?: AbortSignal) => {
     setLoading(true)
     setError("")
     try {
-      setAnalytics(await fetchRolesAnalytics(signal))
+      const next = await fetchRolesAnalytics(signal)
+      setAnalytics(next)
+      setStatusText(`Loaded analytics for ${next.roles.length} ${next.roles.length === 1 ? "role" : "roles"}.`)
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") return
       setError(err instanceof Error ? err.message : "Failed to load role analytics.")
@@ -94,18 +110,14 @@ export default function RoleAnalyticsPanel({ refreshKey = 0 }: { refreshKey?: nu
     return () => controller.abort()
   }, [loadAnalytics, refreshKey])
 
-  async function inspectRole(roleId: string) {
-    if (selectedRoleId === roleId) {
-      setSelectedRoleId(null)
-      setCalibration(null)
-      setCalError("")
-      return
-    }
+  async function loadCalibration(roleId: string) {
     setSelectedRoleId(roleId)
     setCalLoading(true)
     setCalError("")
     try {
-      setCalibration(await fetchRoleCalibration(roleId))
+      const next = await fetchRoleCalibration(roleId)
+      setCalibration(next)
+      setStatusText(`Loaded calibration breakdown for ${next.role_name}.`)
     } catch (err) {
       setCalError(err instanceof Error ? err.message : "Failed to load role calibration.")
     } finally {
@@ -113,10 +125,22 @@ export default function RoleAnalyticsPanel({ refreshKey = 0 }: { refreshKey?: nu
     }
   }
 
+  async function inspectRole(roleId: string) {
+    if (selectedRoleId === roleId) {
+      setSelectedRoleId(null)
+      setCalibration(null)
+      setCalError("")
+      setStatusText("Collapsed role calibration breakdown.")
+      return
+    }
+    await loadCalibration(roleId)
+  }
+
   const totals = analytics?.totals
 
   return (
     <section className="panel stack" aria-label="Role calibration analytics">
+      <p className="sr-only" aria-live="polite">{statusText}</p>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <span className="eyebrow">CALIBRATION</span>
@@ -126,14 +150,14 @@ export default function RoleAnalyticsPanel({ refreshKey = 0 }: { refreshKey?: nu
           </h2>
           <p className="muted text-sm">Pass, passage match, and concern rates across active interviews, plus reviewer calibration variance.</p>
         </div>
-        <Button type="button" variant="outline" size="sm" disabled={loading} onClick={() => void loadAnalytics()}>
+        <Button type="button" variant="outline" size="sm" className="min-h-[44px] md:min-h-8" disabled={loading} onClick={() => void loadAnalytics()}>
           <RefreshCw aria-hidden="true" />
           Refresh analytics
         </Button>
       </div>
-      {error && <div className="error stack" role="alert"><p>{error}</p></div>}
+      {error && <RetryAlert message={error} disabled={loading} onRetry={() => void loadAnalytics()} />}
       {loading && !analytics ? (
-        <p className="muted text-sm" role="status">Loading role analytics...</p>
+        <p className="muted text-sm" role="status" aria-live="polite">Loading role analytics...</p>
       ) : totals && (
         <>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -163,7 +187,7 @@ export default function RoleAnalyticsPanel({ refreshKey = 0 }: { refreshKey?: nu
                           {item.multi_reviewer_disagreements} disagreements
                         </Badge>
                       </div>
-                      <Button type="button" variant="outline" size="sm" onClick={() => void inspectRole(item.role_id)}>
+                      <Button type="button" variant="outline" size="sm" className="min-h-[44px] md:min-h-8" onClick={() => void inspectRole(item.role_id)}>
                         {isSelected ? "Hide breakdown" : "Inspect calibration"}
                       </Button>
                     </div>
@@ -175,9 +199,9 @@ export default function RoleAnalyticsPanel({ refreshKey = 0 }: { refreshKey?: nu
                     {isSelected && (
                       <div className="border-t border-[var(--line)] pt-3 stack">
                         {calLoading ? (
-                          <p className="muted text-sm" role="status">Loading role calibration...</p>
+                          <p className="muted text-sm" role="status" aria-live="polite">Loading role calibration...</p>
                         ) : calError ? (
-                          <p className="error" role="alert">{calError}</p>
+                          <RetryAlert message={calError} disabled={calLoading} onRetry={() => void loadCalibration(item.role_id)} />
                         ) : calibration && calibration.role_id === item.role_id && (
                           <>
                             <h3 className="text-sm font-semibold">Reviewer spread for {calibration.role_name}</h3>
