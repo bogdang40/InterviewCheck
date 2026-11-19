@@ -8,12 +8,13 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import access, alert_rules, ats_notes, authoring, backup, bulk_operations, candidate_compare, drafts, health_probes, model_admin, model_execution, model_playground, rate_limit, role_analytics, role_versions, scoring_hooks, secret_box, store, trash
+from . import access, alert_rules, ats_notes, authoring, backup, bulk_operations, candidate_compare, drafts, health_probes, metrics_export, model_admin, model_execution, model_playground, rate_limit, role_analytics, role_versions, scoring_hooks, secret_box, store, trash
 from .access import embedded_enabled, require_entitlement
 from .error_sanitizer import sanitize_error_text
 from .evidence import compare
 from .integrations import router as integrations
 from .local_boundary import LocalBoundary
+from .metrics_export import MetricsMiddleware
 from .origin import validate_runtime_exposure
 from .migrate import import_role, preview_role
 from .discovery import router as discovery
@@ -47,6 +48,7 @@ static = Path(__file__).resolve().parents[1] / "web" / "out"
 app = FastAPI(title="InterviewCheck", lifespan=lifespan)
 app.add_middleware(LocalBoundary)
 app.add_middleware(SecurityHeadersMiddleware, static_dir=static if static.is_dir() else None)
+app.add_middleware(MetricsMiddleware)
 workspace = APIRouter(prefix="/api", dependencies=[Depends(require_entitlement)])
 
 
@@ -180,6 +182,7 @@ app.include_router(authoring.router)
 app.include_router(model_admin.router)
 app.include_router(model_playground.router)
 app.include_router(alert_rules.router)
+app.include_router(metrics_export.router)
 app.include_router(scoring_hooks.router)
 app.include_router(workspace)
 app.include_router(integrations)

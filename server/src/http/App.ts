@@ -8,6 +8,7 @@ import { AdminRoutes } from "./routes/AdminRoutes.js";
 import { AuthRoutes } from "./routes/AuthRoutes.js";
 import { BILLING_RETURN_STYLE_HASH } from "./routes/BillingReturnPage.js";
 import { BillingRoutes } from "./routes/BillingRoutes.js";
+import { MetricsRoutes } from "./routes/MetricsRoutes.js";
 import { SecurityRoutes } from "./routes/SecurityRoutes.js";
 
 export const API_VERSION = "v1";
@@ -91,6 +92,16 @@ export class AppFactory {
         security: container.security,
         adminReadLimiter: container.adminReadLimiter,
         adminWriteLimiter: container.adminWriteLimiter,
+        trustProxy: container.config.TRUST_PROXY,
+      }),
+    );
+    api.route(
+      "/admin/metrics",
+      MetricsRoutes.build({
+        auth: container.auth,
+        database: container.database,
+        security: container.security,
+        adminReadLimiter: container.adminReadLimiter,
         trustProxy: container.config.TRUST_PROXY,
       }),
     );
