@@ -14,6 +14,7 @@ Object.assign(pages, {
   "/interviews/new/": "New interview",
   "/interviews/review/": "Interview record",
   "/interviews/brief/": "Review brief",
+  "/interviews/compare/": "Compare candidates",
   "/sample/": "Sample review",
   "/trash/": "Trash",
   "/account/": "Account",
