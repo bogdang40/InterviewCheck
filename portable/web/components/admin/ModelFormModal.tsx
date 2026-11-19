@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useId, useState, type FormEvent } from "react"
+import { useId, useRef, useState, type FormEvent } from "react"
 import { X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,14 +11,18 @@ import {
   KEY_REQUIRED_PROVIDERS,
   PROVIDER_LABELS,
   createAdminModel,
-  parseOptionalFloat,
-  parseOptionalInt,
   updateAdminModel,
   type ConnectedModel,
   type ModelCapability,
-  type ModelParameters,
   type ModelProvider,
 } from "@/lib/adminModels"
+import { useDialogFocusTrap } from "@/lib/useDialogFocusTrap"
+import {
+  ModelParameterFields,
+  initialParameterValues,
+  parseModelParameterValues,
+  type ModelParameterValues,
+} from "./ModelParameterFields"
 
 export function ModelFormModal({
   editing,
@@ -40,30 +44,22 @@ export function ModelFormModal({
   const [apiVersion, setApiVersion] = useState(editing?.api_version ?? "")
   const [apiKey, setApiKey] = useState("")
   const [clearApiKey, setClearApiKey] = useState(false)
-  const [temperature, setTemperature] = useState(
-    editing?.parameters.temperature != null ? String(editing.parameters.temperature) : "",
-  )
-  const [maxTokens, setMaxTokens] = useState(
-    editing?.parameters.max_tokens != null ? String(editing.parameters.max_tokens) : "",
-  )
-  const [timeoutS, setTimeoutS] = useState(
-    editing?.parameters.timeout_s != null ? String(editing.parameters.timeout_s) : "",
-  )
-  const [fallbackPriority, setFallbackPriority] = useState(
-    editing ? String(editing.parameters.fallback_priority) : "100",
+  const [paramValues, setParamValues] = useState<ModelParameterValues>(() =>
+    initialParameterValues(editing),
   )
   const [enabled, setEnabled] = useState(editing?.enabled ?? true)
   const [isDefault, setIsDefault] = useState(editing?.is_default ?? false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
 
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape" && !busy) onClose()
-    }
-    window.addEventListener("keydown", onKey)
-    return () => window.removeEventListener("keydown", onKey)
-  }, [busy, onClose])
+  const dialogRef = useRef<HTMLDivElement>(null)
+
+  useDialogFocusTrap({
+    open: true,
+    containerRef: dialogRef,
+    onClose,
+    disabled: busy,
+  })
 
   const allowedCaps = ALLOWED_CAPABILITIES[provider]
   const needsEndpoint = ENDPOINT_REQUIRED_PROVIDERS.includes(provider)
@@ -89,16 +85,7 @@ export function ModelFormModal({
     if (busy) return
     setError("")
     try {
-      const priorityParsed = parseOptionalInt(fallbackPriority, "Fallback priority", 0, 10000)
-      if (priorityParsed === null) {
-        throw new Error("Fallback priority is required (0 to 10000).")
-      }
-      const params: ModelParameters = {
-        temperature: parseOptionalFloat(temperature, "Temperature", 0, 2),
-        max_tokens: parseOptionalInt(maxTokens, "Max tokens", 1, 128000),
-        timeout_s: parseOptionalFloat(timeoutS, "Timeout (seconds)", 1, 180),
-        fallback_priority: priorityParsed,
-      }
+      const params = parseModelParameterValues(paramValues)
       setBusy(true)
       if (!editing) {
         const created = await createAdminModel({
@@ -149,15 +136,17 @@ export function ModelFormModal({
       }}
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
+        tabIndex={-1}
         className="panel admin-modal"
       >
         <div className="admin-modal-head">
           <h2 id={titleId}>{isEdit ? `Configure ${editing?.display_name}` : "Connect model"}</h2>
           <Button type="button" variant="ghost" size="icon-sm" aria-label="Close modal" disabled={busy} onClick={onClose}>
-            <X size={16} />
+            <X size={16} aria-hidden="true" />
           </Button>
         </div>
 
@@ -304,60 +293,7 @@ export function ModelFormModal({
             </label>
           )}
 
-          <div className="admin-param-grid">
-            <label className="field">
-              Temperature (0 to 2)
-              <Input
-                type="number"
-                step="0.1"
-                min="0"
-                max="2"
-                disabled={busy}
-                value={temperature}
-                placeholder="Default"
-                onChange={(e) => setTemperature(e.target.value)}
-              />
-            </label>
-            <label className="field">
-              Max tokens (1 to 128000)
-              <Input
-                type="number"
-                step="1"
-                min="1"
-                max="128000"
-                disabled={busy}
-                value={maxTokens}
-                placeholder="Default"
-                onChange={(e) => setMaxTokens(e.target.value)}
-              />
-            </label>
-            <label className="field">
-              Timeout seconds (1 to 180)
-              <Input
-                type="number"
-                step="any"
-                min="1"
-                max="180"
-                disabled={busy}
-                value={timeoutS}
-                placeholder="Default"
-                onChange={(e) => setTimeoutS(e.target.value)}
-              />
-            </label>
-            <label className="field">
-              Fallback priority (0 to 10000)
-              <Input
-                type="number"
-                step="1"
-                min="0"
-                max="10000"
-                required
-                disabled={busy}
-                value={fallbackPriority}
-                onChange={(e) => setFallbackPriority(e.target.value)}
-              />
-            </label>
-          </div>
+          <ModelParameterFields values={paramValues} busy={busy} onChange={setParamValues} />
 
           <div className="row">
             <label className="check">

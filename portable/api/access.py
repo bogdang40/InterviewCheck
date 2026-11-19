@@ -125,18 +125,45 @@ async def require_admin_session(request: HTTPConnection) -> tuple[dict[str, Any]
         if not account_db.database().is_file():
             raise HTTPException(401, "Sign in with an administrator account.")
         user, _ = account_auth.authenticate(f"Bearer {token}")
+        if user.get("disabled"):
+            raise HTTPException(401, "Session expired. Sign in again.")
+        if enabled:
+            verify_operator_email(user.get("email"))
     else:
         data = await upstream("me", token=token)
         if not isinstance(data, dict) or not isinstance(data.get("user"), dict):
             raise HTTPException(502, "The access service returned an invalid account.")
+        user = data["user"]
+        if user.get("disabled"):
+            raise HTTPException(401, "Session expired. Sign in again.")
         if public_remote() or configured("INTERVIEWCHECK_OPERATOR_EMAIL") or configured("INTERVIEWCHECK_OPERATOR_ID"):
             verify_account(data)
-        user = data["user"]
-    if user.get("disabled"):
-        raise HTTPException(401, "Session expired. Sign in again.")
     if user.get("role") != "admin":
         raise HTTPException(403, "Admin access required.")
     return user, token
+
+
+async def optional_actor(request: HTTPConnection) -> tuple[str, str]:
+    if not account_enabled():
+        return ("local-operator", "local-operator")
+    token = request.cookies.get(COOKIE)
+    if not token:
+        return ("local-operator", "local-operator")
+    try:
+        if embedded_enabled():
+            from . import account_auth, account_db
+            if not account_db.database().is_file():
+                return ("local-operator", "local-operator")
+            user, _ = account_auth.authenticate(f"Bearer {token}")
+        else:
+            data = await upstream("me", token=token)
+            verify_account(data)
+            user = data.get("user") or {}
+    except HTTPException:
+        return ("local-operator", "local-operator")
+    uid = str(user.get("id") or "local-operator")
+    email = str(user.get("email") or uid)
+    return (uid, email)
 
 
 class Credentials(BaseModel):
@@ -185,7 +212,8 @@ async def change_password(form: PasswordChangeRequest, request: Request, respons
 async def sign_in(action: Literal["login", "signup"], form: Credentials, request: Request, response: Response):
     if action == "signup" and public_remote():
         raise HTTPException(403, "Create the operator account on the assigned access service first.")
-    verify_operator_email(form.email.strip())
+    if action == "signup":
+        verify_operator_email(form.email.strip())
     from .origin import workspace_client
     data = await upstream("auth/" + action, "POST", body={
         "email": form.email.strip(), "password": form.password.get_secret_value(), "deviceName": "Portable workspace",

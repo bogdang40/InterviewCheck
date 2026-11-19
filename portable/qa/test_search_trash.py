@@ -123,3 +123,81 @@ def test_trash_invalidates_inflight_note_callback(workspace_url, monkeypatch):
             assert result.result().status_code in (404, 409)
         assert len(calls) == 1
         assert c.get(path + "/ats").json()["history"][0]["state"] == "attempted"
+
+
+def test_search_dialog_focus_fallback_on_body_and_disabled_target(workspace_url, browser_page):
+    page = browser_page
+    page.goto(workspace_url + "/roles/")
+    add_role = page.get_by_role("button", name="Add role")
+    expect(add_role).to_be_visible()
+
+    # Case 1: Ctrl+K -> Escape with document.body active must restore focus to trigger, not leave it inside closed dialog.
+    page.evaluate("() => { if (document.activeElement instanceof HTMLElement) document.activeElement.blur(); }")
+    assert page.evaluate("() => document.activeElement?.tagName") == "BODY"
+    page.keyboard.press("Control+k")
+    dialog = page.get_by_role("dialog", name="Search workspace")
+    query = dialog.get_by_role("combobox", name="Search workspace records")
+    expect(dialog).to_be_visible()
+    expect(query).to_be_focused()
+    page.keyboard.press("Escape")
+    expect(dialog).to_be_hidden()
+    trigger = page.get_by_role("button", name="Search workspace")
+    expect(trigger).to_be_focused()
+    assert page.evaluate("() => document.activeElement?.getAttribute('aria-label')") == "Search workspace"
+
+    # Case 2: Ctrl+K from a focused control that becomes disabled before Escape must fall back to trigger.
+    add_role.focus()
+    expect(add_role).to_be_focused()
+    page.keyboard.press("Control+k")
+    expect(dialog).to_be_visible()
+    expect(query).to_be_focused()
+    add_role.evaluate("el => { el.disabled = true }")
+    page.keyboard.press("Escape")
+    expect(dialog).to_be_hidden()
+    expect(trigger).to_be_focused()
+    assert page.evaluate("() => document.activeElement?.getAttribute('aria-label')") == "Search workspace"
+
+
+def test_search_dialog_rapid_close_reopen_keeps_focus(workspace_url, browser_page):
+    page = browser_page
+    page.goto(workspace_url + "/roles/")
+    add_role = page.get_by_role("button", name="Add role")
+    expect(add_role).to_be_visible()
+    dialog = page.get_by_role("dialog", name="Search workspace")
+    query = dialog.get_by_role("combobox", name="Search workspace records")
+    close_btn = dialog.get_by_role("button", name="Close search")
+
+    # Variant 1: rapid Close search -> Ctrl+K -> backdrop click (5, 5) must keep focus on Add role.
+    add_role.focus()
+    expect(add_role).to_be_focused()
+    page.keyboard.press("Control+k")
+    expect(dialog).to_be_visible()
+    expect(query).to_be_focused()
+    close_btn.click()
+    expect(dialog).to_be_hidden()
+    page.keyboard.press("Control+k")
+    expect(dialog).to_be_visible()
+    expect(query).to_be_focused()
+    page.mouse.click(5, 5)
+    expect(dialog).to_be_hidden()
+    page.wait_for_timeout(100)
+    expect(add_role).to_be_focused()
+    assert page.evaluate("() => document.activeElement?.getAttribute('aria-label')") != "Search workspace"
+
+    # Variant 2: rapid Close search -> Ctrl+K -> Escape must keep focus on Add role.
+    add_role.focus()
+    expect(add_role).to_be_focused()
+    page.keyboard.press("Control+k")
+    expect(dialog).to_be_visible()
+    expect(query).to_be_focused()
+    close_btn.click()
+    expect(dialog).to_be_hidden()
+    page.keyboard.press("Control+k")
+    expect(dialog).to_be_visible()
+    expect(query).to_be_focused()
+    page.keyboard.press("Escape")
+    expect(dialog).to_be_hidden()
+    page.wait_for_timeout(100)
+    expect(add_role).to_be_focused()
+    assert page.evaluate("() => document.activeElement?.getAttribute('aria-label')") != "Search workspace"
+

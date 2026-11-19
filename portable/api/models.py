@@ -1,6 +1,6 @@
 """Public input boundaries for the local review service."""
 from typing import Annotated, Literal
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
 
@@ -95,11 +95,43 @@ class ReviewInput(Input):
         return self
 
 
+class RubricCriterion(Input):
+    id: Annotated[str, StringConstraints(min_length=1, max_length=64)] = Field(
+        default_factory=lambda: str(uuid4())
+    )
+    criterion: Annotated[str, StringConstraints(min_length=1, max_length=500)]
+    weight: int = Field(default=1, ge=1, le=100)
+    expected_signals: list[Annotated[str, StringConstraints(min_length=1, max_length=500)]] = Field(
+        default_factory=list, max_length=20
+    )
+    red_flags: list[Annotated[str, StringConstraints(min_length=1, max_length=500)]] = Field(
+        default_factory=list, max_length=20
+    )
+
+
 class RoleInput(Input):
     version: RoleVersion | None = None
+    version_number: int | None = Field(default=None, ge=1, le=2**63 - 1)
     policy: str = Field(default="", max_length=4000)
     permitted_sources: Materials = Field(default_factory=list)
     id: RequestID | None = None
     name: Name
     description: str = Field(default="", max_length=24000)
     questions: list[Question] = Field(default_factory=list, max_length=100)
+    rubric: list[RubricCriterion] = Field(default_factory=list, max_length=25)
+    change_note: str = Field(default="", max_length=300)
+
+    @field_validator("rubric")
+    @classmethod
+    def unique_rubric_ids(cls, value: list[RubricCriterion]) -> list[RubricCriterion]:
+        seen: set[str] = set()
+        for item in value:
+            if item.id in seen:
+                raise ValueError("Duplicate rubric criterion IDs are not permitted.")
+            seen.add(item.id)
+        return value
+
+
+class RoleRestoreInput(Input):
+    expected_version: RoleVersion
+    change_note: str = Field(default="", max_length=300)

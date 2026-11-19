@@ -8,7 +8,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import Field
 
-from . import model_resolver, prompt_framing, rate_limit
+from . import model_execution, model_resolver, prompt_framing, prompt_templates, rate_limit
 from .access import require_entitlement
 from .error_sanitizer import sanitize_error_text
 from .models import Body, Input, Name, Question
@@ -24,6 +24,11 @@ STYLES = {
     "Spoken answer": "Give a short conversational answer to this interview question.",
     "Talking points": "Give three concise points in the order someone might explain this answer aloud.",
     "Worked example": "Answer the question with a concrete worked example and one limitation.",
+}
+STYLE_SLOTS = {
+    "Spoken answer": "reference_spoken",
+    "Talking points": "reference_talking_points",
+    "Worked example": "reference_worked_example",
 }
 _capability: ContextVar[str] = ContextVar("authoring_capability", default="reference")
 router = APIRouter(prefix="/api/authoring", dependencies=[Depends(require_entitlement)])
@@ -109,17 +114,21 @@ class Example(Input):
 
 async def complete(provider, instructions, prompt):
     cap = _capability.get()
-    target = model_resolver.resolve_or_503(cap, provider=provider, allow_reference_fallback=(cap == "question_planning"))
-    return await model_resolver.dispatch_completion(target, instructions, prompt, fetch_fn=fetch_json)
+    _, result = await model_execution.execute_completion_chain(
+        cap,
+        instructions,
+        prompt,
+        provider=provider,
+        allow_reference_fallback=(cap == "question_planning"),
+        fetch_fn=fetch_json,
+    )
+    return result
 
 
 @router.post("/questions", dependencies=[Depends(rate_limit.limit(rate_limit.AI_REQUEST))])
 async def questions(form: Draft):
-    instructions = prompt_framing.frame_instructions(
-        "Write six interview questions specific to the role. Include a worked example, "
-        "a change of constraints and a question about the candidate's own experience.",
-        output_rule="Return strictly a JSON array of question strings.",
-    )
+    tpl = prompt_templates.resolve_slot("question_planning")
+    instructions = prompt_framing.frame_instructions(tpl["system_prompt"], output_rule=tpl["output_rule"])
     prompt = prompt_framing.untrusted_json_prompt({"role": form.role, "description": form.description})
     token = _capability.set("question_planning")
     try:
@@ -145,7 +154,8 @@ async def questions(form: Draft):
 
 @router.post("/reference", dependencies=[Depends(rate_limit.limit(rate_limit.AI_REQUEST))])
 async def reference(form: Example):
-    instructions = prompt_framing.frame_instructions(STYLES[form.style], output_rule="Return plain text only.")
+    tpl = prompt_templates.resolve_slot(STYLE_SLOTS[form.style])
+    instructions = prompt_framing.frame_instructions(tpl["system_prompt"], output_rule=tpl["output_rule"])
     prompt = prompt_framing.untrusted_json_prompt({"role": form.role, "question": form.question})
     model, text = await complete(form.provider, instructions, prompt)
     return {"label": f"{form.provider} · {model} · {form.style}"[:180], "text": prompt_framing.sanitize_model_text(text), "permitted": False}

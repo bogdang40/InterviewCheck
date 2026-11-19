@@ -105,12 +105,85 @@ def update(uid: UUID, item: Update, actor=Depends(admin)):
         return view(db, account(db, uid))
 
 
+def _parse_details(raw: str | None):
+    if not raw:
+        return None
+    try:
+        return json.loads(raw)
+    except ValueError:
+        return raw
+
+
+def _epoch_ms(value: datetime | None, field: str) -> int | None:
+    if value is None:
+        return None
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise HTTPException(422, f"{field} must include a timezone.")
+    return int(value.timestamp() * 1000)
+
+
 @router.get("/audit", dependencies=[Depends(rate_limit.limit(rate_limit.ADMIN_READ))])
-def audit(limit: int = Query(default=100, ge=1, le=200), _=Depends(admin)):
+def audit(
+    q: str = Query(default="", max_length=200),
+    action: str = Query(default="", max_length=120),
+    actor: str = Query(default="", max_length=128),
+    since: datetime | None = Query(default=None),
+    until: datetime | None = Query(default=None),
+    before_id: int | None = Query(default=None, ge=1),
+    limit: int = Query(default=100, ge=1, le=200),
+    _=Depends(admin),
+):
+    since_ms = _epoch_ms(since, "since")
+    until_ms = _epoch_ms(until, "until")
+    conditions: list[str] = []
+    params: list[object] = []
+    if q_clean := q.strip().lower():
+        conditions.append(
+            "instr(lower(coalesce(action,'') || ' ' || coalesce(actor_user_id,'') || ' ' || "
+            "coalesce(target_user_id,'') || ' ' || coalesce(details,'')), ?) > 0"
+        )
+        params.append(q_clean)
+    if action_clean := action.strip().lower():
+        if action_clean.endswith("."):
+            conditions.append("substr(lower(action), 1, length(?)) = ?")
+            params.extend([action_clean, action_clean])
+        else:
+            conditions.append("instr(lower(coalesce(action, '')), ?) > 0")
+            params.append(action_clean)
+    if actor_clean := actor.strip().lower():
+        conditions.append("instr(lower(coalesce(actor_user_id, '')), ?) > 0")
+        params.append(actor_clean)
+    if since_ms is not None:
+        conditions.append("at >= ?")
+        params.append(since_ms)
+    if until_ms is not None:
+        conditions.append("at <= ?")
+        params.append(until_ms)
+    if before_id is not None:
+        conditions.append("id < ?")
+        params.append(before_id)
+    where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
     with store.connection() as db:
-        rows = db.execute("SELECT * FROM audit_log ORDER BY id DESC LIMIT ?", (limit,))
-        return {"entries": [{"id": r["id"], "at": store.iso(r["at"]), "actorUserId": r["actor_user_id"], "action": r["action"],
-                             "targetUserId": r["target_user_id"], "details": json.loads(r["details"]) if r["details"] else None} for r in rows]}
+        rows = db.execute(
+            f"SELECT * FROM audit_log{where} ORDER BY id DESC LIMIT ?",
+            (*params, limit + 1),
+        ).fetchall()
+    page = rows[:limit]
+    next_before_id = page[-1]["id"] if len(rows) > limit else None
+    return {
+        "entries": [
+            {
+                "id": r["id"],
+                "at": store.iso(r["at"]),
+                "actorUserId": r["actor_user_id"],
+                "action": r["action"],
+                "targetUserId": r["target_user_id"],
+                "details": _parse_details(r["details"]),
+            }
+            for r in page
+        ],
+        "nextBeforeId": next_before_id,
+    }
 
 
 @router.api_route("/{unknown:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"],

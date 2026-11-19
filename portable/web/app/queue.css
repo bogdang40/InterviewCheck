@@ -104,6 +104,8 @@
 .session-identity {
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .session-identity strong {
   font-size: 15px;

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { FixedWindowRateLimiter } from "../src/http/middleware/RateLimit.js";
 import type { SignedInResponse } from "../src/services/AuthService.js";
 import type { AccessSnapshot } from "../src/services/EntitlementService.js";
 import { buildHarness, get, json, post, type TestHarness } from "./support/TestContainer.js";
@@ -128,11 +129,17 @@ describe("auth flow over HTTP", () => {
   });
 
   it("rate limits credential endpoints", async () => {
-    let lastStatus = 0;
+    let lastResponse!: Response;
     for (let i = 0; i < 12; i += 1) {
-      lastStatus = (await post(harness.app, "/v1/auth/login", { email: "spray@example.com", password: "a-long-password" })).status;
+      lastResponse = await post(harness.app, "/v1/auth/login", { email: "spray@example.com", password: "a-long-password" });
     }
-    expect(lastStatus).toBe(429);
+    expect(lastResponse.status).toBe(429);
+    const retryAfter = lastResponse.headers.get("retry-after");
+    expect(retryAfter).toMatch(/^\d+$/);
+    expect(Number(retryAfter)).toBeGreaterThanOrEqual(1);
+    expect(await json(lastResponse)).toEqual({
+      error: { code: "rate_limited", message: "Too many attempts. Try again in a minute." },
+    });
   });
 
   it("requires a bearer token on protected routes", async () => {
@@ -158,5 +165,24 @@ describe("auth flow over HTTP", () => {
     expect((await post(harness.app, "/v1/auth/login", { email: "rotate@example.com", password: "old-long-password" })).status).toBe(401);
     expect((await post(harness.app, "/v1/auth/login", { email: "rotate@example.com", password: "new-long-password" })).status).toBe(200);
     expect(harness.container.audit.recent(10).some((e) => e.action === "auth.password_change")).toBe(true);
+  });
+});
+
+describe("FixedWindowRateLimiter", () => {
+  it("computes remaining allowance and Retry-After seconds across window boundaries", () => {
+    let now = 10_000;
+    const limiter = new FixedWindowRateLimiter({ windowMs: 60_000, max: 2 }, () => now);
+
+    expect(limiter.hitWithRetry("client-a")).toEqual({ remaining: 1, retryAfterSeconds: 0 });
+    expect(limiter.hit("client-a")).toBe(0);
+
+    now = 10_500;
+    expect(limiter.hitWithRetry("client-a")).toEqual({ remaining: -1, retryAfterSeconds: 60 });
+
+    now = 69_999;
+    expect(limiter.hitWithRetry("client-a")).toEqual({ remaining: -1, retryAfterSeconds: 1 });
+
+    now = 70_000;
+    expect(limiter.hitWithRetry("client-a")).toEqual({ remaining: 1, retryAfterSeconds: 0 });
   });
 });

@@ -33,6 +33,7 @@ export function WorkspaceNav({
   closeRef,
   drawerRef,
   onClose,
+  onNavigate,
 }: {
   path: string
   drawerId: string
@@ -43,22 +44,24 @@ export function WorkspaceNav({
   closeRef: RefObject<HTMLButtonElement | null>
   drawerRef?: RefObject<HTMLElement | null>
   onClose: () => void
+  onNavigate?: () => void
 }) {
   const statusLabel = account?.admin ? "Admin session" : account ? "Signed in" : "Local workspace"
+  const handleLinkClick = onNavigate ?? onClose
 
   return (
     <aside
       ref={drawerRef}
       id={drawerId}
       className={drawerOpen ? "sidebar open" : "sidebar"}
-      aria-label={isMobile ? "Workspace navigation" : undefined}
+      aria-label="Workspace navigation"
       aria-hidden={isMobile && !drawerOpen ? true : undefined}
-      inert={isMobile && !drawerOpen}
+      inert={isMobile && !drawerOpen ? true : undefined}
     >
       <div className="sidebar-head">
-        <Link className="brand" href="/" aria-label="InterviewCheck overview" onClick={onClose}>
+        <Link className="brand" href="/" aria-label="InterviewCheck overview" onClick={handleLinkClick}>
           <span className="brand-mark">
-            <AudioLines size={22} strokeWidth={2.4} />
+            <AudioLines size={22} strokeWidth={2.4} aria-hidden="true" />
           </span>
           Interview<span className="brand-light">Check</span>
         </Link>
@@ -69,7 +72,7 @@ export function WorkspaceNav({
           aria-label="Close navigation menu"
           onClick={onClose}
         >
-          <X size={18} />
+          <X size={18} aria-hidden="true" />
         </button>
       </div>
       <span className="side-caption">WORKSPACE</span>
@@ -79,12 +82,12 @@ export function WorkspaceNav({
             key={href}
             href={href}
             aria-label={label}
-            onClick={onClose}
+            onClick={handleLinkClick}
             aria-current={
               path === href || (href === "/interviews/" && path.startsWith(href)) ? "page" : undefined
             }
           >
-            <Icon size={17} />
+            <Icon size={17} aria-hidden="true" />
             <span>{label}</span>
           </Link>
         ))}
@@ -92,10 +95,10 @@ export function WorkspaceNav({
           <Link
             href="/admin/"
             aria-label="Admin"
-            onClick={onClose}
+            onClick={handleLinkClick}
             aria-current={path.startsWith("/admin/") ? "page" : undefined}
           >
-            <ShieldCheck size={17} />
+            <ShieldCheck size={17} aria-hidden="true" />
             <span>Admin</span>
           </Link>
         )}
@@ -103,10 +106,10 @@ export function WorkspaceNav({
       <div className="sidebar-foot">
         <Link
           href="/sample/"
-          onClick={onClose}
+          onClick={handleLinkClick}
           aria-current={path === "/sample/" ? "page" : undefined}
         >
-          <CirclePlay size={17} />
+          <CirclePlay size={17} aria-hidden="true" />
           <span>Sample review</span>
         </Link>
         <p className="session-pill">{statusLabel}</p>

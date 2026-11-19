@@ -134,14 +134,14 @@ export default function ReviewBrief({ sessionId }: { sessionId: string }) {
             )}
           </details>
           <Button disabled={!current || downloading || !!error} onClick={download}>
-            <Download />
+            <Download aria-hidden="true" />
             Download brief
           </Button>
           {error && (
             <div className="error" role="alert">
               <p>{error}</p>
               <Button variant="outline" size="sm" onClick={() => setRefresh((n) => n + 1)}>
-                <RotateCcw />
+                <RotateCcw aria-hidden="true" />
                 Refresh preview
               </Button>
             </div>
@@ -149,7 +149,7 @@ export default function ReviewBrief({ sessionId }: { sessionId: string }) {
         </aside>
         <section className="panel brief-preview" aria-label="Brief preview" aria-busy={!current && !error}>
           <div className="brief-preview-label">
-            <FileCheck2 size={16} />
+            <FileCheck2 size={16} aria-hidden="true" />
             Preview
           </div>
           {!current && <p role="status">{error ? "Preview unavailable." : "Preparing preview…"}</p>}

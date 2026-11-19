@@ -93,7 +93,7 @@ export default function ConnectionCatalog() {
       <header>
         <div>
           <h2 id="connection-catalog-title">
-            <Settings2 size={18} />
+            <Settings2 size={18} aria-hidden="true" />
             Connection setup
           </h2>
           <p>

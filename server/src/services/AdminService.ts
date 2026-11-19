@@ -3,7 +3,7 @@ import type { Database } from "../db/Database.js";
 import type { PublicUser, User, UserRole } from "../domain/User.js";
 import type { Entitlement } from "../domain/Entitlement.js";
 import { HttpError } from "../http/HttpError.js";
-import type { AuditEntry, AuditLogRepository } from "../repositories/AuditLogRepository.js";
+import type { AuditEntry, AuditFilter, AuditLogRepository, AuditPage } from "../repositories/AuditLogRepository.js";
 import type { SessionRepository } from "../repositories/SessionRepository.js";
 import type { SubscriptionRepository } from "../repositories/SubscriptionRepository.js";
 import type { UserRepository } from "../repositories/UserRepository.js";
@@ -83,6 +83,10 @@ export class AdminService {
       admins: this.users.countByRole("admin"),
       liveSubscriptions: this.subscriptions.countLive(),
     };
+  }
+
+  listAudit(filter: AuditFilter = {}): AuditPage {
+    return this.audit.search(filter);
   }
 
   recentAudit(limit = 100): AuditEntry[] {

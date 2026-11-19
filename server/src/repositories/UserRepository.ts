@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Database, dateFromSql, sqlBool, sqlDate } from "../db/Database.js";
 import type { User, UserRole } from "../domain/User.js";
+import { HttpError } from "../http/HttpError.js";
 
 interface UserRow {
   id: string;
@@ -167,9 +168,30 @@ export class UserRepository {
 
   private static decodeCursor(cursor: string | undefined): { createdAt: number; id: string } | null {
     if (!cursor) return null;
-    const [createdAt, id] = Buffer.from(cursor, "base64url").toString("utf8").split("|");
-    if (!createdAt || !id || Number.isNaN(Number(createdAt))) return null;
-    return { createdAt: Number(createdAt), id };
+    if (!/^[A-Za-z0-9_-]+$/.test(cursor)) {
+      throw new HttpError(400, "invalid_cursor", "Invalid pagination cursor.");
+    }
+    const raw = Buffer.from(cursor, "base64url");
+    if (raw.toString("base64url") !== cursor) {
+      throw new HttpError(400, "invalid_cursor", "Invalid pagination cursor.");
+    }
+    const decoded = raw.toString("utf8");
+    if (!Buffer.from(decoded, "utf8").equals(raw)) {
+      throw new HttpError(400, "invalid_cursor", "Invalid pagination cursor.");
+    }
+    const parts = decoded.split("|");
+    if (parts.length !== 2) {
+      throw new HttpError(400, "invalid_cursor", "Invalid pagination cursor.");
+    }
+    const [rawCreatedAt, id] = parts;
+    if (!rawCreatedAt || !id || !id.trim() || !/^\d+$/.test(rawCreatedAt)) {
+      throw new HttpError(400, "invalid_cursor", "Invalid pagination cursor.");
+    }
+    const createdAt = Number(rawCreatedAt);
+    if (!Number.isFinite(createdAt) || !Number.isSafeInteger(createdAt) || createdAt > 8_640_000_000_000_000) {
+      throw new HttpError(400, "invalid_cursor", "Invalid pagination cursor.");
+    }
+    return { createdAt, id };
   }
 
   private static toUser(row: UserRow): User {

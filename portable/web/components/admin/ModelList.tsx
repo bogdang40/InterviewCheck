@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Activity, Cpu, Power, Settings2, Trash2 } from "lucide-react"
+import { Activity, Cpu, History, Power, Settings2, Trash2 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -13,6 +13,16 @@ import {
   type ModelProvider,
   type ModelStatus,
 } from "@/lib/adminModels"
+import {
+  formatModelBudgetBadge,
+  type ModelUsageSummary,
+} from "@/lib/adminDiagnostics"
+import {
+  computeFallbackRanks,
+  formatLatency,
+  formatUptime,
+  type ModelTelemetrySummary,
+} from "@/lib/adminTelemetry"
 
 function statusVariant(status: ModelStatus) {
   if (status === "connected") return "success" as const
@@ -27,22 +37,33 @@ function formatChecked(iso: string | null) {
   return Number.isNaN(date.getTime()) ? iso : date.toLocaleString()
 }
 
+function chainBadgeLabel(rank: number | undefined, enabled: boolean): string {
+  if (!enabled || !rank) return "Inactive in chain"
+  return rank === 1 ? "#1 Primary" : `#${rank} Fallback`
+}
+
 export function ModelList({
   models,
   busyId,
+  telemetryByModel,
+  usageByModel,
   onConnect,
   onConfigure,
   onProbe,
   onToggle,
   onDelete,
+  onViewHealth,
 }: {
   models: ConnectedModel[]
   busyId: string | null
+  telemetryByModel?: Record<string, ModelTelemetrySummary>
+  usageByModel?: Record<string, ModelUsageSummary>
   onConnect: () => void
   onConfigure: (model: ConnectedModel) => void
   onProbe: (model: ConnectedModel) => void
   onToggle: (model: ConnectedModel) => void
   onDelete: (model: ConnectedModel) => void
+  onViewHealth?: (model: ConnectedModel) => void
 }) {
   const [search, setSearch] = useState("")
   const [provider, setProvider] = useState<"" | ModelProvider>("")
@@ -50,6 +71,7 @@ export function ModelList({
   const [status, setStatus] = useState<"" | ModelStatus>("")
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
+  const fallbackRanks = computeFallbackRanks(models)
   const tokens = search.trim().toLowerCase().split(/\s+/).filter(Boolean)
   const filtered = models.filter((m) => {
     if (provider && m.provider !== provider) return false
@@ -128,6 +150,9 @@ export function ModelList({
         <div className="admin-model-list">
           {filtered.map((m) => {
             const rowBusy = busyId === m.id
+            const rank = fallbackRanks[m.id]
+            const modelTelemetry = telemetryByModel?.[m.id]
+            const budgetBadge = formatModelBudgetBadge(m, usageByModel?.[m.id])
             return (
               <article className="panel admin-model-card" key={m.id} data-model-slug={m.slug}>
                 <div className="admin-model-main">
@@ -135,6 +160,20 @@ export function ModelList({
                     <strong>{m.display_name}</strong>
                     <Badge variant={statusVariant(m.status)}>{m.status}</Badge>
                     {m.is_default && <Badge variant="default">Default</Badge>}
+                    <Badge
+                      variant={m.enabled && rank === 1 ? "default" : m.enabled ? "outline" : "secondary"}
+                      className="admin-chain-badge"
+                    >
+                      {chainBadgeLabel(rank, m.enabled)}
+                    </Badge>
+                    {budgetBadge && (
+                      <Badge
+                        variant={budgetBadge.overLimit ? "destructive" : "outline"}
+                        className="admin-budget-badge"
+                      >
+                        {budgetBadge.label}
+                      </Badge>
+                    )}
                   </div>
                   <span className="admin-mono">
                     {m.slug} · {m.model_id}
@@ -152,6 +191,10 @@ export function ModelList({
                   <span className="admin-mono">
                     {m.hasKey ? `Key ${m.key_hint || "configured"}` : "No key stored"}
                   </span>
+                  <small className="admin-mono">
+                    Max retries {m.parameters.max_retries ?? 0} · RPM{" "}
+                    {m.parameters.rpm_limit ?? "Unlimited"}
+                  </small>
                 </div>
                 <div className="admin-model-health">
                   <span>
@@ -159,6 +202,15 @@ export function ModelList({
                   </span>
                   <small className="muted">{formatChecked(m.last_checked_at)}</small>
                   <small className="muted">Priority {m.parameters.fallback_priority}</small>
+                  {modelTelemetry && modelTelemetry.total_checks > 0 ? (
+                    <small className="muted">
+                      Uptime {formatUptime(modelTelemetry.uptime_pct)} · Avg{" "}
+                      {formatLatency(modelTelemetry.avg_latency_ms)} · P95{" "}
+                      {formatLatency(modelTelemetry.p95_latency_ms)}
+                    </small>
+                  ) : (
+                    <small className="muted">No telemetry checks yet</small>
+                  )}
                 </div>
                 <div className="admin-model-actions">
                   <Button
@@ -168,9 +220,21 @@ export function ModelList({
                     disabled={rowBusy}
                     onClick={() => onProbe(m)}
                   >
-                    <Activity size={14} />
+                    <Activity size={14} aria-hidden="true" />
                     {rowBusy ? "Testing…" : "Test connection"}
                   </Button>
+                  {onViewHealth && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={rowBusy}
+                      onClick={() => onViewHealth(m)}
+                    >
+                      <History size={14} aria-hidden="true" />
+                      Health history
+                    </Button>
+                  )}
                   <Button
                     type="button"
                     variant="outline"
@@ -179,7 +243,7 @@ export function ModelList({
                     aria-pressed={m.enabled}
                     onClick={() => onToggle(m)}
                   >
-                    <Power size={14} />
+                    <Power size={14} aria-hidden="true" />
                     {m.enabled ? "Disable" : "Enable"}
                   </Button>
                   <Button
@@ -189,7 +253,7 @@ export function ModelList({
                     disabled={rowBusy}
                     onClick={() => onConfigure(m)}
                   >
-                    <Settings2 size={14} />
+                    <Settings2 size={14} aria-hidden="true" />
                     Configure
                   </Button>
                   <Button
@@ -199,7 +263,7 @@ export function ModelList({
                     disabled={rowBusy}
                     onClick={() => setConfirmDeleteId(confirmDeleteId === m.id ? null : m.id)}
                   >
-                    <Trash2 size={14} />
+                    <Trash2 size={14} aria-hidden="true" />
                     Disconnect
                   </Button>
                 </div>

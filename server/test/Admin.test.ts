@@ -171,11 +171,17 @@ describe("admin API", () => {
     });
     expect(browserCsrfAllowed.status).toBe(200);
 
-    let lastStatus = 0;
+    let lastResponse!: Response;
     for (let i = 0; i < 42; i += 1) {
-      lastStatus = (await patch(harness.app, `/v1/admin/users/${memberId}`, { complimentaryUntil: null }, adminToken)).status;
+      lastResponse = await patch(harness.app, `/v1/admin/users/${memberId}`, { complimentaryUntil: null }, adminToken);
     }
-    expect(lastStatus).toBe(429);
+    expect(lastResponse.status).toBe(429);
+    const retryAfter = lastResponse.headers.get("retry-after");
+    expect(retryAfter).toMatch(/^\d+$/);
+    expect(Number(retryAfter)).toBeGreaterThanOrEqual(1);
+    expect(await json(lastResponse)).toEqual({
+      error: { code: "rate_limited", message: "Too many attempts. Try again in a minute." },
+    });
   });
 
   it("treats LIKE wildcards in search as literal characters", async () => {

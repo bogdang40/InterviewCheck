@@ -122,3 +122,60 @@ def test_discovery_limits_and_account_gate(client, monkeypatch):
     assert client.get("/api/interviews/feed").status_code == 401
     assert client.get("/api/interviews/overview").status_code == 401
     assert client.post("/api/search", json={"query": "abc"}).status_code == 401
+
+
+def test_search_rejects_fts_on_nul_and_control_characters(client):
+    session(client, "Control Guard Candidate")
+    for query in ("\x00ab", "\x00abc", "a\x00bc", "ab\x00c", "\x01abc", "\tabc"):
+        resp = client.post("/api/search", json={"query": query})
+        assert resp.status_code == 200, (query, resp.status_code, resp.text)
+        assert resp.json() == {"items": [], "has_more": False}
+
+
+def test_search_fts_matches_unicode_casefold_to_ascii_ligatures(client):
+    cases = [
+        ("O\ufb03ce_Hero", "office", "ce_hero"),
+        ("O\ufb00er_Check", "offer", "fer_check"),
+        ("\ufb01le_Parser", "file", "le_parser"),
+        ("\ufb02ow_Meter", "flow", "ow_meter"),
+        ("Ba\ufb04e_Wall", "baffle", "fle_wall"),
+        ("\ufb05op_Valve", "stop", "op_valve"),
+        ("\ufb06ep_Gate", "step", "ep_gate"),
+        ("Te\u017fting_Run", "testing", "ting_run"),
+        ("\u212aelvin_Probe", "kelvin", "vin_probe"),
+    ]
+    created = {candidate: session(client, candidate) for candidate, _, _ in cases}
+    for candidate, primary, tail in cases:
+        sid = created[candidate]
+        hit = lookup(client, primary, kinds=["session"])["items"]
+        assert [item["session_id"] for item in hit] == [sid]
+        assert hit[0]["label"] == candidate
+        tail_hit = lookup(client, tail, kinds=["session"])["items"]
+        assert [item["session_id"] for item in tail_hit] == [sid]
+
+
+def test_search_fts_migrates_legacy_triggers_for_ligatures(tmp_path, monkeypatch):
+    import sqlite3
+    from contextlib import closing
+    from api import search_fts
+
+    db_path = tmp_path / "legacy_fts.sqlite"
+    monkeypatch.setenv("INTERVIEWCHECK_DB", str(db_path))
+    with TestClient(app, base_url="http://127.0.0.1", headers={"X-InterviewCheck": "1"}) as web:
+        sid = session(web, "O\ufb03ce_Legacy")
+    # Simulate an earlier M9 database whose FTS triggers only folded sharp-s.
+    with closing(sqlite3.connect(db_path)) as raw, raw:
+        raw.execute("DROP TRIGGER fts_roles_ai")
+        raw.execute(
+            "CREATE TRIGGER fts_roles_ai AFTER INSERT ON roles BEGIN "
+            "INSERT INTO fts_roles(rowid, name) VALUES (new.rowid, replace(new.name, 'ß', 'ss')); END"
+        )
+        raw.execute("DELETE FROM fts_sessions")
+    store.initialize(db_path)
+    with closing(sqlite3.connect(db_path)) as raw:
+        assert search_fts._triggers_current(raw)
+    with TestClient(app, base_url="http://127.0.0.1", headers={"X-InterviewCheck": "1"}) as web:
+        hits = lookup(web, "office", kinds=["session"])["items"]
+        assert [item["session_id"] for item in hits] == [sid]
+
+

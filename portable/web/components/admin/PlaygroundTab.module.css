@@ -1,0 +1,121 @@
+.playground {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.playground > * {
+  min-width: 0;
+}
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.modelGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
+  gap: 10px;
+}
+.modelChoice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--color-input);
+  background: var(--surface);
+  cursor: pointer;
+  min-width: 0;
+}
+.modelChoiceSelected {
+  background: var(--selected-bg);
+  border-color: var(--selected-line);
+}
+.modelChoiceDisabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.modelChoice input {
+  margin-top: 3px;
+  accent-color: var(--green);
+  flex-shrink: 0;
+}
+.modelMeta {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.promptGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.optionsGrid {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.4fr) repeat(2, minmax(120px, 0.8fr));
+  gap: 12px;
+}
+.controlsBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.resultsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: 14px;
+  min-width: 0;
+}
+.resultCard {
+  padding: 16px;
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  min-width: 0;
+}
+.resultCardError {
+  border-color: var(--error-line);
+}
+.metricsRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  font: 12px/1.4 var(--mono);
+  color: var(--secondary-ink);
+}
+.outputBox {
+  margin: 0;
+  padding: 12px;
+  border-radius: 7px;
+  border: 1px solid var(--line);
+  background: var(--subtle);
+  font: 12px/1.55 var(--mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.schemaErrors {
+  margin: 0;
+  padding: 10px 12px 10px 26px;
+  border-radius: 7px;
+  border: 1px solid var(--warning-line);
+  background: var(--warning-bg);
+  color: var(--attention);
+  font-size: 13px;
+}
+.parsedDetails summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--secondary-ink);
+}
+@media (max-width: 820px) {
+  .promptGrid,
+  .optionsGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

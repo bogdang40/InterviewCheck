@@ -1,17 +1,20 @@
 import { useEffect, useState } from "react"
 import { api, message, type Answer, type Source } from "@/lib/api"
 import { Findings } from "./Evidence"
+import SemanticSimilarityPanel from "./SemanticSimilarityPanel"
 
 export default function LiveComparison({
   sessionId,
   question,
   answer,
   sources,
+  embeddingAvailable,
 }: {
   sessionId: string
   question: string
   answer: string
   sources: Source[]
+  embeddingAvailable?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const [result, setResult] = useState<Answer["result"] | null>(null)
@@ -39,17 +42,25 @@ export default function LiveComparison({
   return (
     <details className="import" onToggle={(e) => setOpen(e.currentTarget.open)}>
       <summary>Live comparison</summary>
-      {open &&
-        (result ? (
-          <Findings result={result} />
-        ) : (
-          <p role="status" className={error ? "error" : "muted"}>
-            {error ||
-              (ready
-                ? "Comparing the current draft…"
-                : "Enter the question and answer. Complete each source you add.")}
-          </p>
-        ))}
+      {open && (
+        <>
+          {result ? (
+            <Findings result={result} />
+          ) : (
+            <p role="status" className={error ? "error" : "muted"}>
+              {error ||
+                (ready
+                  ? "Comparing the current draft…"
+                  : "Enter the question and answer. Complete each source you add.")}
+            </p>
+          )}
+          <SemanticSimilarityPanel
+            embeddingAvailable={embeddingAvailable}
+            answer={answer}
+            sources={sources}
+          />
+        </>
+      )}
     </details>
   )
 }
