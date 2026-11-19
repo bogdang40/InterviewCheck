@@ -21,14 +21,23 @@ GitHub main ──CI (Linux job passes)──▶ deploy.yml ──image──▶
   the registry tagged with the commit, and runs `deploy/vm-rollout.sh` on the VM.
 - The Windows CI job does not gate deploys. Production is Linux, and that job has flaky upload tests.
 - The rollout backs up both databases, starts the new image, and waits for its health check. If the new
-  version is not healthy within about three minutes, it switches back to the previous image and the workflow
-  fails.
+  version is not healthy within about three minutes, it puts back the databases from that pre-deploy backup
+  (the failed version may already have changed the schema), starts the previous image, and the workflow fails.
+  The failed version's database files are kept in `/srv/interviewcheck/data/.failed-<UTC time>`.
+- After a successful rollout the VM keeps only the new image and the previous one (each is about 1.7 GB on a
+  30 GB disk). Older images stay in the registry.
 - Manual deploy of the current `main`: Actions → **Deploy web workspace** → **Run workflow**, or
   `gh workflow run deploy.yml -R bogdang40/InterviewCheck`.
 - Only `main` can deploy. The `production` environment's branch rule and the Azure sign-in (OIDC, subject
   `repo:bogdang40/InterviewCheck:environment:production`) both enforce it.
 
 CI runs on pull requests and on `main`. Pushes to other branches no longer run CI on their own; open a PR.
+
+On pull requests, CI also builds the server image (`deploy/image-smoke.sh`): it starts `main`'s image on an
+empty data folder and adds an interview, then starts the PR's image on that same folder, configured like
+production. The PR fails if the image does not become healthy or the interview does not survive. The Linux test
+job cannot catch this: it uses the CI machine's own Python and SQLite, not the image's. On Nov 19 2026, merged
+code needed an SQLite feature the image did not have, and every deploy failed until the base image changed.
 
 ## Files
 
@@ -87,8 +96,10 @@ az vm run-command invoke -g interviewcheck-rg -n interviewcheck-vm --command-id 
   Blobs are `backups/<UTC time>-<nightly|pre-deploy>.tar.gz`, containing `review.sqlite3` and `access.sqlite3`.
 - **Restore:** stop the app, put both files back in `/srv/interviewcheck/data` (owner uid 10001), then start it.
 - **Rollback:** Actions → **Deploy web workspace** → **Run workflow** on an older commit is not possible (main
-  only). Instead, revert the commit on `main`, or start an earlier image on the VM:
+  only). Instead, revert the commit on `main`, or start an earlier image on the VM (run `az login --identity`
+  and `az acr login --name <acr>` first if it has to be pulled again):
   `IMAGE=<acr>.azurecr.io/interviewcheck-web:<sha> docker compose --env-file deploy.env up -d`.
+  If the newer version changed the database schema, restore the pre-deploy backup first (see **Restore**).
 - **SSH (emergencies only):** the key is in `~/.interviewcheck-web/vm_ed25519` on the machine that ran
   provisioning. Open port 22 to your own IP temporarily in the VM's network security group, then remove the rule.
 
