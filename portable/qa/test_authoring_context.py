@@ -78,7 +78,7 @@ def test_provider_reply_remains_bound_to_original_context(
             with page.expect_response(lambda response: response.url.endswith("/api/roles") and response.request.method == "POST") as stored:
                 page.get_by_role("button", name="Save role").click()
             assert stored.value.ok
-            expect(page.get_by_text("Data engineer", exact=True)).to_be_visible()
+            expect(page.locator(".role-row").get_by_text("Data engineer", exact=True)).to_be_visible()
             assert client.get("/api/roles").json()[0]["questions"] == []
         else:
             save = page.get_by_role("button", name="Save and compare")

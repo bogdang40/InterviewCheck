@@ -31,7 +31,7 @@ def _create_role_and_session(page, base_url: str, *, role_name: str, candidate: 
     page.get_by_label("Description").fill("Distributed systems design and operational readiness.")
     page.get_by_label("Planned questions, one per line").fill("How do you design idempotent retries?")
     page.get_by_role("button", name="Save role").click()
-    expect(page.get_by_text(role_name, exact=True)).to_be_visible()
+    expect(page.locator(".role-row").get_by_text(role_name, exact=True)).to_be_visible()
 
     role_row = page.locator(".role-row").filter(has_text=role_name)
     role_row.get_by_role("button", name="Prepare").click()
@@ -92,7 +92,7 @@ def test_role_template_interview_and_answer_review_persist_across_reload_and_res
     )
 
     page.goto(e2e_workspace.base_url + "/roles/", wait_until="domcontentloaded")
-    expect(page.get_by_text("Staff Platform Engineer", exact=True)).to_be_visible()
+    expect(page.locator(".role-row").get_by_text("Staff Platform Engineer", exact=True)).to_be_visible()
     collector.assert_clean()
 
 
@@ -248,7 +248,7 @@ def test_workspace_backup_download_excludes_model_secrets_and_restores_into_fres
         page2.goto(ws2.base_url + "/interviews/", wait_until="domcontentloaded")
         expect(page2.get_by_text("Backup Candidate")).to_be_visible()
         page2.goto(ws2.base_url + "/roles/", wait_until="domcontentloaded")
-        expect(page2.get_by_text("Backup Verify Role", exact=True)).to_be_visible()
+        expect(page2.locator(".role-row").get_by_text("Backup Verify Role", exact=True)).to_be_visible()
     finally:
         ctx2.close()
         ws2.stop()

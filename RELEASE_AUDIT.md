@@ -67,3 +67,31 @@ Run from `/Users/abekhadra/Desktop/STARKTECH/InterviewCheck` with `PATH="/opt/ho
 | `#9` | `feat/m2-security-hardening` | `main` | `feat(security): harden website and admin auth, CSP, CSRF, and secret hygiene (M2)` |
 | `#8` | `feat/m1-model-admin-api` | `main` | `Add encrypted model registry, admin CRUD/probe API, SSRF guard, and dynamic model wiring (M0-M1)` |
 | `#7` | `feature/interview-delivery-round` | `main` | `Add private revision history and portable role kits` |
+
+## 6. Post-M10 Expansion Summary (M11 through M22) and Production Audit
+
+| Milestone | Scope | Key Deliverables |
+|---|---|---|
+| M11 | Model budgets, simulator, diagnostics | Daily/monthly token & cost limits, routing simulator, live fleet usage & latency telemetry |
+| M12 | Role calibration & bulk ops | Per-role reviewer agreement analytics, rubric version snapshots/restore, bulk archive/trash/tag |
+| M13 | Secret envelope v2 & readiness probes | AES-GCM v2 key rotation CLI/API, `/api/healthz` & `/api/readyz`, rotation & ops runbooks |
+| M14 | Candidate comparison & playground | Cross-candidate rubric dossier export, admin model playground tab with budget/quota enforcement |
+| M15 | Account security & alert rules | Scoped API tokens, rate-limit unlock, session revocation, SSRF-checked webhook alert rules |
+| M16 | OpenMetrics, DR drill & palette | `/metrics` OpenMetrics endpoint, `scripts/dr_drill.py` WAL & rotation drill, WCAG AA & command palette |
+| M17 | Circuit breakers, SLA & prompts | Per-model circuit breakers (`503 Retry-After`), p50/p95/p99 SLA panel, versioned prompt templates & hotkeys |
+| M18 | TOTP 2FA, audit chain & CSP | `access.sqlite3` v8 TOTP 2FA, SHA-256 hash-chained `audit_log` & `model_audit`, CSP reports & deploy validator |
+| M19 | Scorecards, drafts & print | Weighted criterion scorecards, handoff notes, local draft recovery, custom print layouts |
+| M20 | Cohort analytics, tags & presets | Cross-role cohort analytics, tag filter bar, model quick-start presets, batch session export/tag |
+| M21 | Retention, compliance & edge proxy | Retention & PII anonymization engine, compliance report & session audit, duplicate-header & CORS/CSRF verifier |
+| M22 | Load concurrency & production audit | 2,100-session concurrent WAL load suite (`test_m22_load_concurrency.py`) and `scripts/run_production_audit.py` |
+
+### Production Audit Aggregator (`scripts/run_production_audit.py --with-dr --json`)
+
+Run from repository root (`PYTHONPATH=portable portable/.venv/bin/python scripts/run_production_audit.py --with-dr --json`):
+
+1. `source_size_backend`: `scripts/check-source-size.py` enforces `<= 400` lines across `portable/api`, `portable/tests`, `portable/qa`, `server/src`, `server/test`, and `scripts` (including splitting `portable/api/model_execution.py` policy/quota helpers into `portable/api/model_execution_policy.py`).
+2. `source_size_web_docs`: enforces `<= 400` lines across `portable/web/{app,components,lib}` and `docs/`.
+3. `zero_em_en_dashes`: verifies zero `\u2014` or `\u2013` characters across all first-party code, tests, scripts, and docs.
+4. `deploy_config`: `scripts/check_deploy_config.py --json` validates compose, Caddy, Dockerfile, and `vm-rollout.sh`.
+5. `edge_security_asgi`: `scripts/verify_edge_security.py --asgi --json` verifies host, origin, CSRF, CORS, proxy-header, and security headers.
+6. `dr_drill`: `scripts/dr_drill.py --json` verifies `access.sqlite3` v8 parity, concurrent WAL backup/restore, key rotation, and probes.

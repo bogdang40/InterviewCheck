@@ -9,9 +9,10 @@ import { AdminApiError, CAPABILITY_LABELS, listAdminUsers, type AdminMember, typ
 import {
   ALERT_TRIGGER_LABELS, ALERT_TRIGGER_TYPES, clearAdminRateLimits, createAlertRule, deleteAlertRule,
   evaluateAlertRules, listAdminRateLimits, listAdminUserSessions, listAlertRules, revokeAdminUserSessions,
-  testAlertRule, updateAlertRule, type AdminUserSession, type AlertDelivery, type AlertRule,
+  testAlertRule, updateAlertRule, type AdminUserSession, type AlertRule,
   type AlertTriggerType, type RateLimitEntry,
 } from "@/lib/adminSecurityAlerts"
+import { AlertDeliveryHistoryPanel } from "./AlertDeliveryHistoryPanel"
 import { CspReportsPanel } from "./CspReportsPanel"
 import styles from "./SecurityAlertsTab.module.css"
 
@@ -20,30 +21,21 @@ const fmt = (iso: string | null | undefined) => (!iso ? "Never" : Number.isNaN(n
 
 export function SecurityAlertsTab({ onAuthInvalid }: { onAuthInvalid: (msg: string) => void }) {
   const [rateLimits, setRateLimits] = useState<RateLimitEntry[]>([])
-  const [rlLoading, setRlLoading] = useState(true)
-  const [rlError, setRlError] = useState("")
+  const [rlLoading, setRlLoading] = useState(true), [rlError, setRlError] = useState("")
   const [accounts, setAccounts] = useState<AdminMember[]>([])
-  const [userSearch, setUserSearch] = useState("")
-  const [selectedUid, setSelectedUid] = useState("")
+  const [userSearch, setUserSearch] = useState(""), [selectedUid, setSelectedUid] = useState("")
   const [userSessions, setUserSessions] = useState<AdminUserSession[]>([])
-  const [sessionsLoading, setSessionsLoading] = useState(false)
-  const [sessionError, setSessionError] = useState("")
+  const [sessionsLoading, setSessionsLoading] = useState(false), [sessionError, setSessionError] = useState("")
   const [rules, setRules] = useState<AlertRule[]>([])
-  const [deliveries, setDeliveries] = useState<AlertDelivery[]>([])
-  const [alertsLoading, setAlertsLoading] = useState(true)
-  const [alertsError, setAlertsError] = useState("")
-  const [statusMsg, setStatusMsg] = useState("")
-  const [busyKey, setBusyKey] = useState<string | null>(null)
+  const [refreshTick, setRefreshTick] = useState(0)
+  const [alertsLoading, setAlertsLoading] = useState(true), [alertsError, setAlertsError] = useState("")
+  const [statusMsg, setStatusMsg] = useState(""), [busyKey, setBusyKey] = useState<string | null>(null)
   const [formOpen, setFormOpen] = useState(false)
   const [editingRule, setEditingRule] = useState<AlertRule | null>(null)
-  const [name, setName] = useState("")
-  const [triggerType, setTriggerType] = useState<AlertTriggerType>("model_error_streak")
-  const [thresholdRaw, setThresholdRaw] = useState("3")
-  const [capabilityFilter, setCapabilityFilter] = useState("")
-  const [webhookUrl, setWebhookUrl] = useState("")
-  const [signingSecret, setSigningSecret] = useState("")
-  const [clearSecret, setClearSecret] = useState(false)
-  const [cooldownRaw, setCooldownRaw] = useState("15")
+  const [name, setName] = useState(""), [triggerType, setTriggerType] = useState<AlertTriggerType>("model_error_streak")
+  const [thresholdRaw, setThresholdRaw] = useState("3"), [capabilityFilter, setCapabilityFilter] = useState("")
+  const [webhookUrl, setWebhookUrl] = useState(""), [signingSecret, setSigningSecret] = useState("")
+  const [clearSecret, setClearSecret] = useState(false), [cooldownRaw, setCooldownRaw] = useState("15")
   const [enabled, setEnabled] = useState(true)
 
   const checkAuth = useCallback((err: unknown): boolean => {
@@ -77,7 +69,7 @@ export function SecurityAlertsTab({ onAuthInvalid }: { onAuthInvalid: (msg: stri
 
   const loadAlerts = useCallback(async () => {
     setAlertsLoading(true); setAlertsError("")
-    try { const res = await listAlertRules(); setRules(res.rules); setDeliveries(res.deliveries) }
+    try { const res = await listAlertRules(); setRules(res.rules) }
     catch (err) { if (!checkAuth(err)) setAlertsError(err instanceof Error ? err.message : "Could not load alert rules.") }
     finally { setAlertsLoading(false) }
   }, [checkAuth])
@@ -131,7 +123,7 @@ export function SecurityAlertsTab({ onAuthInvalid }: { onAuthInvalid: (msg: stri
       }
       if (editingRule) { await updateAlertRule(editingRule.id, payload); setStatusMsg(`Updated alert rule ${cleanName}.`) }
       else { await createAlertRule(payload); setStatusMsg(`Created alert rule ${cleanName}.`) }
-      setFormOpen(false); setEditingRule(null); await loadAlerts()
+      setFormOpen(false); setEditingRule(null); await loadAlerts(); setRefreshTick((t) => t + 1)
     } catch (err) { if (!checkAuth(err)) setAlertsError(err instanceof Error ? err.message : "Could not save alert rule.") }
     finally { setBusyKey(null) }
   }
@@ -151,6 +143,7 @@ export function SecurityAlertsTab({ onAuthInvalid }: { onAuthInvalid: (msg: stri
     try {
       await deleteAlertRule(rule.id)
       setRules((prev) => prev.filter((r) => r.id !== rule.id))
+      setRefreshTick((t) => t + 1)
       setStatusMsg(`Deleted alert rule ${rule.name}.`)
     } catch (err) { if (!checkAuth(err)) setAlertsError(err instanceof Error ? err.message : "Could not delete alert rule.") }
     finally { setBusyKey(null) }
@@ -162,7 +155,7 @@ export function SecurityAlertsTab({ onAuthInvalid }: { onAuthInvalid: (msg: stri
       const res = await testAlertRule(rule.id)
       if (res.ok) setStatusMsg(`Webhook test succeeded for ${rule.name} (HTTP ${res.delivery?.http_status ?? res.http_status ?? 200}).`)
       else setAlertsError(res.error || res.detail || `Webhook test failed for ${rule.name}.`)
-      await loadAlerts()
+      await loadAlerts(); setRefreshTick((t) => t + 1)
     } catch (err) { if (!checkAuth(err)) setAlertsError(err instanceof Error ? err.message : "Webhook test failed.") }
     finally { setBusyKey(null) }
   }
@@ -172,12 +165,11 @@ export function SecurityAlertsTab({ onAuthInvalid }: { onAuthInvalid: (msg: stri
     try {
       const res = await evaluateAlertRules()
       setStatusMsg(`Evaluated ${res.evaluated ?? rules.length} rule(s); ${res.triggered ?? 0} triggered.`)
-      await loadAlerts()
+      await loadAlerts(); setRefreshTick((t) => t + 1)
     } catch (err) { if (!checkAuth(err)) setAlertsError(err instanceof Error ? err.message : "Could not evaluate alert rules.") }
     finally { setBusyKey(null) }
   }
 
-  const ruleNameById = new Map(rules.map((r) => [r.id, r.name]))
   const selectedMember = accounts.find((a) => a.user.id === selectedUid) ?? null
 
   return (
@@ -320,28 +312,7 @@ export function SecurityAlertsTab({ onAuthInvalid }: { onAuthInvalid: (msg: stri
             ))}
           </div>
         )}
-        <div className="stack">
-          <h3>Recent webhook deliveries</h3>
-          {!deliveries.length ? <p className="muted">No webhook deliveries recorded yet.</p> : (
-            <div className="admin-table-wrap">
-              <table className="admin-table">
-                <thead><tr><th>Delivered at</th><th>Rule</th><th>Event</th><th>Status</th><th>HTTP</th><th>Error</th></tr></thead>
-                <tbody>
-                  {deliveries.map((d) => (
-                    <tr key={d.id}>
-                      <td className="admin-mono">{fmt(d.delivered_at)}</td>
-                      <td>{ruleNameById.get(d.rule_id) ?? d.rule_id}</td>
-                      <td className={`admin-mono ${styles.urlCell}`}>{d.event_key}</td>
-                      <td><Badge variant={d.ok ? "success" : "destructive"}>{d.ok ? "Delivered" : "Failed"}</Badge></td>
-                      <td className="admin-mono">{d.http_status ?? "n/a"}</td>
-                      <td className={styles.urlCell}>{d.error || "None"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+        <AlertDeliveryHistoryPanel rules={rules} refreshTick={refreshTick} onAuthInvalid={onAuthInvalid} />
       </section>
 
       <CspReportsPanel onAuthInvalid={onAuthInvalid} />

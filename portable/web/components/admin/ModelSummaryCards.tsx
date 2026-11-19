@@ -109,7 +109,7 @@ export function ModelSummaryCards({
                   <tr key={`${item.provider}-${item.capability}`}>
                     <td>{PROVIDER_LABELS[item.provider] ?? item.provider}</td>
                     <td>{CAPABILITY_LABELS[item.capability] ?? item.capability}</td>
-                    <td className="admin-mono">{item.model_id || "—"}</td>
+                    <td className="admin-mono">{item.model_id || "-"}</td>
                     <td>
                       <Badge variant={item.configured ? "success" : "secondary"}>
                         {item.configured ? "Configured" : "Not configured"}

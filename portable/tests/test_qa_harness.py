@@ -203,3 +203,30 @@ def test_resolve_start_api_port_handles_explicit_bindable_and_busy_ports(tmp_pat
     monkeypatch.setattr(qa_conftest, "can_bind", lambda _port: False)
     monkeypatch.setattr(qa_conftest, "free_port", lambda: 54321)
     assert qa_conftest.resolve_start_api_port(web, env={}) == 54321
+
+
+def test_uvicorn_keep_alive_exceeds_default_five_seconds():
+    import ast
+    import re
+
+    portable_root = QA_DIR.parent
+    for rel in ("qa/e2e_suite/harness.py", "qa/conftest.py"):
+        tree = ast.parse((portable_root / rel).read_text(encoding="utf-8"))
+        configs = [
+            node for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "Config"
+        ]
+        assert configs, f"No uvicorn.Config call found in {rel}"
+        for call in configs:
+            kw = {k.arg: k.value for k in call.keywords if k.arg}
+            assert "timeout_keep_alive" in kw, f"Missing timeout_keep_alive in {rel}:{call.lineno}"
+            assert isinstance(kw["timeout_keep_alive"], ast.Constant)
+            assert int(kw["timeout_keep_alive"].value) > 5
+
+    for rel in ("web-runtime.mjs", "run.py"):
+        text = (portable_root / rel).read_text(encoding="utf-8")
+        match = re.search(r"""["']--timeout-keep-alive["']\s*,\s*["'](\d+)["']""", text)
+        assert match is not None, f"Missing --timeout-keep-alive in {rel}"
+        assert int(match.group(1)) > 5

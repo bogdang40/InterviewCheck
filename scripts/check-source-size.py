@@ -30,7 +30,7 @@ def main():
                 continue
             if "/.build/" in relative or "/node_modules/" in relative:
                 continue
-            count = len(path.read_text().splitlines())
+            count = len(path.read_text(encoding="utf-8").splitlines())
             checked += 1
             if count > 400:
                 violations.append(f"{relative}: {count} lines")

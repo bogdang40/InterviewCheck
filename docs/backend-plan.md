@@ -67,7 +67,7 @@ prefer them.
 
 ## Order of work (rough)
 
-1. Organizations and memberships, and seat billing in Stripe (about 2–3 days).
+1. Organizations and memberships, and seat billing in Stripe (about 2-3 days).
 2. Merge or Kombo broker plus proxy. One unified API covers Workday, iCIMS and
    SuccessFactors at once (about 3 days).
 3. Greenhouse partner OAuth. Apply to the partner program first (2 days of code;

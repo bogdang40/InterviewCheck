@@ -93,7 +93,7 @@ def main():
     if not args.build_only:
         print(f"Open http://127.0.0.1:{args.port} in your browser. Press Ctrl+C to stop.", flush=True)
         execute([python, "-m", "uvicorn", "api.main:app", "--host", "127.0.0.1",
-                 "--port", str(args.port), "--no-access-log"])
+                 "--port", str(args.port), "--no-access-log", "--timeout-keep-alive", "120"])
 
 
 if __name__ == "__main__":
