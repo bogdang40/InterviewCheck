@@ -67,6 +67,7 @@ export function PromptsAndSlaTab({ models, onAuthInvalid }: { models: ConnectedM
   onAuthInvalidRef.current = onAuthInvalid
   const selectedSlotRef = useRef<PromptSlot>(selectedSlot)
   selectedSlotRef.current = selectedSlot
+  const editedRef = useRef(false)
   const mountedRef = useRef(false)
   const slaAbortRef = useRef<AbortController | null>(null)
   const promptsAbortRef = useRef<AbortController | null>(null)
@@ -110,7 +111,7 @@ export function PromptsAndSlaTab({ models, onAuthInvalid }: { models: ConnectedM
       setPromptsAvailable(res.available); setVersions(res.versions)
       if (res.template) {
         setTemplates((prev) => prev.map((t) => (t.slot === slot ? res.template! : t)))
-        if (selectedSlotRef.current === slot) {
+        if (selectedSlotRef.current === slot && !editedRef.current) {
           setSystemPrompt(res.template.system_prompt); setOutputRule(res.template.output_rule)
         }
       }
@@ -139,6 +140,7 @@ export function PromptsAndSlaTab({ models, onAuthInvalid }: { models: ConnectedM
           selectedSlotRef.current = active.slot
           setSelectedSlot(active.slot)
         }
+        editedRef.current = false
         setSystemPrompt(active.system_prompt); setOutputRule(active.output_rule)
         await loadSlotVersions(active.slot)
       }
@@ -199,6 +201,7 @@ export function PromptsAndSlaTab({ models, onAuthInvalid }: { models: ConnectedM
 
   function handleSlotChange(slot: PromptSlot) {
     selectedSlotRef.current = slot
+    editedRef.current = false
     setSelectedSlot(slot); setConflictMsg(""); setPromptsError(""); setChangeNote("")
     const found = templates.find((t) => t.slot === slot)
     if (found) { setSystemPrompt(found.system_prompt); setOutputRule(found.output_rule) }
@@ -218,6 +221,7 @@ export function PromptsAndSlaTab({ models, onAuthInvalid }: { models: ConnectedM
       })
       if (!mountedRef.current) return
       setTemplates((prev) => prev.map((t) => (t.slot === updated.slot ? updated : t)))
+      editedRef.current = false
       setChangeNote(""); setStatusMsg(`Saved ${PROMPT_SLOT_LABELS[updated.slot]} as version ${updated.active_version}.`)
       await loadSlotVersions(selectedSlot)
     } catch (err) {
@@ -237,6 +241,7 @@ export function PromptsAndSlaTab({ models, onAuthInvalid }: { models: ConnectedM
       })
       if (!mountedRef.current) return
       setTemplates((prev) => prev.map((t) => (t.slot === updated.slot ? updated : t)))
+      editedRef.current = false
       setChangeNote(""); setStatusMsg(`Rolled back ${PROMPT_SLOT_LABELS[updated.slot]} to v${versionNum} (new v${updated.active_version}).`)
       await loadSlotVersions(selectedSlot)
     } catch (err) {
@@ -324,10 +329,10 @@ export function PromptsAndSlaTab({ models, onAuthInvalid }: { models: ConnectedM
               </div>
               {activeTemplate && (
                 <form noValidate className="panel inset stack" onSubmit={(e) => void handleSavePrompt(e)}>
-                  <label className="field">System prompt<Textarea rows={4} maxLength={4000} value={systemPrompt} disabled={busyKey !== null} onChange={(e) => setSystemPrompt(e.target.value)} /></label>
-                  <label className="field">Output rule<Textarea rows={2} maxLength={500} value={outputRule} disabled={busyKey !== null} onChange={(e) => setOutputRule(e.target.value)} /></label>
+                  <label className="field">System prompt<Textarea rows={4} maxLength={4000} value={systemPrompt} disabled={busyKey !== null} onChange={(e) => { editedRef.current = true; setSystemPrompt(e.target.value) }} /></label>
+                  <label className="field">Output rule<Textarea rows={2} maxLength={500} value={outputRule} disabled={busyKey !== null} onChange={(e) => { editedRef.current = true; setOutputRule(e.target.value) }} /></label>
                   <label className="field">Change note (optional)<Input maxLength={300} value={changeNote} placeholder="Document why this prompt changed" disabled={busyKey !== null} onChange={(e) => setChangeNote(e.target.value)} /></label>
-                  <div className={styles.actionsRow}><Button type="submit" size="sm" disabled={busyKey !== null}>Save new version</Button><Button type="button" variant="ghost" size="sm" disabled={busyKey !== null} onClick={() => { setSystemPrompt(activeTemplate.system_prompt); setOutputRule(activeTemplate.output_rule); setChangeNote("") }}>Discard edits</Button></div>
+                  <div className={styles.actionsRow}><Button type="submit" size="sm" disabled={busyKey !== null}>Save new version</Button><Button type="button" variant="ghost" size="sm" disabled={busyKey !== null} onClick={() => { editedRef.current = false; setSystemPrompt(activeTemplate.system_prompt); setOutputRule(activeTemplate.output_rule); setChangeNote("") }}>Discard edits</Button></div>
                 </form>
               )}
               <div className="stack" aria-busy={versionsLoading}>
