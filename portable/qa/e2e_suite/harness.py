@@ -260,7 +260,8 @@ class IsolatedWorkspace:
         deadline = time.monotonic() + 15.0
         listener = self._bind_listener(self._bound_api_port, deadline)
         self._bound_api_port = listener.getsockname()[1]
-        server = uvicorn.Server(uvicorn.Config(app, access_log=False, log_level="warning"))
+        # Keep idle loopback sockets open longer than Next.js httpxy pooling to avoid 5s close races on Windows.
+        server = uvicorn.Server(uvicorn.Config(app, access_log=False, log_level="warning", timeout_keep_alive=300))
         thread = threading.Thread(target=server.run, kwargs={"sockets": [listener]}, daemon=True)
         thread.start()
         while not server.started:

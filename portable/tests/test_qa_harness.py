@@ -203,3 +203,22 @@ def test_resolve_start_api_port_handles_explicit_bindable_and_busy_ports(tmp_pat
     monkeypatch.setattr(qa_conftest, "can_bind", lambda _port: False)
     monkeypatch.setattr(qa_conftest, "free_port", lambda: 54321)
     assert qa_conftest.resolve_start_api_port(web, env={}) == 54321
+
+
+def test_uvicorn_keep_alive_exceeds_default_five_seconds(tmp_path, monkeypatch):
+    from e2e_suite.harness import IsolatedWorkspace
+
+    ws = IsolatedWorkspace(tmp_path, monkeypatch, (None, None, 0))
+    ws.prepare_env()
+    ws.start()
+    try:
+        assert ws._server is not None
+        assert ws._server.config.timeout_keep_alive >= 120
+    finally:
+        ws.stop()
+
+    portable_root = Path(__file__).resolve().parents[1]
+    assert "--timeout-keep-alive" in (portable_root / "web-runtime.mjs").read_text(encoding="utf-8")
+    assert "--timeout-keep-alive" in (portable_root / "run.py").read_text(encoding="utf-8")
+    assert "timeout_keep_alive=300" in (QA_DIR / "conftest.py").read_text(encoding="utf-8")
+

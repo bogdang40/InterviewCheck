@@ -100,7 +100,8 @@ if (mode === "start") {
 
 for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => stop(0));
 start(python, ["-m", "uvicorn", "api.main:app", "--host", "127.0.0.1", "--port", backend,
-  "--no-proxy-headers", "--no-access-log", ...(mode === "dev" ? ["--reload", "--reload-dir", "api"] : [])], root);
+  "--no-proxy-headers", "--no-access-log", "--timeout-keep-alive", "120",
+  ...(mode === "dev" ? ["--reload", "--reload-dir", "api"] : [])], root);
 start(process.execPath, [next, mode, "--hostname", "127.0.0.1", "--port", frontend,
   ...(mode === "dev" ? ["--webpack"] : [])], web);
 console.log("InterviewCheck at http://localhost:" + frontend + " (FastAPI http://127.0.0.1:" + backend + ").");
