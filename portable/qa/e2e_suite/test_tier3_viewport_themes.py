@@ -162,6 +162,7 @@ def test_dark_and_light_themes_maintain_readable_contrast_and_zero_overflow(e2e_
 
             for route in CHECK_ROUTES:
                 page.goto(e2e_workspace.base_url + route, wait_until="domcontentloaded")
+                expect(page.locator("html")).to_have_attribute("data-theme", theme)
                 expect(page.locator("main#main-content")).to_be_visible()
                 expect(page.locator("html")).to_have_attribute("data-theme", theme)
                 assert_no_horizontal_overflow(page)
