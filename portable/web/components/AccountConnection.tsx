@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { AccountSecurityPanel } from "./AccountSecurityPanel";
 import { AdminAccounts } from "./AdminAccounts";
 import { PasswordChangeForm } from "./PasswordChangeForm";
 import { integration, submit } from "@/lib/integrations";
@@ -78,6 +79,13 @@ export function AccountConnection({
           <Button variant="ghost" disabled={busy} onClick={() => act(async () => { await submit("logout"); setAccount(null); notifyAccountChanged(); })}>Sign out</Button>
         </div>
         <PasswordChangeForm onRotated={next => setAccount(next)} />
+        <AccountSecurityPanel
+          isAdmin={Boolean(account.admin)}
+          onCurrentSessionRevoked={() => {
+            setAccount(null);
+            notifyAccountChanged();
+          }}
+        />
         {account.admin && <div className="panel inset spread">
           <div>
             <strong><ShieldCheck size={16} className="inline-icon" aria-hidden="true" /> Model and admin console</strong>

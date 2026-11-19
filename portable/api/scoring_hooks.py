@@ -8,7 +8,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import Field
 
-from . import model_execution, model_resolver, prompt_framing, rate_limit, ssrf_guard
+from . import model_execution, model_resolver, prompt_framing, prompt_templates, rate_limit, ssrf_guard
 from .access import require_entitlement
 from .models import Body, Input, Name, Question, Reference
 from .provider_http import fetch_json
@@ -160,10 +160,12 @@ async def judge_answer(body: JudgeInput):
         ],
         "signals": signals,
     }
+    tpl = prompt_templates.resolve_slot("judge_rubric")
+    instructions = prompt_framing.frame_instructions(tpl["system_prompt"], output_rule=tpl["output_rule"])
     target, (_, reply) = await model_execution.execute_completion_chain(
         "judge",
-        JUDGE_SYSTEM_PROMPT,
-        json.dumps(payload, ensure_ascii=False),
+        instructions,
+        prompt_framing.untrusted_json_prompt(payload),
         provider=body.model_slug,
         fetch_fn=fetch_json,
         max_tokens=600,

@@ -338,8 +338,10 @@ def test_extreme_usage_tokens_clamped_and_budget_enforced(env, monkeypatch):
 
 
 def test_overflow_10_pow_400_and_non_finite_float_guards(env, monkeypatch):
+    from api import model_circuit
+
     _register(slug="ovf-judge", provider="openai", capability="judge", model_id="gpt-4o", is_default=True)
-    _register(slug="ovf-emb", provider="openai", capability="embedding", model_id="text-embedding-3-small", is_default=True)
+    emb = _register(slug="ovf-emb", provider="openai", capability="embedding", model_id="text-embedding-3-small", is_default=True)
 
     captured = {}
 
@@ -367,6 +369,8 @@ def test_overflow_10_pow_400_and_non_finite_float_guards(env, monkeypatch):
     assert env.post("/api/scoring/judge", json={"question": "Q?", "answer": "A"}).status_code == 502
 
     for bad_vec in ([10**400, 1.0], [float("nan"), 1.0], [float("inf"), 1.0], [True, 1.0]):
+        with store.connection(write=True) as db:
+            model_circuit.record_outcome(db, emb["id"], ok=True)
         monkeypatch.setattr(
             scoring_hooks,
             "fetch_json",

@@ -2,10 +2,10 @@ name: Portable interview workspace
 on:
   # Branch pushes are covered by their pull request; running both doubled every PR's CI minutes.
   push:
-    branches: [main]
-    paths: ["portable/**", "server/**", "package.json", ".github/workflows/portable.yml", "deploy/**", ".dockerignore"]
+    branches: [main, feat/interviewcheck-production]
+    paths: ["portable/**", "server/**", "scripts/**", "package.json", ".github/workflows/portable.yml", "deploy/**", ".dockerignore"]
   pull_request:
-    paths: ["portable/**", "server/**", "package.json", ".github/workflows/portable.yml", "deploy/**", ".dockerignore"]
+    paths: ["portable/**", "server/**", "scripts/**", "package.json", ".github/workflows/portable.yml", "deploy/**", ".dockerignore"]
   workflow_dispatch:
 
 permissions:

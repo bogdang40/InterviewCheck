@@ -9,6 +9,8 @@ const V6_INDEXES = [
   "idx_audit_log_at_id",
 ] as const;
 
+const V7_TABLES = ["api_tokens", "login_email_windows"] as const;
+
 describe("account database migrations", () => {
   const openDbs: Database[] = [];
 
@@ -29,18 +31,28 @@ describe("account database migrations", () => {
     return new Set(rows.map((row) => row.name));
   }
 
-  it("initializes a fresh database at user_version 6 with all scale indexes", () => {
+  function tableNames(db: Database): Set<string> {
+    const rows = db.all<{ name: string }>("SELECT name FROM sqlite_master WHERE type = 'table'");
+    return new Set(rows.map((row) => row.name));
+  }
+
+  it("initializes a fresh database at user_version 7 with scale indexes and security tables", () => {
     const db = openMemoryDb();
     new MigrationRunner().run(db);
 
-    expect(db.userVersion()).toBe(6);
+    expect(db.userVersion()).toBe(7);
     const indexes = indexNames(db);
     for (const name of V6_INDEXES) {
       expect(indexes.has(name)).toBe(true);
     }
+    expect(indexes.has("idx_api_tokens_user")).toBe(true);
+    const tables = tableNames(db);
+    for (const table of V7_TABLES) {
+      expect(tables.has(table)).toBe(true);
+    }
   });
 
-  it("upgrades an existing v5 database to v6 without losing rows", () => {
+  it("upgrades an existing v5 database to v7 without losing rows", () => {
     const db = openMemoryDb();
     new MigrationRunner(MIGRATION_STEPS.slice(0, 5)).run(db);
     expect(db.userVersion()).toBe(5);
@@ -69,13 +81,43 @@ describe("account database migrations", () => {
     new MigrationRunner().run(db);
     new MigrationRunner().run(db);
 
-    expect(db.userVersion()).toBe(6);
+    expect(db.userVersion()).toBe(7);
     const indexes = indexNames(db);
     for (const name of V6_INDEXES) {
       expect(indexes.has(name)).toBe(true);
     }
+    expect(indexes.has("idx_api_tokens_user")).toBe(true);
+    for (const table of V7_TABLES) {
+      expect(tableNames(db).has(table)).toBe(true);
+    }
     expect(db.get<{ n: number }>("SELECT COUNT(*) AS n FROM users")?.n).toBe(1);
     expect(db.get<{ n: number }>("SELECT COUNT(*) AS n FROM audit_log")?.n).toBe(1);
+  });
+
+  it("upgrades an existing v6 database to v7 idempotently", () => {
+    const db = openMemoryDb();
+    new MigrationRunner(MIGRATION_STEPS.slice(0, 6)).run(db);
+    expect(db.userVersion()).toBe(6);
+    expect(tableNames(db).has("api_tokens")).toBe(false);
+
+    db.run(
+      "INSERT INTO users (id, email, password_hash, role, disabled, created_at, updated_at) VALUES (?, ?, ?, ?, 0, ?, ?)",
+      "user-6",
+      "v6@example.invalid",
+      "hash",
+      "user",
+      1000,
+      1000,
+    );
+
+    new MigrationRunner().run(db);
+    new MigrationRunner().run(db);
+
+    expect(db.userVersion()).toBe(7);
+    expect(tableNames(db).has("api_tokens")).toBe(true);
+    expect(tableNames(db).has("login_email_windows")).toBe(true);
+    expect(indexNames(db).has("idx_api_tokens_user")).toBe(true);
+    expect(db.get<{ n: number }>("SELECT COUNT(*) AS n FROM users WHERE id = 'user-6'")?.n).toBe(1);
   });
 
   it("uses v6 indexes in SQLite query plans for users and audit_log lookups", () => {
@@ -109,7 +151,7 @@ describe("account database migrations", () => {
 
   it("rejects databases newer than the supported schema version", () => {
     const db = openMemoryDb();
-    db.setUserVersion(7);
+    db.setUserVersion(8);
     expect(() => new MigrationRunner().run(db)).toThrow("This account database version is unsupported.");
   });
 });
