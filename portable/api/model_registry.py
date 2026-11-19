@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from fastapi import HTTPException
 
-from . import store
+from . import model_budgets, store
 from .error_sanitizer import sanitize_error_text
 
 PROVIDERS = ("openai", "anthropic", "azure_openai", "deepgram", "openai_compatible")
@@ -29,6 +29,7 @@ DEFAULT_PARAMETERS = {
     "fallback_priority": 100,
     "max_retries": 0,
     "rpm_limit": None,
+    **model_budgets.BUDGET_PARAM_DEFAULTS,
 }
 
 SCHEMA = """
@@ -68,14 +69,19 @@ CREATE TABLE IF NOT EXISTS model_audit (
  details TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_model_audit_at ON model_audit(at DESC);
+CREATE INDEX IF NOT EXISTS idx_model_audit_action_id ON model_audit(action, id DESC);
 """
 
 
 def migrate(db: sqlite3.Connection) -> None:
-    from . import model_telemetry
+    from . import alert_rules, model_circuit, model_telemetry, prompt_templates
 
     db.executescript(SCHEMA)
     model_telemetry.migrate(db)
+    model_budgets.migrate(db)
+    alert_rules.migrate(db)
+    model_circuit.migrate(db)
+    prompt_templates.migrate(db)
 
 
 def parse_parameters(config_json: str | None) -> dict[str, Any]:
@@ -89,6 +95,7 @@ def parse_parameters(config_json: str | None) -> dict[str, Any]:
     for key in ("temperature", "max_tokens", "timeout_s", "fallback_priority", "max_retries", "rpm_limit"):
         if key in loaded and loaded[key] is not None:
             params[key] = loaded[key]
+    params.update(model_budgets.extract_budget_params(loaded))
     return params
 
 
@@ -101,6 +108,7 @@ def encode_parameters(parameters: dict[str, Any]) -> str:
         value = parameters.get(key)
         if value is not None:
             clean[key] = value
+    model_budgets.merge_budget_params(clean, parameters)
     return json.dumps(clean, separators=(",", ":"), allow_nan=False)
 
 

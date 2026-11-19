@@ -9,6 +9,10 @@
   min-width: 0;
   max-width: 100%;
 }
+.record-header h1,
+.record-header p {
+  overflow-wrap: anywhere;
+}
 .record-header h1 {
   font-size: clamp(32px, 3.2vw, 50px);
   line-height: 1.1;

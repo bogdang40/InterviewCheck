@@ -14,6 +14,10 @@ import {
   type ModelStatus,
 } from "@/lib/adminModels"
 import {
+  formatModelBudgetBadge,
+  type ModelUsageSummary,
+} from "@/lib/adminDiagnostics"
+import {
   computeFallbackRanks,
   formatLatency,
   formatUptime,
@@ -42,6 +46,7 @@ export function ModelList({
   models,
   busyId,
   telemetryByModel,
+  usageByModel,
   onConnect,
   onConfigure,
   onProbe,
@@ -52,6 +57,7 @@ export function ModelList({
   models: ConnectedModel[]
   busyId: string | null
   telemetryByModel?: Record<string, ModelTelemetrySummary>
+  usageByModel?: Record<string, ModelUsageSummary>
   onConnect: () => void
   onConfigure: (model: ConnectedModel) => void
   onProbe: (model: ConnectedModel) => void
@@ -146,6 +152,7 @@ export function ModelList({
             const rowBusy = busyId === m.id
             const rank = fallbackRanks[m.id]
             const modelTelemetry = telemetryByModel?.[m.id]
+            const budgetBadge = formatModelBudgetBadge(m, usageByModel?.[m.id])
             return (
               <article className="panel admin-model-card" key={m.id} data-model-slug={m.slug}>
                 <div className="admin-model-main">
@@ -159,6 +166,14 @@ export function ModelList({
                     >
                       {chainBadgeLabel(rank, m.enabled)}
                     </Badge>
+                    {budgetBadge && (
+                      <Badge
+                        variant={budgetBadge.overLimit ? "destructive" : "outline"}
+                        className="admin-budget-badge"
+                      >
+                        {budgetBadge.label}
+                      </Badge>
+                    )}
                   </div>
                   <span className="admin-mono">
                     {m.slug} · {m.model_id}

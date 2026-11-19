@@ -76,7 +76,7 @@ def archive_csv():
 
 STYLE = """
 body {font: 16px/1.5 system-ui,sans-serif; color:#182b20; max-width:52rem; margin:2rem auto; padding:0 1.25rem;}
-h1,h2,h3 {line-height:1.22; break-after:avoid;} h1 {font-size:2rem;} h2 {margin-top:2rem;}
+h1,h2,h3 {line-height:1.22; break-after:avoid; overflow-wrap:anywhere;} h1 {font-size:2rem;} h2 {margin-top:2rem;}
 h3 {font-size:1.02rem;} dt {font-weight:650;} dd {margin:0 0 .7rem;}
 p,blockquote,pre,dd {white-space:pre-wrap;overflow-wrap:anywhere;}
 blockquote {border-left:3px solid #839e8c;padding-left:1rem;margin:.5rem 0 1rem;}

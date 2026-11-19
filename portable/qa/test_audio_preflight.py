@@ -91,7 +91,7 @@ def test_preflight_denied_missing_audio_and_late_grant(workspace_url, browser_pa
     stopped(page)
     page.evaluate("testInputs.mode='late'")
     page.get_by_role("button", name="Test shared call audio").click()
-    page.wait_for_function("typeof testInputs.release === 'function'")
+    page.wait_for_function("() => typeof testInputs.release === 'function'")
     page.get_by_role("button", name="Stop audio check").click()
     page.evaluate("testInputs.release()")
     stopped(page)

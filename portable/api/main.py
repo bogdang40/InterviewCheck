@@ -3,17 +3,18 @@ from pathlib import Path
 import sys
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import ats_notes, authoring, backup, drafts, model_admin, model_execution, rate_limit, scoring_hooks, store, trash
+from . import access, alert_rules, ats_notes, authoring, backup, bulk_operations, candidate_compare, drafts, health_probes, metrics_export, model_admin, model_circuit, model_execution, model_playground, prompt_templates, rate_limit, role_analytics, role_versions, scoring_hooks, secret_box, store, trash
 from .access import embedded_enabled, require_entitlement
 from .error_sanitizer import sanitize_error_text
 from .evidence import compare
 from .integrations import router as integrations
 from .local_boundary import LocalBoundary
+from .metrics_export import MetricsMiddleware
 from .origin import validate_runtime_exposure
 from .migrate import import_role, preview_role
 from .discovery import router as discovery
@@ -35,6 +36,11 @@ async def lifespan(_):
         from .account_db import check_database
         check_database()
     store.initialize(store.db_path())
+    if secret_box.key_source() == "file":
+        try:
+            secret_box.active_key_id()
+        except secret_box.SecretBoxError:
+            pass
     yield
 
 
@@ -42,6 +48,7 @@ static = Path(__file__).resolve().parents[1] / "web" / "out"
 app = FastAPI(title="InterviewCheck", lifespan=lifespan)
 app.add_middleware(LocalBoundary)
 app.add_middleware(SecurityHeadersMiddleware, static_dir=static if static.is_dir() else None)
+app.add_middleware(MetricsMiddleware)
 workspace = APIRouter(prefix="/api", dependencies=[Depends(require_entitlement)])
 
 
@@ -107,9 +114,10 @@ def revise(sid: UUID, aid: UUID, item: AnswerEdit):
 
 
 @workspace.patch("/sessions/{sid}/answers/{aid}")
-def review(sid: UUID, aid: UUID, item: ReviewInput):
+async def review(sid: UUID, aid: UUID, item: ReviewInput, request: Request):
+    actor = await access.optional_actor(request)
     with store.connection(write=True) as db:
-        return store.update_review(db, str(sid), str(aid), item)
+        return store.update_review(db, str(sid), str(aid), item, actor=actor)
 
 
 @workspace.get("/sessions/{sid}/report")
@@ -126,18 +134,24 @@ def roles():
 
 
 @workspace.post("/roles", status_code=201)
-def new_role(item: RoleInput):
+async def new_role(item: RoleInput, request: Request):
+    _, actor_email = await access.optional_actor(request)
     with store.connection(write=True) as db:
-        return store.create_role(db, item)
+        return store.create_role(db, item, created_by=actor_email)
 
 
 @workspace.post("/roles/import")
-def import_exported_role(document: dict):
+async def import_exported_role(document: dict, request: Request):
+    _, actor_email = await access.optional_actor(request)
     with store.connection(write=True) as db:
         try:
-            _, role = import_role(db, document)
+            added, role = import_role(db, document)
         except ValueError as error:
             raise HTTPException(422, str(error)) from error
+        if added:
+            role_versions.ensure_initial_snapshot(
+                db, role["id"], change_note="Imported role", created_by=actor_email
+            )
         return role
 
 
@@ -153,14 +167,24 @@ def preview_exported_role(document: dict):
 workspace.include_router(trash.router)
 workspace.include_router(drafts.router)
 workspace.include_router(backup.router)
+workspace.include_router(bulk_operations.router)
+workspace.include_router(role_analytics.router)
+workspace.include_router(role_versions.router)
 workspace.include_router(session_workflow)
 workspace.include_router(transcript_import)
 workspace.include_router(ats_notes.router)
 workspace.include_router(discovery)
 workspace.include_router(interview_catalog)
 workspace.include_router(exports)
+workspace.include_router(candidate_compare.router)
+app.include_router(health_probes.router)
 app.include_router(authoring.router)
 app.include_router(model_admin.router)
+app.include_router(model_circuit.router)
+app.include_router(model_playground.router)
+app.include_router(prompt_templates.router)
+app.include_router(alert_rules.router)
+app.include_router(metrics_export.router)
 app.include_router(scoring_hooks.router)
 app.include_router(workspace)
 app.include_router(integrations)

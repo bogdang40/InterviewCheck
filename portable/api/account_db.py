@@ -15,7 +15,13 @@ from uuid import uuid4
 from fastapi import HTTPException
 
 DAY = 86_400_000
-VERSION = 5
+VERSION = 7
+INDEXES = (
+    "CREATE INDEX IF NOT EXISTS idx_users_created_id ON users(created_at DESC, id ASC)",
+    "CREATE INDEX IF NOT EXISTS idx_audit_log_action_id ON audit_log(action, id DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_audit_log_actor_id ON audit_log(actor_user_id, id DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_audit_log_at_id ON audit_log(at DESC, id DESC)",
+)
 SCHEMA = [
     """CREATE TABLE users (id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL,
     role TEXT NOT NULL DEFAULT 'user', disabled INTEGER NOT NULL DEFAULT 0, trial_ends_at INTEGER,
@@ -33,6 +39,7 @@ SCHEMA = [
     """CREATE TABLE audit_log (id INTEGER PRIMARY KEY AUTOINCREMENT,at INTEGER NOT NULL,actor_user_id TEXT,
     action TEXT NOT NULL,target_user_id TEXT,details TEXT)""",
     "CREATE INDEX idx_audit_log_at ON audit_log(at DESC)",
+    *INDEXES,
 ]
 
 
@@ -85,6 +92,21 @@ def prepare(db):
         user_id TEXT PRIMARY KEY REFERENCES users(id),plan TEXT NOT NULL,request_id TEXT NOT NULL,
         expires_at INTEGER NOT NULL,return_base TEXT NOT NULL,url TEXT)""")
     db.execute("CREATE TABLE IF NOT EXISTS login_windows (address TEXT PRIMARY KEY,start INTEGER NOT NULL,hits INTEGER NOT NULL)")
+    db.execute("""CREATE TABLE IF NOT EXISTS api_tokens (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        token_prefix TEXT NOT NULL,
+        token_hash TEXT NOT NULL UNIQUE,
+        scopes_json TEXT NOT NULL DEFAULT '[]',
+        created_at INTEGER NOT NULL,
+        expires_at INTEGER,
+        last_used_at INTEGER,
+        revoked_at INTEGER)""")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_api_tokens_user ON api_tokens(user_id, created_at DESC)")
+    db.execute("CREATE TABLE IF NOT EXISTS login_email_windows (email TEXT PRIMARY KEY,start INTEGER NOT NULL,hits INTEGER NOT NULL)")
+    for sql in INDEXES:
+        db.execute(sql)
     db.execute(f"PRAGMA user_version={VERSION}")
 
 
