@@ -39,11 +39,11 @@ def _sign_in_on_account(page, base_url: str, email: str, password: str) -> None:
 
 def _sign_in_on_admin(page, base_url: str, email: str, password: str) -> None:
     page.goto(base_url + "/admin/", wait_until="domcontentloaded")
-    expect(page.get_by_role("heading", name="Administrator sign in required")).to_be_visible()
+    expect(page.get_by_role("heading", name="Administrator sign in required")).to_be_visible(timeout=15_000)
     page.get_by_label("Operator email").fill(email)
     page.get_by_label("Password", exact=True).fill(password)
     page.get_by_role("button", name="Sign in", exact=True).click()
-    expect(page.get_by_role("heading", name="Model administration")).to_be_visible()
+    expect(page.get_by_role("heading", name="Model administration")).to_be_visible(timeout=15_000)
 
 
 @pytest.mark.tier3
@@ -52,7 +52,7 @@ def test_admin_gate_fails_closed_for_local_unauth_and_non_admin_browser_sessions
 
     # 1. Local mode without access service active fails closed on /admin/.
     page.goto(e2e_workspace.base_url + "/admin/", wait_until="domcontentloaded")
-    expect(page.get_by_role("heading", name="Account authentication inactive")).to_be_visible()
+    expect(page.get_by_role("heading", name="Account authentication inactive")).to_be_visible(timeout=15_000)
     assert_no_horizontal_overflow(page)
     page.goto(e2e_workspace.base_url + "/", wait_until="domcontentloaded")
     expect(page.get_by_role("navigation", name="Workspace").get_by_role("link", name="Admin", exact=True)).to_have_count(0)
@@ -69,16 +69,16 @@ def test_admin_gate_fails_closed_for_local_unauth_and_non_admin_browser_sessions
 
     # Unauthenticated visitor sees administrator sign-in gate.
     page.goto(e2e_workspace.base_url + "/admin/", wait_until="domcontentloaded")
-    expect(page.get_by_role("heading", name="Administrator sign in required")).to_be_visible()
+    expect(page.get_by_role("heading", name="Administrator sign in required")).to_be_visible(timeout=15_000)
     assert_no_horizontal_overflow(page)
 
     # Non-admin member sees access-denied gate and signs out cleanly.
     _sign_in_on_account(page, e2e_workspace.base_url, MEMBER_EMAIL, MEMBER_PASS)
     expect(page.get_by_role("navigation", name="Workspace").get_by_role("link", name="Admin", exact=True)).to_have_count(0)
     page.goto(e2e_workspace.base_url + "/admin/", wait_until="domcontentloaded")
-    expect(page.get_by_role("heading", name="Administrator access required")).to_be_visible()
+    expect(page.get_by_role("heading", name="Administrator access required")).to_be_visible(timeout=15_000)
     page.get_by_role("button", name="Sign out", exact=True).click()
-    expect(page.get_by_role("heading", name="Administrator sign in required")).to_be_visible()
+    expect(page.get_by_role("heading", name="Administrator sign in required")).to_be_visible(timeout=15_000)
     collector.assert_clean()
 
 

@@ -121,6 +121,7 @@ def test_theme_switching_persists_across_routes_and_reloads(e2e_workspace, e2e_b
     page = ctx.new_page()
     try:
         page.goto(e2e_workspace.base_url + "/account/", wait_until="domcontentloaded")
+        expect(page.locator("section.appearance")).to_have_attribute("data-hydrated", "true")
         expect(page.locator("html")).to_have_attribute("data-theme", "dark")
         expect(page.get_by_text("Local workspace.")).to_be_visible()
 
@@ -137,6 +138,7 @@ def test_theme_switching_persists_across_routes_and_reloads(e2e_workspace, e2e_b
         expect(page.locator("html")).to_have_attribute("data-theme", "light")
 
         page.goto(e2e_workspace.base_url + "/account/", wait_until="domcontentloaded")
+        expect(page.locator("section.appearance")).to_have_attribute("data-hydrated", "true")
         expect(page.get_by_text("Local workspace.")).to_be_visible()
         page.get_by_role("radio", name="Dark").check()
         expect(page.locator("html")).to_have_attribute("data-theme", "dark")
@@ -156,6 +158,7 @@ def test_dark_and_light_themes_maintain_readable_contrast_and_zero_overflow(e2e_
         _sign_in_admin_browser(page, e2e_workspace.base_url)
         for theme in ("dark", "light"):
             page.goto(e2e_workspace.base_url + "/account/", wait_until="domcontentloaded")
+            expect(page.locator("section.appearance")).to_have_attribute("data-hydrated", "true")
             expect(page.get_by_text(ADMIN_EMAIL)).to_be_visible()
             page.get_by_role("radio", name=theme.capitalize()).check()
             expect(page.locator("html")).to_have_attribute("data-theme", theme)

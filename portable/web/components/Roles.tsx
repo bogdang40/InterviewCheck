@@ -254,6 +254,7 @@ export default function Roles({
                 Versions
               </Button>
               <Button
+                type="button"
                 disabled={adding}
                 variant="outline"
                 size="sm"
@@ -276,6 +277,7 @@ export default function Roles({
                 {cloningId === r.id ? "Cloning..." : "Clone"}
               </Button>
               <Button
+                type="button"
                 variant="ghost"
                 className="min-h-[44px] md:min-h-9"
                 aria-label={`Prepare interview for ${r.name}`}
