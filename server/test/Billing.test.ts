@@ -231,7 +231,7 @@ describe("billing", () => {
     expect((await json<AccessSnapshot>(await get(harness.app, "/v1/me", token))).entitlement.active).toBe(false);
   });
 
-  it("answers 503 on the webhook when Stripe is not configured", async () => {
+  it("answers 503 on the webhook when Stripe is not configured without leaking env names", async () => {
     harness.container.close();
     harness = buildHarness();
     const { Container } = await import("../src/Container.js");
@@ -239,8 +239,24 @@ describe("billing", () => {
     const { AppFactory } = await import("../src/http/App.js");
     const bare = new Container(AppConfigLoader.forTesting());
     const app = AppFactory.create(bare, { quiet: true });
-    expect((await app.request("/v1/billing/webhook", { method: "POST", body: "{}" })).status).toBe(503);
+    const response = await app.request("/v1/billing/webhook", { method: "POST", body: "{}" });
+    expect(response.status).toBe(503);
+    expect(await response.text()).not.toContain("STRIPE_WEBHOOK_SECRET");
     bare.close();
+  });
+
+  it("rate limits checkout and portal billing requests", async () => {
+    let lastResponse!: Response;
+    for (let i = 0; i < 22; i += 1) {
+      lastResponse = await post(harness.app, "/v1/billing/checkout", { plan: "monthly" }, token);
+    }
+    expect(lastResponse.status).toBe(429);
+    const retryAfter = lastResponse.headers.get("retry-after");
+    expect(retryAfter).toMatch(/^\d+$/);
+    expect(Number(retryAfter)).toBeGreaterThanOrEqual(1);
+    expect(await json(lastResponse)).toEqual({
+      error: { code: "rate_limited", message: "Too many attempts. Try again in a minute." },
+    });
   });
 
   it("serves a browser return page that deep links into the app", async () => {

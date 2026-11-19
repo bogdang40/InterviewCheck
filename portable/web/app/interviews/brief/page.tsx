@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { Suspense } from "react"
+import { Button } from "@/components/ui/button"
 import ReviewBrief from "@/components/ReviewBrief"
 
 function PageContent() {
@@ -10,11 +11,16 @@ function PageContent() {
   if (!id)
     return (
       <section className="panel stack">
-        <h1>Review brief</h1>
-        <p>Select an interview to prepare its brief.</p>
-        <Link href="/interviews/" className="queue-link">
-          Open interviews
-        </Link>
+        <div className="page-title">
+          <span className="eyebrow">BRIEF</span>
+          <h1>Review brief</h1>
+          <p>Select an interview to prepare its brief.</p>
+        </div>
+        <div>
+          <Button asChild variant="outline" size="sm">
+            <Link href="/interviews/">Open interviews</Link>
+          </Button>
+        </div>
       </section>
     )
   return <ReviewBrief key={id} sessionId={id} />

@@ -9,7 +9,7 @@ from uuid import uuid4
 
 from fastapi import HTTPException
 
-from . import lineage, role_kits
+from . import bulk_operations, lineage, model_registry, role_analytics, role_kits, role_versions, search_fts
 from .role_kits import role_row, create_role
 from .models import EARLIER_ANSWER_NOTE, AnswerEdit, AnswerInput, ReviewInput, SessionInput
 
@@ -61,6 +61,10 @@ CREATE TABLE IF NOT EXISTS session_context (
  session_id TEXT PRIMARY KEY REFERENCES sessions(id), role_id TEXT REFERENCES roles(id),
  questions TEXT NOT NULL DEFAULT '[]', ended_at TEXT, permitted_sources TEXT NOT NULL DEFAULT '[]'
 );
+CREATE INDEX IF NOT EXISTS idx_sessions_created ON sessions(created_at DESC, id ASC);
+CREATE INDEX IF NOT EXISTS idx_sessions_candidate_nc ON sessions(candidate COLLATE NOCASE, id ASC);
+CREATE INDEX IF NOT EXISTS idx_session_context_ended ON session_context(ended_at, session_id);
+CREATE INDEX IF NOT EXISTS idx_answers_session_status ON answers(session_id, status, disposition);
 CREATE VIEW IF NOT EXISTS interview_catalog AS
  SELECT s.id,substr(s.candidate,1,180) candidate,substr(s.role,1,180) role,s.created_at,s.consent,c.ended_at,
  CASE WHEN c.ended_at IS NOT NULL THEN 'finished' WHEN s.consent THEN 'active' ELSE 'archived' END lifecycle,
@@ -104,6 +108,11 @@ def initialize(path):
             db.execute("ALTER TABLE answers ADD COLUMN revision INTEGER NOT NULL DEFAULT 1")
         lineage.migrate(db)
         role_kits.migrate_columns(db)
+        role_versions.migrate(db)
+        role_analytics.migrate(db)
+        bulk_operations.migrate(db)
+        model_registry.migrate(db)
+        search_fts.migrate(db)
         # Freeze plans for workspaces created before role IDs were recorded. Only
         # an unambiguous title can recover the original plan from that edition.
         db.execute("""INSERT OR IGNORE INTO session_context(session_id,role_id,questions,ended_at)
@@ -120,6 +129,10 @@ def connection(path=None, *, write=False):
     with closing(sqlite3.connect(path or db_path(), timeout=10)) as db:
         db.row_factory = sqlite3.Row
         db.execute("PRAGMA foreign_keys=ON")
+        db.execute("PRAGMA synchronous=NORMAL")
+        db.execute("PRAGMA temp_store=MEMORY")
+        db.execute("PRAGMA cache_size=-16000")
+        db.execute("PRAGMA mmap_size=67108864")
         with db:
             db.execute("BEGIN IMMEDIATE" if write else "BEGIN")
             yield db
@@ -251,11 +264,21 @@ def write_answer(db, key, item: AnswerInput, replace_id=None, *, session=None):
     return get_answer(db, key, aid)
 
 
-def update_review(db, key, aid, review: ReviewInput):
+def update_review(db, key, aid, review: ReviewInput, *, actor: tuple[str, str] = ("local-operator", "local-operator")):
     current = get_answer(db, key, aid)
     check_revision(current, review.expected_revision)
     if (current["disposition"], current["note"]) == (review.disposition, review.note):
         return current
     db.execute("UPDATE answers SET disposition=?,note=?,revision=revision+1 WHERE session_id=? AND id=?",
                (review.disposition, review.note, key, aid))
+    if current["disposition"] != review.disposition:
+        role_analytics.record_review_event(
+            db,
+            session_id=key,
+            answer_id=aid,
+            reviewer_id=actor[0],
+            reviewer_email=actor[1],
+            previous_disposition=current["disposition"],
+            disposition=review.disposition,
+        )
     return get_answer(db, key, aid)

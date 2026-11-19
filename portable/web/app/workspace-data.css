@@ -12,7 +12,7 @@
   padding: clamp(18px, 2.5vw, 32px);
 }
 .data-symbol {
-  color: var(--green);
+  color: var(--green-ink);
 }
 .data-panel .field,
 .restore-plan {
@@ -42,6 +42,6 @@
 }
 @media (max-width: 760px) {
   .data-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }

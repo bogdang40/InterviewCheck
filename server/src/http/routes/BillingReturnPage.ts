@@ -1,3 +1,18 @@
+import { createHash } from "node:crypto";
+
+export const BILLING_RETURN_STYLE = `
+  :root { color-scheme: light dark; }
+  body { margin: 0; font: 16px/1.5 -apple-system, BlinkMacSystemFont, "SF Pro Text", Helvetica, Arial, sans-serif;
+         display: grid; place-items: center; min-height: 100vh; background: #f5f5f7; color: #1d1d1f; }
+  @media (prefers-color-scheme: dark) { body { background: #111; color: #f5f5f7; } }
+  main { max-width: 28rem; padding: 2rem; text-align: center; }
+  h1 { font-size: 1.4rem; margin: 0 0 .5rem; }
+  p { margin: .5rem 0; opacity: .85; }
+  a.button { display: inline-block; margin-top: 1rem; padding: .6rem 1.2rem; border-radius: 8px;
+             background: #0071e3; color: #fff; text-decoration: none; font-weight: 600; }
+`;
+export const BILLING_RETURN_STYLE_HASH = `sha256-${createHash("sha256").update(BILLING_RETURN_STYLE, "utf8").digest("base64")}`;
+
 /**
  * Minimal, dependency free page shown in the browser after Stripe. It
  * bounces to the desktop app through its URL scheme and tells the person
@@ -17,17 +32,7 @@ export class BillingReturnPage {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="refresh" content="1;url=${deepLink}">
 <title>InterviewCheck</title>
-<style>
-  :root { color-scheme: light dark; }
-  body { margin: 0; font: 16px/1.5 -apple-system, BlinkMacSystemFont, "SF Pro Text", Helvetica, Arial, sans-serif;
-         display: grid; place-items: center; min-height: 100vh; background: #f5f5f7; color: #1d1d1f; }
-  @media (prefers-color-scheme: dark) { body { background: #111; color: #f5f5f7; } }
-  main { max-width: 28rem; padding: 2rem; text-align: center; }
-  h1 { font-size: 1.4rem; margin: 0 0 .5rem; }
-  p { margin: .5rem 0; opacity: .85; }
-  a.button { display: inline-block; margin-top: 1rem; padding: .6rem 1.2rem; border-radius: 8px;
-             background: #0071e3; color: #fff; text-decoration: none; font-weight: 600; }
-</style>
+<style>${BILLING_RETURN_STYLE}</style>
 </head>
 <body>
 <main>

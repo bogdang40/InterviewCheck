@@ -31,10 +31,11 @@ def test_public_origin_forces_operator_auth_and_exact_https_origin(monkeypatch, 
     monkeypatch.delenv("INTERVIEWCHECK_ACCESS_URL", raising=False)
     monkeypatch.delenv("INTERVIEWCHECK_OPERATOR_EMAIL", raising=False)
     monkeypatch.setenv("INTERVIEWCHECK_PUBLIC_ORIGIN", "https://review.example.test")
-    with pytest.raises(ValueError, match="operator"):
+    with pytest.raises(ValueError, match="access service"):
         public_origin()
     monkeypatch.setenv("INTERVIEWCHECK_ACCESS_MODE", "remote")
     monkeypatch.setenv("INTERVIEWCHECK_ACCESS_URL", "http://127.0.0.1:8787")
+    assert public_origin() == "https://review.example.test"
     monkeypatch.setenv("INTERVIEWCHECK_OPERATOR_EMAIL", "test@example.test")
     monkeypatch.delenv("INTERVIEWCHECK_OPERATOR_ID", raising=False)
     with pytest.raises(ValueError, match="INTERVIEWCHECK_OPERATOR_ID"):

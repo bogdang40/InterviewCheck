@@ -5,7 +5,17 @@ from pathlib import Path
 import sys
 
 ROOT = Path(__file__).resolve().parent.parent
-SOURCE_ROOTS = ("InterviewCheck", "InterviewCheckTests", "Packages", "server/src", "server/test", "scripts")
+SOURCE_ROOTS = (
+    "InterviewCheck",
+    "InterviewCheckTests",
+    "Packages",
+    "portable/api",
+    "portable/tests",
+    "portable/qa",
+    "server/src",
+    "server/test",
+    "scripts",
+)
 EXTENSIONS = {".swift", ".ts", ".js", ".mjs", ".py", ".sh", ".metal", ".html", ".css"}
 VENDOR_FILES: set = set()
 

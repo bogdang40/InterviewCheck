@@ -138,7 +138,7 @@ export default function SessionSetup({
             {error}
           </p>
         )}
-        <div>
+        <div className="row">
           {conflict && selected && <ReloadRole id={selected.id} label="Replace setup with saved role"
             onLoad={next => { onRoleLoad(next); selectRole(next) }} />}
           <Button disabled={busy || conflict}>

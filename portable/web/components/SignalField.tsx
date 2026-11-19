@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useSyncExternalStore } from "react"
 
-// Both renderers use the same signal surface so the still image survives a lost GPU context.
+// Both renderers use the same signal surface so the still image survives a lost canvas context.
 function height(x: number, z: number, phase: number) {
   const path = x - z * 0.58
   const envelope = Math.exp((-path * path) / 6.8)
@@ -19,125 +19,116 @@ function observeMotion(listener: () => void) {
 const canAnimate = () => window.matchMedia(motionQuery).matches
 const still = () => false
 
+const TARGET_Y = 0.15
+const [BX, BY] = (() => {
+  const dx = 2.2
+  const dy = 2.4 - TARGET_Y
+  const dz = 6
+  const zLen = Math.hypot(dx, dy, dz)
+  const bz: [number, number, number] = [dx / zLen, dy / zLen, dz / zLen]
+  const xLen = Math.hypot(bz[2], bz[0])
+  const bx: [number, number, number] = [bz[2] / xLen, 0, -bz[0] / xLen]
+  const by: [number, number, number] = [-bz[1] * bx[2], bz[2] * bx[0] - bz[0] * bx[2], bz[1] * bx[0]]
+  return [bx, by]
+})()
+
+const CURVES = Array.from({ length: 40 }, (_, i) => ({
+  z: (i / 39 - 0.5) * 4.6,
+  color: `hsla(${(23.4 + i * 0.162).toFixed(2)}, 58%, ${(49 + 12 * Math.sin((i / 40) * Math.PI)).toFixed(2)}%, 0.72)`,
+}))
+
 export default function SignalField() {
   const host = useRef<HTMLDivElement>(null)
   const animate = useSyncExternalStore(observeMotion, canAnimate, still)
+
   useEffect(() => {
     const el = host.current
     if (!el || !animate) return
-    let closed = false
-    let cleanup = () => {}
-    void import("three").then((T) => {
-      if (closed) return
-      let renderer: InstanceType<typeof T.WebGLRenderer>
-      try {
-        renderer = new T.WebGLRenderer({ alpha: true, antialias: true })
-      } catch {
-        return
-      }
-      el.appendChild(renderer.domElement)
-      const scene = new T.Scene()
-      const camera = new T.OrthographicCamera(-4, 4, 2, -2, 0.1, 100)
-      camera.position.set(2.2, 2.4, 6)
-      camera.lookAt(0, 0.15, 0)
-      const lines = Array.from({ length: 40 }, (_, i) => {
-        const geometry = new T.BufferGeometry()
-        const position = new T.BufferAttribute(new Float32Array(129 * 3), 3)
-        geometry.setAttribute("position", position)
-        const material = new T.LineBasicMaterial({
-          color: new T.Color().setHSL(0.065 + i * 0.00045, 0.58, 0.49 + 0.12 * Math.sin((i / 40) * Math.PI)),
-          transparent: true,
-          opacity: 0.72,
-        })
-        const line = new T.Line(geometry, material)
-        line.frustumCulled = false
-        scene.add(line)
-        return { geometry, position, material, z: (i / 39 - 0.5) * 4.6 }
-      })
-      function render(phase: number) {
-        for (const { position, z } of lines) {
-          for (let j = 0; j < position.count; j++) {
-            const x = (j / 128 - 0.5) * 8.0
-            position.setXYZ(j, x, height(x, z, phase), z)
-          }
-          position.needsUpdate = true
+    const canvas = document.createElement("canvas")
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return
+    el.appendChild(canvas)
+
+    let width = 0
+    let cssHeight = 0
+    let frame = 0
+    let last = 0
+    let visible = true
+
+    function render(phase: number) {
+      if (!ctx || !width || !cssHeight) return
+      ctx.clearRect(0, 0, width, cssHeight)
+      const scale = cssHeight / 4.2
+      const halfW = width * 0.5
+      const halfH = cssHeight * 0.5
+      ctx.lineWidth = 1.05
+      for (const curve of CURVES) {
+        ctx.beginPath()
+        ctx.strokeStyle = curve.color
+        const z = curve.z
+        const zbx = z * BX[2]
+        const zby = z * BY[2]
+        for (let j = 0; j < 129; j++) {
+          const x = (j / 128 - 0.5) * 8.0
+          const y = height(x, z, phase) - TARGET_Y
+          const cx = halfW + (x * BX[0] + zbx) * scale
+          const cy = halfH - (x * BY[0] + y * BY[1] + zby) * scale
+          if (j === 0) ctx.moveTo(cx, cy)
+          else ctx.lineTo(cx, cy)
         }
-        renderer.render(scene, camera)
+        ctx.stroke()
       }
-      let contextLost = false
-      let frame = 0
-      let last = 0
-      let visible = true
-      function tick(time: number) {
-        if (time - last > 55) {
-          render(Math.sin(time / 5900) * 0.64)
-          last = time
-        }
-        frame = requestAnimationFrame(tick)
+    }
+
+    function tick(time: number) {
+      if (time - last > 55) {
+        render(Math.sin(time / 5900) * 0.64)
+        last = time
       }
-      function update() {
-        cancelAnimationFrame(frame)
-        if (contextLost || !visible || document.hidden) return
-        frame = requestAnimationFrame(tick)
-      }
-      function resize() {
-        if (!el) return
-        const { width, height } = el.getBoundingClientRect()
-        if (!width || !height) return
-        const halfHeight = 2.1
-        camera.left = (-halfHeight * width) / height
-        camera.right = -camera.left
-        camera.top = halfHeight
-        camera.bottom = -halfHeight
-        camera.updateProjectionMatrix()
-        renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5))
-        renderer.setSize(width, height)
-        render(0)
-      }
-      const sizes = new ResizeObserver(resize)
-      sizes.observe(el)
-      const visibility = new IntersectionObserver(([entry]) => {
-        visible = entry.isIntersecting
-        update()
-      })
-      visibility.observe(el)
-      function onLost() {
-        contextLost = true
-        delete el!.dataset.ready
-        update()
-      }
-      function onRestored() {
-        contextLost = false
-        resize()
-        el!.dataset.ready = "true"
-        update()
-      }
-      renderer.domElement.addEventListener("webglcontextlost", onLost)
-      renderer.domElement.addEventListener("webglcontextrestored", onRestored)
-      document.addEventListener("visibilitychange", update)
-      resize()
-      el.dataset.ready = "true"
-      cleanup = () => {
-        cancelAnimationFrame(frame)
-        renderer.domElement.removeEventListener("webglcontextlost", onLost)
-        renderer.domElement.removeEventListener("webglcontextrestored", onRestored)
-        document.removeEventListener("visibilitychange", update)
-        sizes.disconnect()
-        visibility.disconnect()
-        for (const { geometry, material } of lines) {
-          geometry.dispose()
-          material.dispose()
-        }
-        renderer.dispose()
-        renderer.domElement.remove()
-        delete el.dataset.ready
-      }
-    }, () => { /* The still surface is already visible if the optional chunk fails. */ })
+      frame = requestAnimationFrame(tick)
+    }
+
+    function update() {
+      cancelAnimationFrame(frame)
+      if (!visible || document.hidden) return
+      frame = requestAnimationFrame(tick)
+    }
+
+    function resize() {
+      if (!el || !ctx) return
+      const rect = el.getBoundingClientRect()
+      if (!rect.width || !rect.height) return
+      width = rect.width
+      cssHeight = rect.height
+      const dpr = Math.min(window.devicePixelRatio || 1, 1.5)
+      canvas.width = Math.round(width * dpr)
+      canvas.height = Math.round(cssHeight * dpr)
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+      render(0)
+    }
+
+    const sizes = new ResizeObserver(resize)
+    sizes.observe(el)
+    const visibility = new IntersectionObserver(([entry]) => {
+      visible = entry.isIntersecting
+      update()
+    })
+    visibility.observe(el)
+    document.addEventListener("visibilitychange", update)
+    resize()
+    el.dataset.ready = "true"
+    update()
+
     return () => {
-      closed = true
-      cleanup()
+      cancelAnimationFrame(frame)
+      document.removeEventListener("visibilitychange", update)
+      sizes.disconnect()
+      visibility.disconnect()
+      canvas.remove()
+      delete el.dataset.ready
     }
   }, [animate])
+
   return (
     <div className="signal-field" ref={host} aria-hidden="true">
       <svg viewBox="0 0 500 250" preserveAspectRatio="xMidYMid slice">
@@ -145,7 +136,6 @@ export default function SignalField() {
           const z = (i / 29 - 0.5) * 4.6
           const points = Array.from({ length: 73 }, (_, j) => {
             const x = (j / 72 - 0.5) * 8
-            // Different JS engines can round trigonometric results differently.
             // Subpixel precision is enough for the static fallback at any UI size.
             const px = (250 + x * 64 - z * 17).toFixed(1)
             const py = (120 + z * 20 - height(x, z, 0) * 78 - x * 4).toFixed(1)

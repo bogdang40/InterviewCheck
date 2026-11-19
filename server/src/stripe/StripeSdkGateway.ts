@@ -73,7 +73,7 @@ export class StripeSdkGateway implements StripeGateway {
 
   async parseWebhook(rawBody: string, signature: string | null): Promise<BillingEvent> {
     if (!this.webhookSecret) {
-      throw new HttpError(503, "webhook_not_configured", "STRIPE_WEBHOOK_SECRET is not set.");
+      throw new HttpError(503, "webhook_not_configured", "Stripe webhook handling is not configured.");
     }
     if (!signature) {
       throw new HttpError(400, "missing_signature", "Missing stripe-signature header.");

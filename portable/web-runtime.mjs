@@ -82,6 +82,7 @@ if (mode === "setup" || mode === "export") process.exit(0);
 const next = createRequire(path.join(web, "package.json")).resolve("next/dist/bin/next");
 if (mode === "build") {
   run(process.execPath, [next, "build", "--webpack"], web);
+  run(process.execPath, [path.join(web, "inject-csp.mjs")], web);
   process.exit(0);
 }
 

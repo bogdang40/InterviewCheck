@@ -45,7 +45,7 @@ export function MeetingRecordings({ providers, enabled, receive, onBusy }: {
     {files?.note && <p className="muted">{files.note}</p>}
     {selected && <>
       {media && <label><input type="checkbox" checked={send} disabled={!enabled || busy}
-        onChange={e => setSend(e.target.checked)} /> {enabled ? "Participants agreed to send this recording to Deepgram." : "Set DEEPGRAM_API_KEY to transcribe recordings."}</label>}
+        onChange={e => setSend(e.target.checked)} /> {enabled ? "Participants agreed to send this recording to Deepgram." : "Transcription is not configured on the server."}</label>}
       <Button variant="outline" type="button" disabled={busy || (media && !send)}
         onClick={() => run(async () => {
           const result = await post<{ vtt?: string; segments?: Segment[]; items?: Recording[]; note?: string }>("recording/" + selected.id, { send_to_deepgram: send });
@@ -56,6 +56,6 @@ export function MeetingRecordings({ providers, enabled, receive, onBusy }: {
         })}>{selected.kind === "meeting" ? "List files for this meeting" : selected.kind === "transcript" ? "Import saved transcript" : "Send recording to Deepgram"}</Button>
     </>}
     {busy && <p role="status">Reading meeting file…</p>}
-    {error && <p role="alert" className="notice">{error}</p>}
+    {error && <p role="alert" className="error">{error}</p>}
   </div>;
 }

@@ -1,6 +1,8 @@
 """Archive CSV and a printable report for a single interview."""
-from html import escape
+import base64
 import csv
+import hashlib
+from html import escape
 from io import StringIO
 import json
 from uuid import UUID
@@ -9,7 +11,7 @@ from tempfile import SpooledTemporaryFile
 from starlette.background import BackgroundTask
 
 from fastapi import APIRouter
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, Response, StreamingResponse
 
 from . import review_brief, store
 from .lineage import description as origin_description
@@ -74,7 +76,7 @@ def archive_csv():
 
 STYLE = """
 body {font: 16px/1.5 system-ui,sans-serif; color:#182b20; max-width:52rem; margin:2rem auto; padding:0 1.25rem;}
-h1,h2,h3 {line-height:1.22; break-after:avoid;} h1 {font-size:2rem;} h2 {margin-top:2rem;}
+h1,h2,h3 {line-height:1.22; break-after:avoid; overflow-wrap:anywhere;} h1 {font-size:2rem;} h2 {margin-top:2rem;}
 h3 {font-size:1.02rem;} dt {font-weight:650;} dd {margin:0 0 .7rem;}
 p,blockquote,pre,dd {white-space:pre-wrap;overflow-wrap:anywhere;}
 blockquote {border-left:3px solid #839e8c;padding-left:1rem;margin:.5rem 0 1rem;}
@@ -82,6 +84,21 @@ article {border-top:1px solid #a8b4a8;margin-top:1.8rem;} pre {font-size:.78rem;
 button {background:#194a33;color:white;border:0;border-radius:5px;padding:.7rem 1rem;font-size:1rem;cursor:pointer;}
 @media print {body{margin:0;max-width:none;padding:0;font-size:10.5pt;} nav{display:none;} @page{margin:17mm;}}
 """
+PRINT_STYLE_HASH = "sha256-" + base64.b64encode(hashlib.sha256(STYLE.encode("utf-8")).digest()).decode("ascii")
+PRINT_JS = """(() => {
+  const bind = () => {
+    const button = document.getElementById("print-report");
+    if (button) button.addEventListener("click", () => window.print());
+  };
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", bind);
+  else bind();
+})();
+"""
+
+
+@router.get("/exports/print.js")
+def print_script():
+    return Response(PRINT_JS, media_type="application/javascript; charset=utf-8")
 
 
 def text_block(title, value):
@@ -123,6 +140,6 @@ def print_view(sid: UUID):
                 + "</pre>") if legacy else ""
     return HTMLResponse(f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>{escape(heading)}</title>
-<style>{STYLE}</style></head><body><nav aria-label="Report actions"><button onclick="window.print()">Print or save PDF</button></nav>
+<style>{STYLE}</style><script src="/api/exports/print.js" defer></script></head><body><nav aria-label="Report actions"><button type="button" id="print-report">Print or save PDF</button></nav>
 <main><h1>{escape(heading)}</h1><dl>{meta}</dl>{materials}<p>Shared wording requires interpretation against the interview rules.</p>
 {answers or "<p>No answers recorded.</p>"}{metadata}</main></body></html>""")

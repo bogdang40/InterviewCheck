@@ -28,3 +28,7 @@
   max-height: 18rem;
   background: #18211c;
 }
+.audio {
+  width: 100%;
+  max-width: 100%;
+}

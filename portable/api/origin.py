@@ -3,7 +3,8 @@ import os
 from ipaddress import ip_address
 from urllib.parse import urlsplit
 
-from .access import account_enabled, operator_id, public_remote
+from .access import account_enabled, operator_id, production_mode, public_remote
+from .provider_http import configured
 
 
 LOOPBACK = {"localhost", "127.0.0.1", "::1"}
@@ -32,11 +33,18 @@ def public_origin():
     if (parsed.scheme != "https" or not host or host.hostname in LOOPBACK or parsed.path not in ("", "/")
             or parsed.query or parsed.fragment):
         raise ValueError("INTERVIEWCHECK_PUBLIC_ORIGIN requires a single external HTTPS origin.")
-    if not os.getenv("INTERVIEWCHECK_OPERATOR_EMAIL", "").strip() or not account_enabled():
-        raise ValueError("A public origin requires an access service and a configured operator email.")
-    if public_remote():
+    if not account_enabled():
+        raise ValueError("A public origin requires an access service.")
+    if public_remote() and (configured("INTERVIEWCHECK_OPERATOR_EMAIL") or configured("INTERVIEWCHECK_OPERATOR_ID")):
         operator_id()
     return "https://" + parsed.netloc.lower()
+
+
+def validate_runtime_exposure():
+    origin = public_origin()
+    if production_mode() and not account_enabled():
+        raise ValueError("Production mode requires embedded or remote account authentication.")
+    return origin
 
 
 def browser_origin(headers, scheme):

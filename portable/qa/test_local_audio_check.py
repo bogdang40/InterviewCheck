@@ -17,7 +17,11 @@ def test_late_permission_and_pagehide_release_all_tracks(workspace_url, browser_
             window.qaRequests++;
             return new Promise(resolve => {
                 window.qaGrant=async () => {
-                    const stream=await realCapture({video:true,audio:true});
+                    const audioStream=await realCapture({audio:true});
+                    const frame=document.createElement("canvas");
+                    frame.width=frame.height=4;
+                    const video=frame.captureStream(10).getVideoTracks()[0];
+                    const stream=new MediaStream([...audioStream.getAudioTracks(), video]);
                     window.qaTracks=stream.getTracks();resolve(stream);
                 };
             });
@@ -32,14 +36,14 @@ def test_late_permission_and_pagehide_release_all_tracks(workspace_url, browser_
     start.click()
     page.get_by_role("button", name="Stop audio check").click()
     page.evaluate("qaGrant()")
-    page.wait_for_function("qaTracks.length===2 && qaTracks.every(t=>t.readyState==='ended')")
-    page.wait_for_function("qaContexts.every(c=>c.state==='closed')")
+    page.wait_for_function("() => qaTracks.length===2 && qaTracks.every(t=>t.readyState==='ended')")
+    page.wait_for_function("() => qaContexts.every(c=>c.state==='closed')")
     start.click()
     page.evaluate("qaGrant()")
     expect(page.get_by_role("meter")).to_be_visible()
     page.evaluate("window.dispatchEvent(new Event('pagehide'))")
     page.wait_for_function(
-        "qaContexts.length>0 && qaContexts.every(c=>c.state==='closed') && qaTracks.every(t=>t.readyState==='ended')"
+        "() => qaContexts.length>0 && qaContexts.every(c=>c.state==='closed') && qaTracks.every(t=>t.readyState==='ended')"
     )
     assert not outgoing
 

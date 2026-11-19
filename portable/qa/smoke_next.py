@@ -1,5 +1,6 @@
 """Exercise the normal npm development and production entry points with synthetic data."""
 import argparse
+from http.client import HTTPException
 import json
 import os
 from pathlib import Path
@@ -14,10 +15,12 @@ from urllib.request import Request, urlopen
 from websockets.exceptions import ConnectionClosed, InvalidStatus
 from websockets.sync.client import connect
 
+from next_frontend import can_bind, free_port
 from smoke_archive import stop_launcher
 
 ROOT = Path(__file__).resolve().parents[2]
 NPM = shutil.which("npm.cmd" if os.name == "nt" else "npm")
+HEALTH_RETRY_ERRORS = (URLError, HTTPException, TimeoutError, ConnectionError)
 
 
 def http(base, path, *, body=None, headers=None):
@@ -29,17 +32,39 @@ def http(base, path, *, body=None, headers=None):
         return error.code, error.read()
 
 
-def wait_for_health(base, process, log):
+def wait_for_health(base, process, log, opener=http, sleep=time.sleep):
     deadline = time.monotonic() + 70
     while time.monotonic() < deadline and process.poll() is None:
         try:
-            status, body = http(base, "/api/health")
+            status, body = opener(base, "/api/health")
             if status == 200 and json.loads(body).get("ok"):
                 return
-        except (URLError, TimeoutError):
+        except HEALTH_RETRY_ERRORS:
             pass
-        time.sleep(0.25)
+        sleep(0.25)
     raise RuntimeError(f"Service did not start.\n{log.read_text(errors='replace')[-2000:]}")
+
+
+def resolve_smoke_ports(env=None):
+    env = os.environ if env is None else env
+    explicit_web = env.get("INTERVIEWCHECK_WEB_PORT")
+    if explicit_web:
+        web_port = int(explicit_web)
+        with socket.socket() as check:
+            check.bind(("127.0.0.1", web_port))
+    else:
+        web_port = 3000 if can_bind(3000) else free_port()
+
+    explicit_api = env.get("INTERVIEWCHECK_API_PORT")
+    if explicit_api:
+        api_port = int(explicit_api)
+        with socket.socket() as check:
+            check.bind(("127.0.0.1", api_port))
+    else:
+        api_port = 8000 if can_bind(8000) else free_port()
+        while api_port == web_port:
+            api_port = free_port()
+    return web_port, api_port
 
 
 def verify(base):
@@ -72,30 +97,39 @@ def verify(base):
 def smoke(modes):
     if not NPM:
         raise SystemExit("Install npm before running this smoke test.")
-    web_port = int(os.getenv("INTERVIEWCHECK_WEB_PORT", "3000"))
-    api_port = int(os.getenv("INTERVIEWCHECK_API_PORT", "8000"))
-    for port in (web_port, api_port):
-        with socket.socket() as check:
-            check.bind(("127.0.0.1", port))
-    with TemporaryDirectory(prefix="interviewcheck-next-") as temp:
-        work = Path(temp)
-        env = {key: value for key, value in os.environ.items() if not key.startswith("INTERVIEWCHECK_")}
-        env.update(INTERVIEWCHECK_WEB_PORT=str(web_port), INTERVIEWCHECK_API_PORT=str(api_port),
-                   INTERVIEWCHECK_DB=str(work / "scratch.sqlite"), DEEPGRAM_API_KEY="offline-handshake-fixture")
-        options = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == "nt" else {"start_new_session": True}
-        for mode in modes:
-            if mode == "start":
-                subprocess.run([NPM, "run", "build"], cwd=ROOT, env=env, check=True)
-            logfile = work / (mode + ".log")
-            with logfile.open("w") as out:
-                child = subprocess.Popen([NPM, "run", mode], cwd=ROOT, env=env, stdout=out, stderr=subprocess.STDOUT, **options)
-                try:
-                    base = f"http://localhost:{web_port}"
-                    wait_for_health(base, child, logfile)
-                    verify(base)
-                finally:
-                    stop_launcher(child, (web_port, api_port))
-            print(f"npm run {mode} passed HTTP, WebSocket and shutdown checks.", flush=True)
+    web_port, api_port = resolve_smoke_ports()
+    web_dir = ROOT / "portable/web"
+    dist_dir = web_dir / ".next-server"
+    backup_dir = None
+    if "start" in modes and api_port != 8000 and dist_dir.exists():
+        (web_dir / ".next").mkdir(parents=True, exist_ok=True)
+        backup_dir = web_dir / ".next" / f"smoke-backup-{os.getpid()}"
+        shutil.rmtree(backup_dir, ignore_errors=True)
+        dist_dir.rename(backup_dir)
+    try:
+        with TemporaryDirectory(prefix="interviewcheck-next-") as temp:
+            work = Path(temp)
+            env = {key: value for key, value in os.environ.items() if not key.startswith("INTERVIEWCHECK_")}
+            env.update(INTERVIEWCHECK_WEB_PORT=str(web_port), INTERVIEWCHECK_API_PORT=str(api_port),
+                       INTERVIEWCHECK_DB=str(work / "scratch.sqlite"), DEEPGRAM_API_KEY="offline-handshake-fixture")
+            options = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == "nt" else {"start_new_session": True}
+            for mode in modes:
+                if mode == "start":
+                    subprocess.run([NPM, "run", "build"], cwd=ROOT, env=env, check=True)
+                logfile = work / (mode + ".log")
+                with logfile.open("w") as out:
+                    child = subprocess.Popen([NPM, "run", mode], cwd=ROOT, env=env, stdout=out, stderr=subprocess.STDOUT, **options)
+                    try:
+                        base = f"http://localhost:{web_port}"
+                        wait_for_health(base, child, logfile)
+                        verify(base)
+                    finally:
+                        stop_launcher(child, (web_port, api_port))
+                print(f"npm run {mode} passed HTTP, WebSocket and shutdown checks.", flush=True)
+    finally:
+        if backup_dir is not None and backup_dir.exists():
+            shutil.rmtree(dist_dir, ignore_errors=True)
+            backup_dir.rename(dist_dir)
 
 
 if __name__ == "__main__":
