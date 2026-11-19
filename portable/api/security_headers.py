@@ -11,6 +11,8 @@ from .exports import PRINT_STYLE_HASH
 from .origin import browser_origin
 
 _PRINT_PATH_RE = re.compile(r"^/api/sessions/[0-9a-fA-F-]+/print$")
+_COMPARE_PRINT_PATH_RE = re.compile(r"^/api/interviews/compare/print$")
+_COMPARE_DOSSIER_PATH_RE = re.compile(r"^/api/interviews/compare/dossier$")
 _SCRIPT_RE = re.compile(r"<script\b([^>]*)>(.*?)</script>", re.IGNORECASE | re.DOTALL)
 _SRC_ATTR_RE = re.compile(r"(?:^|\s)src\s*=", re.IGNORECASE)
 _PERMISSIONS = "camera=(), geolocation=(), payment=(), usb=(), microphone=(self), display-capture=(self)"
@@ -82,7 +84,12 @@ class SecurityHeadersMiddleware:
         return result
 
     def _csp_for(self, path: str, status: int, content_type: str, req_headers: Headers, scheme: str) -> str:
-        if _PRINT_PATH_RE.fullmatch(path) and content_type == "text/html":
+        is_print = (
+            _PRINT_PATH_RE.fullmatch(path)
+            or _COMPARE_PRINT_PATH_RE.fullmatch(path)
+            or _COMPARE_DOSSIER_PATH_RE.fullmatch(path)
+        )
+        if is_print and content_type == "text/html":
             return (
                 f"default-src 'none'; script-src 'self'; style-src 'self' '{PRINT_STYLE_HASH}'; "
                 "img-src 'none'; font-src 'none'; connect-src 'none'; object-src 'none'; "

@@ -1,12 +1,13 @@
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
 import { useSearchParams } from "next/navigation"
-import { ArrowUpRight, Archive, Plus, Search, X } from "lucide-react"
+import { ArrowUpRight, Archive, Columns2, Plus, Search, X } from "lucide-react"
 import { message } from "@/lib/api"
 import {
   bulkArchive, bulkExport, bulkTag, collectTags, pruneSelection, toggleSelection,
   type BulkExportFormat, type FeedPage,
 } from "@/lib/bulkArchive"
+import { buildComparePageUrl } from "@/lib/compareInterviews"
 import type { SessionSort } from "@/lib/interview-list"
 import { useResource } from "@/lib/workspace"
 import BulkArchiveToolbar from "./BulkArchiveToolbar"
@@ -125,6 +126,8 @@ export default function InterviewArchive({ onCreate }: { onCreate: () => void })
       resource.reload()
     }, true)
 
+  const compareHref = selectedIds.length >= 2 ? buildComparePageUrl(selectedIds) : "/interviews/compare/"
+
   return (
     <div className="interview-archive">
       <div className="archive-heading">
@@ -134,6 +137,9 @@ export default function InterviewArchive({ onCreate }: { onCreate: () => void })
         </div>
         <div className="row">
           <Button asChild variant="ghost" size="sm"><a href="/trash/">Trash</a></Button>
+          <Button asChild variant="outline" size="sm">
+            <Link href={compareHref}><Columns2 aria-hidden="true" />Compare</Link>
+          </Button>
           <ReportExport />
           <Button onClick={onCreate}><Plus />New interview</Button>
         </div>
