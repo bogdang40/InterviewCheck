@@ -9,7 +9,9 @@ export default function WorkspaceSearch({ compact = false }: { compact?: boolean
   const dialog = useRef<HTMLDialogElement>(null),
     input = useRef<HTMLInputElement>(null)
   const trigger = useRef<HTMLButtonElement>(null)
+  const previousFocusRef = useRef<HTMLElement | null>(null)
   const navigatingRef = useRef(false)
+  const openCycleRef = useRef(false)
   const [open, setOpen] = useState(false),
     [query, setQuery] = useState(""),
     [active, setActive] = useState(0)
@@ -18,7 +20,15 @@ export default function WorkspaceSearch({ compact = false }: { compact?: boolean
   const { result, error, pending } = useWorkspaceSearch(query, open)
   function show() {
     if (!dialog.current || dialog.current.open) return
+    const activeElement = document.activeElement
+    previousFocusRef.current =
+      activeElement instanceof HTMLElement &&
+      activeElement !== document.body &&
+      activeElement !== document.documentElement
+        ? activeElement
+        : null
     navigatingRef.current = false
+    openCycleRef.current = true
     setOpen(true)
     setActive(0)
     setQuery("")
@@ -75,14 +85,22 @@ export default function WorkspaceSearch({ compact = false }: { compact?: boolean
         className="search-dialog"
         aria-labelledby={title}
         onClose={() => {
-          if (dialog.current?.open) return
+          if (dialog.current?.open || !openCycleRef.current) return
+          openCycleRef.current = false
           setOpen(false)
           setQuery("")
           setActive(0)
           const shouldRestore = !navigatingRef.current
+          const restoreTarget = previousFocusRef.current
           navigatingRef.current = false
-          if (shouldRestore && trigger.current?.isConnected) {
-            trigger.current.focus()
+          previousFocusRef.current = null
+          if (shouldRestore) {
+            if (restoreTarget?.isConnected) {
+              restoreTarget.focus()
+            }
+            if ((!restoreTarget || document.activeElement !== restoreTarget) && trigger.current?.isConnected) {
+              trigger.current.focus()
+            }
           }
         }}
         onClick={(e) => {

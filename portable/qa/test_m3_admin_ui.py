@@ -4,7 +4,7 @@ import re
 import sys
 
 import pytest
-from playwright.sync_api import expect, sync_playwright
+from playwright.sync_api import expect
 
 QA_ROOT = Path(__file__).resolve().parent
 if str(QA_ROOT) not in sys.path:
@@ -16,7 +16,6 @@ from e2e_suite.harness import (  # noqa: E402
     IsolatedWorkspace,
     MOBILE_VIEWPORT,
     assert_no_horizontal_overflow,
-    load_parent_qa_conftest,
     signup_user,
 )
 
@@ -40,14 +39,8 @@ def m3_workspace(tmp_path, monkeypatch, frontend):
 
 
 @pytest.fixture(scope="module")
-def m3_browser():
-    parent = load_parent_qa_conftest()
-    with sync_playwright() as pw:
-        browser = parent.launch_chromium(pw)
-        try:
-            yield browser
-        finally:
-            browser.close()
+def m3_browser(qa_browser):
+    return qa_browser
 
 
 def _new_page(browser, viewport, *, mobile=False):
