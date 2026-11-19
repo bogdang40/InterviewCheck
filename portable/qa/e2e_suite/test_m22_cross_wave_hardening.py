@@ -27,7 +27,7 @@ def _open_page(e2e_browser, width: int, height: int):
 
 
 def _intercept_until_cleared(page, pattern: str, *, status: int, detail: str, once: bool = True):
-    state = {"active": True, "hits": 0}
+    state = {"active": True, "hits": 0, "routed": True}
 
     def handler(route):
         if state["active"]:
@@ -38,11 +38,34 @@ def _intercept_until_cleared(page, pattern: str, *, status: int, detail: str, on
             return
         route.continue_()
 
+    def clear() -> None:
+        state["active"] = False
+        if state["routed"]:
+            state["routed"] = False
+            page.unroute(pattern, handler)
+
     page.route(pattern, handler)
+    state["clear"] = clear
     return state
 
 
-def _assert_expected_errors(collector: ConsoleErrorCollector, status: int, *, exact_one: bool = True) -> None:
+def _assert_expected_errors(
+    collector: ConsoleErrorCollector,
+    status: int,
+    *,
+    page=None,
+    gate: dict | None = None,
+    exact_one: bool = True,
+) -> None:
+    if gate is not None:
+        gate["clear"]()
+    if page is not None:
+        expected_hits = gate["hits"] if gate is not None else 1
+        for _ in range(40):
+            if len(collector.server_errors) >= expected_hits and len(collector.console_errors) >= expected_hits:
+                break
+            page.wait_for_timeout(25)
+        page.wait_for_timeout(150)
     assert not collector.page_errors, f"Uncaught page errors: {collector.page_errors}"
     assert collector.server_errors and all(str(status) in e for e in collector.server_errors), collector.server_errors
     assert collector.console_errors and all(str(status) in e for e in collector.console_errors), collector.console_errors
@@ -128,16 +151,16 @@ def test_m22_roles_unique_aria_labels_and_calibration_retry(e2e_workspace, e2e_b
 
         panel = page.get_by_label("Role calibration analytics")
         expect(panel.get_by_role("alert")).to_contain_text("Analytics unavailable")
-        a_gate["active"] = False
+        a_gate["clear"]()
         assert a_gate["hits"] >= 1
-        _assert_expected_errors(collector, 500, exact_one=False)
+        _assert_expected_errors(collector, 500, page=page, gate=a_gate, exact_one=False)
         panel.get_by_role("alert").get_by_role("button", name="Retry", exact=True).click()
         expect(panel).to_contain_text("Active sessions")
 
         panel.get_by_role("button", name="Inspect calibration").first.click()
         expect(panel.get_by_role("alert")).to_contain_text("Calibration failed")
         assert c_gate["hits"] == 1
-        _assert_expected_errors(collector, 500)
+        _assert_expected_errors(collector, 500, page=page, gate=c_gate)
         panel.get_by_role("alert").get_by_role("button", name="Retry", exact=True).click()
         expect(panel.get_by_role("heading", name="Reviewer spread for Role Alpha")).to_be_visible()
 
@@ -209,7 +232,7 @@ def test_m22_review_draft_recovery_scorecard_and_brief_hardening(e2e_workspace, 
         err_alert = page.locator("aside.brief-options .error[role='alert']")
         expect(err_alert).to_contain_text("Export failed")
         assert dl_gate["hits"] == 1
-        _assert_expected_errors(collector, 500)
+        _assert_expected_errors(collector, 500, page=page, gate=dl_gate)
         err_alert.get_by_role("button", name="Refresh preview").click()
         expect(live_status).to_contain_text("1 excerpt and 1 note included.")
 
@@ -236,9 +259,9 @@ def test_m22_compare_empty_retry_dossier_and_data_cohort_export(e2e_workspace, e
         page.goto(e2e_workspace.base_url + "/interviews/compare/", wait_until="domcontentloaded")
         alert = page.locator(".error[role='alert']")
         expect(alert).to_contain_text("Archive feed error")
-        feed_gate["active"] = False
+        feed_gate["clear"]()
         assert feed_gate["hits"] >= 1
-        _assert_expected_errors(collector, 500, exact_one=False)
+        _assert_expected_errors(collector, 500, page=page, gate=feed_gate, exact_one=False)
         alert.get_by_role("button", name="Retry", exact=True).click()
         expect(page.get_by_text("Only 1 active interview found.")).to_be_visible()
         expect(page.get_by_role("link", name="New interview", exact=True)).to_have_attribute("href", "/interviews/new/")
@@ -290,9 +313,9 @@ def test_m22_empty_home_ctas_and_connections_account_503_retry(e2e_workspace, e2
         page.goto(e2e_workspace.base_url + "/connections/", wait_until="domcontentloaded")
         conn_alert = page.locator(".error[role='alert']")
         expect(conn_alert).to_contain_text("Connections unavailable")
-        conn_gate["active"] = False
+        conn_gate["clear"]()
         assert conn_gate["hits"] >= 1
-        _assert_expected_errors(collector, 503, exact_one=False)
+        _assert_expected_errors(collector, 503, page=page, gate=conn_gate, exact_one=False)
         conn_alert.get_by_role("button", name="Retry", exact=True).click()
         expect(page.get_by_label("Import calendar events")).to_be_visible()
         expect(conn_alert).to_have_count(0)
@@ -302,9 +325,9 @@ def test_m22_empty_home_ctas_and_connections_account_503_retry(e2e_workspace, e2
         page.goto(e2e_workspace.base_url + "/account/", wait_until="domcontentloaded")
         acct_alert = page.locator(".error[role='alert']")
         expect(acct_alert).to_contain_text("Account gateway down")
-        acct_gate["active"] = False
+        acct_gate["clear"]()
         assert acct_gate["hits"] >= 1
-        _assert_expected_errors(collector, 503, exact_one=False)
+        _assert_expected_errors(collector, 503, page=page, gate=acct_gate, exact_one=False)
         acct_alert.get_by_role("button", name="Retry", exact=True).click()
         expect(page.get_by_text(f"{ADMIN_EMAIL} · Access active")).to_be_visible()
         assert_no_horizontal_overflow(page)
