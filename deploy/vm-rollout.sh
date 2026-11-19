@@ -7,6 +7,8 @@
 #   BACKUP_ACCOUNT  storage account for nightly database backups
 #   COMPOSE_B64, CADDY_B64, BACKUP_B64  base64 of deploy/compose.yml, deploy/Caddyfile, deploy/backup.sh
 # Prints ROLLOUT_OK on success; the workflow fails without it.
+# run-command starts scripts with /bin/sh; rerun this whole file (variables included) under bash.
+[ -n "${BASH_VERSION:-}" ] || exec /bin/bash "$0" "$@"
 set -euo pipefail
 DIR=/srv/interviewcheck
 cd "$DIR"

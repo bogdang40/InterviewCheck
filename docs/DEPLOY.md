@@ -94,7 +94,8 @@ az vm run-command invoke -g interviewcheck-rg -n interviewcheck-vm --command-id 
 
 ## Not covered yet
 
-- Stripe billing is not configured. The operator has access through an administrator grant.
+- Stripe billing is not configured. The operator account was created with the administrator secret, and an
+  administrator counts as active access (entitlement source `admin`), so no payment is needed.
 - One deployment serves one operator. Selling to several companies means one deployment per company, or
   making the workspace multi-tenant.
 - Hardening the app itself (from the Nov 18 review): sign-in limits per IPv6 /64 and per account, checking the
