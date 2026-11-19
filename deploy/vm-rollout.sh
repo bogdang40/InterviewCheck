@@ -64,7 +64,10 @@ IMAGE="$IMAGE" SITE_ADDRESS="$SITE_ADDRESS" docker compose pull --quiet
 
 # Keep a copy of the databases from just before the new version starts (schema upgrades).
 if [ -n "$CURRENT" ]; then
-  BACKUP_ACCOUNT="$BACKUP_ACCOUNT" ./backup.sh pre-deploy || log "pre-deploy backup failed (continuing)"
+  if ! BACKUP_ACCOUNT="$BACKUP_ACCOUNT" ./backup.sh pre-deploy; then
+    log "pre-deploy backup failed; the current application remains selected"
+    exit 1
+  fi
 fi
 
 log "starting"
