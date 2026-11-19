@@ -16,9 +16,37 @@ export type AssignmentQueueItem = {
   due_at: string | null; updated_at: string | null
 }
 
+export type DueFilter = "" | "overdue" | "soon"
+
 export type AssignmentQueueCounts = { assigned_to_me: number; high_priority: number; unassigned: number }
-export type AssignmentQueueResponse = { viewer_email: string; counts: AssignmentQueueCounts; items: AssignmentQueueItem[] }
-export type AssignmentQueueFilters = { assignee?: string; priority?: "" | AssignmentPriority; limit?: number }
+export type AssignmentDueCounts = { overdue: number; due_soon: number }
+export type AssignmentQueueResponse = {
+  viewer_email: string
+  counts: AssignmentQueueCounts
+  due_counts: AssignmentDueCounts
+  items: AssignmentQueueItem[]
+}
+export type AssignmentQueueFilters = {
+  assignee?: string
+  priority?: "" | AssignmentPriority
+  due?: DueFilter
+  limit?: number
+}
+
+export type BulkSessionAssignmentInput = {
+  session_ids: string[]
+  action: "assign" | "clear"
+  assignee_email?: string | null
+  priority?: AssignmentPriority
+  due_at?: string | null
+}
+
+export type BulkSessionAssignmentResult = {
+  action: "assign" | "clear"
+  updated: number
+  assignments?: SessionAssignment[]
+  cleared_ids?: string[]
+}
 
 async function requestAssignmentApi<T>(url: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers)
@@ -38,6 +66,12 @@ export function toDueAtIso(dateValue: string): string | null {
 
 export function toDateInputValue(isoValue: string | null | undefined): string {
   return isoValue ? isoValue.slice(0, 10) : ""
+}
+
+export function isDueOverdue(dueAt: string | null | undefined, nowMs = Date.now()): boolean {
+  if (!dueAt) return false
+  const parsed = Date.parse(dueAt)
+  return Number.isFinite(parsed) && parsed < nowMs
 }
 
 export async function fetchSessionAssignment(sessionId: string, signal?: AbortSignal): Promise<SessionAssignmentResponse> {
@@ -73,6 +107,7 @@ export async function fetchAssignmentQueue(
   const params = new URLSearchParams()
   if (filters.assignee) params.set("assignee", filters.assignee)
   if (filters.priority) params.set("priority", filters.priority)
+  if (filters.due) params.set("due", filters.due)
   if (typeof filters.limit === "number" && Number.isFinite(filters.limit) && filters.limit >= 1) {
     params.set("limit", String(Math.trunc(filters.limit)))
   }
@@ -88,6 +123,25 @@ export async function fetchAssignmentQueue(
       high_priority: data?.counts?.high_priority ?? 0,
       unassigned: data?.counts?.unassigned ?? 0,
     },
+    due_counts: {
+      overdue: data?.due_counts?.overdue ?? 0,
+      due_soon: data?.due_counts?.due_soon ?? 0,
+    },
     items: Array.isArray(data?.items) ? data.items : [],
+  }
+}
+
+export async function bulkAssignSessions(
+  payload: BulkSessionAssignmentInput,
+): Promise<BulkSessionAssignmentResult> {
+  const data = await requestAssignmentApi<Partial<BulkSessionAssignmentResult>>(
+    "/api/interviews/assignments/bulk",
+    { method: "POST", body: JSON.stringify(payload) },
+  )
+  return {
+    action: data?.action === "clear" ? "clear" : "assign",
+    updated: typeof data?.updated === "number" ? data.updated : 0,
+    assignments: Array.isArray(data?.assignments) ? data.assignments : undefined,
+    cleared_ids: Array.isArray(data?.cleared_ids) ? data.cleared_ids : undefined,
   }
 }

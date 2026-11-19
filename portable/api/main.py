@@ -29,6 +29,7 @@ from . import (
     model_admin,
     model_circuit,
     model_execution,
+    model_health_timeline,
     model_playground,
     model_presets,
     prompt_templates,
@@ -220,6 +221,7 @@ workspace.include_router(calibration_queue.router)
 app.include_router(health_probes.router)
 app.include_router(authoring.router)
 app.include_router(model_presets.router)
+app.include_router(model_health_timeline.router)
 app.include_router(model_admin.router)
 app.include_router(model_circuit.router)
 app.include_router(model_playground.router)
