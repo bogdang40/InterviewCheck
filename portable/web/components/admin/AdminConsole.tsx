@@ -13,12 +13,17 @@ import {
   type ConnectedModel,
   type EnvFallback,
 } from "@/lib/adminModels"
+import {
+  getFleetTelemetry,
+  type FleetTelemetryResponse,
+} from "@/lib/adminTelemetry"
 import { type ProviderStatus } from "@/lib/integrations"
 import { type AccountSnapshot } from "@/lib/useAccountStatus"
 import { AccountsTab } from "./AccountsTab"
 import { AdminGate } from "./AdminGate"
 import { AuditLogTab } from "./AuditLogTab"
 import { ModelFormModal } from "./ModelFormModal"
+import { ModelHealthDrawer } from "./ModelHealthDrawer"
 import { ModelList } from "./ModelList"
 import { ModelSummaryCards } from "./ModelSummaryCards"
 import "./AdminConsole.css"
@@ -34,12 +39,14 @@ export default function AdminConsole() {
   const [tab, setTab] = useState<AdminTab>("models")
   const [models, setModels] = useState<ConnectedModel[]>([])
   const [envFallbacks, setEnvFallbacks] = useState<EnvFallback[]>([])
+  const [fleetTelemetry, setFleetTelemetry] = useState<FleetTelemetryResponse | null>(null)
   const [modelsLoading, setModelsLoading] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [bannerError, setBannerError] = useState("")
   const [bannerStatus, setBannerStatus] = useState("")
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<ConnectedModel | null>(null)
+  const [healthModel, setHealthModel] = useState<ConnectedModel | null>(null)
 
   const bootstrap = useCallback(async (preserveError = false) => {
     setGateLoading(true)
@@ -66,24 +73,52 @@ export default function AdminConsole() {
     }
   }, [])
 
+  const handleAuthFailure = useCallback(
+    (err: unknown): boolean => {
+      if (err instanceof AdminApiError && (err.status === 401 || err.status === 403)) {
+        setGateError(err.message)
+        void bootstrap(true)
+        return true
+      }
+      return false
+    },
+    [bootstrap],
+  )
+
+  const refreshTelemetry = useCallback(async () => {
+    try {
+      const next = await getFleetTelemetry()
+      setFleetTelemetry(next)
+    } catch (err) {
+      if (!handleAuthFailure(err)) {
+        setFleetTelemetry(null)
+      }
+    }
+  }, [handleAuthFailure])
+
   const loadModels = useCallback(async () => {
     setModelsLoading(true)
     setBannerError("")
     try {
-      const data = await listAdminModels()
+      const [data, telemetryData] = await Promise.all([
+        listAdminModels(),
+        getFleetTelemetry().catch((err) => {
+          if (err instanceof AdminApiError && (err.status === 401 || err.status === 403)) {
+            throw err
+          }
+          return null
+        }),
+      ])
       setModels(data.models)
       setEnvFallbacks(data.envFallbacks)
+      setFleetTelemetry(telemetryData)
     } catch (err) {
-      if (err instanceof AdminApiError && (err.status === 401 || err.status === 403)) {
-        setGateError(err.message)
-        void bootstrap(true)
-        return
-      }
+      if (handleAuthFailure(err)) return
       setBannerError(err instanceof Error ? err.message : "Could not load models.")
     } finally {
       setModelsLoading(false)
     }
-  }, [bootstrap])
+  }, [handleAuthFailure])
 
   useEffect(() => {
     void bootstrap()
@@ -95,15 +130,6 @@ export default function AdminConsole() {
     }
   }, [account?.admin, loadModels])
 
-  function handleAuthFailure(err: unknown): boolean {
-    if (err instanceof AdminApiError && (err.status === 401 || err.status === 403)) {
-      setGateError(err.message)
-      void bootstrap(true)
-      return true
-    }
-    return false
-  }
-
   async function handleProbe(model: ConnectedModel) {
     setBusyId(model.id)
     setBannerError("")
@@ -111,6 +137,7 @@ export default function AdminConsole() {
     try {
       const res = await probeAdminModel(model.id)
       setModels((prev) => prev.map((m) => (m.id === res.model.id ? res.model : m)))
+      void refreshTelemetry()
       if (res.ok) {
         setBannerStatus(`${res.model.display_name} connected (${res.model.last_latency_ms ?? 0} ms).`)
       } else {
@@ -130,6 +157,7 @@ export default function AdminConsole() {
     try {
       const updated = await toggleAdminModel(model.id, !model.enabled)
       setModels((prev) => prev.map((m) => (m.id === updated.id ? updated : m)))
+      void refreshTelemetry()
       setBannerStatus(`${updated.display_name} ${updated.enabled ? "enabled" : "disabled"}.`)
     } catch (err) {
       if (!handleAuthFailure(err)) setBannerError(err instanceof Error ? err.message : "Could not toggle model.")
@@ -145,6 +173,8 @@ export default function AdminConsole() {
     try {
       await deleteAdminModel(model.id)
       setModels((prev) => prev.filter((m) => m.id !== model.id))
+      if (healthModel?.id === model.id) setHealthModel(null)
+      void refreshTelemetry()
       setBannerStatus(`Disconnected ${model.display_name}.`)
     } catch (err) {
       if (!handleAuthFailure(err)) setBannerError(err instanceof Error ? err.message : "Could not disconnect model.")
@@ -168,6 +198,8 @@ export default function AdminConsole() {
         onSignedOut={() => {
           setAccount(null)
           setModels([])
+          setFleetTelemetry(null)
+          setHealthModel(null)
           setStatus((prev) => (prev ? { ...prev, signedIn: false } : prev))
         }}
       />
@@ -215,18 +247,24 @@ export default function AdminConsole() {
 
       {tab === "models" && (
         <div role="tabpanel" aria-labelledby="tab-models" className="stack">
-          <ModelSummaryCards models={models} envFallbacks={envFallbacks} />
+          <ModelSummaryCards
+            models={models}
+            envFallbacks={envFallbacks}
+            telemetry={fleetTelemetry?.summary ?? null}
+          />
           {modelsLoading ? (
             <p role="status" className="panel inset muted">Loading connected models…</p>
           ) : (
             <ModelList
               models={models}
               busyId={busyId}
+              telemetryByModel={fleetTelemetry?.models}
               onConnect={() => { setEditing(null); setModalOpen(true) }}
               onConfigure={(m) => { setEditing(m); setModalOpen(true) }}
               onProbe={(m) => void handleProbe(m)}
               onToggle={(m) => void handleToggle(m)}
               onDelete={(m) => void handleDelete(m)}
+              onViewHealth={(m) => setHealthModel(m)}
             />
           )}
         </div>
@@ -258,7 +296,20 @@ export default function AdminConsole() {
                 : prev
               return created ? [saved, ...synced] : synced.map((m) => (m.id === saved.id ? saved : m))
             })
+            void refreshTelemetry()
             setBannerStatus(created ? `Connected ${saved.display_name}.` : `Updated ${saved.display_name}.`)
+          }}
+        />
+      )}
+
+      {healthModel && (
+        <ModelHealthDrawer
+          model={healthModel}
+          onClose={() => setHealthModel(null)}
+          onAuthInvalid={(msg) => {
+            setHealthModel(null)
+            setGateError(msg)
+            void bootstrap(true)
           }}
         />
       )}

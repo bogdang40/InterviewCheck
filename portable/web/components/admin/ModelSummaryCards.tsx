@@ -1,6 +1,6 @@
 "use client"
 
-import { AlertTriangle, CheckCircle2, Cpu, Layers } from "lucide-react"
+import { Activity, AlertTriangle, CheckCircle2, Cpu, Gauge, Layers } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import {
   CAPABILITY_LABELS,
@@ -8,19 +8,28 @@ import {
   type ConnectedModel,
   type EnvFallback,
 } from "@/lib/adminModels"
+import {
+  formatLatency,
+  formatUptime,
+  type FleetTelemetrySummary,
+} from "@/lib/adminTelemetry"
 
 export function ModelSummaryCards({
   models,
   envFallbacks,
+  telemetry,
 }: {
   models: ConnectedModel[]
   envFallbacks: EnvFallback[]
+  telemetry?: FleetTelemetrySummary | null
 }) {
   const defaultCount = models.filter((m) => m.is_default).length
   const enabledCount = models.filter((m) => m.enabled).length
   const connectedCount = models.filter((m) => m.status === "connected").length
   const errorCount = models.filter((m) => m.status === "error").length
   const configuredFallbacks = envFallbacks.filter((f) => f.configured).length
+  const totalChecks = telemetry?.total_checks ?? 0
+  const okChecks = telemetry?.ok_checks ?? 0
 
   return (
     <div className="stack">
@@ -56,6 +65,26 @@ export function ModelSummaryCards({
           </div>
           <strong>{configuredFallbacks}</strong>
           <small>Active when no DB model exists</small>
+        </article>
+      </section>
+      <section className="admin-telemetry-strip" aria-label="Fleet telemetry summary">
+        <article className="panel admin-metric">
+          <div className="admin-metric-label">
+            <span>Fleet uptime</span>
+            <Activity size={15} aria-hidden="true" />
+          </div>
+          <strong>{formatUptime(telemetry?.uptime_pct)}</strong>
+          <small>
+            {okChecks} / {totalChecks} checks passed
+          </small>
+        </article>
+        <article className="panel admin-metric">
+          <div className="admin-metric-label">
+            <span>Fleet avg latency</span>
+            <Gauge size={15} aria-hidden="true" />
+          </div>
+          <strong>{formatLatency(telemetry?.avg_latency_ms)}</strong>
+          <small>{totalChecks} checks recorded</small>
         </article>
       </section>
       <details className="panel inset">

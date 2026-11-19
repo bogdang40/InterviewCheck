@@ -8,7 +8,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import Field
 
-from . import model_resolver, prompt_framing, rate_limit
+from . import model_execution, model_resolver, prompt_framing, rate_limit
 from .access import require_entitlement
 from .error_sanitizer import sanitize_error_text
 from .models import Body, Input, Name, Question
@@ -109,8 +109,15 @@ class Example(Input):
 
 async def complete(provider, instructions, prompt):
     cap = _capability.get()
-    target = model_resolver.resolve_or_503(cap, provider=provider, allow_reference_fallback=(cap == "question_planning"))
-    return await model_resolver.dispatch_completion(target, instructions, prompt, fetch_fn=fetch_json)
+    _, result = await model_execution.execute_completion_chain(
+        cap,
+        instructions,
+        prompt,
+        provider=provider,
+        allow_reference_fallback=(cap == "question_planning"),
+        fetch_fn=fetch_json,
+    )
+    return result
 
 
 @router.post("/questions", dependencies=[Depends(rate_limit.limit(rate_limit.AI_REQUEST))])

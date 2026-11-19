@@ -8,7 +8,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import ats_notes, authoring, backup, drafts, model_admin, rate_limit, scoring_hooks, store, trash
+from . import ats_notes, authoring, backup, drafts, model_admin, model_execution, rate_limit, scoring_hooks, store, trash
 from .access import embedded_enabled, require_entitlement
 from .error_sanitizer import sanitize_error_text
 from .evidence import compare
@@ -29,6 +29,7 @@ from .transcript_import import router as transcript_import
 @asynccontextmanager
 async def lifespan(_):
     rate_limit.reset_all()
+    model_execution.reset_quotas()
     validate_runtime_exposure()  # Validate configured web exposure before opening the database.
     if embedded_enabled():
         from .account_db import check_database

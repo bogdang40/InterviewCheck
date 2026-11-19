@@ -27,6 +27,8 @@ DEFAULT_PARAMETERS = {
     "max_tokens": None,
     "timeout_s": None,
     "fallback_priority": 100,
+    "max_retries": 0,
+    "rpm_limit": None,
 }
 
 SCHEMA = """
@@ -70,7 +72,10 @@ CREATE INDEX IF NOT EXISTS idx_model_audit_at ON model_audit(at DESC);
 
 
 def migrate(db: sqlite3.Connection) -> None:
+    from . import model_telemetry
+
     db.executescript(SCHEMA)
+    model_telemetry.migrate(db)
 
 
 def parse_parameters(config_json: str | None) -> dict[str, Any]:
@@ -81,15 +86,18 @@ def parse_parameters(config_json: str | None) -> dict[str, Any]:
     if not isinstance(loaded, dict):
         loaded = {}
     params = dict(DEFAULT_PARAMETERS)
-    for key in ("temperature", "max_tokens", "timeout_s", "fallback_priority"):
+    for key in ("temperature", "max_tokens", "timeout_s", "fallback_priority", "max_retries", "rpm_limit"):
         if key in loaded and loaded[key] is not None:
             params[key] = loaded[key]
     return params
 
 
 def encode_parameters(parameters: dict[str, Any]) -> str:
-    clean: dict[str, Any] = {"fallback_priority": int(parameters.get("fallback_priority", 100))}
-    for key in ("temperature", "max_tokens", "timeout_s"):
+    clean: dict[str, Any] = {
+        "fallback_priority": int(parameters.get("fallback_priority", 100)),
+        "max_retries": int(parameters.get("max_retries", 0) or 0),
+    }
+    for key in ("temperature", "max_tokens", "timeout_s", "rpm_limit"):
         value = parameters.get(key)
         if value is not None:
             clean[key] = value

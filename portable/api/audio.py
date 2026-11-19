@@ -8,11 +8,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSo
 from websockets.asyncio.client import connect
 from websockets.exceptions import WebSocketException
 
-from . import model_resolver, rate_limit, ssrf_guard
+from . import model_execution, model_resolver, rate_limit, ssrf_guard
 from .access import require_entitlement
 from .provider_http import fetch_json
 
-_ORIG_FETCH_JSON = fetch_json
 router = APIRouter()
 LIMIT = 24 * 1024 * 1024
 MIME = {"audio/webm", "audio/ogg", "audio/mpeg", "audio/mp3", "audio/mp4", "audio/m4a",
@@ -50,28 +49,12 @@ async def transcribe(request: Request):
 
 
 async def transcribe_bytes(data: bytes, kind: str):
-    target = model_resolver.resolve_or_503("transcription")
-    http_url, _ = _deepgram_urls(target.endpoint)
-    model_id = target.model_id or "nova-2"
-    raw_timeout = target.config.get("timeout_s")
-    timeout = min(max(float(raw_timeout if raw_timeout is not None else 180.0), 10.0), 300.0)
-    extra_opts = {"ssrf_safe": True} if fetch_json is _ORIG_FETCH_JSON else {}
-    data = await fetch_json("Deepgram", "POST", http_url,
-                            params={"model": model_id, "diarize": "true", "utterances": "true", "punctuate": "true"},
-                            headers={"Authorization": f"Token {target.api_key}", "Content-Type": kind},
-                            content=data, timeout=timeout, limit=12_000_000, **extra_opts)
-    try:
-        results = data["results"]
-        segments = [{"speaker": str(item.get("speaker", "Unknown")), "text": item["transcript"]}
-                    for item in results.get("utterances", []) if isinstance(item["transcript"], str) and item["transcript"].strip()]
-        if not segments:
-            text = results["channels"][0]["alternatives"][0]["transcript"]
-            if isinstance(text, str) and text.strip():
-                segments.append({"speaker": "Unknown", "text": text})
-    except (IndexError, AttributeError, KeyError, TypeError) as exc:
-        raise HTTPException(502, "Deepgram returned an unreadable transcript.") from exc
-    if not segments:
-        raise HTTPException(422, "Deepgram found no speech in the recording.")
+    _, segments = await model_execution.execute_transcription_chain(
+        data,
+        kind,
+        url_builder=_deepgram_urls,
+        fetch_fn=fetch_json,
+    )
     return {"segments": segments}
 
 

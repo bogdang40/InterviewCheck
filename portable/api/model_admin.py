@@ -5,7 +5,7 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
-from . import access, account_db, model_probe, model_registry, model_resolver, rate_limit, secret_box, ssrf_guard, store
+from . import access, account_db, model_probe, model_registry, model_resolver, model_telemetry, rate_limit, secret_box, ssrf_guard, store
 from .error_sanitizer import sanitize_error_text
 from .model_schemas import (
     ALLOWED_CAPABILITIES,
@@ -50,6 +50,18 @@ def list_models(
     with store.connection() as db:
         models = model_registry.list_models(db, capability=capability, provider=provider)
     return {"models": models, "providers": list(model_registry.PROVIDERS), "envFallbacks": model_resolver.env_fallback_summaries()}
+
+
+@router.get("/telemetry", dependencies=[Depends(require_admin), Depends(rate_limit.limit(rate_limit.ADMIN_READ))])
+def fleet_telemetry():
+    with store.connection() as db:
+        return model_telemetry.fleet_telemetry(db)
+
+
+@router.get("/{model_id}/health", dependencies=[Depends(require_admin), Depends(rate_limit.limit(rate_limit.ADMIN_READ))])
+def model_health(model_id: UUID, limit: int = Query(default=25, ge=1, le=50)):
+    with store.connection() as db:
+        return model_telemetry.get_model_health(db, str(model_id), limit=limit)
 
 
 @router.post("", status_code=201, dependencies=[Depends(rate_limit.limit(rate_limit.ADMIN_WRITE))])
@@ -195,6 +207,16 @@ def _persist_probe(
             db, model_uuid, ok=outcome.ok, latency_ms=outcome.latency_ms,
             error=outcome.last_error, checked_at=outcome.checked_at,
             expected_updated_at=expected_updated_at,
+        )
+        model_telemetry.record_check(
+            db,
+            model_uuid,
+            source="probe",
+            ok=outcome.ok,
+            http_status=outcome.http_status,
+            latency_ms=outcome.latency_ms,
+            error=outcome.last_error,
+            checked_at=outcome.checked_at,
         )
         details = {"slug": updated["slug"], "provider": updated["provider"], "status": updated["status"],
                    "latency_ms": outcome.latency_ms, "error": outcome.last_error}

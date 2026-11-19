@@ -120,20 +120,20 @@ def _env(key: str) -> str:
     return os.getenv(key, "").strip()
 
 
-def _env_fallback(
+def _env_fallbacks(
     capability: str,
     provider: str | None,
     *,
     suppressed_providers: set[str] | frozenset[str] = frozenset(),
-) -> ResolvedModel | None:
+) -> list[ResolvedModel]:
     if capability == "transcription":
         if provider in (None, "deepgram") and "deepgram" not in suppressed_providers and _env("DEEPGRAM_API_KEY"):
-            return ResolvedModel(
+            return [ResolvedModel(
                 source="env", id=None, slug=None, display_name="Deepgram", provider="deepgram",
                 capability="transcription", model_id="nova-2", api_key=_env("DEEPGRAM_API_KEY"),
                 endpoint=None, api_version=None, config=dict(model_registry.DEFAULT_PARAMETERS), status="connected",
-            )
-        return None
+            )]
+        return []
     if capability == "embedding":
         if (
             provider in (None, "openai")
@@ -141,12 +141,12 @@ def _env_fallback(
             and _env("OPENAI_API_KEY")
             and _env("INTERVIEWCHECK_EMBEDDING_MODEL")
         ):
-            return ResolvedModel(
+            return [ResolvedModel(
                 source="env", id=None, slug=None, display_name="OpenAI", provider="openai",
                 capability="embedding", model_id=_env("INTERVIEWCHECK_EMBEDDING_MODEL"), api_key=_env("OPENAI_API_KEY"),
                 endpoint=None, api_version=None, config=dict(model_registry.DEFAULT_PARAMETERS), status="connected",
-            )
-        return None
+            )]
+        return []
     if capability == "judge":
         if (
             provider in (None, "openai")
@@ -154,44 +154,81 @@ def _env_fallback(
             and _env("OPENAI_API_KEY")
             and _env("INTERVIEWCHECK_JUDGE_MODEL")
         ):
-            return ResolvedModel(
+            return [ResolvedModel(
                 source="env", id=None, slug=None, display_name="OpenAI", provider="openai",
                 capability="judge", model_id=_env("INTERVIEWCHECK_JUDGE_MODEL"), api_key=_env("OPENAI_API_KEY"),
                 endpoint=None, api_version=None, config=dict(model_registry.DEFAULT_PARAMETERS), status="connected",
-            )
-        return None
+            )]
+        return []
     if capability not in {"reference", "question_planning"}:
-        return None
+        return []
+    results: list[ResolvedModel] = []
     order = [provider] if provider else ["openai", "anthropic", "azure_openai"]
     for item in order:
         if item in suppressed_providers:
             continue
         if item == "openai" and _env("OPENAI_API_KEY") and _env("INTERVIEWCHECK_REFERENCE_MODEL"):
-            return ResolvedModel(
+            results.append(ResolvedModel(
                 source="env", id=None, slug=None, display_name="OpenAI", provider="openai",
                 capability=capability, model_id=_env("INTERVIEWCHECK_REFERENCE_MODEL"), api_key=_env("OPENAI_API_KEY"),
                 endpoint=None, api_version=None, config=dict(model_registry.DEFAULT_PARAMETERS), status="connected",
-            )
-        if item == "anthropic" and _env("ANTHROPIC_API_KEY") and _env("INTERVIEWCHECK_ANTHROPIC_MODEL"):
-            return ResolvedModel(
+            ))
+        elif item == "anthropic" and _env("ANTHROPIC_API_KEY") and _env("INTERVIEWCHECK_ANTHROPIC_MODEL"):
+            results.append(ResolvedModel(
                 source="env", id=None, slug=None, display_name="Anthropic", provider="anthropic",
                 capability=capability, model_id=_env("INTERVIEWCHECK_ANTHROPIC_MODEL"), api_key=_env("ANTHROPIC_API_KEY"),
                 endpoint=None, api_version=None, config=dict(model_registry.DEFAULT_PARAMETERS), status="connected",
-            )
-        if (
+            ))
+        elif (
             item == "azure_openai"
             and _env("AZURE_OPENAI_API_KEY")
             and _env("AZURE_OPENAI_DEPLOYMENT")
             and _env("AZURE_OPENAI_ENDPOINT")
             and _env("AZURE_OPENAI_API_VERSION")
         ):
-            return ResolvedModel(
+            results.append(ResolvedModel(
                 source="env", id=None, slug=None, display_name="Azure OpenAI", provider="azure_openai",
                 capability=capability, model_id=_env("AZURE_OPENAI_DEPLOYMENT"), api_key=_env("AZURE_OPENAI_API_KEY"),
                 endpoint=_env("AZURE_OPENAI_ENDPOINT"), api_version=_env("AZURE_OPENAI_API_VERSION"),
                 config=dict(model_registry.DEFAULT_PARAMETERS), status="connected",
-            )
-    return None
+            ))
+    return results
+
+
+def resolve_chain(
+    capability: str,
+    *,
+    provider: str | None = None,
+    allow_reference_fallback: bool = False,
+    allow_slug_lookup: bool = True,
+) -> list[ResolvedModel]:
+    caps = (capability, "reference") if allow_reference_fallback and capability == "question_planning" else (capability,)
+    if provider is not None:
+        norm_provider = CANONICAL_PROVIDER.get(provider)
+        if norm_provider is None:
+            if not allow_slug_lookup:
+                return []
+            direct = _find_by_slug_or_id(provider, caps)
+            if direct is None or direct["enabled"] != 1:
+                return []
+            return [_from_row(direct)]
+    else:
+        norm_provider = None
+
+    chain: list[ResolvedModel] = []
+    rows = _query_rows(capability, norm_provider)
+    for row in rows:
+        if row["enabled"] == 1:
+            chain.append(_from_row(row))
+    blocked_providers = {row["provider"] for row in rows}
+    if allow_reference_fallback and capability == "question_planning":
+        ref_rows = _query_rows("reference", norm_provider)
+        for row in ref_rows:
+            if row["provider"] not in blocked_providers and row["enabled"] == 1:
+                chain.append(_from_row(row))
+        blocked_providers |= {row["provider"] for row in ref_rows}
+    chain.extend(_env_fallbacks(capability, norm_provider, suppressed_providers=blocked_providers))
+    return chain
 
 
 def resolve_capability(
@@ -201,31 +238,13 @@ def resolve_capability(
     allow_reference_fallback: bool = False,
     allow_slug_lookup: bool = True,
 ) -> ResolvedModel | None:
-    caps = (capability, "reference") if allow_reference_fallback and capability == "question_planning" else (capability,)
-    if provider is not None:
-        norm_provider = CANONICAL_PROVIDER.get(provider)
-        if norm_provider is None:
-            if not allow_slug_lookup:
-                return None
-            direct = _find_by_slug_or_id(provider, caps)
-            if direct is None:
-                return None
-            return _from_row(direct) if direct["enabled"] == 1 else None
-    else:
-        norm_provider = None
-
-    rows = _query_rows(capability, norm_provider)
-    for row in rows:
-        if row["enabled"] == 1:
-            return _from_row(row)
-    blocked_providers = {row["provider"] for row in rows}
-    if allow_reference_fallback and capability == "question_planning":
-        ref_rows = _query_rows("reference", norm_provider)
-        for row in ref_rows:
-            if row["provider"] not in blocked_providers and row["enabled"] == 1:
-                return _from_row(row)
-        blocked_providers |= {row["provider"] for row in ref_rows}
-    return _env_fallback(capability, norm_provider, suppressed_providers=blocked_providers)
+    chain = resolve_chain(
+        capability,
+        provider=provider,
+        allow_reference_fallback=allow_reference_fallback,
+        allow_slug_lookup=allow_slug_lookup,
+    )
+    return chain[0] if chain else None
 
 
 def resolve_or_503(

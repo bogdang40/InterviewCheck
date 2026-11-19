@@ -19,6 +19,8 @@ export type ModelParameters = {
   max_tokens: number | null
   timeout_s: number | null
   fallback_priority: number
+  max_retries: number
+  rpm_limit: number | null
 }
 
 export type ConnectedModel = {
@@ -186,7 +188,7 @@ export function extractApiError(data: unknown, status: number): string {
   return `Request failed (HTTP ${status}).`
 }
 
-async function adminRequest<T>(url: string, options: RequestInit = {}): Promise<T> {
+export async function adminRequest<T>(url: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers)
   headers.set("X-InterviewCheck", "1")
   if (options.body !== undefined && !headers.has("Content-Type")) {

@@ -8,12 +8,10 @@ from urllib.parse import quote
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import Field
 
-from . import model_resolver, prompt_framing, rate_limit, ssrf_guard
+from . import model_execution, model_resolver, prompt_framing, rate_limit, ssrf_guard
 from .access import require_entitlement
 from .models import Body, Input, Name, Question, Reference
 from .provider_http import fetch_json
-
-_ORIG_FETCH_JSON = fetch_json
 
 router = APIRouter(prefix="/api/scoring", dependencies=[Depends(require_entitlement)])
 
@@ -84,26 +82,13 @@ async def semantic_similarity(body: SemanticInput):
     usable = [(idx, ref) for idx, ref in enumerate(body.references) if not ref.permitted and ref.text.strip()]
     if not usable:
         return {"available": False, "reason": "No non-permitted references supplied.", "matches": []}
-    target = model_resolver.resolve_or_503("embedding", provider=body.model_slug)
     texts = [body.answer[:EMBEDDING_TEXT_LIMIT]] + [ref.text[:EMBEDDING_TEXT_LIMIT] for _, ref in usable]
-    url, headers, payload = _embedding_request(target, texts)
-    extra_opts = {"ssrf_safe": True} if fetch_json is _ORIG_FETCH_JSON else {}
-    data = await fetch_json(
-        model_resolver.DISPLAY_PROVIDER.get(target.provider, target.display_name),
-        "POST",
-        url,
-        headers=headers,
-        json=payload,
-        timeout=min(max(float(target.config.get("timeout_s") or 30.0), 1.0), 180.0),
-        **extra_opts,
+    target, vectors = await model_execution.execute_embedding_chain(
+        texts,
+        provider=body.model_slug,
+        request_builder=_embedding_request,
+        fetch_fn=fetch_json,
     )
-    try:
-        items = sorted(data["data"], key=lambda item: int(item["index"]))
-        vectors = [[float(v) for v in item["embedding"]] for item in items]
-    except (KeyError, TypeError, ValueError) as exc:
-        raise HTTPException(502, "Embedding provider returned an invalid response.") from exc
-    if len(vectors) != len(texts):
-        raise HTTPException(502, "Embedding provider returned an unexpected vector count.")
     answer_vec = vectors[0]
     matches = [
         {"source_index": source_idx, "label": ref.label, "cosine": round(_cosine_similarity(answer_vec, vec), 6)}
@@ -145,7 +130,6 @@ def _clean_string_list(value: Any, limit: int) -> list[str]:
 
 @router.post("/judge", dependencies=[Depends(rate_limit.limit(rate_limit.AI_REQUEST))])
 async def judge_answer(body: JudgeInput):
-    target = model_resolver.resolve_or_503("judge", provider=body.model_slug)
     signals: dict[str, float] = {}
     for k, v in list(body.signals.items())[:24]:
         if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(float(v)):
@@ -165,10 +149,11 @@ async def judge_answer(body: JudgeInput):
         ],
         "signals": signals,
     }
-    _, reply = await model_resolver.dispatch_completion(
-        target,
+    target, (_, reply) = await model_execution.execute_completion_chain(
+        "judge",
         JUDGE_SYSTEM_PROMPT,
         json.dumps(payload, ensure_ascii=False),
+        provider=body.model_slug,
         fetch_fn=fetch_json,
         max_tokens=600,
     )

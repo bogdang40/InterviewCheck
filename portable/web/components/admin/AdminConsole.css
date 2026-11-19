@@ -206,6 +206,34 @@
   max-width: 560px;
   padding: 24px;
 }
+.admin-telemetry-strip {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  min-width: 0;
+}
+.admin-telemetry-strip > *,
+.admin-health-summary > * {
+  min-width: 0;
+}
+.admin-chain-badge {
+  font-variant-numeric: tabular-nums;
+}
+.admin-health-drawer {
+  width: min(760px, 100%);
+}
+.admin-drawer-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.admin-health-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  min-width: 0;
+}
 @media (max-width: 1020px) {
   .admin-summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -219,9 +247,13 @@
 }
 @media (max-width: 680px) {
   .admin-summary-grid,
+  .admin-telemetry-strip,
   .admin-filters,
   .admin-param-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+  .admin-health-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .admin-model-card {
     grid-template-columns: minmax(0, 1fr);
@@ -232,5 +264,10 @@
   }
   .admin-modal {
     padding: 16px;
+  }
+}
+@media (max-width: 420px) {
+  .admin-health-summary {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
