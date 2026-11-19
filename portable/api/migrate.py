@@ -7,7 +7,9 @@ from pathlib import Path
 import sqlite3
 from uuid import uuid5, NAMESPACE_URL
 
-from . import store
+from fastapi import HTTPException
+
+from . import role_files, store
 
 ARCHIVED = {
     "archived": True,
@@ -55,6 +57,8 @@ def exported_profile(document):
 
 
 def preview_role(target, document):
+    if isinstance(document, dict) and document.get("format") == role_files.FORMAT:
+        return role_files.preview(target, document)
     role = exported_profile(document)
     key, title, _, questions, _ = role_fields(role, role.get("workspaceID"))
     found = target.execute("SELECT id FROM roles WHERE id=?", (key,)).fetchone()
@@ -62,6 +66,8 @@ def preview_role(target, document):
 
 
 def import_role(target, document):
+    if isinstance(document, dict) and document.get("format") == role_files.FORMAT:
+        return role_files.import_file(target, document)
     role = exported_profile(document)
     key = role.get("workspaceID")
     added = save_role(target, role, key)
@@ -141,9 +147,12 @@ def migrate(source, destination):
     store.initialize(destination)
     with store.connection(destination, write=True) as db:
         if source.suffix.casefold() == ".json":
-            if source.stat().st_size > 2_000_000:
-                raise ValueError("Role export exceeds two megabytes.")
-            added, _ = import_role(db, json.loads(source.read_text(encoding="utf-8-sig")))
+            if source.stat().st_size > role_files.FILE_LIMIT:
+                raise ValueError("Role export exceeds 4 MiB.")
+            try:
+                added, _ = import_role(db, json.loads(source.read_text(encoding="utf-8-sig")))
+            except HTTPException as exc:
+                raise ValueError(exc.detail) from exc
             return {"roles": added, "sessions": 0, "answers": 0}
         return import_db(source, db)
 

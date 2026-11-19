@@ -3,8 +3,8 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Request
 
-from . import access, role_kits, store
-from .models import AnswerInput, RoleInput
+from . import access, role_files, role_kits, store
+from .models import AnswerInput, Input, RequestID, RoleInput
 
 router = APIRouter()
 
@@ -48,6 +48,23 @@ async def edit_role(rid: UUID, item: RoleInput, request: Request):
     _, actor_email = await access.optional_actor(request)
     with store.connection(write=True) as db:
         return role_kits.update_role(db, str(rid), item, created_by=actor_email)
+
+
+@router.get("/roles/{rid}/export")
+def export_role(rid: UUID):
+    with store.connection() as db:
+        return role_files.download(db, str(rid))
+
+
+class RoleCopy(Input):
+    id: RequestID
+
+
+@router.post("/roles/{rid}/duplicate")
+async def duplicate_role(rid: UUID, item: RoleCopy, request: Request):
+    _, actor_email = await access.optional_actor(request)
+    with store.connection(write=True) as db:
+        return role_files.duplicate(db, rid, item.id, created_by=actor_email)
 
 
 @router.post("/sessions/{sid}/preview")

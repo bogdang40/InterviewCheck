@@ -65,6 +65,11 @@ class LocalBoundary:
             elif path in {"/api/backups/preview", "/api/backups/restore"}:
                 from .backup_schema import LIMIT
                 limit = LIMIT
+            elif path in {"/api/roles", "/api/roles/import", "/api/roles/import/preview"} or (
+                scope["method"] == "PUT" and path.startswith("/api/roles/") and path.count("/") == 3
+            ):
+                from .role_files import FILE_LIMIT
+                limit = FILE_LIMIT
             try:
                 declared = int(headers.get("content-length", "0"))
             except ValueError:

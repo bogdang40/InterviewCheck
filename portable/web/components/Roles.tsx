@@ -5,6 +5,7 @@ import type { CalibratedRole, RubricCriterion } from "@/lib/roleCalibration"
 import { cloneRole } from "@/lib/roleTemplates"
 import ReloadRole from "./ReloadRole"
 import ResourcePolicy from "./ResourcePolicy"
+import RoleFileActions from "./RoleFileActions"
 import Authoring from "./Authoring"
 import RoleRubricEditor, { sanitizeRubric } from "./RoleRubricEditor"
 import RoleVersionHistory from "./RoleVersionHistory"
@@ -25,6 +26,7 @@ export default function Roles({
   onReloadAll?: () => void
 }) {
   const authoringVersion = useRef(0)
+  const savedQuestions = useRef<string[]>([])
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
   const [policy, setPolicy] = useState("")
@@ -66,6 +68,7 @@ export default function Roles({
 
   function open(role?: CalibratedRole, preserveStatus = false) {
     authoringVersion.current += 1
+    savedQuestions.current = role?.questions ?? []
     setAdding(true)
     setVersion(role?.version)
     setConflict(false)
@@ -97,10 +100,9 @@ export default function Roles({
         permitted_sources: materials,
         name: form.get("name"),
         description: form.get("description"),
-        questions: String(form.get("questions"))
-          .split("\n")
-          .map((s) => s.trim())
-          .filter(Boolean),
+        questions: questions === savedQuestions.current.join("\n")
+          ? savedQuestions.current
+          : questions.split("\n").map((s) => s.trim()).filter(Boolean),
         rubric: sanitizeRubric(rubric),
         change_note: changeNote.trim(),
       })
@@ -240,6 +242,7 @@ export default function Roles({
                 {!!r.rubric?.length && ` | ${r.rubric.length} rubric ${r.rubric.length === 1 ? "criterion" : "criteria"}`}
                 {!!r.permitted_sources?.length && ` | ${r.permitted_sources.length} permitted ${r.permitted_sources.length === 1 ? "source" : "sources"}`}
               </small>
+              <RoleFileActions id={r.id} disabled={adding} onDuplicate={onSave} onEdit={open} />
             </div>
             <span className="ml-auto flex flex-wrap items-center gap-2 max-sm:w-full">
               <Button

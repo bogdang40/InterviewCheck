@@ -116,7 +116,8 @@ export default function WorkspaceBackup() {
         <h2>Download a backup</h2>
         <p>
           Save role plans, interviews, sources, saved drafts and review notes in one JSON file. It contains
-          private interview text. A workspace backup includes records in Trash.
+          private interview text. A workspace backup includes records in Trash. JSON saves only the current
+          answer revision. A consistent SQLite backup preserves earlier revisions and their attribution.
         </p>
         {(sessions.data?.total ?? 0) > 20 && (
           <label className="field">
@@ -171,7 +172,7 @@ export default function WorkspaceBackup() {
         <h2>Restore from a backup</h2>
         <p>
           Preview the records before importing. Identical records are skipped. If an ID contains different
-          data, the restore stops.
+          data, the restore stops. Each newly restored answer starts its history at the revision saved in the file.
         </p>
         <label className="field">
           Workspace backup file

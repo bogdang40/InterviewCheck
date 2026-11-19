@@ -9,21 +9,23 @@ STAMP=$(date -u +%Y%m%dT%H%M%SZ)
 NAME="$STAMP-$LABEL"
 : "${BACKUP_ACCOUNT:?BACKUP_ACCOUNT is required}"
 
-# SQLite's backup API inside the running container: safe while the app is writing (WAL mode).
+# The self-contained script also works against the previous running image.
 docker exec -i interviewcheck-app-1 python - "$NAME" <<'PY'
+from contextlib import closing
 import pathlib, sqlite3, sys
-out = pathlib.Path("/data/.backups") / sys.argv[1]
-out.mkdir(parents=True, exist_ok=True)
-for name in ("review.sqlite3", "access.sqlite3"):
-    source = pathlib.Path("/data") / name
-    if not source.exists():
-        continue
-    src, dst = sqlite3.connect(source), sqlite3.connect(out / name)
-    src.backup(dst)
-    src.close(); dst.close()
-    with sqlite3.connect(out / name) as check:
-        assert check.execute("PRAGMA integrity_check").fetchone()[0] == "ok", name
-    print("backed up", name)
+source_dir = pathlib.Path("/data")
+sources = [source_dir / name for name in ("review.sqlite3", "access.sqlite3")]
+if not all(path.is_file() for path in sources):
+    raise SystemExit("Both hosted database files must exist before taking a backup.")
+out = source_dir / ".backups" / sys.argv[1]
+out.mkdir(parents=True, exist_ok=False)
+for source in sources:
+    with closing(sqlite3.connect(source.as_uri() + "?mode=ro", uri=True)) as src:
+        with closing(sqlite3.connect(out / source.name)) as dst:
+            src.backup(dst)
+            if dst.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+                raise SystemExit("Database backup integrity check failed.")
+print("Verified both hosted database backups.")
 PY
 
 LOCAL="$DIR/data/.backups/$NAME"

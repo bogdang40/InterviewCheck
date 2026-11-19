@@ -235,7 +235,7 @@ def test_scenario_f_role_import_export_and_connection_catalog_setup_flow(e2e_wor
         # 1. Import role template on /roles/, verify duplicate guard and export snapshot.
         page.goto(e2e_workspace.base_url + "/roles/", wait_until="domcontentloaded")
         page.get_by_text("Import a role file", exact=True).click()
-        upload = page.get_by_label("Native role export")
+        upload = page.get_by_label("Native or portable role file")
         upload.set_input_files(role_fixture)
         expect(page.get_by_text("2 planned questions.", exact=True)).to_be_visible()
         page.get_by_role("button", name="Import role", exact=True).click()

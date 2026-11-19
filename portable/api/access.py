@@ -138,11 +138,15 @@ def verify_account(data):
 
 
 async def snapshot(connection: HTTPConnection):
+    cached = getattr(connection.state, "_access_snapshot", None)
+    if cached is not None:
+        return cached
     token = connection.cookies.get(COOKIE)
     if not token:
         raise HTTPException(401, "Sign in under Account.")
     result = await upstream("me", token=token)
     verify_account(result)
+    connection.state._access_snapshot = result
     return result
 
 
@@ -154,6 +158,7 @@ async def require_entitlement(request: HTTPConnection):
     account = await snapshot(request)
     if (account.get("entitlement") or {}).get("active") is not True:
         raise HTTPException(402, "An active InterviewCheck plan is required.")
+    return account["user"]
 
 
 async def require_admin_session(request: HTTPConnection) -> tuple[dict[str, Any], str]:
@@ -197,8 +202,13 @@ async def optional_actor(request: HTTPConnection) -> tuple[str, str]:
                 return ("local-operator", "local-operator")
             user, _ = account_auth.authenticate(f"Bearer {token}")
         else:
-            data = await upstream("me", token=token)
-            verify_account(data)
+            cached = getattr(request.state, "_access_snapshot", None)
+            if cached is not None:
+                data = cached
+            else:
+                data = await upstream("me", token=token)
+                verify_account(data)
+                request.state._access_snapshot = data
             user = data.get("user") or {}
     except HTTPException:
         return ("local-operator", "local-operator")

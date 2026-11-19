@@ -1,5 +1,5 @@
-import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type MutableRefObject } from "react"
 import dynamic from "next/dynamic"
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type MutableRefObject } from "react"
 import { ClipboardCheck, Pencil, Quote } from "lucide-react"
 import { api, message, RevisionConflict, statusText, type Answer, type Disposition } from "@/lib/api"
 import CandidateResponse from "./CandidateResponse"
@@ -10,6 +10,8 @@ import { Textarea } from "./ui/textarea"
 import { formatDraftTimestamp, reviewDraftKey, useLocalDraftRecovery } from "@/lib/localDraftBuffer"
 
 const ConflictReview = dynamic(() => import("./ConflictReview"), { ssr: false })
+
+const RevisionHistory = dynamic(() => import("./RevisionHistory"), { ssr: false })
 
 const useIsomorphicLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect
 
@@ -209,6 +211,7 @@ export default function Evidence({
           </div>
         </section>
       )}
+      <RevisionHistory sessionId={sessionId} answerId={item.id} revision={item.revision} conflict={conflict}/>
       <form className="stack" onSubmit={save} onChange={() => setSaved(false)}>
         <div className="dual">
           <label className="field">

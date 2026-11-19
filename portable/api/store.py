@@ -9,7 +9,7 @@ from uuid import uuid4
 
 from fastapi import HTTPException
 
-from . import bulk_operations, lineage, model_registry, retention_policy, role_analytics, role_kits, role_versions, search_fts, session_scorecard
+from . import answer_history, bulk_operations, lineage, model_registry, retention_policy, role_analytics, role_kits, role_versions, search_fts, session_scorecard
 from .role_kits import role_row, create_role
 from .models import EARLIER_ANSWER_NOTE, AnswerEdit, AnswerInput, ReviewInput, SessionInput
 
@@ -108,6 +108,7 @@ def initialize(path):
             db.execute("ALTER TABLE answers ADD COLUMN revision INTEGER NOT NULL DEFAULT 1")
         lineage.migrate(db)
         role_kits.migrate_columns(db)
+        db.execute(answer_history.SCHEMA)
         role_versions.migrate(db)
         role_analytics.migrate(db)
         bulk_operations.migrate(db)
@@ -224,7 +225,7 @@ def check_revision(current, expected):
                             headers={"X-InterviewCheck-Conflict": "answer-revision"})
 
 
-def write_answer(db, key, item: AnswerInput, replace_id=None, *, session=None):
+def write_answer(db, key, item: AnswerInput, replace_id=None, *, session=None, actor=None):
     session = session if session is not None else capture_context(db, key)
     if not session["consent"]:
         raise HTTPException(409, "This archived session has no recorded notice. Create a new session for capture.")
@@ -257,6 +258,8 @@ def write_answer(db, key, item: AnswerInput, replace_id=None, *, session=None):
     result = role_kits.compare_answer(item, materials)
     fields = (item.question, item.answer, refs, json.dumps(result), result["status"], parent, slot)
     if replace_id:
+        if not answer_history.has_revision(db, aid, current["revision"]):
+            answer_history.record(db, answer_row(current), "baseline")
         note = current["note"]
         if note and not note.startswith(EARLIER_ANSWER_NOTE):
             note = EARLIER_ANSWER_NOTE + note
@@ -265,10 +268,13 @@ def write_answer(db, key, item: AnswerInput, replace_id=None, *, session=None):
     else:
         db.execute("INSERT INTO answers(question,answer,refs,result,status,parent_answer_id,planned_slot,id,session_id) VALUES (?,?,?,?,?,?,?,?,?)",
                    (*fields, aid, key))
-    return get_answer(db, key, aid)
+    saved = get_answer(db, key, aid)
+    if replace_id:
+        answer_history.record(db, saved, "answer_edit", saved_at=timestamp(), actor=actor)
+    return saved
 
 
-def update_review(db, key, aid, review: ReviewInput, *, actor: tuple[str, str] = ("local-operator", "local-operator")):
+def update_review(db, key, aid, review: ReviewInput, *, actor: tuple[str, str] = ("local-operator", "local-operator"), history_actor=None):
     current = get_answer(db, key, aid)
     check_revision(current, review.expected_revision)
     prior_actor_disp = role_analytics.latest_reviewer_disposition(db, aid, actor[0])
@@ -278,6 +284,8 @@ def update_review(db, key, aid, review: ReviewInput, *, actor: tuple[str, str] =
     if not answer_changed and not actor_changed:
         return current
     if answer_changed:
+        if not answer_history.has_revision(db, aid, current["revision"]):
+            answer_history.record(db, current, "baseline")
         db.execute("UPDATE answers SET disposition=?,note=?,revision=revision+1 WHERE session_id=? AND id=?",
                    (review.disposition, review.note, key, aid))
     if actor_changed:
@@ -290,4 +298,8 @@ def update_review(db, key, aid, review: ReviewInput, *, actor: tuple[str, str] =
             previous_disposition=effective_prev,
             disposition=review.disposition,
         )
-    return get_answer(db, key, aid)
+    saved = get_answer(db, key, aid)
+    if answer_changed:
+        # One history row per answer revision; a reviewer-only change keeps the revision.
+        answer_history.record(db, saved, "review_update", saved_at=timestamp(), actor=history_actor)
+    return saved
