@@ -114,6 +114,12 @@ async def _run_asgi_async(app_obj: Any = None) -> dict[str, Any]:
             os.environ["INTERVIEWCHECK_DB"] = str(Path(tmp_dir.name) / "review.sqlite3")
         if not store.db_path().is_file():
             store.initialize(store.db_path())
+        # ASGITransport does not run the app's startup, which prepares the account database in
+        # embedded mode; /api/health (a mandatory-header check target) requires it.
+        from api.access import embedded_enabled  # noqa: E402
+        if embedded_enabled():
+            from api.account_db import check_database  # noqa: E402
+            check_database()
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app_obj), base_url="http://127.0.0.1", timeout=10.0) as client:
             return await run_edge_checks(client, mode="asgi", target="api.main:app")
     finally:
