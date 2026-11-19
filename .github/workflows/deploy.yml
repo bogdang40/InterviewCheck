@@ -1,0 +1,96 @@
+name: Deploy web workspace
+# Every merge to main that passes the Linux CI job is built into an image, pushed to
+# Azure Container Registry and rolled out on the VM (deploy/vm-rollout.sh). The Windows
+# job does not gate deploys: production runs Linux, and that job has flaky upload tests.
+# Setup: deploy/provision-azure.sh. Manual run: Actions → Deploy web workspace → Run workflow.
+on:
+  workflow_run:
+    workflows: ["Portable interview workspace"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+  actions: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://${{ vars.SITE_ADDRESS }}
+    timeout-minutes: 30
+    env:
+      SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+    steps:
+      - name: Require the Linux CI job to have passed
+        if: github.event_name == 'workflow_run'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          result=$(gh api "repos/${{ github.repository }}/actions/runs/$RUN_ID/jobs" \
+            --jq '[.jobs[] | select(.name | test("ubuntu")) | .conclusion] | unique | join(",")')
+          echo "Linux CI: $result"
+          [ "$result" = "success" ] || { echo "::error::Linux CI did not pass for $SHA; not deploying."; exit 1; }
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SHA }}
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Sign in to the registry
+        run: az acr login --name "${{ vars.ACR_NAME }}"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build and push the image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile
+          push: true
+          provenance: false
+          build-args: GIT_SHA=${{ env.SHA }}
+          tags: ${{ vars.ACR_NAME }}.azurecr.io/interviewcheck-web:${{ env.SHA }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Roll out on the VM
+        run: |
+          {
+            echo "IMAGE=${{ vars.ACR_NAME }}.azurecr.io/interviewcheck-web:$SHA"
+            echo "ACR=${{ vars.ACR_NAME }}"
+            echo "SITE_ADDRESS=${{ vars.SITE_ADDRESS }}"
+            echo "BACKUP_ACCOUNT=${{ vars.BACKUP_ACCOUNT }}"
+            echo "COMPOSE_B64=$(base64 -w0 deploy/compose.yml)"
+            echo "CADDY_B64=$(base64 -w0 deploy/Caddyfile)"
+            echo "BACKUP_B64=$(base64 -w0 deploy/backup.sh)"
+            cat deploy/vm-rollout.sh
+          } > "$RUNNER_TEMP/rollout.sh"
+          out=$(az vm run-command invoke -g "${{ vars.RESOURCE_GROUP }}" -n "${{ vars.VM_NAME }}" \
+            --command-id RunShellScript --scripts "@$RUNNER_TEMP/rollout.sh" --query "value[0].message" -o tsv)
+          echo "$out"
+          grep -q ROLLOUT_OK <<<"$out" || { echo "::error::Rollout failed on the VM (see log above)."; exit 1; }
+
+      - name: Check the public site
+        run: |
+          for i in $(seq 1 20); do
+            if curl -fsS "https://${{ vars.SITE_ADDRESS }}/api/health" && curl -fsS -o /dev/null "https://${{ vars.SITE_ADDRESS }}/"; then
+              echo; echo "Live: https://${{ vars.SITE_ADDRESS }} ($SHA)"; exit 0
+            fi
+            sleep 6
+          done
+          echo "::error::https://${{ vars.SITE_ADDRESS }} did not answer."; exit 1

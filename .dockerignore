@@ -1,0 +1,15 @@
+# Only the web workspace goes into the image (deploy/Dockerfile).
+*
+!package.json
+!portable/
+portable/.venv
+portable/data
+portable/qa
+portable/tests
+portable/.pytest_cache
+portable/**/__pycache__
+portable/**/node_modules
+portable/web/.next
+portable/web/.next-server
+portable/web/out
+portable/**/.env
