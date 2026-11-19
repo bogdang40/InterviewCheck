@@ -3,7 +3,6 @@ from pathlib import Path
 import sys
 
 import pytest
-from playwright.sync_api import sync_playwright
 
 E2E_DIR = Path(__file__).resolve().parent
 QA_DIR = E2E_DIR.parent
@@ -15,8 +14,6 @@ from e2e_suite.harness import (  # noqa: E402
     DESKTOP_VIEWPORT,
     IsolatedWorkspace,
     MOBILE_VIEWPORT,
-    PORTABLE_ROOT,
-    load_parent_qa_conftest,
 )
 
 
@@ -30,16 +27,8 @@ def pytest_configure(config):
 
 
 @pytest.fixture(scope="session")
-def e2e_browser(request):
-    if request.config.getoption("--frontend") == "static" and not (PORTABLE_ROOT / "web/out/index.html").is_file():
-        pytest.fail("Build the UI with npm run build in portable/web before running static E2E tests.")
-    parent_conftest = load_parent_qa_conftest()
-    with sync_playwright() as playwright:
-        browser = parent_conftest.launch_chromium(playwright)
-        try:
-            yield browser
-        finally:
-            browser.close()
+def e2e_browser(qa_browser):
+    return qa_browser
 
 
 @pytest.fixture
