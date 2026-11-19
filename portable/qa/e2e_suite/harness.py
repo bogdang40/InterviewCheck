@@ -344,6 +344,7 @@ def assert_no_horizontal_overflow(page: Page) -> None:
 def capture_screenshot(page: Page, screenshot_dir: Path, name: str, viewport_label: str) -> Path:
     safe_name = "".join(ch if ch.isalnum() or ch in {"-", "_"} else "_" for ch in name)
     output = screenshot_dir / f"{safe_name}_{viewport_label}.png"
-    page.screenshot(path=str(output), full_page=True)
+    page.evaluate("() => document.fonts ? document.fonts.ready : Promise.resolve()")
+    page.screenshot(path=str(output), full_page=True, timeout=20_000)
     assert output.is_file() and output.stat().st_size > 0
     return output
