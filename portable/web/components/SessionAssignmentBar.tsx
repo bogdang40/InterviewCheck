@@ -4,7 +4,7 @@ import { type FormEvent, useEffect, useId, useState } from "react"
 import { CalendarClock, Trash2, UserCheck } from "lucide-react"
 import { dateLabel, message } from "@/lib/api"
 import {
-  clearSessionAssignment, fetchSessionAssignment, saveSessionAssignment,
+  clearSessionAssignment, fetchSessionAssignment, isDueOverdue, saveSessionAssignment,
   toDateInputValue, toDueAtIso, type AssignmentPriority, type SessionAssignment,
 } from "@/lib/sessionAssignment"
 import WorkspaceError from "./WorkspaceError"
@@ -112,10 +112,13 @@ export default function SessionAssignmentBar({ sessionId }: { sessionId: string 
             </Badge>
             <Badge variant={PRIORITY_VARIANT[assignment.priority]}>{PRIORITY_LABEL[assignment.priority]}</Badge>
             {assignment.due_at && (
-              <Badge variant="outline">
-                <CalendarClock className="size-3" aria-hidden="true" />
-                Due {dateLabel(assignment.due_at)}
-              </Badge>
+              <>
+                <Badge variant="outline">
+                  <CalendarClock className="size-3" aria-hidden="true" />
+                  Due {dateLabel(assignment.due_at)}
+                </Badge>
+                {isDueOverdue(assignment.due_at) && <Badge variant="warning">Overdue</Badge>}
+              </>
             )}
           </>
         ) : (

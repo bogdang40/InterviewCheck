@@ -15,6 +15,7 @@ import {
 } from "@/lib/adminDiagnostics"
 import { AdminApiError, CAPABILITY_LABELS, PROVIDER_LABELS, type ConnectedModel } from "@/lib/adminModels"
 import { formatLatency, formatUptime } from "@/lib/adminTelemetry"
+import { FleetHealthTimelinePanel } from "./FleetHealthTimelinePanel"
 import { KeyRotationCard } from "./KeyRotationCard"
 
 type AudioCheck = {
@@ -271,6 +272,8 @@ export function DiagnosticsTab({ models, onAuthInvalid }: { models: ConnectedMod
         {audioMeta && <span className="admin-mono">{audioMeta}</span>}
         {audioStatus && <p role="status" className="notice">{audioStatus}</p>}
       </section>
+
+      <FleetHealthTimelinePanel models={models} refreshTick={keyRefreshTick} onAuthInvalid={onAuthInvalid} />
 
       <KeyRotationCard onAuthInvalid={onAuthInvalid} refreshSignal={keyRefreshTick} />
     </section>
