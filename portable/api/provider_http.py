@@ -4,6 +4,7 @@ import json
 import httpx
 from fastapi import HTTPException
 
+from .error_sanitizer import sanitize_error_text
 from .ssrf_guard import SSRFValidationError, SafeAsyncTransport
 
 
@@ -14,7 +15,7 @@ def configured(key: str) -> bool:
 def setting(key: str) -> str:
     value = os.getenv(key, "").strip()
     if not value:
-        raise HTTPException(503, f"Configure {key} on this workstation.")
+        raise HTTPException(503, "This integration is not configured on the server.")
     return value
 
 
@@ -61,7 +62,7 @@ async def fetch_json(
                     return {}
                 return await read_json(response, provider, limit)
     except SSRFValidationError as exc:
-        raise HTTPException(502, str(exc)) from exc
+        raise HTTPException(502, sanitize_error_text(str(exc), "Blocked unsafe provider endpoint.")) from exc
     except (ValueError, UnicodeError) as exc:
         raise HTTPException(502, f"{provider} returned invalid JSON.") from exc
     except httpx.TimeoutException as exc:

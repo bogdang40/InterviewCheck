@@ -3,6 +3,7 @@ import type { AuthService } from "../../services/AuthService.js";
 import type { BillingService } from "../../services/BillingService.js";
 import type { BillingWebhookService } from "../../services/BillingWebhookService.js";
 import { authenticate, type AuthEnv } from "../middleware/Authenticate.js";
+import { rateLimit, type FixedWindowRateLimiter } from "../middleware/RateLimit.js";
 import { parseJsonBody } from "../RequestParsing.js";
 import { checkoutSchema } from "../Schemas.js";
 import { BillingReturnPage } from "./BillingReturnPage.js";
@@ -12,23 +13,26 @@ export interface BillingRouteDeps {
   billing: BillingService;
   webhook: BillingWebhookService;
   appUrlScheme: string;
+  billingLimiter: FixedWindowRateLimiter;
+  trustProxy: boolean;
 }
 
 export class BillingRoutes {
   static build(deps: BillingRouteDeps): Hono<AuthEnv> {
     const router = new Hono<AuthEnv>();
     const page = new BillingReturnPage(deps.appUrlScheme);
+    const guard = rateLimit(deps.billingLimiter, deps.trustProxy);
 
     router.get("/billing/plans", (c) =>
       c.json({ configured: deps.billing.isConfigured, plans: deps.billing.availablePlans() }),
     );
 
-    router.post("/billing/checkout", authenticate(deps.auth), async (c) => {
+    router.post("/billing/checkout", guard, authenticate(deps.auth), async (c) => {
       const body = await parseJsonBody(c, checkoutSchema);
       return c.json(await deps.billing.createCheckout(c.get("user"), body.plan));
     });
 
-    router.post("/billing/portal", authenticate(deps.auth), async (c) =>
+    router.post("/billing/portal", guard, authenticate(deps.auth), async (c) =>
       c.json(await deps.billing.createPortal(c.get("user"))),
     );
 

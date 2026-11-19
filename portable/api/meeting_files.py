@@ -11,7 +11,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from . import meeting_artifacts, model_resolver, oauth_tokens
+from . import meeting_artifacts, model_resolver, oauth_tokens, rate_limit
 from .access import require_entitlement
 from .audio import LIMIT, transcribe_bytes
 from .booking_sources import KEYS
@@ -43,7 +43,7 @@ def entry(file, title, start):
     return {"id": str(handle), "title": title, "start": start, "kind": file.kind}
 
 
-@router.post("/recordings/{provider}")
+@router.post("/recordings/{provider}", dependencies=[Depends(rate_limit.limit(rate_limit.INTEGRATION_REMOTE))])
 async def recordings(provider: Literal["zoom", "webex", "meet", "teams"]):
     end = datetime.now(timezone.utc)
     begin = end - timedelta(days=29)
@@ -144,7 +144,7 @@ class ImportSelection(BaseModel):
     send_to_deepgram: bool = False
 
 
-@router.post("/recording/{handle}")
+@router.post("/recording/{handle}", dependencies=[Depends(rate_limit.limit(rate_limit.INTEGRATION_REMOTE))])
 async def import_file(handle: UUID, body: ImportSelection):
     cached = handles.get(handle)
     if not cached or cached[0] < time.monotonic():

@@ -1,11 +1,14 @@
 export type ProviderStatus = {
-  transcription: boolean;
-  reference: boolean;
+  transcription?: boolean;
+  reference?: boolean;
+  embedding?: boolean;
+  judge?: boolean;
   access: boolean;
   inviteRequired?: boolean;
-  ats: string[];
-  calendars: string[];
-  meetings: string[];
+  signedIn?: boolean;
+  ats?: string[];
+  calendars?: string[];
+  meetings?: string[];
 };
 
 export async function integration<T>(path: string, options: RequestInit = {}): Promise<T> {

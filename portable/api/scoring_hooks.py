@@ -8,7 +8,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import Field
 
-from . import model_resolver, provider_http, ssrf_guard
+from . import model_resolver, prompt_framing, rate_limit, ssrf_guard
 from .access import require_entitlement
 from .models import Body, Input, Name, Question, Reference
 from .provider_http import fetch_json
@@ -79,7 +79,7 @@ def _embedding_request(target: model_resolver.ResolvedModel, texts: list[str]) -
     raise HTTPException(503, "Selected model provider does not support embeddings.")
 
 
-@router.post("/semantic")
+@router.post("/semantic", dependencies=[Depends(rate_limit.limit(rate_limit.AI_REQUEST))])
 async def semantic_similarity(body: SemanticInput):
     usable = [(idx, ref) for idx, ref in enumerate(body.references) if not ref.permitted and ref.text.strip()]
     if not usable:
@@ -114,14 +114,16 @@ async def semantic_similarity(body: SemanticInput):
 
 def _extract_json_object(raw: str) -> dict[str, Any]:
     cleaned = re.sub(r"^\s*```(?:json)?\s*|\s*```\s*$", "", raw.strip())
-    start = cleaned.find("{")
-    end = cleaned.rfind("}")
-    if start == -1 or end == -1 or end < start:
-        raise HTTPException(502, "AI judge returned unreadable output.")
     try:
-        parsed = json.loads(cleaned[start:end + 1])
-    except ValueError as exc:
-        raise HTTPException(502, "AI judge returned invalid JSON.") from exc
+        parsed = json.loads(cleaned)
+    except ValueError:
+        start = cleaned.find("{")
+        if start == -1:
+            raise HTTPException(502, "AI judge returned unreadable output.")
+        try:
+            parsed, _ = json.JSONDecoder().raw_decode(cleaned, start)
+        except ValueError as exc:
+            raise HTTPException(502, "AI judge returned invalid JSON.") from exc
     if not isinstance(parsed, dict):
         raise HTTPException(502, "AI judge returned an invalid structure.")
     return parsed
@@ -132,21 +134,27 @@ def _clean_string_list(value: Any, limit: int) -> list[str]:
         return []
     out: list[str] = []
     for item in value:
-        if isinstance(item, str) and item.strip():
-            out.append(item.strip()[:300])
-            if len(out) >= limit:
-                break
+        if isinstance(item, str):
+            text = prompt_framing.strip_control_chars(item, allow_newlines=False).strip()
+            if text:
+                out.append(text[:300])
+                if len(out) >= limit:
+                    break
     return out
 
 
-@router.post("/judge")
+@router.post("/judge", dependencies=[Depends(rate_limit.limit(rate_limit.AI_REQUEST))])
 async def judge_answer(body: JudgeInput):
     target = model_resolver.resolve_or_503("judge", provider=body.model_slug)
     payload = {
-        "question": body.question,
-        "answer": body.answer,
+        "question": prompt_framing.strip_control_chars(body.question, allow_newlines=True),
+        "answer": prompt_framing.strip_control_chars(body.answer, allow_newlines=True),
         "references": [
-            {"label": ref.label, "text": ref.text, "permitted": ref.permitted}
+            {
+                "label": prompt_framing.strip_control_chars(ref.label, allow_newlines=False),
+                "text": prompt_framing.strip_control_chars(ref.text, allow_newlines=True),
+                "permitted": ref.permitted,
+            }
             for ref in body.references
         ],
         "signals": {

@@ -139,4 +139,24 @@ describe("auth flow over HTTP", () => {
     expect((await get(harness.app, "/v1/me")).status).toBe(401);
     expect((await get(harness.app, "/v1/me", "mm_not_a_real_token_value_at_all_0000000000")).status).toBe(401);
   });
+
+  it("changes password, revokes prior sessions, rotates token, and audits", async () => {
+    const first = await json<SignedInResponse>(await post(harness.app, "/v1/auth/signup", { email: "rotate@example.com", password: "old-long-password" }));
+    const second = await json<SignedInResponse>(await post(harness.app, "/v1/auth/login", { email: "rotate@example.com", password: "old-long-password" }));
+
+    expect((await post(harness.app, "/v1/auth/password", { currentPassword: "old-long-password", newPassword: "new-long-password" })).status).toBe(401);
+    expect((await post(harness.app, "/v1/auth/password", { currentPassword: "wrong-long-password", newPassword: "new-long-password" }, first.token)).status).toBe(401);
+    expect((await get(harness.app, "/v1/me", first.token)).status).toBe(200);
+
+    const changed = await post(harness.app, "/v1/auth/password", { currentPassword: "old-long-password", newPassword: "new-long-password" }, first.token);
+    expect(changed.status).toBe(200);
+    const rotated = await json<SignedInResponse>(changed);
+    expect(rotated.token).not.toBe(first.token);
+    expect((await get(harness.app, "/v1/me", first.token)).status).toBe(401);
+    expect((await get(harness.app, "/v1/me", second.token)).status).toBe(401);
+    expect((await get(harness.app, "/v1/me", rotated.token)).status).toBe(200);
+    expect((await post(harness.app, "/v1/auth/login", { email: "rotate@example.com", password: "old-long-password" })).status).toBe(401);
+    expect((await post(harness.app, "/v1/auth/login", { email: "rotate@example.com", password: "new-long-password" })).status).toBe(200);
+    expect(harness.container.audit.recent(10).some((e) => e.action === "auth.password_change")).toBe(true);
+  });
 });

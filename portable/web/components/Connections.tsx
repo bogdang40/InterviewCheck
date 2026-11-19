@@ -27,7 +27,7 @@ export default function Connections({ onPrepare }: { onPrepare: (candidate: stri
   useEffect(() => {
     const controller = new AbortController();
     integration<ProviderStatus>("status", { signal: controller.signal }).then(result => {
-      setStatus(result); setAts(result.ats[0] || "");
+      setStatus(result); setAts(result.ats?.[0] || "");
     }).catch(e => { if (!controller.signal.aborted) setError(e.message); });
     return () => controller.abort();
   }, []);
@@ -62,7 +62,7 @@ export default function Connections({ onPrepare }: { onPrepare: (candidate: stri
       <label className="field">Import calendar events
         <input type="file" accept=".ics,text/calendar" disabled={busy}
           onChange={e => { readFile(e.target.files?.[0], "calendar"); e.target.value = ""; }} /></label>
-      {status && (status.calendars.length > 0 ? <div className="row">{status.calendars.map(source =>
+      {status && ((status.calendars?.length ?? 0) > 0 ? <div className="row">{(status.calendars ?? []).map(source =>
         <Button key={source} variant="outline" disabled={busy} onClick={() => load(() => submit("calendar/sync/" + source))}>
           <RefreshCw /> Sync {names[source]}</Button>)}</div> :
         <p className="muted">Connect Google Calendar or Microsoft 365 with a server access token, or select an .ics file.</p>)}
@@ -72,11 +72,11 @@ export default function Connections({ onPrepare }: { onPrepare: (candidate: stri
         <input type="file" accept=".csv,text/csv" disabled={busy}
           onChange={e => { readFile(e.target.files?.[0], "ats"); e.target.value = ""; }} /></label>
       <p className="muted">Use candidate and role as the column headers.</p>
-      {status && (status.ats.length ? <form className="row" onSubmit={e => {
+      {status && ((status.ats?.length ?? 0) > 0 ? <form className="row" onSubmit={e => {
         e.preventDefault(); void load(() => submit("ats/" + ats + "/lookup", { email }));
       }}>
         <label className="field">ATS<select value={ats} onChange={e => setAts(e.target.value)}>
-          {status.ats.map(source => <option key={source} value={source}>{names[source]}</option>)}</select></label>
+          {(status.ats ?? []).map(source => <option key={source} value={source}>{names[source]}</option>)}</select></label>
         <label className="field">Candidate email<Input type="email" required value={email} onChange={e => setEmail(e.target.value)} /></label>
         <Button variant="outline" disabled={busy}>Find candidate</Button>
       </form> : <p className="muted">Configure a supported ATS on the server for candidate lookup.</p>)}

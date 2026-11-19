@@ -1,31 +1,35 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
+import sys
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
+from fastapi import APIRouter, Depends, FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import ats_notes, authoring, backup, drafts, model_admin, scoring_hooks, store, trash
+from . import ats_notes, authoring, backup, drafts, model_admin, rate_limit, scoring_hooks, store, trash
 from .access import embedded_enabled, require_entitlement
+from .error_sanitizer import sanitize_error_text
 from .evidence import compare
 from .integrations import router as integrations
 from .local_boundary import LocalBoundary
-from .origin import public_origin
+from .origin import validate_runtime_exposure
 from .migrate import import_role, preview_role
 from .discovery import router as discovery
 from .interview_catalog import router as interview_catalog
 from .exports import router as exports
 from .models import AnswerEdit, AnswerInput, ReviewInput, RoleInput, SessionInput
 from .report import report
+from .security_headers import SecurityHeadersMiddleware
 from .session_workflow import router as session_workflow
 from .transcript_import import router as transcript_import
 
 
 @asynccontextmanager
 async def lifespan(_):
-    public_origin()  # Validate configured web exposure before opening the database.
+    rate_limit.reset_all()
+    validate_runtime_exposure()  # Validate configured web exposure before opening the database.
     if embedded_enabled():
         from .account_db import check_database
         check_database()
@@ -33,27 +37,24 @@ async def lifespan(_):
     yield
 
 
+static = Path(__file__).resolve().parents[1] / "web" / "out"
 app = FastAPI(title="InterviewCheck", lifespan=lifespan)
 app.add_middleware(LocalBoundary)
+app.add_middleware(SecurityHeadersMiddleware, static_dir=static if static.is_dir() else None)
 workspace = APIRouter(prefix="/api", dependencies=[Depends(require_entitlement)])
 
 
 @app.exception_handler(RequestValidationError)
 async def invalid_input(_request, error):
     issues = [{"field": ".".join(map(str, item["loc"])), "message": item["msg"]} for item in error.errors()]
-    return JSONResponse(status_code=422, content={"detail": "; ".join(
-        f"{issue['field']}: {issue['message']}" for issue in issues)})
+    detail = "; ".join(f"{issue['field']}: {issue['message']}" for issue in issues)
+    return JSONResponse(status_code=422, content={"detail": sanitize_error_text(detail, "Invalid input.")})
 
 
-@app.middleware("http")
-async def private_content(request: Request, call_next):
-    response = await call_next(request)
-    if request.url.path.startswith("/api/"):
-        response.headers["Cache-Control"] = "no-store"
-    response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["Referrer-Policy"] = "no-referrer"
-    response.headers["X-Frame-Options"] = "DENY"
-    return response
+@app.exception_handler(Exception)
+async def unhandled_error(_request, exc):
+    sys.stderr.write(f"[api] unhandled {exc.__class__.__name__}\n")
+    return JSONResponse(status_code=500, content={"detail": "Internal server error."})
 
 
 @app.get("/api/health")
@@ -164,16 +165,22 @@ app.include_router(workspace)
 app.include_router(integrations)
 
 
+@app.api_route("/api/admin", methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
+               dependencies=[Depends(model_admin.require_admin), Depends(rate_limit.limit(rate_limit.ADMIN_READ))], include_in_schema=False)
+@app.api_route("/api/admin/{unknown:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
+               dependencies=[Depends(model_admin.require_admin), Depends(rate_limit.limit(rate_limit.ADMIN_READ))], include_in_schema=False)
+def missing_admin(unknown: str = ""):
+    raise HTTPException(404, "Unknown admin route.")
+
+
 @app.api_route("/api/{unknown:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"], include_in_schema=False)
 def missing(unknown: str):
     raise HTTPException(404, "Unknown API route.")
-
 
 
 from .account_server import local_service
 
 app.mount("/v1", local_service)
 
-static = Path(__file__).resolve().parents[1] / "web" / "out"
 if static.is_dir():
     app.mount("/", StaticFiles(directory=static, html=True), name="workspace")

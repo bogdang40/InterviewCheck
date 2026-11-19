@@ -29,6 +29,7 @@ export interface UserPatch {
   complimentaryUntil?: Date | null | undefined;
   stripeCustomerId?: string | null;
   lastLoginAt?: Date;
+  passwordHash?: string | undefined;
 }
 
 export interface UserPage {
@@ -111,6 +112,10 @@ export class UserRepository {
     if (patch.lastLoginAt !== undefined) {
       assignments.push("last_login_at = ?");
       params.push(patch.lastLoginAt.getTime());
+    }
+    if (patch.passwordHash !== undefined) {
+      assignments.push("password_hash = ?");
+      params.push(patch.passwordHash);
     }
     params.push(id);
     this.db.run(`UPDATE users SET ${assignments.join(", ")} WHERE id = ?`, ...params);

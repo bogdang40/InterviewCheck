@@ -8,8 +8,9 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import Field
 
-from . import model_resolver
+from . import model_resolver, prompt_framing, rate_limit
 from .access import require_entitlement
+from .error_sanitizer import sanitize_error_text
 from .models import Body, Input, Name, Question
 from .provider_http import fetch_json
 
@@ -112,34 +113,42 @@ async def complete(provider, instructions, prompt):
     return await model_resolver.dispatch_completion(target, instructions, prompt, fetch_fn=fetch_json)
 
 
-@router.post("/questions")
+@router.post("/questions", dependencies=[Depends(rate_limit.limit(rate_limit.AI_REQUEST))])
 async def questions(form: Draft):
+    instructions = prompt_framing.frame_instructions(
+        "Write six interview questions specific to the role. Include a worked example, "
+        "a change of constraints and a question about the candidate's own experience.",
+        output_rule="Return strictly a JSON array of question strings.",
+    )
+    prompt = prompt_framing.untrusted_json_prompt({"role": form.role, "description": form.description})
     token = _capability.set("question_planning")
     try:
-        _, result = await complete(
-            form.provider,
-            "Write six interview questions specific to the role. Include a worked example, "
-            "a change of constraints and a question about the candidate's own experience. "
-            "Return a JSON array of question strings.",
-            json.dumps({"role": form.role, "description": form.description}),
-        )
+        _, result = await complete(form.provider, instructions, prompt)
     finally:
         _capability.reset(token)
     try:
         items = json.loads(re.sub(r"^\s*```(?:json)?\s*|\s*```\s*$", "", result))
     except ValueError as error:
         raise HTTPException(502, "The provider returned unreadable questions.") from error
-    if not isinstance(items, list) or not 1 <= len(items) <= 15 or not all(
-        isinstance(q, str) and 1 <= len(q.strip()) <= 4000 for q in items
-    ):
+    if not isinstance(items, list) or not 1 <= len(items) <= 15:
         raise HTTPException(502, "The provider returned invalid questions.")
-    return {"questions": list(dict.fromkeys(q.strip() for q in items))}
+    cleaned: list[str] = []
+    for item in items:
+        if not isinstance(item, str):
+            raise HTTPException(502, "The provider returned invalid questions.")
+        text = prompt_framing.strip_control_chars(item, allow_newlines=True).strip()
+        if not 1 <= len(text) <= 4000:
+            raise HTTPException(502, "The provider returned invalid questions.")
+        cleaned.append(text)
+    return {"questions": list(dict.fromkeys(cleaned))}
 
 
-@router.post("/reference")
+@router.post("/reference", dependencies=[Depends(rate_limit.limit(rate_limit.AI_REQUEST))])
 async def reference(form: Example):
-    model, text = await complete(form.provider, STYLES[form.style], json.dumps({"role": form.role, "question": form.question}))
-    return {"label": f"{form.provider} · {model} · {form.style}"[:180], "text": text, "permitted": False}
+    instructions = prompt_framing.frame_instructions(STYLES[form.style], output_rule="Return plain text only.")
+    prompt = prompt_framing.untrusted_json_prompt({"role": form.role, "question": form.question})
+    model, text = await complete(form.provider, instructions, prompt)
+    return {"label": f"{form.provider} · {model} · {form.style}"[:180], "text": prompt_framing.sanitize_model_text(text), "permitted": False}
 
 
 class Recipient(Input):
@@ -154,7 +163,7 @@ class Lineup(Input):
     existing_reference_count: int = Field(ge=0, le=12)
 
 
-@router.post("/references")
+@router.post("/references", dependencies=[Depends(rate_limit.limit(rate_limit.AI_REQUEST))])
 async def references(form: Lineup):
     pairs = {(item.provider, item.style) for item in form.pairs}
     if len(pairs) != len(form.pairs):
@@ -170,7 +179,7 @@ async def references(form: Lineup):
         try:
             source = await reference(Example(**pair, role=form.role, question=form.question))
         except HTTPException as error:
-            return {**pair, "error": str(error.detail)}
+            return {**pair, "error": sanitize_error_text(str(error.detail), "Reference generation failed.")}
         return {**pair, "source": source}
 
     return {"results": await asyncio.gather(*(generate(item) for item in form.pairs))}

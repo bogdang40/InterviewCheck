@@ -24,7 +24,7 @@ def region_host(key, default, alternate):
 def subdomain(key):
     value = setting(key).lower()
     if not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", value):
-        raise HTTPException(503, f"Configure a valid tenant name in {key}.")
+        raise HTTPException(503, "Configure a valid tenant name for this ATS integration.")
     return value
 
 

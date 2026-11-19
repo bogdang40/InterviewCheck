@@ -68,7 +68,7 @@ export default function Capture({ onText, onPendingChange }: {
     <summary><AudioLines size={16} aria-hidden /> Capture audio</summary>
     <div className="stack">
       {error && <p role="alert" className="notice">{error}</p>}
-      {!enabled ? <p className="muted">Set DEEPGRAM_API_KEY on this workstation to transcribe call audio or a recording.</p> : <>
+      {!enabled ? <p className="muted">Configure an enabled transcription model in Admin or server settings to transcribe call audio or a recording.</p> : <>
         <label><input type="checkbox" checked={consent} disabled={active || uploading}
           onChange={event => setConsent(event.target.checked)} /> Participants agreed to send this audio to Deepgram.</label>
         <div className="row">

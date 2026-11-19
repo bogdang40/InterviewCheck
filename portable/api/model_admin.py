@@ -5,7 +5,8 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
-from . import access, account_auth, account_db, model_probe, model_registry, model_resolver, secret_box, ssrf_guard, store
+from . import access, account_db, model_probe, model_registry, model_resolver, rate_limit, secret_box, ssrf_guard, store
+from .error_sanitizer import sanitize_error_text
 from .model_schemas import (
     ALLOWED_CAPABILITIES,
     Capability,
@@ -16,31 +17,12 @@ from .model_schemas import (
     ModelUpdateInput,
     Provider,
 )
-from .provider_http import configured
 
 router = APIRouter(prefix="/api/admin/models", tags=["model-admin"])
 
 
 async def require_admin(request: Request) -> dict[str, Any]:
-    token = request.cookies.get(access.COOKIE)
-    if not token:
-        raise HTTPException(401, "Sign in with an administrator account.")
-    enabled = access.account_enabled()
-    if not enabled or access.embedded_enabled():
-        if not account_db.database().is_file():
-            raise HTTPException(401, "Sign in with an administrator account.")
-        user, _ = account_auth.authenticate(f"Bearer {token}")
-    else:
-        data = await access.upstream("me", token=token)
-        if not isinstance(data, dict) or not isinstance(data.get("user"), dict):
-            raise HTTPException(502, "The access service returned an invalid account.")
-        if access.public_remote() or configured("INTERVIEWCHECK_OPERATOR_EMAIL"):
-            access.verify_account(data)
-        user = data["user"]
-    if user.get("disabled"):
-        raise HTTPException(401, "Session expired. Sign in again.")
-    if user.get("role") != "admin":
-        raise HTTPException(403, "Admin access required.")
+    user, _ = await access.require_admin_session(request)
     return user
 
 
@@ -59,7 +41,7 @@ def _flush_account_audits(post_commit: list) -> None:
                 account_db.audit(adb, action, model_uuid, actor_id, details)
 
 
-@router.get("")
+@router.get("", dependencies=[Depends(rate_limit.limit(rate_limit.ADMIN_READ))])
 def list_models(
     capability: Capability | None = Query(default=None),
     provider: Provider | None = Query(default=None),
@@ -70,14 +52,14 @@ def list_models(
     return {"models": models, "providers": list(model_registry.PROVIDERS), "envFallbacks": model_resolver.env_fallback_summaries()}
 
 
-@router.post("", status_code=201)
+@router.post("", status_code=201, dependencies=[Depends(rate_limit.limit(rate_limit.ADMIN_WRITE))])
 async def create_model(item: ModelCreateInput, actor: dict = Depends(require_admin)):
     endpoint = item.endpoint
     if endpoint is not None:
         try:
             endpoint = await ssrf_guard.validate_endpoint_url_async(endpoint, provider=item.provider)
         except ssrf_guard.SSRFValidationError as exc:
-            raise HTTPException(400, str(exc)) from exc
+            raise HTTPException(400, sanitize_error_text(str(exc), "Invalid model endpoint URL.")) from exc
 
     model_uuid = str(uuid4())
     raw_key = item.apiKey.get_secret_value() if item.apiKey is not None else ""
@@ -99,7 +81,7 @@ async def create_model(item: ModelCreateInput, actor: dict = Depends(require_adm
     return {"model": created}
 
 
-@router.patch("/{model_id}")
+@router.patch("/{model_id}", dependencies=[Depends(rate_limit.limit(rate_limit.ADMIN_WRITE))])
 async def update_model(model_id: UUID, item: ModelUpdateInput, actor: dict = Depends(require_admin)):
     model_uuid = str(model_id)
     with store.connection() as db:
@@ -126,7 +108,7 @@ async def update_model(model_id: UUID, item: ModelUpdateInput, actor: dict = Dep
         try:
             merged_endpoint = await ssrf_guard.validate_endpoint_url_async(merged_endpoint, provider=provider)
         except ssrf_guard.SSRFValidationError as exc:
-            raise HTTPException(400, str(exc)) from exc
+            raise HTTPException(400, sanitize_error_text(str(exc), "Invalid model endpoint URL.")) from exc
 
     params = model_registry.parse_parameters(existing["config_json"])
     if item.parameters is not None:
@@ -186,7 +168,7 @@ async def update_model(model_id: UUID, item: ModelUpdateInput, actor: dict = Dep
     return {"model": updated}
 
 
-@router.post("/{model_id}/toggle")
+@router.post("/{model_id}/toggle", dependencies=[Depends(rate_limit.limit(rate_limit.ADMIN_WRITE))])
 def toggle_model(model_id: UUID, item: ModelToggleInput, actor: dict = Depends(require_admin)):
     model_uuid = str(model_id)
     post_commit: list = []
@@ -212,7 +194,10 @@ def _persist_probe(actor: dict[str, Any], model_uuid: str, outcome: model_probe.
     return updated
 
 
-@router.post("/{model_id}/probe")
+@router.post(
+    "/{model_id}/probe",
+    dependencies=[Depends(rate_limit.limit(rate_limit.ADMIN_WRITE)), Depends(require_admin), Depends(rate_limit.limit(rate_limit.ADMIN_PROBE))],
+)
 async def probe_model(model_id: UUID, actor: dict = Depends(require_admin)):
     model_uuid = str(model_id)
     with store.connection() as db:
@@ -235,7 +220,7 @@ async def probe_model(model_id: UUID, actor: dict = Depends(require_admin)):
     return JSONResponse(status_code=code, content={"detail": outcome.last_error, "model": updated})
 
 
-@router.delete("/{model_id}")
+@router.delete("/{model_id}", dependencies=[Depends(rate_limit.limit(rate_limit.ADMIN_WRITE))])
 def delete_model(model_id: UUID, actor: dict = Depends(require_admin)):
     model_uuid = str(model_id)
     post_commit: list = []

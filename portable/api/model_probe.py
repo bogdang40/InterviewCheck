@@ -11,6 +11,7 @@ from urllib.parse import quote
 import httpx
 
 from . import ssrf_guard
+from .error_sanitizer import sanitize_error_text
 
 MODEL_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,179}$")
 MAX_PROBE_RESPONSE_BYTES = 1_048_576
@@ -182,7 +183,7 @@ async def probe_model(model: dict[str, Any] | Any, *, api_key: str) -> ProbeOutc
         except ssrf_guard.SSRFValidationError as exc:
             return ProbeOutcome(
                 ok=False, status="error", http_status=None, latency_ms=None,
-                last_error=str(exc), checked_at=checked_at, ssrf_blocked=True,
+                last_error=sanitize_error_text(str(exc), "Endpoint URL is invalid."), checked_at=checked_at, ssrf_blocked=True,
             )
 
     raw_timeout = config.get("timeout_s") if isinstance(config, dict) else None
@@ -217,7 +218,7 @@ async def probe_model(model: dict[str, Any] | Any, *, api_key: str) -> ProbeOutc
         elapsed = int((time.monotonic() - started) * 1000)
         return ProbeOutcome(
             ok=False, status="error", http_status=None, latency_ms=elapsed,
-            last_error=str(exc), checked_at=checked_at, ssrf_blocked=True,
+            last_error=sanitize_error_text(str(exc), "Endpoint resolved to a blocked address."), checked_at=checked_at, ssrf_blocked=True,
         )
     except httpx.TimeoutException:
         elapsed = int((time.monotonic() - started) * 1000)

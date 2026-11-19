@@ -4,10 +4,10 @@ from typing import Literal
 from uuid import UUID, uuid4
 from urllib.parse import quote
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import Field
 
-from . import ats, store
+from . import ats, rate_limit, store
 from .ats_directory import subdomain
 from .models import Input
 from .provider_http import configured, fetch_json, setting
@@ -84,7 +84,7 @@ async def find_recipients(query):
     return [r for r in found if r.get("target_id")]
 
 
-@router.post("/sessions/{sid}/ats/recipients")
+@router.post("/sessions/{sid}/ats/recipients", dependencies=[Depends(rate_limit.limit(rate_limit.INTEGRATION_REMOTE))])
 async def recipients(sid: UUID, query: RecipientQuery):
     with store.connection(write=True) as db:
         version = begin_operation(db, str(sid))
@@ -94,7 +94,7 @@ async def recipients(sid: UUID, query: RecipientQuery):
     return options
 
 
-@router.post("/sessions/{sid}/ats/drafts")
+@router.post("/sessions/{sid}/ats/drafts", dependencies=[Depends(rate_limit.limit(rate_limit.INTEGRATION_REMOTE))])
 async def prepare(sid: UUID, form: Draft):
     # Re-resolve at preview so the destination is a provider record with an actual name.
     with store.connection(write=True) as db:
@@ -171,7 +171,7 @@ async def send_private(provider, target, text, *, before_send=None):
             json={"candidate_id": int(target), "note_type": "NOTE", "visibility": "private", "body": text})
 
 
-@router.post("/sessions/{sid}/ats/drafts/{draft_id}/send")
+@router.post("/sessions/{sid}/ats/drafts/{draft_id}/send", dependencies=[Depends(rate_limit.limit(rate_limit.INTEGRATION_REMOTE))])
 async def send(sid: UUID, draft_id: UUID, form: Delivery):
     session_id, key = str(sid), str(draft_id)
     with store.connection(write=True) as db:

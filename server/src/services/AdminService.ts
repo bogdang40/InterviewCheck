@@ -52,14 +52,19 @@ export class AdminService {
 
   updateUser(actor: User, targetId: string, patch: AdminUserPatch): AdminUserView {
     return this.database.transaction(() => {
+      const currentActor = this.users.findById(actor.id);
+      if (!currentActor || currentActor.disabled || currentActor.role !== "admin") {
+        throw new HttpError(403, "forbidden", "Admin access required.");
+      }
       const target = this.users.findById(targetId);
       if (!target) throw new HttpError(404, "user_not_found", "No user with that id.");
-      this.guardLastAdmin(actor, target, patch);
+      this.guardLastAdmin(currentActor, target, patch);
       const now = this.clock();
       const updated = this.users.update(target.id, patch, now);
-      if (patch.disabled === true) this.sessions.revokeAllForUser(target.id, now);
+      const roleChanged = patch.role !== undefined && patch.role !== target.role;
+      if (patch.disabled === true || roleChanged) this.sessions.revokeAllForUser(target.id, now);
       this.audit.record({
-        actorUserId: actor.id,
+        actorUserId: currentActor.id,
         action: "admin.update_user",
         targetUserId: target.id,
         details: {

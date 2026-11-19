@@ -9,14 +9,34 @@ export const credentialsSchema = z.object({
   adminSecret: z.string().max(200).optional(),
 });
 
+export const passwordChangeSchema = z.object({
+  currentPassword: z.string().min(10, "Password must be at least 10 characters.").max(200),
+  newPassword: z.string().min(10, "Password must be at least 10 characters.").max(200),
+});
+
 export const checkoutSchema = z.object({
   plan: z.enum(PLANS),
 });
 
+const strictLimitSchema = z
+  .string()
+  .trim()
+  .regex(/^\d+$/, "Limit must be a positive integer.")
+  .transform(Number)
+  .pipe(z.number().int().min(1).max(200));
+
 export const adminListQuerySchema = z.object({
   q: z.string().trim().max(200).optional(),
-  limit: z.coerce.number().int().min(1).max(200).optional(),
+  limit: strictLimitSchema.optional(),
   cursor: z.string().max(400).optional(),
+});
+
+export const adminAuditQuerySchema = z.object({
+  limit: strictLimitSchema.optional(),
+});
+
+export const uuidParamSchema = z.object({
+  id: z.string().uuid("Invalid user id."),
 });
 
 export const adminPatchSchema = z
@@ -28,5 +48,6 @@ export const adminPatchSchema = z
   .refine((patch) => Object.keys(patch).length > 0, { message: "Provide at least one field to update." });
 
 export type CredentialsBody = z.infer<typeof credentialsSchema>;
+export type PasswordChangeBody = z.infer<typeof passwordChangeSchema>;
 export type CheckoutBody = z.infer<typeof checkoutSchema>;
 export type AdminPatchBody = z.infer<typeof adminPatchSchema>;

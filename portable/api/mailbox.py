@@ -160,13 +160,13 @@ def sync_imap():
     host, user, password = (setting(name) for name in SETTINGS)
     folder = os.getenv("IMAP_FOLDER", "INBOX")
     if not folder or any(ch in folder for ch in ('"', '\\', '\r', '\n')) or not folder.isascii():
-        raise HTTPException(503, "Set IMAP_FOLDER to a valid ASCII mailbox name.")
+        raise HTTPException(503, "Configured mailbox folder name is invalid.")
     try:
         port = int(os.getenv("IMAP_PORT", "993"))
         if not 0 < port <= 65535:
             raise ValueError()
     except ValueError as error:
-        raise HTTPException(503, "Set a valid IMAP_PORT.") from error
+        raise HTTPException(503, "Configured mailbox port is invalid.") from error
     deadline = monotonic() + 45
     try:
         with imaplib.IMAP4_SSL(host, port, ssl_context=ssl.create_default_context(), timeout=8) as mail:

@@ -8,6 +8,7 @@ from uuid import uuid4
 from fastapi import HTTPException
 
 from . import store
+from .error_sanitizer import sanitize_error_text
 
 PROVIDERS = ("openai", "anthropic", "azure_openai", "deepgram", "openai_compatible")
 CAPABILITIES = ("reference", "question_planning", "transcription", "embedding", "judge")
@@ -307,7 +308,7 @@ def record_probe_result(
         new_status = "connected" if ok else "error"
     else:
         new_status = "disabled"
-    safe_error = (error[:400] if error else None) if not ok else None
+    safe_error = sanitize_error_text(error, "Provider probe failed.") if (not ok and error) else None
     db.execute(
         """UPDATE connected_models
            SET status=?, last_error=?, last_latency_ms=?, last_checked_at=?, updated_at=?

@@ -103,6 +103,24 @@ export class AuthService {
     return { user, session };
   }
 
+  async changePassword(request: AuthenticatedRequest, currentPassword: string, newPassword: string): Promise<SignedInResponse> {
+    const storedHash = this.users.passwordHash(request.user.id);
+    const verified = await this.hasher.verify(currentPassword, storedHash ?? (await this.hasher.decoyHash()));
+    if (!verified) {
+      throw new HttpError(401, "invalid_credentials", "Current password is incorrect.");
+    }
+    const passwordHash = await this.hasher.hash(newPassword);
+    const now = this.clock();
+    return this.database.transaction(() => {
+      const current = this.users.findById(request.user.id);
+      if (!current || current.disabled) throw new HttpError(403, "account_disabled", "This account has been disabled.");
+      const updated = this.users.update(current.id, { passwordHash }, now);
+      this.sessions.revokeAllForUser(current.id, now);
+      this.audit.record({ actorUserId: current.id, action: "auth.password_change", targetUserId: current.id }, now);
+      return this.issueSession(updated, request.session.deviceName, now);
+    });
+  }
+
   logout(request: AuthenticatedRequest): void {
     const now = this.clock();
     this.database.transaction(() => {

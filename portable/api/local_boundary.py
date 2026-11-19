@@ -26,12 +26,17 @@ class LocalBoundary:
         if origin and origin != expected:
             await reject(403, "The request must originate from this workspace.")
             return
-        if scope["method"] not in {"GET", "HEAD", "OPTIONS"} and scope["path"].startswith("/api/"):
+        mutating = scope["method"] not in {"GET", "HEAD", "OPTIONS"}
+        path = scope["path"]
+        csrf_guarded = path.startswith("/api/") or (path.startswith("/v1/") and path != "/v1/billing/webhook")
+        if mutating and csrf_guarded:
             if headers.get("x-interviewcheck") != "1":
                 await reject(403, "Missing workspace request header.")
                 return
-            limit = 24 * 1024 ** 2 if scope["path"] == "/api/integrations/transcribe" else 2 * 1024 ** 2
-            if scope["path"] in {"/api/backups/preview", "/api/backups/restore"}:
+            limit = 24 * 1024 ** 2 if path == "/api/integrations/transcribe" else 2 * 1024 ** 2
+            if path.startswith("/v1/"):
+                limit = 256 * 1024
+            elif path in {"/api/backups/preview", "/api/backups/restore"}:
                 from .backup_schema import LIMIT
                 limit = LIMIT
             try:

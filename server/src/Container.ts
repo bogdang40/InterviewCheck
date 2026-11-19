@@ -42,6 +42,9 @@ export class Container {
   readonly billingWebhook: BillingWebhookService;
   readonly admin: AdminService;
   readonly credentialLimiter: FixedWindowRateLimiter;
+  readonly adminReadLimiter: FixedWindowRateLimiter;
+  readonly adminWriteLimiter: FixedWindowRateLimiter;
+  readonly billingLimiter: FixedWindowRateLimiter;
 
   constructor(
     readonly config: AppConfig,
@@ -101,6 +104,9 @@ export class Container {
 
     this.admin = new AdminService(this.database, this.users, this.sessions, this.subscriptions, this.audit, this.entitlements, clock);
     this.credentialLimiter = new FixedWindowRateLimiter({ windowMs: 60_000, max: 10 });
+    this.adminReadLimiter = new FixedWindowRateLimiter({ windowMs: 60_000, max: 120 });
+    this.adminWriteLimiter = new FixedWindowRateLimiter({ windowMs: 60_000, max: 40 });
+    this.billingLimiter = new FixedWindowRateLimiter({ windowMs: 60_000, max: 20 });
   }
 
   /** Startup work that touches data: prune dead sessions. */

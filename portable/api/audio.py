@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSo
 from websockets.asyncio.client import connect
 from websockets.exceptions import WebSocketException
 
-from . import model_resolver, ssrf_guard
+from . import model_resolver, rate_limit, ssrf_guard
 from .access import require_entitlement
 from .provider_http import fetch_json
 
@@ -31,7 +31,7 @@ def _deepgram_urls(endpoint: str | None) -> tuple[str, str]:
     return http_url, "wss://" + http_url.removeprefix("https://")
 
 
-@router.post("/transcribe", dependencies=[Depends(require_entitlement)])
+@router.post("/transcribe", dependencies=[Depends(require_entitlement), Depends(rate_limit.limit(rate_limit.INTEGRATION_REMOTE))])
 async def transcribe(request: Request):
     if request.headers.get("x-send-audio") != "deepgram":
         raise HTTPException(400, "Confirm audio transfer to Deepgram.")

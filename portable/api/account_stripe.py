@@ -39,7 +39,7 @@ def origin():
     if (url.scheme != "https" and (url.scheme != "http" or url.hostname not in {"localhost", "127.0.0.1", "::1"})) or (
         not url.hostname or url.username or url.password or url.query or url.fragment
     ):
-        raise HTTPException(503, "Configure PUBLIC_BASE_URL as the HTTPS service origin or loopback.")
+        raise HTTPException(503, "Billing return origin must be configured as HTTPS or loopback.")
     return base
 
 

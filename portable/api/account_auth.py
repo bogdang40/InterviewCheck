@@ -27,6 +27,11 @@ class Login(BaseModel):
         return value
 
 
+class PasswordChange(BaseModel):
+    currentPassword: SecretStr = Field(min_length=10, max_length=200)
+    newPassword: SecretStr = Field(min_length=10, max_length=200)
+
+
 def limit(address):
     ts = store.now()
     # Persist the fixed window across workers and restarts. Ignore forwarded IPs.
@@ -49,7 +54,7 @@ def sign_in(action, form, address, *, public_signup=False):
         secret = os.getenv("INTERVIEWCHECK_SIGNUP_SECRET", "")
         if (public_signup or secret) and not check_secret(secret, form.inviteCode):
             raise HTTPException(403, "An operator invitation is required to create an account.")
-        allowed = {e.strip().lower() for e in os.getenv("ADMIN_EMAILS", "").split(",")}
+        allowed = {e.strip().lower() for e in os.getenv("ADMIN_EMAILS", "").split(",") if e.strip()}
         admin = form.email in allowed and check_secret(os.getenv("ADMIN_BOOTSTRAP_SECRET"), form.adminSecret)
         password_hash = store.hash_password(form.password.get_secret_value())
         ts = store.now()
@@ -77,6 +82,25 @@ def sign_in(action, form, address, *, public_signup=False):
             raise HTTPException(403, "Account is disabled.")
         store.audit(db, "auth.login", row["id"], row["id"])
         return new_session(db, row["id"], form.deviceName)
+
+
+def change_password(user_id, device_name, form: PasswordChange, address: str):
+    limit(address)
+    with store.connection() as db:
+        row = db.execute("SELECT id,password_hash FROM users WHERE id=?", (user_id,)).fetchone()
+    valid = store.matches(form.currentPassword.get_secret_value(), row["password_hash"] if row else store.DECOY)
+    if not (row and valid):
+        raise HTTPException(401, "Current password is incorrect.")
+    new_hash = store.hash_password(form.newPassword.get_secret_value())
+    ts = store.now()
+    with store.connection(write=True) as db:
+        result = db.execute("UPDATE users SET password_hash=?,updated_at=? WHERE id=? AND disabled=0",
+                            (new_hash, ts, user_id))
+        if not result.rowcount:
+            raise HTTPException(403, "Account is disabled.")
+        db.execute("UPDATE sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL", (ts, user_id))
+        store.audit(db, "auth.password_change", user_id, user_id)
+        return new_session(db, user_id, device_name or "Portable workspace")
 
 
 def new_session(db, uid, device):
