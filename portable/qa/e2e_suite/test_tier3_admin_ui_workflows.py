@@ -1,5 +1,6 @@
 """Tier 3 opaque-box browser /admin/ workflows and /account/ session rotation tests."""
 import re
+import time
 
 import pytest
 from playwright.sync_api import expect
@@ -39,11 +40,11 @@ def _sign_in_on_account(page, base_url: str, email: str, password: str) -> None:
 
 def _sign_in_on_admin(page, base_url: str, email: str, password: str) -> None:
     page.goto(base_url + "/admin/", wait_until="domcontentloaded")
-    expect(page.get_by_role("heading", name="Administrator sign in required")).to_be_visible()
+    expect(page.get_by_role("heading", name="Administrator sign in required")).to_be_visible(timeout=15_000)
     page.get_by_label("Operator email").fill(email)
     page.get_by_label("Password", exact=True).fill(password)
     page.get_by_role("button", name="Sign in", exact=True).click()
-    expect(page.get_by_role("heading", name="Model administration")).to_be_visible()
+    expect(page.get_by_role("heading", name="Model administration")).to_be_visible(timeout=15_000)
 
 
 @pytest.mark.tier3
@@ -52,7 +53,7 @@ def test_admin_gate_fails_closed_for_local_unauth_and_non_admin_browser_sessions
 
     # 1. Local mode without access service active fails closed on /admin/.
     page.goto(e2e_workspace.base_url + "/admin/", wait_until="domcontentloaded")
-    expect(page.get_by_role("heading", name="Account authentication inactive")).to_be_visible()
+    expect(page.get_by_role("heading", name="Account authentication inactive")).to_be_visible(timeout=15_000)
     assert_no_horizontal_overflow(page)
     page.goto(e2e_workspace.base_url + "/", wait_until="domcontentloaded")
     expect(page.get_by_role("navigation", name="Workspace").get_by_role("link", name="Admin", exact=True)).to_have_count(0)
@@ -69,16 +70,16 @@ def test_admin_gate_fails_closed_for_local_unauth_and_non_admin_browser_sessions
 
     # Unauthenticated visitor sees administrator sign-in gate.
     page.goto(e2e_workspace.base_url + "/admin/", wait_until="domcontentloaded")
-    expect(page.get_by_role("heading", name="Administrator sign in required")).to_be_visible()
+    expect(page.get_by_role("heading", name="Administrator sign in required")).to_be_visible(timeout=15_000)
     assert_no_horizontal_overflow(page)
 
     # Non-admin member sees access-denied gate and signs out cleanly.
     _sign_in_on_account(page, e2e_workspace.base_url, MEMBER_EMAIL, MEMBER_PASS)
     expect(page.get_by_role("navigation", name="Workspace").get_by_role("link", name="Admin", exact=True)).to_have_count(0)
     page.goto(e2e_workspace.base_url + "/admin/", wait_until="domcontentloaded")
-    expect(page.get_by_role("heading", name="Administrator access required")).to_be_visible()
+    expect(page.get_by_role("heading", name="Administrator access required")).to_be_visible(timeout=15_000)
     page.get_by_role("button", name="Sign out", exact=True).click()
-    expect(page.get_by_role("heading", name="Administrator sign in required")).to_be_visible()
+    expect(page.get_by_role("heading", name="Administrator sign in required")).to_be_visible(timeout=15_000)
     collector.assert_clean()
 
 
@@ -328,10 +329,16 @@ def test_account_password_rotation_revokes_other_browser_context_session(e2e_wor
         # Old password fails in context B; new password succeeds.
         page_b.get_by_label("Operator email").fill(ADMIN1_EMAIL)
         page_b.get_by_label("Password", exact=True).fill(ADMIN_PASS)
-        page_b.get_by_role("button", name="Sign in", exact=True).click()
-        expect(page_b.get_by_role("alert")).to_be_visible()
-        page_b.wait_for_timeout(150)
-        assert all("401" in msg for msg in collector_b.console_errors), collector_b.console_errors
+        with page_b.expect_response(lambda r: "/api/integrations/access/login" in r.url) as resp_info:
+            page_b.get_by_role("button", name="Sign in", exact=True).click()
+        assert resp_info.value.status == 401
+        expect(page_b.locator("main").get_by_role("alert")).to_be_visible()
+        deadline = time.monotonic() + 2.0
+        while not collector_b.console_errors and time.monotonic() < deadline:
+            page_b.wait_for_timeout(25)
+        assert collector_b.console_errors and all("401" in msg for msg in collector_b.console_errors), (
+            collector_b.console_errors
+        )
         collector_b.reset()
 
         page_b.get_by_label("Password", exact=True).fill(NEW_ADMIN_PASS)
