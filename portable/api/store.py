@@ -9,7 +9,7 @@ from uuid import uuid4
 
 from fastapi import HTTPException
 
-from . import lineage, model_registry, role_kits, search_fts
+from . import bulk_operations, lineage, model_registry, role_analytics, role_kits, role_versions, search_fts
 from .role_kits import role_row, create_role
 from .models import EARLIER_ANSWER_NOTE, AnswerEdit, AnswerInput, ReviewInput, SessionInput
 
@@ -108,6 +108,9 @@ def initialize(path):
             db.execute("ALTER TABLE answers ADD COLUMN revision INTEGER NOT NULL DEFAULT 1")
         lineage.migrate(db)
         role_kits.migrate_columns(db)
+        role_versions.migrate(db)
+        role_analytics.migrate(db)
+        bulk_operations.migrate(db)
         model_registry.migrate(db)
         search_fts.migrate(db)
         # Freeze plans for workspaces created before role IDs were recorded. Only
@@ -261,11 +264,21 @@ def write_answer(db, key, item: AnswerInput, replace_id=None, *, session=None):
     return get_answer(db, key, aid)
 
 
-def update_review(db, key, aid, review: ReviewInput):
+def update_review(db, key, aid, review: ReviewInput, *, actor: tuple[str, str] = ("local-operator", "local-operator")):
     current = get_answer(db, key, aid)
     check_revision(current, review.expected_revision)
     if (current["disposition"], current["note"]) == (review.disposition, review.note):
         return current
     db.execute("UPDATE answers SET disposition=?,note=?,revision=revision+1 WHERE session_id=? AND id=?",
                (review.disposition, review.note, key, aid))
+    if current["disposition"] != review.disposition:
+        role_analytics.record_review_event(
+            db,
+            session_id=key,
+            answer_id=aid,
+            reviewer_id=actor[0],
+            reviewer_email=actor[1],
+            previous_disposition=current["disposition"],
+            disposition=review.disposition,
+        )
     return get_answer(db, key, aid)

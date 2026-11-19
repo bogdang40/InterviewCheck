@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import Headers
 
-from . import account_admin, account_auth, account_db as db, account_stripe as billing, account_stripe_webhooks as webhooks, rate_limit
+from . import account_admin, account_auth, account_db as db, account_security, account_stripe as billing, account_stripe_webhooks as webhooks, rate_limit
 from .access import embedded_enabled, production_mode
 from .error_sanitizer import sanitize_error_text
 from .origin import workspace_client
@@ -36,14 +36,11 @@ class AccountBoundary:
         headers = Headers(scope=scope)
         if mutating and path not in {"/v1/billing/webhook", "/billing/webhook"}:
             if (headers.get("origin") or headers.get("cookie")) and headers.get("x-interviewcheck") != "1":
-                return await JSONResponse(
-                    {"error": {"code": "forbidden", "message": "Missing workspace request header."}},
-                    status_code=403,
-                )(scope, receive, send)
+                return await JSONResponse({"error": {"code": "forbidden", "message": "Missing workspace request header."}}, status_code=403)(scope, receive, send)
         if scope["method"] in {"POST", "PATCH"}:
             if headers.get("content-type", "").split(";")[0].strip().lower() != "application/json":
-                # Existing native callers send logout and portal with an empty body.
-                empty_allowed = path.endswith(("/auth/logout", "/billing/portal"))
+                # Existing native callers send logout, portal, and revoke-sessions with an empty body.
+                empty_allowed = path.endswith(("/auth/logout", "/billing/portal", "/revoke-sessions"))
                 if not empty_allowed:
                     return await JSONResponse({"detail": "A JSON request is required."}, status_code=415)(scope, receive, send)
             data = bytearray()
@@ -93,7 +90,7 @@ def login(action: Literal["login", "signup", "logout"], request: Request, form: 
     if form is None:
         raise HTTPException(422, "Credentials are required.")
     operator_email = os.getenv("INTERVIEWCHECK_OPERATOR_EMAIL", "").strip().lower()
-    if request.app.state.embedded and operator_email and form.email != operator_email:
+    if action == "signup" and request.app.state.embedded and operator_email and form.email != operator_email:
         raise HTTPException(403, "Use the operator email assigned to this workspace.")
     public = not request.app.state.embedded or production_mode()
     address = workspace_client(request) if request.app.state.embedded else (request.client.host if request.client else "local")
@@ -168,6 +165,7 @@ def service(embedded):
         return JSONResponse({"error": {"code": "internal_error", "message": "Something went wrong."}},
                             status_code=500, headers={"Cache-Control": "no-store"})
 
+    instance.include_router(account_security.router)
     instance.include_router(routes)
     instance.include_router(account_admin.router)
     return instance

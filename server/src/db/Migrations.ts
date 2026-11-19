@@ -105,6 +105,29 @@ export const MIGRATION_STEPS: readonly MigrationStep[] = [
       `CREATE INDEX IF NOT EXISTS idx_audit_log_at_id ON audit_log(at DESC, id DESC)`,
     ],
   },
+  {
+    version: 7,
+    statements: [
+      `CREATE TABLE IF NOT EXISTS api_tokens (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        token_prefix TEXT NOT NULL,
+        token_hash TEXT NOT NULL UNIQUE,
+        scopes_json TEXT NOT NULL DEFAULT '[]',
+        created_at INTEGER NOT NULL,
+        expires_at INTEGER,
+        last_used_at INTEGER,
+        revoked_at INTEGER
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_api_tokens_user ON api_tokens(user_id, created_at DESC)`,
+      `CREATE TABLE IF NOT EXISTS login_email_windows (
+        email TEXT PRIMARY KEY,
+        start INTEGER NOT NULL,
+        hits INTEGER NOT NULL
+      )`,
+    ],
+  },
 ];
 
 export class MigrationRunner {

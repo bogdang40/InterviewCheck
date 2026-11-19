@@ -35,9 +35,23 @@ export class SessionRepository {
     return created;
   }
 
+  findById(id: string): AuthSession | null {
+    const row = this.db.get<SessionRow>(`SELECT ${COLUMNS} FROM sessions WHERE id = ?`, id);
+    return row ? SessionRepository.toSession(row) : null;
+  }
+
   findByTokenHash(tokenHash: string): AuthSession | null {
     const row = this.db.get<SessionRow>(`SELECT ${COLUMNS} FROM sessions WHERE token_hash = ?`, tokenHash);
     return row ? SessionRepository.toSession(row) : null;
+  }
+
+  listActiveForUser(userId: string, now: Date = new Date()): AuthSession[] {
+    const rows = this.db.all<SessionRow>(
+      `SELECT ${COLUMNS} FROM sessions WHERE user_id = ? AND revoked_at IS NULL AND expires_at > ? ORDER BY last_seen_at DESC, created_at DESC, id DESC`,
+      userId,
+      now.getTime(),
+    );
+    return rows.map(SessionRepository.toSession);
   }
 
   touch(id: string, lastSeenAt: Date, expiresAt: Date): void {
@@ -46,6 +60,16 @@ export class SessionRepository {
 
   revoke(id: string, now: Date = new Date()): void {
     this.db.run("UPDATE sessions SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL", now.getTime(), id);
+  }
+
+  revokeOwned(id: string, userId: string, now: Date = new Date()): boolean {
+    const result = this.db.run(
+      "UPDATE sessions SET revoked_at = ? WHERE id = ? AND user_id = ? AND revoked_at IS NULL",
+      now.getTime(),
+      id,
+      userId,
+    );
+    return Number(result.changes) > 0;
   }
 
   revokeAllForUser(userId: string, now: Date = new Date()): number {

@@ -122,7 +122,14 @@ def test_roles_and_notice_required(client):
     role = {"id": str(uuid4()), "name": "Engineer", "description": "", "questions": ["Why here?"]}
     saved = client.post("/api/roles", json=role).json()
     assert len(saved["version"]) == 64
-    result = {**role, "policy": "", "permitted_sources": [], "version": saved["version"]}
+    result = {
+        **role,
+        "policy": "",
+        "permitted_sources": [],
+        "version": saved["version"],
+        "rubric": [],
+        "version_number": 1,
+    }
     assert client.post("/api/roles", json=role).json() == result
     assert client.post("/api/roles", json=saved).json() == result
     assert client.get("/api/roles").json() == [result]
