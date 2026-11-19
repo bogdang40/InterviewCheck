@@ -157,10 +157,10 @@ export default function Roles({
               <p>{r.description || `${r.questions.length} planned questions`}</p>
               {!!r.permitted_sources?.length && <small>{r.permitted_sources.length} permitted {r.permitted_sources.length === 1 ? "source" : "sources"}</small>}
             </div>
-            <Button disabled={adding} variant="outline" size="sm" onClick={() => open(r)}>
+            <Button type="button" disabled={adding} variant="outline" size="sm" onClick={() => open(r)}>
               Edit role
             </Button>
-            <Button variant="ghost" onClick={() => prepare(r)}>
+            <Button type="button" variant="ghost" onClick={() => prepare(r)}>
               Prepare <ArrowRight />
             </Button>
           </div>

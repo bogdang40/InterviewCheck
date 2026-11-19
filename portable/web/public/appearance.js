@@ -9,6 +9,7 @@
     }
   }
   apply()
+  window.dispatchEvent(new Event("interviewcheck:appearance"))
   window.addEventListener("storage", function (event) {
     if (event.key === "interviewcheck.appearance" || event.key === null) {
       apply()
