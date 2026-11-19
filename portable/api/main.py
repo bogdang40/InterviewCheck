@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import importlib.util
 from pathlib import Path
 import sys
 from uuid import UUID
@@ -8,7 +9,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import access, alert_rules, ats_notes, audit_integrity, authoring, backup, bulk_operations, candidate_compare, csp_reports, drafts, health_probes, metrics_export, model_admin, model_circuit, model_execution, model_playground, prompt_templates, rate_limit, role_analytics, role_versions, scoring_hooks, secret_box, session_scorecard, store, trash
+from . import access, alert_rules, ats_notes, audit_integrity, authoring, backup, bulk_operations, candidate_compare, cohort_analytics, csp_reports, drafts, health_probes, metrics_export, model_admin, model_circuit, model_execution, model_playground, prompt_templates, rate_limit, role_analytics, role_versions, scoring_hooks, secret_box, session_scorecard, store, trash
 from .access import embedded_enabled, require_entitlement
 from .error_sanitizer import sanitize_error_text
 from .evidence import compare
@@ -178,8 +179,12 @@ workspace.include_router(interview_catalog)
 workspace.include_router(exports)
 workspace.include_router(candidate_compare.router)
 workspace.include_router(session_scorecard.router)
+workspace.include_router(cohort_analytics.router)
 app.include_router(health_probes.router)
 app.include_router(authoring.router)
+if importlib.util.find_spec(".model_presets", package=__package__) is not None:
+    from . import model_presets
+    app.include_router(model_presets.router)
 app.include_router(model_admin.router)
 app.include_router(model_circuit.router)
 app.include_router(model_playground.router)

@@ -17,12 +17,14 @@ import {
   type ModelProvider,
 } from "@/lib/adminModels"
 import { useDialogFocusTrap } from "@/lib/useDialogFocusTrap"
+import { type ModelPreset } from "@/lib/adminModelPresets"
 import {
   ModelParameterFields,
   initialParameterValues,
   parseModelParameterValues,
   type ModelParameterValues,
 } from "./ModelParameterFields"
+import { ModelPresetPicker, parameterValuesFromPreset } from "./ModelPresetPicker"
 
 export function ModelFormModal({
   editing,
@@ -41,6 +43,7 @@ export function ModelFormModal({
   const [slug, setSlug] = useState(editing?.slug ?? "")
   const [modelId, setModelId] = useState(editing?.model_id ?? "")
   const [endpoint, setEndpoint] = useState(editing?.endpoint ?? "")
+  const [endpointPlaceholder, setEndpointPlaceholder] = useState("")
   const [apiVersion, setApiVersion] = useState(editing?.api_version ?? "")
   const [apiKey, setApiKey] = useState("")
   const [clearApiKey, setClearApiKey] = useState(false)
@@ -68,6 +71,7 @@ export function ModelFormModal({
 
   function handleProviderChange(next: ModelProvider) {
     setProvider(next)
+    setEndpointPlaceholder("")
     const allowed = ALLOWED_CAPABILITIES[next]
     if (!allowed.includes(capability)) {
       setCapability(allowed[0])
@@ -78,6 +82,19 @@ export function ModelFormModal({
     if (next !== "azure_openai") {
       setApiVersion("")
     }
+  }
+
+  function handleApplyPreset(preset: ModelPreset) {
+    setError("")
+    setProvider(preset.provider)
+    setCapability(preset.capability)
+    setDisplayName(preset.display_name)
+    setModelId(preset.model_id)
+    setSlug(preset.slug_prefix)
+    setEndpoint("")
+    setEndpointPlaceholder(preset.endpoint_placeholder ?? "")
+    setApiVersion(preset.api_version_default ?? "")
+    setParamValues(parameterValuesFromPreset(preset))
   }
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
@@ -157,6 +174,8 @@ export function ModelFormModal({
         )}
 
         <form className="stack" onSubmit={handleSubmit}>
+          {!isEdit && <ModelPresetPicker busy={busy} onApplyPreset={handleApplyPreset} />}
+
           <div className="dual">
             <label className="field">
               Provider
@@ -233,9 +252,10 @@ export function ModelFormModal({
                 disabled={busy}
                 value={endpoint}
                 placeholder={
-                  provider === "azure_openai"
+                  endpointPlaceholder ||
+                  (provider === "azure_openai"
                     ? "https://your-resource.openai.azure.com"
-                    : "https://api.example.com/v1"
+                    : "https://api.example.com/v1")
                 }
                 onChange={(e) => setEndpoint(e.target.value)}
               />

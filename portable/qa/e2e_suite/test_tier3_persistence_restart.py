@@ -243,7 +243,7 @@ def test_workspace_backup_download_excludes_model_secrets_and_restores_into_fres
         expect(page2.get_by_text("1 captured exchanges")).to_be_visible()
 
         page2.get_by_role("button", name="Restore new records").click()
-        expect(page2.get_by_role("status")).to_contain_text("Restored 1 interviews and 1 roles")
+        expect(page2.get_by_role("status").filter(has_text="Restored 1 interviews and 1 roles")).to_be_visible()
 
         page2.goto(ws2.base_url + "/interviews/", wait_until="domcontentloaded")
         expect(page2.get_by_text("Backup Candidate")).to_be_visible()
