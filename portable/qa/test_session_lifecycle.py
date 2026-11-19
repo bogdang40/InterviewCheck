@@ -18,13 +18,16 @@ def test_role_snapshot_pending_exports_and_finish(workspace_url, browser_page, p
         # The development server compiles the roles page on its first visit.
         redirect_timeout = 30_000 if pytestconfig.getoption("--frontend") == "dev" else None
         expect(page).to_have_url(re.compile(r"/roles/?$"), timeout=redirect_timeout)
-        page.get_by_text("Beta rotation", exact=True).locator("..").locator("..").get_by_role("button", name="Prepare").click()
-        expect(page.get_by_label("Saved role template")).to_have_value(roles[1]["id"])
+        prepare_button = page.get_by_text("Beta rotation", exact=True).locator("..").locator("..").get_by_role("button", name="Prepare")
+        expect(prepare_button).to_be_enabled()
+        prepare_button.click()
+        expect(page).to_have_url(re.compile(r"/interviews/new/?$"), timeout=redirect_timeout)
+        expect(page.get_by_label("Saved role template")).to_have_value(roles[1]["id"], timeout=redirect_timeout)
         page.get_by_label("Candidate", exact=True).fill("Workflow fixture")
         page.get_by_label("Assistance policy").fill("Documentation is allowed.")
         page.get_by_role("checkbox").check()
         page.get_by_role("button", name="Start interview").click()
-        expect(page).to_have_url(re.compile(r"/interviews/review/\?id=[0-9a-f-]+$"))
+        expect(page).to_have_url(re.compile(r"/interviews/review/\?id=[0-9a-f-]+$"), timeout=redirect_timeout)
         key = page.url.split("id=")[1]
         updated = client.put("/api/roles/" + roles[1]["id"], json={
             "name": "Engineer", "description": "Team update", "questions": ["Updated scenario?"],
