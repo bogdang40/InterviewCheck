@@ -157,10 +157,10 @@ def test_m7_semantic_similarity_gating_opt_in_dirty_boundary_and_errors(e2e_work
 
     # Explicit click triggers POST /api/scoring/semantic and preserves clean dirty state & sources.
     sem_btn.click()
-    expect(page.locator(".semantic-panel").get_by_text("SEMANTIC SIMILARITY")).to_be_visible()
-    expect(page.locator(".semantic-panel").get_by_text("OpenAI · text-embedding-3-small")).to_be_visible()
-    expect(page.locator(".semantic-panel").get_by_text("Unpermitted Cheatsheet")).to_be_visible()
-    expect(page.locator(".semantic-panel").get_by_text("0.800")).to_be_visible()
+    expect(page.locator(".semantic-panel").get_by_text("SEMANTIC SIMILARITY", exact=True)).to_be_visible()
+    expect(page.locator(".semantic-panel").get_by_text("OpenAI · text-embedding-3-small", exact=True)).to_be_visible()
+    expect(page.locator(".semantic-panel").get_by_text("Unpermitted Cheatsheet", exact=True)).to_be_visible()
+    expect(page.locator(".semantic-panel").get_by_text("0.800", exact=True)).to_be_visible()
     expect(page.locator(".semantic-panel").get_by_text("Permitted Notes")).to_have_count(0)
     assert len(semantic_calls) == 1
     assert page.get_by_text("Save or discard your changes before switching questions, finishing or exporting.").count() == 0
