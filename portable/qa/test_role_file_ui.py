@@ -40,7 +40,8 @@ def test_download_import_and_duplicate_role_kit(workspace_url, browser_page, tmp
     page.get_by_role("button", name="Edit copy").click()
     page.get_by_role("textbox", name="Role name", exact=True).fill("Copied template")
     page.get_by_role("button", name="Save role").click()
-    expect(page.get_by_text("Copied template", exact=True)).to_be_visible()
+    # The calibration queue filter (M23) also lists role names, so look at the role list entry.
+    expect(page.locator("strong", has_text="Copied template")).to_be_visible()
     rows = page.request.get(workspace_url + "/api/roles").json()
     copy, = [row for row in rows if row["id"] != source["id"]]
     assert copy["policy"] == template["policy"] and copy["permitted_sources"] == template["permitted_sources"]
