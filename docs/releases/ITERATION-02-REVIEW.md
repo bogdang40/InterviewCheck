@@ -56,4 +56,12 @@ One synthetic answer had about 9.7 KB of current data, with two references and a
 | Oldest 50 revisions | 6,026 | 2.12 | 3.89 |
 | Body of revision 500 | 9,748 | 1.65 | 1.96 |
 
-Ordinary response fields were identical. The three added bytes came from the revision number. These timings describe the local fixture and do not establish a production latency target.
+Ordinary response fields were identical. The three added bytes came from the revision number. Production latency remains unmeasured.
+
+### Production browser checks
+
+The local production Next.js listener and Chrome exercised the feature files in product commit `5172e24` against synthetic SQLite databases. All 51 browser pages contained 1,001 revisions in order with no duplicates or omissions. Paging retained keyboard focus at 320 pixels. The stale two-tab review retained its unsaved draft through history selection and close. A delayed prior response stayed with its original answer. A failed revision fetch recovered through Retry. Portable download, reimport, copy editing, and native file import passed. A role inserted after preview caused HTTP 409 on import, displayed the conflict, and preserved the stored template. Two initial assertions needed narrower locators in the independent copy. A targeted rerun with a named textbox and the specific conflict alert passed. In the repository QA, prefer the named textbox locator for the stale review case if CI repeats the locator failure.
+
+## Acceptance and next round
+
+Accept `5172e24` for PR and CI. I found no remaining user-facing blocker in the reviewed feature scope. Freeze the scope through the Linux and Windows checks on the exact PR head. Open another implementation round only for an observed CI, upgrade, recovery, privacy, or usability failure. If the release reveals history latency under real workload, collect page size, revision count, and elapsed time before selecting a fix. Production merge and deployment still require the release owner's authorization.
