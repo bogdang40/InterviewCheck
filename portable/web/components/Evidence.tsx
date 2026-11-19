@@ -3,6 +3,7 @@ import { ClipboardCheck, Pencil, Quote } from "lucide-react"
 import { api, message, RevisionConflict, statusText, type Answer, type Disposition } from "@/lib/api"
 import CandidateResponse from "./CandidateResponse"
 import MarkedText from "./MarkedText"
+import RevisionHistory from "./RevisionHistory"
 import ConflictReview from "./ConflictReview"
 import { Button } from "./ui/button"
 import { Textarea } from "./ui/textarea"
@@ -145,6 +146,7 @@ export default function Evidence({
           <pre>{JSON.stringify(item.legacy, null, 2)}</pre>
         </details>
       )}
+      <RevisionHistory sessionId={sessionId} answerId={item.id} revision={item.revision} conflict={conflict}/>
       <form className="stack" onSubmit={save} onChange={() => setSaved(false)}>
         <div className="dual">
           <label className="field">

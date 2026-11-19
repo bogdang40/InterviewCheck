@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import ats_notes, authoring, backup, drafts, store, trash
 from .access import embedded_enabled, require_entitlement
+from .answer_history_routes import mutation_actor, router as answer_history
 from .evidence import compare
 from .integrations import router as integrations
 from .local_boundary import LocalBoundary
@@ -58,8 +59,8 @@ async def private_content(request: Request, call_next):
 
 @app.get("/api/health")
 def health():
-    with store.connection() as db:
-        db.execute("SELECT 1 FROM sessions LIMIT 1").fetchone()
+    from .readiness import check_local_databases
+    check_local_databases()
     return {"ok": True}
 
 
@@ -99,15 +100,15 @@ def answer_detail(sid: UUID, aid: UUID):
 
 
 @workspace.put("/sessions/{sid}/answers/{aid}")
-def revise(sid: UUID, aid: UUID, item: AnswerEdit):
+def revise(sid: UUID, aid: UUID, item: AnswerEdit, actor=Depends(mutation_actor)):
     with store.connection(write=True) as db:
-        return store.write_answer(db, str(sid), item, str(aid))
+        return store.write_answer(db, str(sid), item, str(aid), actor=actor)
 
 
 @workspace.patch("/sessions/{sid}/answers/{aid}")
-def review(sid: UUID, aid: UUID, item: ReviewInput):
+def review(sid: UUID, aid: UUID, item: ReviewInput, actor=Depends(mutation_actor)):
     with store.connection(write=True) as db:
-        return store.update_review(db, str(sid), str(aid), item)
+        return store.update_review(db, str(sid), str(aid), item, actor=actor)
 
 
 @workspace.get("/sessions/{sid}/report")
@@ -149,6 +150,7 @@ def preview_exported_role(document: dict):
 
 
 workspace.include_router(trash.router)
+workspace.include_router(answer_history)
 workspace.include_router(drafts.router)
 workspace.include_router(backup.router)
 workspace.include_router(session_workflow)

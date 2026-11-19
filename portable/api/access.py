@@ -98,6 +98,7 @@ async def require_entitlement(request: HTTPConnection):
         account = await snapshot(request)
         if (account.get("entitlement") or {}).get("active") is not True:
             raise HTTPException(402, "An active InterviewCheck plan is required.")
+        return account["user"]
 
 
 class Credentials(BaseModel):

@@ -35,8 +35,10 @@ All workspace actions use the local origin. Include `X-InterviewCheck: 1` with P
 | GET or POST /api/roles | List or create roles with a name, description and questions |
 | GET /api/sessions/{id}/print | Open an accessible printable report. Choose print or save PDF in the browser |
 | GET /api/exports/interviews.csv | Download the interview archive as CSV, with formula characters protected |
-| POST /api/roles/import/preview | Check a native role name, question count and duplicate ID before importing |
-| POST /api/roles/import | Read the JSON object exported by the native role editor |
+| GET /api/roles/{id}/export | Download the saved portable role kit |
+| POST /api/roles/{id}/duplicate | Copy the latest saved template using a new UUID supplied as `id` |
+| POST /api/roles/import/preview | Check the template name, question count and duplicate status for a native or portable role file |
+| POST /api/roles/import | Import a native role export or portable role kit |
 
 For create operations a client can supply an optional UUID as `id`. Replaying the same ID with identical content returns the existing object. Reusing the ID for different input returns HTTP 409. Use an answer's PUT route for intentional edits. Writes use SQLite transactions.
 
@@ -47,6 +49,8 @@ For create operations a client can supply an optional UUID as `id`. Replaying th
 A new session can select a saved role using its UUID in `role_id`. Its planned questions are copied into the interview. `PUT /api/roles/{id}` edits the reusable template. Existing interviews retain the questions they started with. For sessions from earlier editions, the upgrade recovers a plan from the role title only when exactly one saved template has that name.
 
 ## Native migration
+
+In the role library, expand **Role file and copy** and choose **Export role file** to move one template between portable workspaces. Choose **Import a role file** in the destination library. A version 1 `interviewcheck.role-kit` file carries the UUID, name, description, ordered questions, policy and permitted materials, including all text entered in those fields. The file limit is 4 MiB. Import keeps the UUID, skips identical content and reports a conflict if the saved content differs. **Duplicate latest saved role** creates a separate editable template in the current library.
 
 Quit the native app before copying its SQLite database, or use SQLite's backup command to create a consistent snapshot. If a database uses WAL, a copy of the database file alone can omit recent commits. Run the importer against the snapshot on Windows, Linux or macOS. The optional destination is a dedicated portable review database.
 

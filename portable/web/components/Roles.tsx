@@ -3,6 +3,7 @@ import { ArrowRight, BriefcaseBusiness, Plus } from "lucide-react"
 import { api, message, RoleConflict, type PermittedMaterial, type Role } from "@/lib/api"
 import ReloadRole from "./ReloadRole"
 import ResourcePolicy from "./ResourcePolicy"
+import RoleFileActions from "./RoleFileActions"
 import Authoring from "./Authoring"
 import { Button } from "./ui/button"
 import { Input } from "./ui/input"
@@ -18,6 +19,7 @@ export default function Roles({
   prepare: (role: Role) => void
 }) {
   const authoringVersion = useRef(0)
+  const savedQuestions = useRef<string[]>([])
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
   const [policy, setPolicy] = useState("")
@@ -32,6 +34,7 @@ export default function Roles({
   const [id, setId] = useState(() => crypto.randomUUID())
   function open(role?: Role) {
     authoringVersion.current += 1
+    savedQuestions.current = role?.questions ?? []
     setAdding(true)
     setVersion(role?.version)
     setConflict(false)
@@ -54,10 +57,8 @@ export default function Roles({
         id, version, policy, permitted_sources: materials,
         name: form.get("name"),
         description: form.get("description"),
-        questions: String(form.get("questions"))
-          .split("\n")
-          .map((s) => s.trim())
-          .filter(Boolean),
+        questions: questions === savedQuestions.current.join("\n") ? savedQuestions.current :
+          questions.split("\n").map(s => s.trim()).filter(Boolean),
       })
       onSave(role)
       setAdding(false)
@@ -156,6 +157,7 @@ export default function Roles({
               <strong>{r.name}</strong>
               <p>{r.description || `${r.questions.length} planned questions`}</p>
               {!!r.permitted_sources?.length && <small>{r.permitted_sources.length} permitted {r.permitted_sources.length === 1 ? "source" : "sources"}</small>}
+              <RoleFileActions id={r.id} disabled={adding} onDuplicate={onSave} onEdit={open} />
             </div>
             <Button disabled={adding} variant="outline" size="sm" onClick={() => open(r)}>
               Edit role

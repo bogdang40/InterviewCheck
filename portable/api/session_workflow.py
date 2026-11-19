@@ -3,8 +3,8 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException
 
-from . import role_kits, store
-from .models import AnswerInput, RoleInput
+from . import role_files, role_kits, store
+from .models import AnswerInput, Input, RequestID, RoleInput
 
 router = APIRouter()
 
@@ -47,6 +47,22 @@ def edit_role(rid: UUID, item: RoleInput):
         raise HTTPException(409, "The role ID differs from the requested role.")
     with store.connection(write=True) as db:
         return role_kits.update_role(db, str(rid), item)
+
+
+@router.get("/roles/{rid}/export")
+def export_role(rid: UUID):
+    with store.connection() as db:
+        return role_files.download(db, str(rid))
+
+
+class RoleCopy(Input):
+    id: RequestID
+
+
+@router.post("/roles/{rid}/duplicate")
+def duplicate_role(rid: UUID, item: RoleCopy):
+    with store.connection(write=True) as db:
+        return role_files.duplicate(db, rid, item.id)
 
 
 @router.post("/sessions/{sid}/preview")

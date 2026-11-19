@@ -5,7 +5,7 @@ import { ArchiveRestore, FileInput } from "lucide-react"
 import { api, message } from "@/lib/api"
 import { Button } from "./ui/button"
 
-type Preview = { id: string; name: string; question_count: number; duplicate: boolean }
+type Preview = { id: string; name: string; question_count: number; duplicate: boolean; conflict?: boolean }
 
 export function Migration({ onImported }: { onImported?: () => void } ) {
   const [preview, setPreview] = useState<Preview | null>(null)
@@ -24,7 +24,7 @@ export function Migration({ onImported }: { onImported?: () => void } ) {
     if (!file) return
     setBusy(true)
     try {
-      if (file.size > 2_000_000) throw new Error("Select a role export under 2 MB.")
+      if (file.size > 4 * 1024 * 1024) throw new Error("Select a role export no larger than 4 MiB.")
       const source = JSON.parse(await file.text())
       const checked = await api<Preview>("roles/import/preview", "POST", source)
       if (sequence !== readSequence.current) return
@@ -38,7 +38,7 @@ export function Migration({ onImported }: { onImported?: () => void } ) {
   }
 
   async function importRole() {
-    if (!preview || preview.duplicate || !document) return
+    if (!preview || preview.duplicate || preview.conflict || !document || busy) return
     setBusy(true)
     setError("")
     try {
@@ -49,22 +49,24 @@ export function Migration({ onImported }: { onImported?: () => void } ) {
       onImported?.()
     } catch (error) {
       setError(message(error))
+      setPreview(null)
     } finally {
       setBusy(false)
     }
   }
 
   return <section className="panel stack">
-    <h2><ArchiveRestore size={18}/> Native migration</h2>
+    <h2><ArchiveRestore size={18}/> Import and migration</h2>
     <details className="import"><summary>Import a role file</summary>
       <div className="stack">
-        <label className="field">Native role export
+        <label className="field">Native or portable role file
           <input type="file" accept=".json,application/json" disabled={busy}
             onChange={event => { void inspect(event.target.files?.[0]); event.target.value = "" }}/>
         </label>
         {preview && <div className="notice"><strong>{preview.name}</strong>
           <p>{preview.question_count} planned {preview.question_count === 1 ? "question" : "questions"}.</p>
-          {preview.duplicate ? <p role="status">This role is already in the library.</p> :
+          {preview.conflict ? <p role="alert">A saved role with this ID has different content.</p> :
+            preview.duplicate ? <p role="status">This role is already in the library.</p> :
             <Button type="button" size="sm" disabled={busy} onClick={importRole}><FileInput/>Import role</Button>}
         </div>}
         {error && <p className="error" role="alert">{error}</p>}

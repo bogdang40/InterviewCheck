@@ -31,6 +31,12 @@ class LocalBoundary:
                 await reject(403, "Missing workspace request header.")
                 return
             limit = 24 * 1024 ** 2 if scope["path"] == "/api/integrations/transcribe" else 2 * 1024 ** 2
+            path = scope["path"]
+            if path in {"/api/roles", "/api/roles/import", "/api/roles/import/preview"} or (
+                scope["method"] == "PUT" and path.startswith("/api/roles/") and path.count("/") == 3
+            ):
+                from .role_files import FILE_LIMIT
+                limit = FILE_LIMIT
             if scope["path"] in {"/api/backups/preview", "/api/backups/restore"}:
                 from .backup_schema import LIMIT
                 limit = LIMIT
