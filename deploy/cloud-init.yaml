@@ -1,0 +1,21 @@
+#cloud-config
+# First boot of the InterviewCheck VM (used by deploy/provision-azure.sh).
+# Installs Docker and the Azure CLI; the app itself arrives with the first deploy.
+package_update: true
+package_upgrade: true
+packages: [ca-certificates, curl, sqlite3]
+
+write_files:
+  - path: /etc/docker/daemon.json
+    content: |
+      {"log-driver": "json-file", "log-opts": {"max-size": "10m", "max-file": "5"}}
+
+runcmd:
+  - fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
+  - echo '/swapfile none swap sw 0 0' >> /etc/fstab
+  - curl -fsSL https://get.docker.com | sh
+  - curl -fsSL https://aka.ms/InstallAzureCLIDeb | bash
+  - mkdir -p /srv/interviewcheck/data /srv/interviewcheck/backups
+  - chown 10001:10001 /srv/interviewcheck/data
+  - chmod 700 /srv/interviewcheck
+  - systemctl enable --now docker

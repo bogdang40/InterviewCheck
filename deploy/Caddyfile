@@ -1,0 +1,36 @@
+# HTTPS in front of the InterviewCheck web workspace (portable/WEB.md, "HTTPS deployment").
+# Caddy gets and renews the certificate itself. Host and WebSocket upgrades pass through unchanged.
+{
+	servers {
+		timeouts {
+			# Slow-request protection; recordings up to 24 MiB still have minutes to upload.
+			read_header 15s
+			read_body 5m
+			idle 2m
+		}
+	}
+}
+
+{$SITE_ADDRESS} {
+	encode zstd gzip
+
+	# The app's largest upload is a 24 MiB recording; refuse bigger bodies before they reach it.
+	request_body {
+		max_size 26MB
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Content-Security-Policy "frame-ancestors 'none'"
+		Referrer-Policy "same-origin"
+		-Server
+	}
+
+	reverse_proxy 127.0.0.1:3000 {
+		# Always overwrite the client address with the one Caddy saw; the app trusts this
+		# header only because INTERVIEWCHECK_TRUST_PROXY_CLIENT_IP=1 and this proxy replaces it.
+		header_up X-InterviewCheck-Client-IP {http.request.remote.host}
+	}
+}

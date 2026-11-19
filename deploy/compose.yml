@@ -1,0 +1,36 @@
+# Production stack on the VM, in /srv/interviewcheck (copied there by deploy/vm-rollout.sh).
+# Host networking: the app's listeners stay on the VM's loopback (127.0.0.1:3000 and :8000),
+# and only Caddy listens publicly on 80/443.
+name: interviewcheck
+
+services:
+  app:
+    image: ${IMAGE:?IMAGE is set by vm-rollout.sh}
+    init: true
+    restart: unless-stopped
+    network_mode: host
+    env_file: [app.env]
+    volumes:
+      - ./data:/data
+    stop_grace_period: 20s
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
+
+  caddy:
+    image: caddy:2.10.2
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:?SITE_ADDRESS is set by vm-rollout.sh}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
+
+volumes:
+  caddy_data:
+  caddy_config:
