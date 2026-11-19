@@ -68,9 +68,16 @@ az role assignment create --assignee-object-id "$VM_PRINCIPAL" --assignee-princi
 # GitHub Actions identity: may push images and run commands on this VM only.
 APP_ID=$(az ad app create --display-name "InterviewCheck GitHub deploy" --query appId -o tsv)
 SP_ID=$(az ad sp create --id "$APP_ID" --query id -o tsv)
-az ad app federated-credential create --id "$APP_ID" --parameters "{
-  \"name\": \"github-production\", \"issuer\": \"https://token.actions.githubusercontent.com\",
-  \"subject\": \"repo:$REPO:environment:production\", \"audiences\": [\"api://AzureADTokenExchange\"]}" -o none
+# GitHub may present either subject format: the classic owner/repo name, or the newer one with
+# immutable IDs (repo:owner@ownerId/repo@repoId:...). This repository uses the newer one; register both.
+OWNER_ID=$(gh api "repos/$REPO" --jq .owner.id)
+REPO_ID=$(gh api "repos/$REPO" --jq .id)
+IMMUTABLE="repo:${REPO%%/*}@$OWNER_ID/${REPO#*/}@$REPO_ID"
+for pair in "github-production=repo:$REPO" "github-production-immutable=$IMMUTABLE"; do
+  az ad app federated-credential create --id "$APP_ID" --parameters "{
+    \"name\": \"${pair%%=*}\", \"issuer\": \"https://token.actions.githubusercontent.com\",
+    \"subject\": \"${pair#*=}:environment:production\", \"audiences\": [\"api://AzureADTokenExchange\"]}" -o none
+done
 az role assignment create --assignee-object-id "$SP_ID" --assignee-principal-type ServicePrincipal \
   --role AcrPush --scope "$ACR_ID" -o none
 az role assignment create --assignee-object-id "$SP_ID" --assignee-principal-type ServicePrincipal \
