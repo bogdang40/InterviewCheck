@@ -120,9 +120,12 @@ def test_roles_and_notice_required(client):
     assert client.post("/api/sessions", json=dict(SESSION, consent="true")).status_code == 422
     assert client.post("/api/sessions", json=dict(SESSION, candidate="   ")).status_code == 422
     role = {"id": str(uuid4()), "name": "Engineer", "description": "", "questions": ["Why here?"]}
-    assert client.post("/api/roles", json=role).json() == role
-    assert client.post("/api/roles", json=role).json() == role
-    assert client.get("/api/roles").json() == [role]
+    saved = client.post("/api/roles", json=role).json()
+    assert len(saved["version"]) == 64
+    result = {**role, "policy": "", "permitted_sources": [], "version": saved["version"]}
+    assert client.post("/api/roles", json=role).json() == result
+    assert client.post("/api/roles", json=saved).json() == result
+    assert client.get("/api/roles").json() == [result]
 
 
 def test_boundary(client):

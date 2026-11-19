@@ -1,4 +1,5 @@
 import type { BillingEvent, CheckoutRequest, GatewaySubscription, StripeGateway } from "../../src/stripe/StripeGateway.js";
+import { CHECKOUT_BLOCKING_STATUSES } from "../../src/domain/Subscription.js";
 
 /** Deterministic in-memory Stripe stand in. */
 export class FakeStripeGateway implements StripeGateway {
@@ -10,9 +11,16 @@ export class FakeStripeGateway implements StripeGateway {
   private counter = 0;
 
   async createCustomer(email: string, userId: string): Promise<string> {
+    const existing = [...this.customers].find(([, customer]) => customer.userId === userId);
+    if (existing) return existing[0];
     const id = `cus_${++this.counter}`;
     this.customers.set(id, { email, userId });
     return id;
+  }
+
+  async hasCheckoutBlockingSubscription(customerId: string, priceIds: readonly string[]): Promise<boolean> {
+    return [...this.subscriptions.values()].some((subscription) => subscription.customerId === customerId
+      && CHECKOUT_BLOCKING_STATUSES.includes(subscription.status) && priceIds.includes(subscription.priceId ?? ""));
   }
 
   async createCheckoutSession(request: CheckoutRequest): Promise<{ id: string; url: string }> {

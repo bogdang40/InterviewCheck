@@ -1,8 +1,13 @@
 import { useEffect, useState, type FormEvent } from "react"
 import { ClipboardCheck, Pencil, Quote } from "lucide-react"
-import { api, message, statusText, type Answer, type Disposition } from "@/lib/api"
+import { api, message, RevisionConflict, statusText, type Answer, type Disposition } from "@/lib/api"
+import CandidateResponse from "./CandidateResponse"
+import MarkedText from "./MarkedText"
+import ConflictReview from "./ConflictReview"
 import { Button } from "./ui/button"
 import { Textarea } from "./ui/textarea"
+
+const earlierNotePrefix = "Note from an earlier answer version:\n"
 
 export function Findings({ result }: { result: Answer["result"] }) {
   return (
@@ -39,22 +44,26 @@ export function Findings({ result }: { result: Answer["result"] }) {
 }
 
 export default function Evidence({
-  item,
+  item: initial,
   index,
   sessionId,
   onSave,
   onEdit,
   onDirty,
   onFollowUp,
+  canAdvance,
 }: {
   item: Answer
   index: number
   sessionId: string
-  onSave: (a: Answer) => void
+  onSave: (a: Answer, advance?: boolean) => void
+  canAdvance?: boolean
   onFollowUp?: () => void
   onDirty: (id: string, value: boolean) => void
   onEdit?: () => void
 }) {
+  const [item, setItem] = useState(initial)
+  const [conflict, setConflict] = useState(false)
   const [note, setNote] = useState(item.note)
   const [disposition, setDisposition] = useState<Disposition>(item.disposition)
   const [busy, setBusy] = useState(false),
@@ -62,18 +71,36 @@ export default function Evidence({
     [saved, setSaved] = useState(false)
   const dirty = note !== item.note || disposition !== item.disposition
   useEffect(() => {
-    onDirty(item.id, dirty)
+    if (!dirty && !busy && !conflict && initial.revision > item.revision) {
+      setItem(initial)
+      setNote(initial.note)
+      setDisposition(initial.disposition)
+      setSaved(false)
+    }
+  }, [initial, item.revision, dirty, busy, conflict])
+  useEffect(() => {
+    onDirty(item.id, dirty || busy || conflict)
     return () => onDirty(item.id, false)
-  }, [item.id, dirty, onDirty])
+  }, [item.id, dirty, busy, conflict, onDirty])
   async function save(e: FormEvent) {
     e.preventDefault()
+    if (busy || conflict) return
+    const submitter = (e.nativeEvent as SubmitEvent).submitter
+    const advance = !!canAdvance && disposition !== "pending" && submitter?.getAttribute("value") === "next"
     setError("")
     setBusy(true)
     try {
-      onSave(await api<Answer>(`sessions/${sessionId}/answers/${item.id}`, "PATCH", { note, disposition }))
+      const result = await api<Answer>(`sessions/${sessionId}/answers/${item.id}`, "PATCH", {
+        note, disposition, expected_revision: item.revision,
+      })
+      setItem(result)
+      setNote(result.note)
+      setDisposition(result.disposition)
+      onSave(result, advance)
       setSaved(true)
     } catch (e) {
-      setError(message(e))
+      if (e instanceof RevisionConflict) setConflict(true)
+      else setError(message(e))
     } finally {
       setBusy(false)
     }
@@ -90,7 +117,7 @@ export default function Evidence({
         )}
       </div>
       <h2>{item.question}</h2>
-      <p className="transcript-text">{item.answer}</p>
+      <CandidateResponse item={item}/>
       <Findings result={item.result} />
       {onFollowUp && (
         <Button variant="outline" size="sm" onClick={onFollowUp}>
@@ -106,7 +133,8 @@ export default function Evidence({
                 {s.label}
                 {s.permitted ? " · permitted" : ""}
               </strong>
-              <p>{s.text}</p>
+              <p><MarkedText text={s.text} side="source" passages={s.permitted ? [] : item.result.passages.filter(p=>
+                p.source_index === i || (p.source_index == null && p.label === s.label && item.references.filter(ref=>ref.label===s.label).length===1))}/></p>
             </div>
           ))}
         </details>
@@ -138,23 +166,35 @@ export default function Evidence({
           <Textarea
             disabled={busy}
             required={disposition === "disclosed"}
-            maxLength={12000}
+            maxLength={12000 + (note.startsWith(earlierNotePrefix) ? earlierNotePrefix.length : 0)}
             value={note}
             onChange={(e) => setNote(e.target.value)}
             placeholder="Record the candidate’s explanation and your observations."
           />
         </label>
+        {conflict && <ConflictReview sessionId={sessionId} answerId={item.id} resolve={(latest, keepDraft) => {
+          setItem(latest)
+          setConflict(false)
+          setSaved(false)
+          if (!keepDraft) {
+            setNote(latest.note)
+            setDisposition(latest.disposition)
+            onSave(latest)
+          }
+        }} />}
         {error && (
           <p role="alert" className="error">
             {error}
           </p>
         )}
         <div className="row">
-          <Button disabled={busy} variant="outline">
+          <Button disabled={busy || conflict} variant="outline">
             <ClipboardCheck />
             Save review
           </Button>
-          {dirty && (
+          {canAdvance && disposition !== "pending" &&
+            <Button type="submit" value="next" disabled={busy || conflict}>Save and review next</Button>}
+          {dirty && !conflict && (
             <Button
               type="button"
               variant="ghost"
@@ -162,6 +202,7 @@ export default function Evidence({
               onClick={() => {
                 setNote(item.note)
                 setDisposition(item.disposition)
+                if (item.revision > initial.revision) onSave(item)
                 setError("")
                 setSaved(false)
               }}

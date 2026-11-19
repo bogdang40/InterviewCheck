@@ -1,4 +1,5 @@
 import type { PublicSubscription } from "../domain/Subscription.js";
+import type { Database } from "../db/Database.js";
 import type { PublicUser, User, UserRole } from "../domain/User.js";
 import type { Entitlement } from "../domain/Entitlement.js";
 import { HttpError } from "../http/HttpError.js";
@@ -29,6 +30,7 @@ export interface AdminStats {
 
 export class AdminService {
   constructor(
+    private readonly database: Database,
     private readonly users: UserRepository,
     private readonly sessions: SessionRepository,
     private readonly subscriptions: SubscriptionRepository,
@@ -49,25 +51,14 @@ export class AdminService {
   }
 
   updateUser(actor: User, targetId: string, patch: AdminUserPatch): AdminUserView {
-    const target = this.users.findById(targetId);
-    if (!target) throw new HttpError(404, "user_not_found", "No user with that id.");
-    this.guardLastAdmin(actor, target, patch);
-
-    const now = this.clock();
-    const updated = this.users.update(
-      target.id,
-      {
-        ...(patch.role !== undefined ? { role: patch.role } : {}),
-        ...(patch.disabled !== undefined ? { disabled: patch.disabled } : {}),
-        ...(patch.complimentaryUntil !== undefined ? { complimentaryUntil: patch.complimentaryUntil } : {}),
-      },
-      now,
-    );
-    if (patch.disabled === true) {
-      this.sessions.revokeAllForUser(target.id, now);
-    }
-    this.audit.record(
-      {
+    return this.database.transaction(() => {
+      const target = this.users.findById(targetId);
+      if (!target) throw new HttpError(404, "user_not_found", "No user with that id.");
+      this.guardLastAdmin(actor, target, patch);
+      const now = this.clock();
+      const updated = this.users.update(target.id, patch, now);
+      if (patch.disabled === true) this.sessions.revokeAllForUser(target.id, now);
+      this.audit.record({
         actorUserId: actor.id,
         action: "admin.update_user",
         targetUserId: target.id,
@@ -76,10 +67,9 @@ export class AdminService {
           disabled: patch.disabled ?? null,
           complimentaryUntil: patch.complimentaryUntil === undefined ? null : (patch.complimentaryUntil?.toISOString() ?? "cleared"),
         },
-      },
-      now,
-    );
-    return this.view(updated);
+      }, now);
+      return this.view(updated);
+    });
   }
 
   stats(): AdminStats {

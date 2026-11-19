@@ -1,0 +1,124 @@
+:root {
+  --canvas: #f6f5f1;
+  --surface: #fffefa;
+  --subtle: #f4f2ee;
+  --selected-bg: #f9e8dc;
+  --selected-line: #e8d5c5;
+  --green-ink: #75452d;
+  --secondary-ink: #565751;
+  --icon: #726d62;
+  --attention: #744a16;
+  --warning-bg: #fcf0d7;
+  --warning-soft: #faf5e8;
+  --warning-line: #e6d2a8;
+  --highlight: #f6e4ae;
+  --error-text: #862d21;
+  --error-bg: #fff1ec;
+  --error-line: #ebc0b6;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --canvas: #181a1b;
+  --surface: #242628;
+  --subtle: #2b2d2f;
+  --selected-bg: #423229;
+  --selected-line: #6a5040;
+  --green-ink: #ffc4a3;
+  --secondary-ink: #c3c1bd;
+  --icon: #b5aaa0;
+  --attention: #f4d599;
+  --warning-bg: #3f301d;
+  --warning-soft: #2d2a20;
+  --warning-line: #735a34;
+  --highlight: #5c4928;
+  --error-text: #ffc0ac;
+  --error-bg: #40291f;
+  --error-line: #7d5446;
+  --ink: #f4f1ea;
+  --muted: #bcbab4;
+  --line: #414344;
+  --green: #ffc4a3;
+  --color-primary: #ffbc99;
+  --color-primary-foreground: #2b1f18;
+  --color-secondary: #423229;
+  --color-secondary-foreground: #f6dfca;
+  --color-background: #252628;
+  --color-accent: #423229;
+  --color-accent-foreground: #ffe5d4;
+  --color-muted-foreground: #c0bcb6;
+  --color-foreground: #f4f1ea;
+  --color-ring: #f6a176;
+  --color-input: #77736d;
+  --color-destructive: #913d30;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --canvas: #181a1b;
+    --surface: #242628;
+    --subtle: #2b2d2f;
+    --selected-bg: #423229;
+    --selected-line: #6a5040;
+    --green-ink: #ffc4a3;
+    --secondary-ink: #c3c1bd;
+    --icon: #b5aaa0;
+    --attention: #f4d599;
+    --warning-bg: #3f301d;
+    --warning-soft: #2d2a20;
+    --warning-line: #735a34;
+    --highlight: #5c4928;
+    --error-text: #ffc0ac;
+    --error-bg: #40291f;
+    --error-line: #7d5446;
+    --ink: #f4f1ea;
+    --muted: #bcbab4;
+    --line: #414344;
+    --green: #ffc4a3;
+    --color-primary: #ffbc99;
+    --color-primary-foreground: #2b1f18;
+    --color-secondary: #423229;
+    --color-secondary-foreground: #f6dfca;
+    --color-background: #252628;
+    --color-accent: #423229;
+    --color-accent-foreground: #ffe5d4;
+    --color-muted-foreground: #c0bcb6;
+    --color-foreground: #f4f1ea;
+    --color-ring: #f6a176;
+    --color-input: #77736d;
+    --color-destructive: #913d30;
+  }
+}
+
+.appearance fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+.appearance legend {
+  font-size: 13px;
+  font-weight: 580;
+  margin-bottom: 9px;
+}
+.appearance fieldset > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.appearance label {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 7px 10px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.appearance label:has(:checked) {
+  background: var(--selected-bg);
+  color: var(--green-ink);
+  border-color: var(--selected-line);
+}
+.appearance input {
+  accent-color: var(--green);
+}

@@ -8,11 +8,28 @@ Name = Annotated[str, StringConstraints(min_length=1, max_length=180)]
 Question = Annotated[str, StringConstraints(min_length=1, max_length=4000)]
 Body = Annotated[str, StringConstraints(min_length=1, max_length=24000)]
 RequestID = Annotated[UUID, Field(strict=False)]
+RoleVersion = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
 Disposition = Literal["pending", "explained", "unresolved", "disclosed"]
+EARLIER_ANSWER_NOTE = "Note from an earlier answer version:\n"
+REVIEW_NOTE_LIMIT = 12000
+
+
+def validate_note_length(note: str) -> str:
+    if len(note.removeprefix(EARLIER_ANSWER_NOTE)) > REVIEW_NOTE_LIMIT:
+        raise ValueError(f"The interviewer note exceeds {REVIEW_NOTE_LIMIT} characters.")
+    return note
 
 
 class Input(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True, strict=True)
+
+
+class PermittedMaterial(Input):
+    label: Name
+    text: Annotated[str, StringConstraints(min_length=1, max_length=12000)]
+
+
+Materials = Annotated[list[PermittedMaterial], Field(max_length=8)]
 
 
 class SessionInput(Input):
@@ -20,8 +37,16 @@ class SessionInput(Input):
     candidate: Name
     role: Name
     role_id: RequestID | None = None
-    policy: Question
+    role_version: RoleVersion | None = None
+    policy: Question | None = None
+    permitted_sources: Materials | None = None
     consent: bool
+
+    @model_validator(mode="after")
+    def require_versioned_role_id(self):
+        if self.role_version is not None and self.role_id is None:
+            raise ValueError("A role version requires a selected role ID.")
+        return self
 
     @field_validator("consent")
     @classmethod
@@ -37,16 +62,31 @@ class Reference(Input):
     permitted: bool = False
 
 
-class AnswerInput(Input):
+class OriginInput(Input):
+    parent_answer_id: RequestID | None = None
+    planned_slot: int | None = Field(default=None, ge=1, le=2147483647)
+
+
+class AnswerInput(OriginInput):
     id: RequestID | None = None
     question: Question
     answer: Body
     references: list[Reference] = Field(default_factory=list, max_length=12)
 
 
+class AnswerEdit(AnswerInput):
+    expected_revision: int | None = Field(default=None, ge=1)
+
+
 class ReviewInput(Input):
+    expected_revision: int | None = Field(default=None, ge=1)
     disposition: Disposition
-    note: str = Field(max_length=12000)
+    note: str = Field(max_length=REVIEW_NOTE_LIMIT + len(EARLIER_ANSWER_NOTE))
+
+    @field_validator("note")
+    @classmethod
+    def check_note_length(cls, value):
+        return validate_note_length(value)
 
     @model_validator(mode="after")
     def require_disclosure_note(self):
@@ -56,6 +96,9 @@ class ReviewInput(Input):
 
 
 class RoleInput(Input):
+    version: RoleVersion | None = None
+    policy: str = Field(default="", max_length=4000)
+    permitted_sources: Materials = Field(default_factory=list)
     id: RequestID | None = None
     name: Name
     description: str = Field(default="", max_length=24000)

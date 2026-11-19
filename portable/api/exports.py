@@ -11,9 +11,11 @@ from starlette.background import BackgroundTask
 from fastapi import APIRouter
 from fastapi.responses import HTMLResponse, StreamingResponse
 
-from . import store
+from . import review_brief, store
+from .lineage import description as origin_description
 
 router = APIRouter()
+router.include_router(review_brief.router)
 
 
 def csv_cell(value):
@@ -32,12 +34,15 @@ def csv_row(values):
 def archive_rows():
     yield "\ufeff" + csv_row(["Session ID", "Date", "Candidate", "Role", "Resource policy", "Notice recorded",
                              "Question", "Answer", "Comparison", "Source", "First matched excerpt",
-                             "Interviewer disposition", "Interviewer note", "Native score", "Native verdict"])
+                             "Interviewer disposition", "Interviewer note", "Native score", "Native verdict", "Permitted source snapshot",
+                             "Exchange ID", "Parent exchange ID", "Planned slot", "Planned question"])
     with store.connection() as db:
         # A left join retains interviews for which no answer was captured.
         cursor = db.execute("""SELECT s.id,s.created_at,s.candidate,s.role,s.policy,s.consent,
-            a.question,a.answer,a.status,a.result,a.disposition,a.note,a.legacy
-            FROM sessions s LEFT JOIN answers a ON a.session_id=s.id
+            a.question,a.answer,a.status,a.result,a.disposition,a.note,a.legacy,c.permitted_sources,
+            a.id exchange_id,a.parent_answer_id,a.planned_slot,
+            CASE WHEN a.planned_slot>0 THEN json_extract(c.questions,'$['||(a.planned_slot-1)||']') END planned_question
+            FROM active_sessions s LEFT JOIN answers a ON a.session_id=s.id LEFT JOIN session_context c ON c.session_id=s.id
             ORDER BY s.created_at DESC,s.id,a.rowid""")
         for row in cursor:
             result = json.loads(row["result"]) if row["result"] else {}
@@ -46,7 +51,8 @@ def archive_rows():
             yield csv_row([row["id"], row["created_at"], row["candidate"], row["role"], row["policy"],
                            "Yes" if row["consent"] else "Unknown", row["question"], row["answer"], row["status"],
                            passage.get("label"), passage.get("answer_excerpt"), row["disposition"], row["note"],
-                           (legacy.get("score") or {}).get("percent"), (legacy.get("label") or {}).get("label")])
+                           (legacy.get("score") or {}).get("percent"), (legacy.get("label") or {}).get("label"), row["permitted_sources"] or "[]",
+                           row["exchange_id"], row["parent_answer_id"], row["planned_slot"], row["planned_question"]])
 
 
 @router.get("/exports/interviews.csv")
@@ -82,10 +88,12 @@ def text_block(title, value):
     return f"<h3>{escape(title)}</h3><p>{escape(str(value))}</p>"
 
 
-def print_answer(index, record):
+def print_answer(index, record, origin):
     finding = record["result"]
     blocks = [f"<article><h2>Question {index}</h2><p>{escape(record['question'])}</p>",
               text_block("Captured answer", record["answer"]), text_block("Comparison", finding["explanation"])]
+    if origin:
+        blocks.append(text_block("Question origin", origin))
     for item in finding["passages"]:
         blocks.extend([text_block("Source", item["label"]), text_block("Total matching words", item["words"]),
                        text_block("Candidate excerpt", item["answer_excerpt"]), text_block("Source excerpt", item["source_excerpt"])])
@@ -106,12 +114,15 @@ def print_view(sid: UUID):
     meta = "".join(f"<dt>{label}</dt><dd>{escape(value)}</dd>" for label, value in [
         ("Role", session["role"]), ("Date", session["created_at"]), ("Finished", session["ended_at"] or "In progress"), ("Resource policy", session["policy"]),
         ("Candidate notice recorded", "Yes" if session["consent"] else "Unknown")])
-    answers = "".join(print_answer(i, item) for i, item in enumerate(session["answers"], 1))
+    materials = "".join(text_block("Permitted source: " + source["label"], source["text"]) for source in session["permitted_sources"])
+    ordinals = {a["id"]: idx for idx, a in enumerate(session["answers"], 1)}
+    answers = "".join(print_answer(i, a, origin_description(a, session["planned_questions"], ordinals))
+                      for i, a in enumerate(session["answers"], 1))
     legacy = session.get("legacy")
     metadata = ("<h2>Original native session record</h2><pre>" + escape(json.dumps(legacy, indent=2, ensure_ascii=False))
                 + "</pre>") if legacy else ""
     return HTMLResponse(f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>{escape(heading)}</title>
 <style>{STYLE}</style></head><body><nav aria-label="Report actions"><button onclick="window.print()">Print or save PDF</button></nav>
-<main><h1>{escape(heading)}</h1><dl>{meta}</dl><p>Shared wording requires interpretation against the interview rules.</p>
+<main><h1>{escape(heading)}</h1><dl>{meta}</dl>{materials}<p>Shared wording requires interpretation against the interview rules.</p>
 {answers or "<p>No answers recorded.</p>"}{metadata}</main></body></html>""")

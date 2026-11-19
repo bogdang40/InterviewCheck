@@ -15,6 +15,7 @@ from icalendar import Calendar
 from .calendar_sources import calendar_file
 from .provider_http import setting
 
+SETTINGS = ("IMAP_HOST", "IMAP_USERNAME", "IMAP_PASSWORD")
 PART_LIMIT = 400_000
 SEARCH_WINDOW = 500
 MESSAGE_LIMIT = 60
@@ -156,7 +157,7 @@ def read_mailbox(mail, now, *, deadline):
 
 def sync_imap():
     """The endpoint accepts no hostname or credentials from the browser."""
-    host, user, password = (setting(name) for name in ("IMAP_HOST", "IMAP_USERNAME", "IMAP_PASSWORD"))
+    host, user, password = (setting(name) for name in SETTINGS)
     folder = os.getenv("IMAP_FOLDER", "INBOX")
     if not folder or any(ch in folder for ch in ('"', '\\', '\r', '\n')) or not folder.isascii():
         raise HTTPException(503, "Set IMAP_FOLDER to a valid ASCII mailbox name.")

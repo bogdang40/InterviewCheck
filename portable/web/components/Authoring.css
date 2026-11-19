@@ -1,0 +1,31 @@
+.authoring-panel .outgoing-fields {
+  border: 1px solid var(--line);
+  padding: 12px;
+  border-radius: 6px;
+  background: var(--surface);
+}
+.outgoing-fields dl {
+  margin: 7px 0 0;
+}
+.outgoing-fields dt {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  margin-top: 5px;
+}
+.outgoing-fields dd {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 170px;
+  overflow: auto;
+}
+.authoring-panel .recipient-row {
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+}
+.recipient-row legend {
+  padding-right: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}

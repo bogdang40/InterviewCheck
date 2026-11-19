@@ -1,0 +1,30 @@
+.panel {
+  padding: 14px 18px;
+  min-width: 0;
+}
+.panel summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-weight: 600;
+}
+.panel[open] summary {
+  margin-bottom: 12px;
+}
+.range {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  font-variant-numeric: tabular-nums;
+}
+.file {
+  overflow-wrap: anywhere;
+}
+.video {
+  display: block;
+  max-width: 100%;
+  max-height: 18rem;
+  background: #18211c;
+}

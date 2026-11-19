@@ -100,3 +100,68 @@ python -m pytest -q tests/test_mailbox.py tests/test_ats_notes.py
 These tests use a scripted mailbox and mocked ATS transports. They exercise TLS configuration, read only access, calendar part selection, changed and cancelled invitations, destination confirmation, explicit private visibility and duplicate send protection.
 
 Workable writes comments restricted to administrators when `WORKABLE_MEMBER_ID` is configured. Recruitee resolves the token owner's admin ID and restricts a protected note to that admin. [Workable comment visibility](https://workable.readme.io/reference/comment-on-candidate), [Recruitee API](https://apidocs.recruitee.com/).
+
+## Conflicting edits
+
+Each saved answer has one revision for the transcript, sources, disposition and note. The first revision is 1. A material change increments it. The browser sends its draft's `expected_revision` on PUT and PATCH. A stale request receives HTTP 409 and the header `X-InterviewCheck-Conflict: answer-revision`. Reloading the saved exchange shows its latest content alongside the editable draft. The reviewer can keep editing the draft against that version or discard it. This also applies before moving to the next pending review. Existing records receive revision 1 on upgrade. Clients that omit `expected_revision` keep their original update behavior.
+
+## Import a WebVTT conversation
+
+Open a consented interview in progress and choose **Import transcript exchanges**. Select the candidate and each interviewer. The importer groups adjacent interviewer cues into prompts and candidate cues into answers. Other speakers interrupt a pair. The preview counts unassigned cues, standalone candidate turns and unanswered prompts. Inspect the question and answer text, edit either, and select the exchanges to save. The existing **Import a meeting transcript** control inside the exchange editor still imports one exchange.
+
+The browser reads a WebVTT file of up to 2 MB with up to 10,000 cues. It accepts named voice tags and names followed by a colon. One cue must have a single speaker and valid timestamps. Only the selected exchanges, speaker names, timestamps and file fingerprint go to the local service. Each submission can include up to 100 exchanges with a combined maximum of 500,000 characters. Each selected question can contain up to 4,000 characters and each answer up to 24,000.
+
+POST `/api/sessions/{id}/imports/webvtt` accepts `request_id`, `transcript_sha256`, `candidate_speaker`, `interviewer_speakers` and a list of `exchanges`. Each list item carries its ordinal, start and end in milliseconds, question and answer. The browser includes the first and last cue indexes to distinguish distinct turns even when their timestamps coincide. API clients that omit cue indexes must provide distinct time ranges. The service saves the batch and its receipt in one SQLite transaction. It returns the number saved, the number already imported, the ordered answer IDs and a replay indicator. A repeated request with the same input returns the same IDs. Changing the selection under a previously committed request ID returns HTTP 409. An exact receipt replay can be acknowledged after the session finishes. New selections require an open session and recorded notice.
+
+Each imported exchange retains its original fingerprint, speaker mapping, ordinal, time range and any supplied cue indexes. Changing the selected interviewers or display ordinal leaves an unchanged turn identifiable by its original candidate and cue coordinates. Identical text at two positions produces distinct records. A fresh request for an already imported exchange skips it even after an interviewer edits it. Submitting different source text for the same original position returns a conflict and rolls back the request. Deselect a conflicting exchange or edit it in the interview record. Raw source files and file names are not stored.
+
+## Role policies and permitted sources
+
+Save the assistance policy and up to eight named permitted sources in a role template. Each source accepts a name of up to 180 characters and text of up to 12,000 characters. Selecting a template on the setup form copies its values into the draft. The interviewer can edit those values and confirm the notice before starting capture. The new interview keeps its own copy. Later template changes apply to future interviews.
+
+The session detail returns the policy and its `permitted_sources` snapshot. Live draft comparison, saving, editing and evaluating imported exchanges apply the same snapshot. Each answer stores its own explicit comparison sources separately. Markdown, the print view and archive CSV include the agreed materials. Older roles and sessions receive an empty source list on upgrade.
+
+## Review brief
+
+Open an interview and choose **Review brief** for a handoff based on saved outcomes. The default Markdown identifies the interview by its local session UUID and refers to exchanges by their order. It includes capture state, comparison counts and mutually exclusive interviewer outcome counts. Pending review counts only passage matches awaiting review. Exchanges with a pending disposition and no match have their own group. Human disclosures and unresolved outcomes are recorded independently of the comparison result.
+
+The default brief omits names, role, policy text, questions, answers, prompts, source labels and passages, notes and native records. The local preview controls use exchange UUIDs to select text. Select individual answer excerpts or notes under **Choose excerpts and notes** to include them. An excerpt contains at most 240 Unicode characters from the beginning of the saved answer. An included note contains its full saved text. Either may identify people. The full evidence report, print view and archive CSV remain separate exports.
+
+Downloading compares the current brief against the preview digest. If its content changed, refresh the preview and inspect it again. The brief is downloaded locally. It has no send action.
+
+## Play a local source recording
+
+Select an exchange imported from WebVTT and open **Local recording playback**. Choose the recording that corresponds to that transcript. The display identifies the candidate speaker and the imported exchange start and end times. Confirm the match before pressing **Play excerpt**. An interval can include both the interviewer's prompt and the candidate's reply. The operator can pause, resume or replay it. An empty interval, an unreadable recording, an unknown duration, or an interval outside the recording disables playback.
+
+The browser opens a temporary object URL for the selected file. Playback does not upload media, write to the interview database, call a transcription provider, or identify the recording automatically. Changing questions pauses playback. A selected file remains available only for exchanges in the same session with the same transcript fingerprint. Selecting a different transcript, removing the recording or leaving the interview releases the file handle. Use capture and transcription separately if new words need to be added to the interview.
+
+## Trash and permanent deletion
+
+Select **Move to Trash** on an interview and confirm. Trash removes the interview from the normal archive, queue, exports, recipient lookups and direct review URLs. **Undo move** and **Restore interview** return the original record, including its notice, finished state, saved draft and review notes. Trash has no automatic purge schedule.
+
+To erase local interview data, open **Trash**, choose **Delete permanently**, and enter the exact interview ID shown there. Restore and purge requests carry an opaque version for that move. A stale confirmation cannot affect a record that was restored and moved again. Permanent deletion removes the session, exchanges, draft, source snapshot, import receipts and local ATS delivery history in one transaction. Shared role templates remain available.
+
+A note dispatched to an external ATS before removal cannot be recalled here. An in-flight lookup or delivery response cannot recreate a purged record or return its private recipient. After restoring a session with an attempted delivery, check the ATS before sending another note. Previously exported documents and external backups remain under the operator's control. Running the native importer against an existing trashed interview skips it. Explicitly importing the original native snapshot after permanent deletion can create a new local copy.
+
+## Find records
+
+Quick search sends a literal query to the authenticated service by POST. It matches role names, candidate names, session roles, questions and answers, and excludes private notes, source texts and credentials. Exact and prefix title matches take precedence over answer body matches. A search response includes up to 50 distinct records with a bounded excerpt of the matching field. Trashed sessions and their answers are excluded.
+
+The interview archive loads 25 summaries per page. Its URL preserves the candidate or role filter, capture state, evidence status, sort and page. The home page returns full counts alongside up to ten sessions awaiting review and five active sessions. Each queued link opens the first pending match in capture order. Existing clients can still read the original session list endpoint.
+
+## Question origins
+
+A new exchange can have one explicit origin. Choose a **Planned question** to link its one based slot in this interview's frozen plan, or select **Parent exchange** to link a follow up. The **Ask this follow up** action fills the suggested question and selects its parent. Editing the question wording preserves the link. Select a different origin to replace it, or clear the current selection to remove it. An imported, manual or older exchange has no recorded lineage until an operator explicitly assigns one.
+
+In the focused interview, **Question plan** shows how many slots have a recorded exchange. Identical prompt text in different slots counts separately. An unlinked answer with matching wording does not count toward a slot. Parent and child question buttons navigate the recorded links. Saving a draft, resuming it, publishing and restoring a workspace backup retain these relationships. A parent must exist in the same interview; an exchange cannot parent itself or create a cycle. Full Markdown, print and archive CSV exports include recorded origins. The default redacted review brief does not add this material.
+
+Clients can supply `parent_answer_id` or `planned_slot` when creating or updating an exchange or saved draft. Omit both on update to preserve the existing origin. Supplying either field sets the origin pair; explicit nulls clear it.
+
+
+## Workspace recovery
+
+Open **Data** to download a whole workspace or one interview and its linked role. The JSON contains private interview records, permitted material, review notes, saved drafts and their provenance. A whole workspace includes interviews already in Trash. Account credentials, billing, external send history and operation tokens are outside this archive.
+
+Select a local backup and choose **Preview restore**. The server checks the format, graph, word matches and snapshot against the file and compares stable record IDs with the target. The preview lists new records, identical records, conflicts and saved drafts. A conflicting ID blocks the entire restore. On explicit **Restore new records**, the server checks the same file and database again inside one write transaction. A fresh Trash operation version is issued for each restored trashed interview.
+
+JSON restore has a 20 MiB file limit. Export smaller sets as individual interviews where appropriate. For a complete large deployment, use SQLite's consistent backup procedure and retain any separate account database under the operator's storage policy. The service does not automatically delete backup files when an interview is purged.

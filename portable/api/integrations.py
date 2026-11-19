@@ -6,6 +6,8 @@ from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
 from . import access, access_admin, ats, audio, booking_sources, meeting_files, oauth_tokens
+from .connection_catalog import router as catalog
+from .mailbox import SETTINGS as MAIL_SETTINGS
 from .calendar_sources import calendar_file, cloud_calendar
 from .provider_http import configured, fetch_json, setting
 
@@ -20,7 +22,7 @@ workspace = APIRouter(dependencies=[Depends(access.require_entitlement)])
 @router.get("/status")
 def status():
     calendars = [name for name in ("google", "microsoft") if oauth_tokens.available(name)]
-    if all(configured(key) for key in ("IMAP_HOST", "IMAP_USERNAME", "IMAP_PASSWORD")):
+    if all(configured(key) for key in MAIL_SETTINGS):
         calendars.append("imap")
     return {"transcription": configured("DEEPGRAM_API_KEY"),
             "reference": configured("OPENAI_API_KEY") and configured("INTERVIEWCHECK_REFERENCE_MODEL"),
@@ -93,4 +95,5 @@ async def candidate_lookup(provider: ats.ATS, body: CandidateLookup):
     return {"items": await ats.lookup(provider, body.email)}
 
 
+workspace.include_router(catalog)
 router.include_router(workspace)

@@ -39,7 +39,7 @@ export function MeetingRecordings({ providers, enabled, receive, onBusy }: {
         setFiles(await post<Files>("recordings/" + name));
       })}>List {vendors[name]} files</Button>)}</div>
     {files && (files.items.length ? <label className="field">Recent recordings and transcripts
-      <select value={selected?.id || ""} onChange={e => { setSelected(files.items.find(f => f.id === e.target.value)); setSend(false); }}>
+      <select disabled={busy} value={selected?.id || ""} onChange={e => { setSelected(files.items.find(f => f.id === e.target.value)); setSend(false); }}>
         <option value="">Select a file</option>{files.items.map(f => <option key={f.id} value={f.id}>{f.start.slice(0,10)} · {f.title} · {f.kind}</option>)}
       </select></label> : <p>No files returned for the last 30 days.</p>)}
     {files?.note && <p className="muted">{files.note}</p>}
@@ -57,26 +57,5 @@ export function MeetingRecordings({ providers, enabled, receive, onBusy }: {
     </>}
     {busy && <p role="status">Reading meeting file…</p>}
     {error && <p role="alert" className="notice">{error}</p>}
-  </div>;
-}
-
-export function RecordingExcerpt({ segments, select }: { segments: Segment[]; select: (text: string) => void }) {
-  const [speaker, setSpeaker] = useState("");
-  const turns: Segment[] = [];
-  for (const segment of segments) {
-    const previous = turns.at(-1);
-    if (previous?.speaker === segment.speaker) previous.text += " " + segment.text;
-    else turns.push({ ...segment });
-  }
-  const choices = turns.filter(turn => turn.speaker === speaker);
-  return <div className="stack"><label className="field">Candidate voice
-    <select value={speaker} onChange={e => setSpeaker(e.target.value)}><option value="">Select a speaker</option>
-      {[...new Set(turns.map(s => s.speaker))].map(s => <option key={s} value={s}>
-        {s === "Unknown" ? "Unassigned voice" : s} · {turns.find(t => t.speaker === s)?.text.slice(0, 64)}
-      </option>)}</select></label>
-    {speaker && <label className="field">Answer excerpt
-      <select key={speaker} defaultValue="" onChange={e => { if (e.target.value) select(choices[Number(e.target.value)].text); }}>
-        <option value="">Select the candidate’s turn</option>{choices.map((turn, i) => <option key={i} value={i}>{i+1}. {turn.text.slice(0, 100)}</option>)}
-      </select></label>}
   </div>;
 }

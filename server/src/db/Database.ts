@@ -1,5 +1,5 @@
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
-import { mkdirSync } from "node:fs";
+import { closeSync, mkdirSync, openSync } from "node:fs";
 import { dirname } from "node:path";
 
 export type SqlParam = SQLInputValue;
@@ -15,7 +15,8 @@ export class Database {
 
   constructor(path: string) {
     if (path !== ":memory:") {
-      mkdirSync(dirname(path), { recursive: true });
+      mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+      closeSync(openSync(path, "a", 0o600));
     }
     this.connection = new DatabaseSync(path);
     this.connection.exec("PRAGMA journal_mode = WAL");

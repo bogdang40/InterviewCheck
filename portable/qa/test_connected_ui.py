@@ -1,5 +1,5 @@
 """Exercise the mounted UI, FastAPI and storage with synthetic provider responses."""
-from unittest.mock import AsyncMock
+from unittest.mock import ANY, AsyncMock
 from uuid import uuid4
 
 import httpx
@@ -22,6 +22,7 @@ def test_role_authoring(workspace_url, browser_page, monkeypatch):
     page.get_by_role("button", name="Draft questions", exact=True).click()
     expect(page.get_by_role("textbox", name="Planned questions, one per line")).to_have_value(question)
     page.get_by_role("button", name="Save role").click()
+    expect(page.get_by_role("button", name="Edit role", exact=True)).to_be_visible()
     expect(page.get_by_text("Release engineer", exact=True)).to_be_visible()
     assert httpx.get(workspace_url + "/api/roles").json()[0]["questions"] == [question]
     generate.assert_awaited_once()
@@ -55,7 +56,7 @@ def test_note_preview_requires_confirmation_after_edit(workspace_url, browser_pa
     check.check()
     send.click()
     expect(page.get_by_text("The provider accepted the private note.")).to_be_visible()
-    delivery.assert_awaited_once_with("lever", remote_id, "Reviewed by test operator.")
+    delivery.assert_awaited_once_with("lever", remote_id, "Reviewed by test operator.", before_send=ANY)
     page.get_by_text("Delivery history", exact=True).click()
     expect(page.get_by_text("lever · Test record · Accepted by provider")).to_be_visible()
 

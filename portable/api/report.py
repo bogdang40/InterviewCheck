@@ -2,6 +2,8 @@
 import json
 import re
 
+from .lineage import description as origin_description
+
 
 def literal(text):
     # An indented code block prevents transcript text from creating HTML or links.
@@ -19,10 +21,16 @@ def report(session):
         f"Candidate notice recorded: {'Yes' if session['consent'] else 'Unknown'}", "",
         "### Agreed resources", "", literal(session["policy"]), "",
         "Shared wording requires interpretation against the interview rules.", ""]
+    for material in session.get("permitted_sources", []):
+        lines += ["### Permitted source", "", literal(material["label"] + "\n" + material["text"]), ""]
+    ordinals = {a["id"]: number for number, a in enumerate(session["answers"], 1)}
     for i, record in enumerate(session["answers"], 1):
         finding = record["result"]
         lines += [f"## Question {i}", "", literal(record["question"]), "", "### Captured answer", "",
                   literal(record["answer"]), "", "### Comparison", "", finding["explanation"], ""]
+        origin = origin_description(record, session.get("planned_questions", []), ordinals)
+        if origin:
+            lines += ["### Question origin", "", literal(origin), ""]
         for passage in finding["passages"]:
             lines += [f"**{heading(passage['label'])}** ({passage['words']} words)", "",
                       "Candidate excerpt", "", literal(passage["answer_excerpt"]), "",

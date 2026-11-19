@@ -19,6 +19,7 @@ describe("auth flow over HTTP", () => {
   it("signs up, returns a token, and /me works with it", async () => {
     const response = await post(harness.app, "/v1/auth/signup", { email: "Person@Example.com", password: "a-long-password" });
     expect(response.status).toBe(201);
+    expect(response.headers.get("cache-control")).toBe("no-store");
     const body = await json<SignedInResponse>(response);
     expect(body.token.startsWith("mm_")).toBe(true);
     expect(body.user.email).toBe("person@example.com");
@@ -53,6 +54,17 @@ describe("auth flow over HTTP", () => {
       post(harness.app, "/v1/auth/signup", { email: "race@example.com", password: "a-long-password" }),
     ]);
     expect(attempts.map((r) => r.status).sort()).toEqual([201, 409]);
+  });
+
+  it("rolls back signup if session creation fails so the request can be retried", async () => {
+    const database = harness.container.database;
+    const form = { email: "retry@example.com", password: "a-long-password" };
+    database.exec("CREATE TRIGGER reject_session BEFORE INSERT ON sessions BEGIN SELECT RAISE(ABORT, 'session failed'); END");
+    expect((await post(harness.app, "/v1/auth/signup", form)).status).toBe(500);
+    expect(harness.container.users.findByEmail(form.email)).toBeNull();
+    expect(database.get("SELECT 1 FROM audit_log WHERE action = 'auth.signup'")).toBeUndefined();
+    database.exec("DROP TRIGGER reject_session");
+    expect((await post(harness.app, "/v1/auth/signup", form)).status).toBe(201);
   });
 
   it("rejects oversized bodies with 413", async () => {

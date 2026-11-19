@@ -26,6 +26,7 @@ function subscription(overrides: Partial<Subscription> = {}): Subscription {
   return {
     id: "sub_1",
     userId: "u1",
+    stripeCustomerId: null,
     status: "active",
     priceId: "price_monthly",
     plan: "monthly",
@@ -71,6 +72,16 @@ describe("EntitlementResolver", () => {
     const soon = new Date(NOW.getTime() + 2 * DAY);
     const result = resolver.resolve(user(), subscription({ currentPeriodEnd: soon }), NOW);
     expect(result.graceUntil).toBe(soon.toISOString());
+  });
+
+  it("bounds access without a period end by the last subscription update", () => {
+    const sub = subscription({ currentPeriodEnd: null, updatedAt: new Date(NOW.getTime() - DAY) });
+    expect(resolver.resolve(user(), sub, NOW).expiresAt).toBe(new Date(NOW.getTime() + 6 * DAY).toISOString());
+    expect(resolver.resolve(user(), sub, new Date(NOW.getTime() + 7 * DAY)).active).toBe(false);
+  });
+
+  it("does not grant access for an unrecognized price", () => {
+    expect(resolver.resolve(user(), subscription({ plan: null }), NOW).active).toBe(false);
   });
 
   it("measures past_due grace from the status change, not the (already advanced) period end", () => {

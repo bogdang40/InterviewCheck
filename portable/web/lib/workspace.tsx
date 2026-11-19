@@ -10,7 +10,11 @@ export const PreparationContext = createContext({
   prepare: (_input?: Preparation) => {},
 })
 export const usePreparation = () => useContext(PreparationContext)
-export const interviewURL = (id: string) => "/interviews/review/?id=" + encodeURIComponent(id)
+export function interviewURL(id: string, answerId?: string | null) {
+  const params = new URLSearchParams({ id })
+  if (answerId) params.set("answer", answerId)
+  return "/interviews/review/?" + params.toString()
+}
 
 export function useResource<T>(path: string | null) {
   const [resource, setResource] = useState<{ path: string; value: T } | null>(null)

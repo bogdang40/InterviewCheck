@@ -3,10 +3,12 @@ import { api, message, type Answer, type Source } from "@/lib/api"
 import { Findings } from "./Evidence"
 
 export default function LiveComparison({
+  sessionId,
   question,
   answer,
   sources,
 }: {
+  sessionId: string
   question: string
   answer: string
   sources: Source[]
@@ -21,7 +23,7 @@ export default function LiveComparison({
     if (!open || !ready) return
     const controller = new AbortController()
     const timer = window.setTimeout(() => {
-      api<Answer["result"]>("preview", "POST", { question, answer, references: sources }, controller.signal)
+      api<Answer["result"]>(`sessions/${sessionId}/preview`, "POST", { question, answer, references: sources }, controller.signal)
         .then((data) => {
           if (!controller.signal.aborted) setResult(data)
         })
@@ -33,7 +35,7 @@ export default function LiveComparison({
       window.clearTimeout(timer)
       controller.abort()
     }
-  }, [open, ready, question, answer, sources])
+  }, [open, ready, sessionId, question, answer, sources])
   return (
     <details className="import" onToggle={(e) => setOpen(e.currentTarget.open)}>
       <summary>Live comparison</summary>

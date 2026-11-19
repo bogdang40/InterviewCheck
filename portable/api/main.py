@@ -7,22 +7,28 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import ats_notes, authoring, store
-from .access import require_entitlement
+from . import ats_notes, authoring, backup, drafts, store, trash
+from .access import embedded_enabled, require_entitlement
 from .evidence import compare
 from .integrations import router as integrations
 from .local_boundary import LocalBoundary
 from .origin import public_origin
 from .migrate import import_role, preview_role
+from .discovery import router as discovery
+from .interview_catalog import router as interview_catalog
 from .exports import router as exports
-from .models import AnswerInput, ReviewInput, RoleInput, SessionInput
+from .models import AnswerEdit, AnswerInput, ReviewInput, RoleInput, SessionInput
 from .report import report
 from .session_workflow import router as session_workflow
+from .transcript_import import router as transcript_import
 
 
 @asynccontextmanager
 async def lifespan(_):
     public_origin()  # Validate configured web exposure before opening the database.
+    if embedded_enabled():
+        from .account_db import check_database
+        check_database()
     store.initialize(store.db_path())
     yield
 
@@ -52,6 +58,8 @@ async def private_content(request: Request, call_next):
 
 @app.get("/api/health")
 def health():
+    with store.connection() as db:
+        db.execute("SELECT 1 FROM sessions LIMIT 1").fetchone()
     return {"ok": True}
 
 
@@ -84,8 +92,14 @@ def add(sid: UUID, item: AnswerInput):
         return store.write_answer(db, str(sid), item)
 
 
+@workspace.get("/sessions/{sid}/answers/{aid}")
+def answer_detail(sid: UUID, aid: UUID):
+    with store.connection() as db:
+        return store.get_answer(db, str(sid), str(aid))
+
+
 @workspace.put("/sessions/{sid}/answers/{aid}")
-def revise(sid: UUID, aid: UUID, item: AnswerInput):
+def revise(sid: UUID, aid: UUID, item: AnswerEdit):
     with store.connection(write=True) as db:
         return store.write_answer(db, str(sid), item, str(aid))
 
@@ -134,8 +148,14 @@ def preview_exported_role(document: dict):
             raise HTTPException(422, str(error)) from error
 
 
+workspace.include_router(trash.router)
+workspace.include_router(drafts.router)
+workspace.include_router(backup.router)
 workspace.include_router(session_workflow)
+workspace.include_router(transcript_import)
 workspace.include_router(ats_notes.router)
+workspace.include_router(discovery)
+workspace.include_router(interview_catalog)
 workspace.include_router(exports)
 app.include_router(authoring.router)
 app.include_router(workspace)

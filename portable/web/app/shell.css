@@ -7,8 +7,9 @@
   position: sticky;
   top: 0;
   height: 100dvh;
-  background: #101e1a;
-  color: #dce7df;
+  background: var(--surface);
+  border-right: 1px solid var(--line);
+  color: var(--ink);
   padding: 27px 15px 17px;
   display: flex;
   flex-direction: column;
@@ -26,8 +27,8 @@
   font-weight: 430;
 }
 .brand-mark {
-  background: #a4edb5;
-  color: #183d29;
+  background: #252a2c;
+  color: #ffad83;
   border-radius: 8px;
   width: 35px;
   height: 35px;
@@ -46,7 +47,7 @@
 }
 .side-caption {
   font-size: 10px;
-  color: #9cafa3;
+  color: var(--muted);
   margin: 53px 14px 13px;
 }
 .sidebar nav {
@@ -61,18 +62,18 @@
   border-radius: 6px;
   padding: 11px 14px;
   font-weight: 500;
-  color: #bacac0;
+  color: var(--secondary-ink);
   font-size: 14px;
 }
 .sidebar nav a:hover,
 .sidebar-foot > a:hover {
-  background: #1b3027;
-  color: white;
+  background: var(--subtle);
+  color: var(--ink);
 }
 .sidebar nav a[aria-current] {
-  background: #263d31;
-  color: #c2f5cd;
-  box-shadow: inset 2px 0 #a3eab4;
+  background: var(--selected-bg);
+  color: var(--green-ink);
+  box-shadow: inset 2px 0 #c46d43;
 }
 .sidebar nav svg {
   width: 17px;
@@ -80,6 +81,8 @@
 }
 .sidebar-foot {
   margin-top: auto;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
 }
 .station {
   display: flex;
@@ -117,7 +120,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: #fafbf8;
+  background: var(--surface);
 }
 .breadcrumb,
 .host-label,
@@ -132,19 +135,19 @@
   align-items: center;
 }
 .breadcrumb {
-  color: #58685d;
+  color: var(--secondary-ink);
   font-size: 13px;
 }
 .breadcrumb b {
   font-weight: 580;
-  color: #23372b;
+  color: var(--green-ink);
 }
 .host-label {
   font: 11px var(--mono);
-  color: #47644f;
+  color: var(--secondary-ink);
 }
 .host-label svg {
-  color: #427f55;
+  color: var(--icon);
 }
 .content {
   max-width: 1510px;

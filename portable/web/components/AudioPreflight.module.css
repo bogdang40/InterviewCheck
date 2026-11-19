@@ -1,0 +1,23 @@
+.panel {
+  margin: 14px 0;
+  padding: 14px 18px;
+}
+.panel summary {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  cursor: pointer;
+  font-weight: 600;
+}
+.panel[open] summary {
+  margin-bottom: 10px;
+}
+.level {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.level meter {
+  width: min(100%, 16rem);
+}

@@ -31,6 +31,9 @@ class LocalBoundary:
                 await reject(403, "Missing workspace request header.")
                 return
             limit = 24 * 1024 ** 2 if scope["path"] == "/api/integrations/transcribe" else 2 * 1024 ** 2
+            if scope["path"] in {"/api/backups/preview", "/api/backups/restore"}:
+                from .backup_schema import LIMIT
+                limit = LIMIT
             try:
                 declared = int(headers.get("content-length", "0"))
             except ValueError:

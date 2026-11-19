@@ -47,11 +47,11 @@ export class BillingReturnPage {
   private static copyFor(status: "success" | "cancel" | "portal"): { title: string; body: string } {
     switch (status) {
       case "success":
-        return { title: "Subscription active", body: "Payment received. InterviewCheck unlocks automatically within a few seconds." };
+        return { title: "Checkout complete", body: "Open InterviewCheck to check whether your subscription is active." };
       case "cancel":
-        return { title: "Checkout cancelled", body: "No charge was made. You can subscribe any time from the app." };
+        return { title: "Checkout cancelled", body: "Open InterviewCheck to view your account or continue checkout." };
       case "portal":
-        return { title: "Billing updated", body: "Any changes you made are being applied to your account." };
+        return { title: "Returned from billing", body: "Open InterviewCheck to view your account status." };
     }
   }
 }

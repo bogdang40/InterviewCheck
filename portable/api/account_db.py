@@ -1,4 +1,4 @@
-"""Access database, compatible with version 3 of the original Node service."""
+"""Access database shared with the Node service."""
 import base64
 from contextlib import closing, contextmanager
 from datetime import datetime, timezone
@@ -15,6 +15,7 @@ from uuid import uuid4
 from fastapi import HTTPException
 
 DAY = 86_400_000
+VERSION = 5
 SCHEMA = [
     """CREATE TABLE users (id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL,
     role TEXT NOT NULL DEFAULT 'user', disabled INTEGER NOT NULL DEFAULT 0, trial_ends_at INTEGER,
@@ -59,8 +60,10 @@ def database():
 
 def prepare(db):
     version = db.execute("pragma user_version").fetchone()[0]
-    if version not in (0, 1, 2, 3):
+    if not 0 <= version <= VERSION:
         raise HTTPException(503, "This account database version is unsupported.")
+    if version == VERSION:
+        return
     if not version:
         if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").fetchone():
             raise HTTPException(503, "The selected file is not an account database.")
@@ -75,13 +78,14 @@ def prepare(db):
             db.execute("ALTER TABLE subscriptions ADD COLUMN status_changed_at INTEGER")
         if version < 3:
             db.execute("ALTER TABLE stripe_events ADD COLUMN applied_at INTEGER")
-    if version != 3:
-        db.execute("PRAGMA user_version=3")
+    if not db.execute("SELECT 1 FROM pragma_table_info('subscriptions') WHERE name=?", ("stripe_customer_id",)).fetchone():
+        db.execute("ALTER TABLE subscriptions ADD COLUMN stripe_customer_id TEXT")
     db.execute("CREATE TABLE IF NOT EXISTS subscription_versions (id TEXT PRIMARY KEY,version INTEGER NOT NULL)")
     db.execute("""CREATE TABLE IF NOT EXISTS checkout_requests (
         user_id TEXT PRIMARY KEY REFERENCES users(id),plan TEXT NOT NULL,request_id TEXT NOT NULL,
         expires_at INTEGER NOT NULL,return_base TEXT NOT NULL,url TEXT)""")
     db.execute("CREATE TABLE IF NOT EXISTS login_windows (address TEXT PRIMARY KEY,start INTEGER NOT NULL,hits INTEGER NOT NULL)")
+    db.execute(f"PRAGMA user_version={VERSION}")
 
 
 @contextmanager
@@ -98,7 +102,7 @@ def connection(*, write=False):
         db.execute("PRAGMA foreign_keys=ON")
         db.execute("PRAGMA trusted_schema=OFF")
         db.execute("PRAGMA journal_mode=WAL")
-        if not db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='checkout_requests'").fetchone():
+        if db.execute("PRAGMA user_version").fetchone()[0] != VERSION:
             with db:
                 db.execute("BEGIN IMMEDIATE")
                 prepare(db)
@@ -110,6 +114,12 @@ def connection(*, write=False):
 def audit(db, event, target, actor=None, details=None):
     db.execute("INSERT INTO audit_log(at,actor_user_id,action,target_user_id,details) VALUES(?,?,?,?,?)",
                (now(), actor, event, target, json.dumps(details) if details else None))
+
+
+def check_database():
+    with connection() as db:
+        db.execute("SELECT 1 FROM users LIMIT 1").fetchone()
+        db.execute("SELECT stripe_customer_id FROM subscriptions LIMIT 1").fetchone()
 
 
 def derive(password, salt):
@@ -151,26 +161,41 @@ def iso(ts):
     return datetime.fromtimestamp(ts / 1000, timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z") if ts else None
 
 
-def current_subscription(db, uid):
-    return db.execute("""SELECT * FROM subscriptions WHERE user_id=?
-        ORDER BY (status IN ('active','trialing','past_due')) DESC,updated_at DESC,rowid ASC LIMIT 1""", (uid,)).fetchone()
+def subscription_expiry(sub, offline):
+    if not sub or sub["plan"] not in {"monthly", "annual"}:
+        return 0
+    if sub["status"] in {"active", "trialing"}:
+        return sub["current_period_end"] or sub["updated_at"] + offline
+    if sub["status"] == "past_due":
+        return (sub["status_changed_at"] or sub["updated_at"]) + days("PAST_DUE_GRACE_DAYS", 3) * DAY
+    return 0
+
+
+def current_subscription(db, uid, ts, offline):
+    rows = db.execute("""SELECT * FROM subscriptions WHERE user_id=?
+        ORDER BY COALESCE(plan IN ('monthly','annual') AND status IN ('active','trialing','past_due'),0) DESC,
+                 updated_at DESC,rowid ASC""", (uid,))
+    current = rows.fetchone()
+    if subscription_expiry(current, offline) <= ts:
+        for sub in rows:
+            expiry = subscription_expiry(sub, offline)
+            if expiry > ts:
+                return sub
+            if not expiry:
+                break  # The remaining rows cannot grant paid access.
+    return current
 
 
 def snapshot(db, user):
     ts = now()
-    sub = current_subscription(db, user["id"])
     source, until = "none", None
     offline = days("OFFLINE_GRACE_DAYS", 7) * DAY
+    sub = current_subscription(db, user["id"], ts, offline)
     if not user["disabled"]:
         if user["role"] == "admin":
             source = "admin"
         else:
-            paid = 0
-            if sub and sub["plan"] in {"monthly", "annual"}:
-                if sub["status"] in {"active", "trialing"}:
-                    paid = sub["current_period_end"] or sub["updated_at"] + offline
-                elif sub["status"] == "past_due":
-                    paid = (sub["status_changed_at"] or sub["updated_at"]) + days("PAST_DUE_GRACE_DAYS", 3) * DAY
+            paid = subscription_expiry(sub, offline)
             for kind, end in (("subscription", paid), ("complimentary", user["complimentary_until"]), ("trial", user["trial_ends_at"])):
                 if end and end > ts:
                     source, until = kind, end

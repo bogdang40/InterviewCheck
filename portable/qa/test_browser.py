@@ -21,6 +21,7 @@ def test_notice_import_review_and_download(workspace_url, browser_page, tmp_path
     expect(page.get_by_role("heading", name="New interview")).to_be_visible()
     page.get_by_role("checkbox", name=re.compile("candidate knows")).check()
     page.get_by_role("button", name="Start interview").click()
+    page.wait_for_url(re.compile(r"/interviews/review/\?id=[0-9a-f-]+$"), wait_until="commit")
     expect(page.get_by_role("heading", name="Browser fixture")).to_be_visible()
 
     question = "Which measurement would you take first?"
@@ -30,7 +31,7 @@ def test_notice_import_review_and_download(workspace_url, browser_page, tmp_path
         f"00:00:06.000 --> 00:00:12.000\n<v Candidate>{answer}</v>\n"
     )
     page.get_by_text("Import a meeting transcript", exact=True).click()
-    page.locator('input[type="file"][accept*="vtt"]').set_input_files({
+    page.get_by_role("button", name="WebVTT file", exact=True).set_input_files({
         "name": "synthetic.vtt", "mimeType": "text/vtt", "buffer": vtt.encode(),
     })
     page.get_by_label("Candidate speaker").select_option("Candidate")

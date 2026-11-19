@@ -25,15 +25,19 @@ Set `INTERVIEWCHECK_WEB_PORT` and `INTERVIEWCHECK_API_PORT` to change ports. Bui
 
 ## HTTPS deployment
 
-The production workspace supports one assigned operator per deployment. Set `INTERVIEWCHECK_PUBLIC_ORIGIN` to the exact external HTTPS origin and `INTERVIEWCHECK_OPERATOR_EMAIL` to the assigned account. Configure embedded accounts with `INTERVIEWCHECK_ACCESS_MODE=embedded` or specify the remote service in `INTERVIEWCHECK_ACCESS_URL`. Configure account entitlements as described in the connection guide. Startup rejects a public origin when account binding is incomplete.
+The production workspace supports one assigned operator per deployment. Set `INTERVIEWCHECK_PUBLIC_ORIGIN` to the exact external HTTPS origin and `INTERVIEWCHECK_OPERATOR_EMAIL` to the assigned account. For embedded accounts, set `INTERVIEWCHECK_ACCESS_MODE=embedded` and configure the operator invitation as described in the connection guide. For a remote access service, provision the operator there first, set `INTERVIEWCHECK_ACCESS_URL`, and set `INTERVIEWCHECK_OPERATOR_ID` to the operator's `user.id` from the authenticated `/v1/me` response. Public remote workspaces accept sign in for this account only. Startup rejects a public origin when account binding is incomplete.
 
 Terminate TLS with an HTTPS reverse proxy on the same host. Forward the original Host and WebSocket upgrades to port 3000. Send all browser paths through that listener. Keep port 8000 on loopback. The backend checks the original authority supplied by Next.js against the configured origin. Provider webhooks need the matching `/v1` path and their provider signature. Use your registered public name, certificate and account settings before exposing a listener. A Caddy configuration for a domain you control looks like this.
 
 ```caddyfile
 interviews.example.com {
-    reverse_proxy 127.0.0.1:3000
+    reverse_proxy 127.0.0.1:3000 {
+        header_up X-InterviewCheck-Client-IP {http.request.remote.host}
+    }
 }
 ```
+
+For public embedded accounts, set `INTERVIEWCHECK_TRUST_PROXY_CLIENT_IP=1` only after the HTTPS proxy replaces `X-InterviewCheck-Client-IP` with the address it observed. The workspace accepts this header on loopback requests through the configured public origin and uses it for the sign in rate limit. Keep both application listeners on loopback.
 
 ## Static package
 

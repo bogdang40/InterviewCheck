@@ -1,11 +1,13 @@
 "use client";
 
+import AudioPreflight from "./AudioPreflight"
 import { useEffect, useState } from "react";
 import { CalendarDays, ContactRound, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { integration, submit, type ProviderStatus } from "@/lib/integrations";
-import { AccountConnection } from "./AccountConnection";
+import Link from "next/link";
+import ConnectionCatalog from "./ConnectionCatalog";
 
 type Row = { booking_id?: string; title?: string; start?: string; candidate: string; role: string };
 type Results = { items: Row[]; note?: string };
@@ -55,7 +57,8 @@ export default function Connections({ onPrepare }: { onPrepare: (candidate: stri
     finally { setBusy(false); }
   }
   return <div className="stack">
-    <section className="panel stack"><h2><CalendarDays aria-hidden size={18} /> Calendar</h2>
+    <ConnectionCatalog/>
+    <section id="connection-import" className="panel stack"><h2><CalendarDays aria-hidden size={18} /> Calendar</h2>
       <label className="field">Import calendar events
         <input type="file" accept=".ics,text/calendar" disabled={busy}
           onChange={e => { readFile(e.target.files?.[0], "calendar"); e.target.value = ""; }} /></label>
@@ -93,6 +96,7 @@ export default function Connections({ onPrepare }: { onPrepare: (candidate: stri
       <label className="field">Role<Input required disabled={busy} value={selected.role} onChange={e => setSelected({ ...selected, role: e.target.value })} /></label>
       <Button>Prepare interview</Button>
     </form>}
-    {status && <AccountConnection enabled={status.access} inviteRequired={status.inviteRequired} />}
+    <Link className="text-action" href="/account/">Account and billing settings</Link>
+    <AudioPreflight />
   </div>;
 }

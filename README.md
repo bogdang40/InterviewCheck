@@ -21,6 +21,14 @@ The sample review and the manual interview workflow run without provider keys. S
 
 See the [web runtime guide](portable/WEB.md), [connection guide](portable/CONNECTIONS.md), and [review and migration guide](portable/CORE.md). An optional [downloadable edition](portable/README.md) serves the built browser interface from FastAPI. The [implementation plan](PLAN.md) records the original detector findings.
 
+## Interview workbench
+
+Open the review queue to go directly to an exchange with a pending passage match. During capture, a saved draft survives a restart. Import a WebVTT conversation in one transaction, or play a corresponding local recording at its source interval. The role policy and permitted materials are frozen when the interview starts.
+
+Use the review brief to preview exactly what a reader will receive. Its default omits identifying fields, transcript excerpts and notes. Full reports remain available. Workspace data supports a versioned JSON backup, restore previews and a separate Trash view. The account screen contains the browser appearance preference.
+
+[Reviewed release plan](portable/WORKSPACE-ROADMAP.md) · [Workflow verification](portable/VERIFICATION.md)
+
 ## Original macOS application
 
 A Mac app for interviewers that helps spot candidates who read their answers
