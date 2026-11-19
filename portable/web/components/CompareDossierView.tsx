@@ -165,10 +165,24 @@ export default function CompareDossierView() {
           </label>
           {archive.error && <WorkspaceError text={archive.error} retry={archive.reload} />}
           {!archive.data && !archive.error && <p className="muted" role="status">Loading interviews…</p>}
-          {archive.data && archive.data.items.length === 0 && (
-            <p className="muted">No active interviews match your filter. <Link href="/interviews/">Open interviews</Link>.</p>
+          {!archive.error && archive.data && !debouncedSearch && archive.data.items.length < 2 && (
+            <div className="notice row" role="status">
+              <span>
+                {archive.data.items.length === 0
+                  ? "No active interviews yet. Create at least 2 interviews to compare candidates."
+                  : "Only 1 active interview found. Create another interview to compare 2 or more candidates."}
+              </span>
+              <Button asChild size="sm"><Link href="/interviews/new/">New interview</Link></Button>
+            </div>
           )}
-          {archive.data && archive.data.items.length > 0 && (
+          {!archive.error && archive.data && debouncedSearch && archive.data.items.length === 0 && (
+            <div className="notice row" role="status">
+              <span>No active interviews match your filter.</span>
+              <Button type="button" variant="outline" size="sm" onClick={() => setSearchText("")}>Clear search</Button>
+              <Link className="text-action" href="/interviews/">Open interviews</Link>
+            </div>
+          )}
+          {!archive.error && archive.data && archive.data.items.length > 0 && (
             <ul className={styles.pickerList}>
               {archive.data.items.map((item) => {
                 const checked = draftIds.includes(item.id)

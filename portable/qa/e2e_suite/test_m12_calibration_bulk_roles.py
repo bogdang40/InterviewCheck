@@ -155,8 +155,8 @@ def test_m12_rubric_authoring_versioning_diff_rollback_and_409_guard(e2e_workspa
     page.get_by_role("button", name="Save role").click()
     expect(role_row).to_contain_text("v2 | 2 rubric criteria")
 
-    role_row.get_by_role("button", name="Versions").click()
-    history = page.get_by_label("Version history for Distributed Systems Lead")
+    role_row.get_by_role("button", name="Version history for Distributed Systems Lead", exact=True).click()
+    history = page.get_by_role("region", name="Version history for Distributed Systems Lead")
     expect(history).to_contain_text("Current live version: v2")
     expect(history).to_contain_text("Added recovery criterion")
 
@@ -321,8 +321,8 @@ def test_m12_responsive_roles_interviews_and_trash_viewports(e2e_workspace, e2e_
     try:
         page.goto(e2e_workspace.base_url + "/roles/", wait_until="domcontentloaded")
         expect(page.get_by_role("heading", name="Role library")).to_be_visible()
-        page.locator(".role-row", has_text="Responsive Role").get_by_role("button", name="Versions").click()
-        page.get_by_label("Version history for Responsive Role").get_by_role("button", name="Inspect diff").last.click()
+        page.locator(".role-row", has_text="Responsive Role").get_by_role("button", name="Version history for Responsive Role", exact=True).click()
+        page.get_by_role("region", name="Version history for Responsive Role").get_by_role("button", name="Inspect diff").last.click()
         page.get_by_label("Role calibration analytics").get_by_role("button", name="Inspect calibration").click()
         assert_no_horizontal_overflow(page)
 

@@ -2,10 +2,11 @@
 
 import Link from "next/link"
 import { useEffect, useState } from "react"
-import { Download, FileCheck2, RotateCcw } from "lucide-react"
+import { Download, FileCheck2 } from "lucide-react"
 import { api, message } from "@/lib/api"
 import { interviewURL } from "@/lib/workspace"
 import { Button } from "./ui/button"
+import WorkspaceError from "./WorkspaceError"
 import "./ReviewBrief.css"
 
 type Exchange = { id: string; ordinal: number; has_answer: boolean; has_note: boolean }
@@ -19,6 +20,7 @@ export default function ReviewBrief({ sessionId }: { sessionId: string }) {
   const [result, setResult] = useState<{ key: string; data: Preview }>()
   const [refresh, setRefresh] = useState(0)
   const [error, setError] = useState("")
+  const [statusNote, setStatusNote] = useState("")
   const [downloading, setDownloading] = useState(false)
   const endpoint = "sessions/" + encodeURIComponent(sessionId) + "/brief"
   const key = JSON.stringify(selection) + "/" + refresh
@@ -28,10 +30,20 @@ export default function ReviewBrief({ sessionId }: { sessionId: string }) {
     setError("")
     api<Preview>(endpoint, "POST", selection, controller.signal)
       .then((data) => {
-        if (!controller.signal.aborted) setResult({ key, data })
+        if (!controller.signal.aborted) {
+          setResult({ key, data })
+          const ec = selection.excerpt_ids.length
+          const nc = selection.note_ids.length
+          setStatusNote(
+            `Preview updated: ${ec} ${ec === 1 ? "excerpt" : "excerpts"} and ${nc} ${nc === 1 ? "note" : "notes"} included.`
+          )
+        }
       })
       .catch((error) => {
-        if (!controller.signal.aborted) setError(message(error))
+        if (!controller.signal.aborted) {
+          setError(message(error))
+          setStatusNote("")
+        }
       })
     return () => controller.abort()
   }, [endpoint, key, selection])
@@ -41,6 +53,10 @@ export default function ReviewBrief({ sessionId }: { sessionId: string }) {
       ...last,
       [field]: last[field].includes(id) ? last[field].filter((item) => item !== id) : [...last[field], id],
     }))
+  }
+
+  function toggleAll(field: keyof Selection, ids: string[], selected: boolean) {
+    setSelection((last) => ({ ...last, [field]: selected ? [] : ids }))
   }
 
   async function download() {
@@ -65,14 +81,23 @@ export default function ReviewBrief({ sessionId }: { sessionId: string }) {
       link.click()
       link.remove()
       window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+      setStatusNote("Brief downloaded as review-brief-" + sessionId + ".md.")
     } catch (error) {
       setError(message(error))
+      setStatusNote("")
     } finally {
       setDownloading(false)
     }
   }
 
   const choices = result?.data.exchanges || []
+  const eligibleExcerpts = choices.filter((row) => row.has_answer).slice(0, 100).map((row) => row.id)
+  const eligibleNotes = choices.filter((row) => row.has_note).slice(0, 100).map((row) => row.id)
+  const allExcerptsSelected =
+    eligibleExcerpts.length > 0 && eligibleExcerpts.every((id) => selection.excerpt_ids.includes(id))
+  const allNotesSelected =
+    eligibleNotes.length > 0 && eligibleNotes.every((id) => selection.note_ids.includes(id))
+
   return (
     <div className="brief-layout">
       <header className="brief-heading">
@@ -92,6 +117,28 @@ export default function ReviewBrief({ sessionId }: { sessionId: string }) {
             The default brief identifies the session by ID and lists exchange numbers. Names, role, transcript
             and notes are omitted.
           </p>
+          <div className="brief-bulk-actions" role="group" aria-label="Quick selection toggles">
+            <Button
+              type="button"
+              size="sm"
+              variant={allExcerptsSelected ? "secondary" : "outline"}
+              aria-pressed={allExcerptsSelected}
+              disabled={downloading || eligibleExcerpts.length === 0}
+              onClick={() => toggleAll("excerpt_ids", eligibleExcerpts, allExcerptsSelected)}
+            >
+              Select all excerpts
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={allNotesSelected ? "secondary" : "outline"}
+              aria-pressed={allNotesSelected}
+              disabled={downloading || eligibleNotes.length === 0}
+              onClick={() => toggleAll("note_ids", eligibleNotes, allNotesSelected)}
+            >
+              Select all notes
+            </Button>
+          </div>
           <details>
             <summary>Choose excerpts and notes</summary>
             <p>
@@ -125,34 +172,42 @@ export default function ReviewBrief({ sessionId }: { sessionId: string }) {
                 ))}
               </div>
             ) : (
-              <p>{result ? "No exchanges recorded." : "Loading exchanges…"}</p>
+              <p>{result ? "No exchanges recorded." : "Loading exchanges..."}</p>
             )}
             {(selection.excerpt_ids.length > 0 || selection.note_ids.length > 0) && (
-              <Button disabled={downloading} size="sm" variant="ghost" onClick={() => setSelection(empty)}>
+              <Button
+                type="button"
+                className="brief-clear-btn"
+                disabled={downloading}
+                size="sm"
+                variant="ghost"
+                onClick={() => setSelection(empty)}
+              >
                 Clear optional details
               </Button>
             )}
           </details>
-          <Button disabled={!current || downloading || !!error} onClick={download}>
+          <Button type="button" disabled={!current || downloading || !!error} onClick={download}>
             <Download aria-hidden="true" />
             Download brief
           </Button>
           {error && (
-            <div className="error" role="alert">
-              <p>{error}</p>
-              <Button variant="outline" size="sm" onClick={() => setRefresh((n) => n + 1)}>
-                <RotateCcw aria-hidden="true" />
-                Refresh preview
-              </Button>
-            </div>
+            <WorkspaceError
+              text={error}
+              retry={() => setRefresh((n) => n + 1)}
+              retryLabel="Refresh preview"
+            />
           )}
+          <p className={statusNote ? "notice brief-status" : "sr-only"} role="status" aria-live="polite">
+            {statusNote}
+          </p>
         </aside>
         <section className="panel brief-preview" aria-label="Brief preview" aria-busy={!current && !error}>
           <div className="brief-preview-label">
             <FileCheck2 size={16} aria-hidden="true" />
             Preview
           </div>
-          {!current && <p role="status">{error ? "Preview unavailable." : "Preparing preview…"}</p>}
+          {!current && <p role="status">{error ? "Preview unavailable." : "Preparing preview..."}</p>}
           {current?.blocks.map((block, i) => {
             if (block.kind === "title") return <h2 key={i}>{block.text}</h2>
             if (block.kind === "heading") return <h3 key={i}>{block.text}</h3>

@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/input";
 import { AccountSecurityPanel } from "./AccountSecurityPanel";
 import { AdminAccounts } from "./AdminAccounts";
 import { PasswordChangeForm } from "./PasswordChangeForm";
+import WorkspaceError from "./WorkspaceError";
+import { message } from "@/lib/api";
 import { integration, submit } from "@/lib/integrations";
 import { submitAccessAuth } from "@/lib/totpApi";
 import { notifyAccountChanged } from "@/lib/useAccountStatus";
@@ -24,12 +26,17 @@ export function AccountConnection({
   signedIn?: boolean;
 }) {
   const [account, setAccount] = useState<Account | null>(null);
+  const [initializing, setInitializing] = useState(Boolean(enabled && signedIn !== false));
+  const [initError, setInitError] = useState("");
+  const [initSeq, setInitSeq] = useState(0);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [totpCode, setTotpCode] = useState("");
   const [totpRequired, setTotpRequired] = useState(false);
   const [invite, setInvite] = useState("");
   const [plans, setPlans] = useState<string[]>([]);
+  const [plansError, setPlansError] = useState("");
+  const [plansSeq, setPlansSeq] = useState(0);
   const [adminSecret, setAdminSecret] = useState("");
   const [plan, setPlan] = useState("monthly");
   const [signup, setSignup] = useState(false);
@@ -38,30 +45,36 @@ export function AccountConnection({
   const refresh = useCallback(async () => {
     const response = await fetch("/api/integrations/account", { cache: "no-store" });
     if (response.status === 401) { setAccount(null); return; }
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.detail || "Could not load the account.");
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Could not load the account.");
     setAccount(data as Account);
     notifyAccountChanged();
   }, []);
   useEffect(() => {
-    if (enabled && signedIn !== false) {
-      void refresh().catch(e => setError(e.message));
-    }
-  }, [enabled, signedIn, refresh]);
+    if (!enabled || signedIn === false) { setInitializing(false); setInitError(""); return; }
+    let active = true;
+    setInitializing(true);
+    setInitError("");
+    refresh()
+      .catch(e => { if (active) setInitError(message(e)); })
+      .finally(() => { if (active) setInitializing(false); });
+    return () => { active = false; };
+  }, [enabled, signedIn, refresh, initSeq]);
 
   useEffect(() => {
-    if (!account) return;
+    if (!account) { setPlansError(""); return; }
     let active = true;
+    setPlansError("");
     integration<{ configured: boolean; plans: string[] }>("plans").then(data => {
       if (active) { setPlans(data.configured ? data.plans : []); setPlan(data.plans[0] || "monthly"); }
-    }).catch(e => { if (active) setError(e.message); });
+    }).catch(e => { if (active) setPlansError(message(e)); });
     return () => { active = false; };
-  }, [account]);
+  }, [account, plansSeq]);
 
   async function act(work: () => Promise<void>) {
     setBusy(true);
     setError("");
-    try { await work(); } catch (e) { setError((e as Error).message); }
+    try { await work(); } catch (e) { setError(message(e)); }
     finally { setBusy(false); }
   }
   async function billing(action: string) {
@@ -70,9 +83,12 @@ export function AccountConnection({
   }
   return <section className="panel stack"><h2>Account and billing</h2>
     {!enabled ? <p className="muted">Local workspace. Enable embedded accounts or configure a remote access service to sign in.</p> :
+      initializing ? <p className="panel inset muted" role="status">Loading account status…</p> :
+      initError ? <WorkspaceError text={initError} retry={() => setInitSeq(n => n + 1)} /> :
       account ? <>
         <p>{account.email} · {account.active ? "Access active" : "Subscription required"}</p>
-        {plans.length > 0 ? <div className="row align-end">
+        {plansError ? <WorkspaceError text={plansError} retry={() => setPlansSeq(n => n + 1)} /> :
+          plans.length > 0 ? <div className="row align-end">
           <label className="field">Plan <select value={plan} onChange={e => setPlan(e.target.value)}>{plans.map(p => <option value={p} key={p}>{p === "annual" ? "Annual" : "Monthly"}</option>)}</select></label>
           <Button variant="outline" disabled={busy} onClick={() => act(() => billing("checkout"))}>Open checkout</Button>
           <Button variant="outline" disabled={busy} onClick={() => act(() => billing("portal"))}>Billing portal</Button>

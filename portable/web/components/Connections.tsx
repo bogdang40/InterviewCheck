@@ -5,9 +5,11 @@ import { useEffect, useState } from "react";
 import { CalendarDays, ContactRound, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { message } from "@/lib/api";
 import { integration, submit, type ProviderStatus } from "@/lib/integrations";
 import Link from "next/link";
 import ConnectionCatalog from "./ConnectionCatalog";
+import WorkspaceError from "./WorkspaceError";
 
 type Row = { booking_id?: string; title?: string; start?: string; candidate: string; role: string };
 type Results = { items: Row[]; note?: string };
@@ -18,6 +20,9 @@ const names: Record<string, string> = { imap: "Mailbox invites", workable: "Work
 
 export default function Connections({ onPrepare }: { onPrepare: (candidate: string, role: string) => void }) {
   const [status, setStatus] = useState<ProviderStatus>();
+  const [statusLoading, setStatusLoading] = useState(true);
+  const [statusError, setStatusError] = useState("");
+  const [refreshSeq, setRefreshSeq] = useState(0);
   const [records, setRecords] = useState<Results | null>(null);
   const [selected, setSelected] = useState<Row | null>(null);
   const [email, setEmail] = useState("");
@@ -26,18 +31,25 @@ export default function Connections({ onPrepare }: { onPrepare: (candidate: stri
   const [error, setError] = useState("");
   useEffect(() => {
     const controller = new AbortController();
+    setStatusLoading(true);
+    setStatusError("");
     integration<ProviderStatus>("status", { signal: controller.signal }).then(result => {
-      setStatus(result); setAts(result.ats?.[0] || "");
-    }).catch(e => { if (!controller.signal.aborted) setError(e.message); });
+      setStatus(result);
+      setAts(prev => (prev && result.ats?.includes(prev) ? prev : result.ats?.[0] || ""));
+    }).catch(e => {
+      if (!controller.signal.aborted) setStatusError(message(e));
+    }).finally(() => {
+      if (!controller.signal.aborted) setStatusLoading(false);
+    });
     return () => controller.abort();
-  }, []);
+  }, [refreshSeq]);
 
   async function load(work: () => Promise<Results>) {
     setBusy(true);
     setError("");
     setSelected(null);
     setRecords(null);
-    try { setRecords(await work()); } catch (e) { setError((e as Error).message); }
+    try { setRecords(await work()); } catch (e) { setError(message(e)); }
     finally { setBusy(false); }
   }
   function readFile(file?: File, path?: string) {
@@ -53,11 +65,13 @@ export default function Connections({ onPrepare }: { onPrepare: (candidate: stri
     try {
       const data = await submit<{ candidate: string }>("calendar/calendly/" + row.booking_id);
       setSelected({ ...row, candidate: data.candidate });
-    } catch (e) { setError((e as Error).message); }
+    } catch (e) { setError(message(e)); }
     finally { setBusy(false); }
   }
   return <div className="stack">
     <ConnectionCatalog/>
+    {statusError && <WorkspaceError text={statusError} retry={() => setRefreshSeq(n => n + 1)} />}
+    {statusLoading && !status && <p className="panel inset muted" role="status">Loading connection status…</p>}
     <section id="connection-import" className="panel stack"><h2><CalendarDays aria-hidden size={18} /> Calendar</h2>
       <label className="field">Import calendar events
         <input type="file" accept=".ics,text/calendar" disabled={busy}
