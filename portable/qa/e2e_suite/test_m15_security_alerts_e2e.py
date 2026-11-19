@@ -209,8 +209,11 @@ def test_m15_admin_security_unlock_session_revoke_and_alerts_e2e(e2e_workspace, 
     tablist = page.get_by_role("tablist", name="Admin sections")
     tablist.get_by_role("tab", name="Models").focus()
     page.keyboard.press("End")
+    last_tab = tablist.get_by_role("tab").last
+    expect(last_tab).to_be_focused()
+    expect(last_tab).to_have_attribute("aria-selected", "true")
     sec_tab = tablist.get_by_role("tab", name="Security")
-    expect(sec_tab).to_be_focused()
+    sec_tab.click()
     expect(sec_tab).to_have_attribute("aria-selected", "true")
     panel = page.locator("#panel-security[role='tabpanel']")
     expect(panel).to_be_visible()
