@@ -1,5 +1,6 @@
 import { Hono, type Context } from "hono";
 import type { ZodTypeAny, z } from "zod";
+import type { Database } from "../../db/Database.js";
 import type { AuditLogRepository } from "../../repositories/AuditLogRepository.js";
 import type { AdminService } from "../../services/AdminService.js";
 import type { AuthService } from "../../services/AuthService.js";
@@ -22,6 +23,7 @@ export interface AdminRouteDeps {
   admin: AdminService;
   audit: AuditLogRepository;
   security: SecurityService;
+  database: Database;
   adminReadLimiter: FixedWindowRateLimiter;
   adminWriteLimiter: FixedWindowRateLimiter;
   trustProxy: boolean;
@@ -130,6 +132,23 @@ export class AdminRoutes {
     router.get("/admin/audit/verify", readGuard, (c) =>
       c.json(deps.audit.verifyChain(), 200, { "Cache-Control": "no-store" }),
     );
+
+    router.get("/admin/compliance/summary", readGuard, (c) => {
+      const count = (sql: string, ...p: Array<string | number>) => Number(deps.database.get<{ n: number }>(sql, ...p)?.n ?? 0);
+      const hasTable = (t: string) => Boolean(deps.database.get("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", t));
+      const sid = c.get("session")?.id;
+      const nowMs = (sid ? deps.database.get<{ last_seen_at: number }>("SELECT last_seen_at FROM sessions WHERE id = ?", sid)?.last_seen_at : undefined) ?? Date.now();
+      return c.json({
+        schemaVersion: deps.database.userVersion(),
+        usersTotal: count("SELECT COUNT(*) AS n FROM users"),
+        adminsTotal: count("SELECT COUNT(*) AS n FROM users WHERE role = 'admin' AND disabled = 0"),
+        disabledUsersTotal: count("SELECT COUNT(*) AS n FROM users WHERE disabled = 1"),
+        totpEnabledUsersTotal: hasTable("user_totp") ? count("SELECT COUNT(*) AS n FROM user_totp WHERE enabled = 1") : 0,
+        activeSessionsTotal: count("SELECT COUNT(*) AS n FROM sessions WHERE revoked_at IS NULL AND expires_at > ?", nowMs),
+        activeApiTokensTotal: hasTable("api_tokens") ? count("SELECT COUNT(*) AS n FROM api_tokens WHERE revoked_at IS NULL AND (expires_at IS NULL OR expires_at > ?)", nowMs) : 0,
+        auditChainOk: deps.audit.verifyChain().ok,
+      }, 200, { "Cache-Control": "no-store" });
+    });
 
     return router;
   }

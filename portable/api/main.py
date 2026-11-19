@@ -9,7 +9,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import access, alert_rules, ats_notes, audit_integrity, authoring, backup, bulk_operations, candidate_compare, cohort_analytics, csp_reports, drafts, health_probes, metrics_export, model_admin, model_circuit, model_execution, model_playground, prompt_templates, rate_limit, role_analytics, role_versions, scoring_hooks, secret_box, session_scorecard, store, trash
+from . import access, alert_rules, ats_notes, audit_integrity, authoring, backup, bulk_operations, candidate_compare, cohort_analytics, csp_reports, drafts, health_probes, metrics_export, model_admin, model_circuit, model_execution, model_playground, prompt_templates, rate_limit, retention_policy, role_analytics, role_versions, scoring_hooks, secret_box, session_scorecard, store, trash
 from .access import embedded_enabled, require_entitlement
 from .error_sanitizer import sanitize_error_text
 from .evidence import compare
@@ -194,6 +194,10 @@ app.include_router(metrics_export.router)
 app.include_router(csp_reports.router)
 app.include_router(audit_integrity.router)
 app.include_router(scoring_hooks.router)
+app.include_router(retention_policy.router)
+if importlib.util.find_spec(".compliance_export", package=__package__) is not None:
+    from . import compliance_export
+    app.include_router(compliance_export.router)
 app.include_router(workspace)
 app.include_router(integrations)
 

@@ -5,7 +5,7 @@ from starlette.requests import cookie_parser
 from starlette.responses import JSONResponse
 
 from .access import COOKIE, account_enabled
-from .origin import browser_origin
+from .origin import browser_origin, has_duplicate_proxy_headers
 
 _EARLY_AUTH_BYTES = 256 * 1024
 
@@ -32,18 +32,26 @@ class LocalBoundary:
         if scope["type"] != "http":
             return await self.app(scope, receive, send)
         headers = Headers(scope=scope)
-        expected = browser_origin(headers, scope["scheme"])
 
         async def reject(status, detail):
             await JSONResponse({"detail": detail}, status_code=status)(scope, receive, send)
 
+        if has_duplicate_proxy_headers(headers):
+            return await reject(400, "Duplicate proxy headers are not permitted.")
+        expected = browser_origin(headers, scope["scheme"])
         if expected is None:
             return await reject(400, "Open InterviewCheck on its local address.")
+        path = scope["path"]
+        if (
+            scope["method"] == "OPTIONS"
+            and (path.startswith("/api/") or path.startswith("/v1/"))
+            and headers.get("access-control-request-method") is not None
+        ):
+            return await reject(403, "Cross-origin preflight requests are not permitted.")
         origin = headers.get("origin")
         if origin and origin != expected:
             return await reject(403, "The request must originate from this workspace.")
         mutating = scope["method"] not in {"GET", "HEAD", "OPTIONS"}
-        path = scope["path"]
         is_csp_report = scope["method"] == "POST" and path == "/api/csp-report"
         csrf_guarded = path.startswith("/api/") or (path.startswith("/v1/") and path != "/v1/billing/webhook")
         if mutating and csrf_guarded:
