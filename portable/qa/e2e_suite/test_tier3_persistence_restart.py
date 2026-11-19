@@ -232,9 +232,13 @@ def test_workspace_backup_download_excludes_model_secrets_and_restores_into_fres
     ctx2 = e2e_browser.new_context(viewport=DESKTOP_VIEWPORT, reduced_motion="reduce")
     page2 = ctx2.new_page()
     try:
-        page2.goto(ws2.base_url + "/data/", wait_until="domcontentloaded")
-        page2.get_by_label("Workspace backup file").set_input_files(str(backup_path))
-        page2.get_by_role("button", name="Preview restore").click()
+        page2.goto(ws2.base_url + "/data/", wait_until="networkidle")
+        backup_input = page2.get_by_label("Workspace backup file")
+        expect(backup_input).to_have_attribute("data-hydrated", "true")
+        backup_input.set_input_files(str(backup_path))
+        preview_btn = page2.get_by_role("button", name="Preview restore")
+        expect(preview_btn).to_be_enabled()
+        preview_btn.click()
         expect(page2.get_by_role("heading", name="Restore preview")).to_be_visible()
         expect(page2.get_by_text("1 captured exchanges")).to_be_visible()
 
