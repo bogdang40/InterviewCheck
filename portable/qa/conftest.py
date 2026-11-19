@@ -6,10 +6,36 @@ import threading
 import time
 
 import pytest
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import Error as PlaywrightError, sync_playwright
 import uvicorn
 
-from next_frontend import free_port, serve_next
+from next_frontend import can_bind, free_port, manifest_api_port, serve_next
+
+BROWSER_ARGS = ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"]
+
+
+def resolve_start_api_port(web, env=None):
+    env = os.environ if env is None else env
+    explicit = env.get("INTERVIEWCHECK_API_PORT")
+    if explicit:
+        return int(explicit)
+    built_dist = web / ".next-server"
+    if (built_dist / "BUILD_ID").is_file():
+        built_port = manifest_api_port(built_dist)
+        if built_port and can_bind(built_port):
+            return built_port
+    return free_port()
+
+
+def launch_chromium(playwright, env=None):
+    env = os.environ if env is None else env
+    channel = env.get("INTERVIEWCHECK_BROWSER_CHANNEL") or None
+    try:
+        return playwright.chromium.launch(channel=channel, args=BROWSER_ARGS)
+    except PlaywrightError as error:
+        if channel is not None or "Executable doesn't exist" not in str(error):
+            raise
+        return playwright.chromium.launch(channel="chrome", args=BROWSER_ARGS)
 
 
 def pytest_addoption(parser):
@@ -23,9 +49,9 @@ def frontend(request, tmp_path_factory):
     if mode == "static":
         yield None, None, 0
         return
-    # Next embeds the rewrite destination during its production build.
-    api_port = int(os.getenv("INTERVIEWCHECK_API_PORT", "8000")) if mode == "start" else free_port()
     web = Path(__file__).resolve().parents[1] / "web"
+    # Next embeds the rewrite destination during its production build.
+    api_port = resolve_start_api_port(web) if mode == "start" else free_port()
     with serve_next(web, mode, api_port, tmp_path_factory.mktemp("next") / "server.log") as (base, port):
         yield base, port, api_port
 
@@ -74,10 +100,7 @@ def browser_page(request):
     if request.config.getoption("--frontend") == "static" and not (root / "web/out/index.html").is_file():
         pytest.fail("Build the UI with npm run build in portable/web before running browser tests.")
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(
-            channel=os.getenv("INTERVIEWCHECK_BROWSER_CHANNEL") or None,
-            args=["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"],
-        )
+        browser = launch_chromium(playwright)
         context = browser.new_context(
             viewport={"width": 1440, "height": 960},
             reduced_motion="reduce",

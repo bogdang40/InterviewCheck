@@ -18,7 +18,7 @@ const config: NextConfig = {
   skipTrailingSlashRedirect: true,
   devIndicators: false,
   ...(exporting ? { output: "export" as const } : {
-    distDir: ".next-server",
+    distDir: process.env.INTERVIEWCHECK_NEXT_DIST_DIR || ".next-server",
     experimental: { proxyTimeout: 190_000, proxyClientMaxBodySize: "25mb" as const },
     async rewrites() {
       return ["/api", "/v1"].map(prefix => ({
