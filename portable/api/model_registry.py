@@ -234,7 +234,12 @@ def update_model(
     last_error: str | None,
     last_latency_ms: int | None,
     last_checked_at: str | None,
+    expected_updated_at: str | None = None,
 ) -> dict[str, Any]:
+    if expected_updated_at is not None:
+        current = get_row(db, model_uuid)
+        if current["updated_at"] != expected_updated_at:
+            raise HTTPException(409, "Model was modified concurrently; retry the update.")
     now = store.timestamp()
     if is_default:
         db.execute(
@@ -301,8 +306,11 @@ def record_probe_result(
     latency_ms: int | None,
     error: str | None,
     checked_at: str,
+    expected_updated_at: str | None = None,
 ) -> dict[str, Any]:
     row = get_row(db, model_uuid)
+    if expected_updated_at is not None and row["updated_at"] != expected_updated_at:
+        raise HTTPException(409, "Model was modified during probe; retry probe.")
     now = store.timestamp()
     if row["enabled"]:
         new_status = "connected" if ok else "error"

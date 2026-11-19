@@ -250,7 +250,14 @@ export default function AdminConsole() {
           onClose={() => setModalOpen(false)}
           onSaved={(saved, created) => {
             setModalOpen(false)
-            setModels((prev) => (created ? [saved, ...prev] : prev.map((m) => (m.id === saved.id ? saved : m))))
+            setModels((prev) => {
+              const synced = saved.is_default
+                ? prev.map((m) =>
+                    m.capability === saved.capability && m.id !== saved.id ? { ...m, is_default: false } : m,
+                  )
+                : prev
+              return created ? [saved, ...synced] : synced.map((m) => (m.id === saved.id ? saved : m))
+            })
             setBannerStatus(created ? `Connected ${saved.display_name}.` : `Updated ${saved.display_name}.`)
           }}
         />

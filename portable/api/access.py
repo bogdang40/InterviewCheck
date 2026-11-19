@@ -125,15 +125,19 @@ async def require_admin_session(request: HTTPConnection) -> tuple[dict[str, Any]
         if not account_db.database().is_file():
             raise HTTPException(401, "Sign in with an administrator account.")
         user, _ = account_auth.authenticate(f"Bearer {token}")
+        if user.get("disabled"):
+            raise HTTPException(401, "Session expired. Sign in again.")
+        if enabled:
+            verify_operator_email(user.get("email"))
     else:
         data = await upstream("me", token=token)
         if not isinstance(data, dict) or not isinstance(data.get("user"), dict):
             raise HTTPException(502, "The access service returned an invalid account.")
+        user = data["user"]
+        if user.get("disabled"):
+            raise HTTPException(401, "Session expired. Sign in again.")
         if public_remote() or configured("INTERVIEWCHECK_OPERATOR_EMAIL") or configured("INTERVIEWCHECK_OPERATOR_ID"):
             verify_account(data)
-        user = data["user"]
-    if user.get("disabled"):
-        raise HTTPException(401, "Session expired. Sign in again.")
     if user.get("role") != "admin":
         raise HTTPException(403, "Admin access required.")
     return user, token

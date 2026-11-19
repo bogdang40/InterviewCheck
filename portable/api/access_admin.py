@@ -19,8 +19,11 @@ router = APIRouter(prefix="/admin", dependencies=[Depends(admin_token)])
 
 
 @router.get("/users", dependencies=[Depends(rate_limit.limit(rate_limit.ADMIN_READ))])
-async def users(request: Request, q: str = Query(default="", max_length=200), cursor: str = Query(default="", max_length=128)):
-    token = await admin_token(request)
+async def users(
+    q: str = Query(default="", max_length=200),
+    cursor: str = Query(default="", max_length=128),
+    token: str = Depends(admin_token),
+):
     params = {"q": q, "limit": 25}
     if cursor:
         params["cursor"] = cursor
@@ -28,12 +31,10 @@ async def users(request: Request, q: str = Query(default="", max_length=200), cu
 
 
 @router.get("/audit", dependencies=[Depends(rate_limit.limit(rate_limit.ADMIN_READ))])
-async def audit(request: Request):
-    token = await admin_token(request)
+async def audit(token: str = Depends(admin_token)):
     return await access.upstream("admin/audit?limit=20", token=token)
 
 
 @router.patch("/users/{uid}", dependencies=[Depends(rate_limit.limit(rate_limit.ADMIN_WRITE))])
-async def update(uid: UUID, item: Update, request: Request):
-    token = await admin_token(request)
+async def update(uid: UUID, item: Update, token: str = Depends(admin_token)):
     return await access.upstream("admin/users/" + str(uid), "PATCH", token=token, body=item.model_dump(mode="json", exclude_unset=True))

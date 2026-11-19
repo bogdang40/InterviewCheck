@@ -86,6 +86,7 @@ async def update_model(model_id: UUID, item: ModelUpdateInput, actor: dict = Dep
     model_uuid = str(model_id)
     with store.connection() as db:
         existing = model_registry.get_row(db, model_uuid)
+    expected_updated_at = existing["updated_at"]
 
     provider = existing["provider"]
     merged_capability = item.capability if item.capability is not None else existing["capability"]
@@ -161,6 +162,7 @@ async def update_model(model_id: UUID, item: ModelUpdateInput, actor: dict = Dep
             parameters=params, encrypted_api_key=encrypted_key, key_hint=key_hint,
             enabled=merged_enabled, is_default=merged_default, status=next_status,
             last_error=next_error, last_latency_ms=next_latency_ms, last_checked_at=next_checked_at,
+            expected_updated_at=expected_updated_at,
         )
         details = {"slug": updated["slug"], "changed": changed, "rotated_key": rotated_key, "cleared_key": cleared_key}
         _record_audit(db, actor=actor, action="admin.model.update", model_uuid=model_uuid, details=details, post_commit=post_commit)
@@ -180,12 +182,19 @@ def toggle_model(model_id: UUID, item: ModelToggleInput, actor: dict = Depends(r
     return {"model": updated}
 
 
-def _persist_probe(actor: dict[str, Any], model_uuid: str, outcome: model_probe.ProbeOutcome) -> dict[str, Any]:
+def _persist_probe(
+    actor: dict[str, Any],
+    model_uuid: str,
+    outcome: model_probe.ProbeOutcome,
+    *,
+    expected_updated_at: str | None = None,
+) -> dict[str, Any]:
     post_commit: list = []
     with store.connection(write=True) as db:
         updated = model_registry.record_probe_result(
             db, model_uuid, ok=outcome.ok, latency_ms=outcome.latency_ms,
             error=outcome.last_error, checked_at=outcome.checked_at,
+            expected_updated_at=expected_updated_at,
         )
         details = {"slug": updated["slug"], "provider": updated["provider"], "status": updated["status"],
                    "latency_ms": outcome.latency_ms, "error": outcome.last_error}
@@ -202,6 +211,7 @@ async def probe_model(model_id: UUID, actor: dict = Depends(require_admin)):
     model_uuid = str(model_id)
     with store.connection() as db:
         row = model_registry.get_row(db, model_uuid)
+    expected_updated_at = row["updated_at"]
     try:
         api_key = secret_box.decrypt_secret(row["encrypted_api_key"], aad=model_uuid)
     except secret_box.SecretBoxError:
@@ -209,11 +219,11 @@ async def probe_model(model_id: UUID, actor: dict = Depends(require_admin)):
             ok=False, status="error", http_status=None, latency_ms=None,
             last_error="Stored model credential could not be decrypted.", checked_at=model_probe._now_iso(),
         )
-        updated = _persist_probe(actor, model_uuid, outcome)
+        updated = _persist_probe(actor, model_uuid, outcome, expected_updated_at=expected_updated_at)
         return JSONResponse(status_code=502, content={"detail": outcome.last_error, "model": updated})
 
     outcome = await model_probe.probe_model(row, api_key=api_key)
-    updated = _persist_probe(actor, model_uuid, outcome)
+    updated = _persist_probe(actor, model_uuid, outcome, expected_updated_at=expected_updated_at)
     if outcome.ok:
         return {"ok": True, "model": updated}
     code = 400 if outcome.ssrf_blocked else (504 if outcome.timed_out else 502)

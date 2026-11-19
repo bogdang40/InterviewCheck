@@ -54,7 +54,17 @@ export class AdminRoutes {
 
     router.get("/admin/audit", readGuard, (c) => {
       const query = parseQuery(c, adminAuditQuerySchema);
-      return c.json({ entries: deps.admin.recentAudit(query.limit ?? 100) });
+      return c.json(
+        deps.admin.listAudit({
+          q: query.q,
+          action: query.action,
+          actor: query.actor,
+          since: query.since ? new Date(query.since) : undefined,
+          until: query.until ? new Date(query.until) : undefined,
+          beforeId: query.beforeId,
+          limit: query.limit ?? 100,
+        }),
+      );
     });
 
     return router;

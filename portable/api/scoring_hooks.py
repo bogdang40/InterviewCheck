@@ -146,6 +146,12 @@ def _clean_string_list(value: Any, limit: int) -> list[str]:
 @router.post("/judge", dependencies=[Depends(rate_limit.limit(rate_limit.AI_REQUEST))])
 async def judge_answer(body: JudgeInput):
     target = model_resolver.resolve_or_503("judge", provider=body.model_slug)
+    signals: dict[str, float] = {}
+    for k, v in list(body.signals.items())[:24]:
+        if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(float(v)):
+            clean_key = prompt_framing.strip_control_chars(str(k), allow_newlines=False).strip()[:64]
+            if clean_key:
+                signals[clean_key] = float(v)
     payload = {
         "question": prompt_framing.strip_control_chars(body.question, allow_newlines=True),
         "answer": prompt_framing.strip_control_chars(body.answer, allow_newlines=True),
@@ -157,11 +163,7 @@ async def judge_answer(body: JudgeInput):
             }
             for ref in body.references
         ],
-        "signals": {
-            str(k)[:64]: float(v)
-            for k, v in list(body.signals.items())[:24]
-            if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(float(v))
-        },
+        "signals": signals,
     }
     _, reply = await model_resolver.dispatch_completion(
         target,

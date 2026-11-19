@@ -246,11 +246,17 @@ describe("billing", () => {
   });
 
   it("rate limits checkout and portal billing requests", async () => {
-    let lastStatus = 0;
+    let lastResponse!: Response;
     for (let i = 0; i < 22; i += 1) {
-      lastStatus = (await post(harness.app, "/v1/billing/checkout", { plan: "monthly" }, token)).status;
+      lastResponse = await post(harness.app, "/v1/billing/checkout", { plan: "monthly" }, token);
     }
-    expect(lastStatus).toBe(429);
+    expect(lastResponse.status).toBe(429);
+    const retryAfter = lastResponse.headers.get("retry-after");
+    expect(retryAfter).toMatch(/^\d+$/);
+    expect(Number(retryAfter)).toBeGreaterThanOrEqual(1);
+    expect(await json(lastResponse)).toEqual({
+      error: { code: "rate_limited", message: "Too many attempts. Try again in a minute." },
+    });
   });
 
   it("serves a browser return page that deep links into the app", async () => {

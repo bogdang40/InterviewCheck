@@ -27,7 +27,7 @@ def _sanitize_value(value: Any) -> Any:
     if isinstance(value, str):
         return strip_control_chars(value, allow_newlines=True)
     if isinstance(value, dict):
-        return {str(k): _sanitize_value(v) for k, v in value.items()}
+        return {strip_control_chars(str(k), allow_newlines=False): _sanitize_value(v) for k, v in value.items()}
     if isinstance(value, list):
         return [_sanitize_value(v) for v in value]
     return value

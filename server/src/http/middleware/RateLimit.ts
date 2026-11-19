@@ -1,10 +1,14 @@
 import type { Context, MiddlewareHandler } from "hono";
 import { getConnInfo } from "@hono/node-server/conninfo";
-import { HttpError } from "../HttpError.js";
 
 export interface RateLimitOptions {
   readonly windowMs: number;
   readonly max: number;
+}
+
+export interface RateLimitHit {
+  readonly remaining: number;
+  readonly retryAfterSeconds: number;
 }
 
 /**
@@ -19,23 +23,42 @@ export class FixedWindowRateLimiter {
     private readonly clock: () => number = () => Date.now(),
   ) {}
 
-  /** Returns remaining allowance, or -1 when the caller is over the limit. */
-  hit(key: string): number {
+  /** Returns remaining allowance (or -1 when over the limit) and Retry-After seconds. */
+  hitWithRetry(key: string): RateLimitHit {
     const now = this.clock();
     const bucket = this.buckets.get(key);
     if (!bucket || bucket.resetAt <= now) {
-      this.buckets.set(key, { count: 1, resetAt: now + this.options.windowMs });
+      if (bucket) this.buckets.delete(key);
+      const resetAt = now + this.options.windowMs;
+      this.buckets.set(key, { count: 1, resetAt });
       this.sweep(now);
-      return this.options.max - 1;
+      if (1 > this.options.max) {
+        return { remaining: -1, retryAfterSeconds: Math.max(1, Math.ceil((resetAt - now) / 1000)) };
+      }
+      return { remaining: this.options.max - 1, retryAfterSeconds: 0 };
     }
     bucket.count += 1;
-    return bucket.count > this.options.max ? -1 : this.options.max - bucket.count;
+    if (bucket.count > this.options.max) {
+      const retryAfterSeconds = Math.max(1, Math.ceil((bucket.resetAt - now) / 1000));
+      return { remaining: -1, retryAfterSeconds };
+    }
+    return { remaining: this.options.max - bucket.count, retryAfterSeconds: 0 };
+  }
+
+  /** Returns remaining allowance, or -1 when the caller is over the limit. */
+  hit(key: string): number {
+    return this.hitWithRetry(key).remaining;
   }
 
   private sweep(now: number): void {
     if (this.buckets.size < 5000) return;
     for (const [key, bucket] of this.buckets) {
       if (bucket.resetAt <= now) this.buckets.delete(key);
+    }
+    while (this.buckets.size >= 5000) {
+      const oldestKey = this.buckets.keys().next().value;
+      if (oldestKey === undefined) break;
+      this.buckets.delete(oldestKey);
     }
   }
 }
@@ -64,9 +87,13 @@ export class ClientAddressResolver {
 
 export function rateLimit(limiter: FixedWindowRateLimiter, trustProxy: boolean): MiddlewareHandler {
   return async (c, next) => {
-    const remaining = limiter.hit(ClientAddressResolver.resolve(c, trustProxy));
+    const { remaining, retryAfterSeconds } = limiter.hitWithRetry(ClientAddressResolver.resolve(c, trustProxy));
     if (remaining < 0) {
-      throw new HttpError(429, "rate_limited", "Too many attempts. Try again in a minute.");
+      return c.json(
+        { error: { code: "rate_limited", message: "Too many attempts. Try again in a minute." } },
+        429,
+        { "Retry-After": String(retryAfterSeconds) },
+      );
     }
     await next();
   };

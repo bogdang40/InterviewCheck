@@ -47,7 +47,11 @@ class SecurityHeadersMiddleware:
                 resolved = candidate.resolve()
             except OSError:
                 continue
-            if resolved.is_relative_to(self._static_root) and resolved.is_file():
+            if (
+                resolved.is_relative_to(self._static_root)
+                and resolved.is_file()
+                and resolved.suffix.lower() in {".html", ".htm"}
+            ):
                 return resolved
         return None
 

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useId, useState, type FormEvent } from "react"
+import { useId, useRef, useState, type FormEvent } from "react"
 import { X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -19,6 +19,7 @@ import {
   type ModelParameters,
   type ModelProvider,
 } from "@/lib/adminModels"
+import { useDialogFocusTrap } from "@/lib/useDialogFocusTrap"
 
 export function ModelFormModal({
   editing,
@@ -57,13 +58,14 @@ export function ModelFormModal({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
 
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape" && !busy) onClose()
-    }
-    window.addEventListener("keydown", onKey)
-    return () => window.removeEventListener("keydown", onKey)
-  }, [busy, onClose])
+  const dialogRef = useRef<HTMLDivElement>(null)
+
+  useDialogFocusTrap({
+    open: true,
+    containerRef: dialogRef,
+    onClose,
+    disabled: busy,
+  })
 
   const allowedCaps = ALLOWED_CAPABILITIES[provider]
   const needsEndpoint = ENDPOINT_REQUIRED_PROVIDERS.includes(provider)
@@ -149,9 +151,11 @@ export function ModelFormModal({
       }}
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
+        tabIndex={-1}
         className="panel admin-modal"
       >
         <div className="admin-modal-head">
