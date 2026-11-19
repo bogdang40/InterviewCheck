@@ -143,6 +143,29 @@ async def require_admin_session(request: HTTPConnection) -> tuple[dict[str, Any]
     return user, token
 
 
+async def optional_actor(request: HTTPConnection) -> tuple[str, str]:
+    if not account_enabled():
+        return ("local-operator", "local-operator")
+    token = request.cookies.get(COOKIE)
+    if not token:
+        return ("local-operator", "local-operator")
+    try:
+        if embedded_enabled():
+            from . import account_auth, account_db
+            if not account_db.database().is_file():
+                return ("local-operator", "local-operator")
+            user, _ = account_auth.authenticate(f"Bearer {token}")
+        else:
+            data = await upstream("me", token=token)
+            verify_account(data)
+            user = data.get("user") or {}
+    except HTTPException:
+        return ("local-operator", "local-operator")
+    uid = str(user.get("id") or "local-operator")
+    email = str(user.get("email") or uid)
+    return (uid, email)
+
+
 class Credentials(BaseModel):
     email: str = Field(min_length=3, max_length=254)
     password: SecretStr = Field(min_length=10, max_length=200)

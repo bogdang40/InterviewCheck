@@ -161,7 +161,7 @@ def test_explain_query_plans_use_scale_indexes(scale_workspace):
     with store.connection() as db:
         feed_plan = _explain(
             db,
-            interview_catalog.fast_page_sql("newest", ""),
+            interview_catalog.fast_page_sql("newest", "", has_tag=False),
             {"limit": 25, "offset": 0},
         )
         assert "idx_sessions_created" in feed_plan

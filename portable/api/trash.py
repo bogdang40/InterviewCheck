@@ -4,7 +4,7 @@ from uuid import UUID, uuid4
 
 from fastapi import APIRouter, HTTPException, Query
 
-from . import store
+from . import bulk_operations, store
 from .models import Input, RequestID
 
 router = APIRouter()
@@ -81,9 +81,15 @@ def purge(sid: UUID, item: Purge):
         raise HTTPException(422, "The confirmation must identify the selected interview.")
     with store.connection(write=True) as db:
         active_marker(db, key, item.operation_version)
+        bulk_operations.ensure_table(db)
+        if db.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='answer_review_events'"
+        ).fetchone():
+            db.execute("DELETE FROM answer_review_events WHERE session_id=?", (key,))
         # All statements share the marker check and a single write transaction.
         # A future child table with a foreign key makes deletion fail atomically.
         for statement in (
+            "DELETE FROM session_tags WHERE session_id=?",
             "DELETE FROM session_drafts WHERE session_id=?",
             "DELETE FROM note_exports WHERE session_id=?",
             "DELETE FROM transcript_imports WHERE session_id=?",

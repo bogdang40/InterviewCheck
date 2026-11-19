@@ -3,12 +3,12 @@ from pathlib import Path
 import sys
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import ats_notes, authoring, backup, drafts, model_admin, model_execution, rate_limit, scoring_hooks, store, trash
+from . import access, ats_notes, authoring, backup, bulk_operations, drafts, model_admin, model_execution, rate_limit, role_analytics, role_versions, scoring_hooks, store, trash
 from .access import embedded_enabled, require_entitlement
 from .error_sanitizer import sanitize_error_text
 from .evidence import compare
@@ -107,9 +107,10 @@ def revise(sid: UUID, aid: UUID, item: AnswerEdit):
 
 
 @workspace.patch("/sessions/{sid}/answers/{aid}")
-def review(sid: UUID, aid: UUID, item: ReviewInput):
+async def review(sid: UUID, aid: UUID, item: ReviewInput, request: Request):
+    actor = await access.optional_actor(request)
     with store.connection(write=True) as db:
-        return store.update_review(db, str(sid), str(aid), item)
+        return store.update_review(db, str(sid), str(aid), item, actor=actor)
 
 
 @workspace.get("/sessions/{sid}/report")
@@ -126,18 +127,24 @@ def roles():
 
 
 @workspace.post("/roles", status_code=201)
-def new_role(item: RoleInput):
+async def new_role(item: RoleInput, request: Request):
+    _, actor_email = await access.optional_actor(request)
     with store.connection(write=True) as db:
-        return store.create_role(db, item)
+        return store.create_role(db, item, created_by=actor_email)
 
 
 @workspace.post("/roles/import")
-def import_exported_role(document: dict):
+async def import_exported_role(document: dict, request: Request):
+    _, actor_email = await access.optional_actor(request)
     with store.connection(write=True) as db:
         try:
-            _, role = import_role(db, document)
+            added, role = import_role(db, document)
         except ValueError as error:
             raise HTTPException(422, str(error)) from error
+        if added:
+            role_versions.ensure_initial_snapshot(
+                db, role["id"], change_note="Imported role", created_by=actor_email
+            )
         return role
 
 
@@ -153,6 +160,9 @@ def preview_exported_role(document: dict):
 workspace.include_router(trash.router)
 workspace.include_router(drafts.router)
 workspace.include_router(backup.router)
+workspace.include_router(bulk_operations.router)
+workspace.include_router(role_analytics.router)
+workspace.include_router(role_versions.router)
 workspace.include_router(session_workflow)
 workspace.include_router(transcript_import)
 workspace.include_router(ats_notes.router)
