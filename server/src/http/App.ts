@@ -25,6 +25,7 @@ export class AppFactory {
     app.use(
       secureHeaders({
         xFrameOptions: "DENY",
+        referrerPolicy: "no-referrer",
         permissionsPolicy: { camera: [], microphone: [], geolocation: [], payment: [], usb: [] },
       }),
     );
@@ -36,6 +37,13 @@ export class AppFactory {
           ? `default-src 'none'; style-src '${BILLING_RETURN_STYLE_HASH}'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`
           : "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
       c.header("Content-Security-Policy", csp);
+      c.header("Referrer-Policy", "no-referrer");
+    });
+    app.use("*", async (c, next) => {
+      if (c.req.method === "OPTIONS" && c.req.header("access-control-request-method") !== undefined) {
+        throw new HttpError(403, "forbidden", "Cross-origin preflight requests are not permitted.");
+      }
+      await next();
     });
     app.use(
       bodyLimit({
@@ -100,6 +108,7 @@ export class AppFactory {
         admin: container.admin,
         audit: container.audit,
         security: container.security,
+        database: container.database,
         adminReadLimiter: container.adminReadLimiter,
         adminWriteLimiter: container.adminWriteLimiter,
         trustProxy: container.config.TRUST_PROXY,

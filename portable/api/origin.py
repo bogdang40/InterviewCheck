@@ -47,12 +47,31 @@ def validate_runtime_exposure():
     return origin
 
 
+def _single_header(headers, name: str) -> tuple[bool, str | None]:
+    if hasattr(headers, "getlist"):
+        values = headers.getlist(name)
+        if len(values) > 1 or any("," in v for v in values):
+            return (False, None)
+        return (True, values[0] if values else None)
+    value = headers.get(name)
+    return (False, None) if value is not None and "," in value else (True, value)
+
+
+def has_duplicate_proxy_headers(headers) -> bool:
+    return any(not _single_header(headers, n)[0] for n in ("x-forwarded-host", "x-interviewcheck-client-ip"))
+
+
 def browser_origin(headers, scheme):
-    host = headers.get("host", "").lower()
+    ok_host, raw_host = _single_header(headers, "host")
+    if not ok_host:
+        return None
+    host = (raw_host or "").lower()
     backend = authority(host)
     if not backend or backend.hostname not in LOOPBACK:
         return None
-    forwarded = headers.get("x-forwarded-host")
+    ok_fwd, forwarded = _single_header(headers, "x-forwarded-host")
+    if not ok_fwd:
+        return None
     if forwarded is None:
         return ("https" if scheme in ("https", "wss") else "http") + "://" + host
     forwarded = forwarded.lower()
@@ -70,8 +89,8 @@ def browser_origin(headers, scheme):
 
 def workspace_client(request):
     peer = request.client.host if request.client else "local"
-    forwarded = request.headers.get("x-interviewcheck-client-ip")
-    if not forwarded or "%" in forwarded or peer not in LOOPBACK or os.getenv("INTERVIEWCHECK_TRUST_PROXY_CLIENT_IP") != "1":
+    ok_ip, forwarded = _single_header(request.headers, "x-interviewcheck-client-ip")
+    if not ok_ip or not forwarded or "%" in forwarded or peer not in LOOPBACK or os.getenv("INTERVIEWCHECK_TRUST_PROXY_CLIENT_IP") != "1":
         return peer
     public = public_origin()
     if not public or browser_origin(request.headers, request.url.scheme) != public:
