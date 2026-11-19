@@ -20,6 +20,7 @@ export type BillingEvent =
       readonly customerId: string | null;
       readonly subscriptionId: string | null;
       readonly clientReferenceId: string | null;
+      readonly checkoutRequestId?: string;
     }
   | { readonly id: string; readonly type: "subscription.changed"; readonly subscription: GatewaySubscription }
   | { readonly id: string; readonly type: "subscription.deleted"; readonly subscription: GatewaySubscription }
@@ -29,8 +30,16 @@ export interface CheckoutRequest {
   readonly customerId: string;
   readonly priceId: string;
   readonly userId: string;
+  readonly requestId: string;
+  readonly expiresAt: number;
   readonly successUrl: string;
   readonly cancelUrl: string;
+}
+
+export class CheckoutExpiryRejected extends HttpError {
+  constructor() {
+    super(502, "checkout_expiry_rejected", "Stripe rejected the checkout expiration. Try checkout again.");
+  }
 }
 
 /**
@@ -40,6 +49,7 @@ export interface CheckoutRequest {
 export interface StripeGateway {
   readonly isConfigured: boolean;
   createCustomer(email: string, userId: string): Promise<string>;
+  hasCheckoutBlockingSubscription(customerId: string, priceIds: readonly string[]): Promise<boolean>;
   createCheckoutSession(request: CheckoutRequest): Promise<{ id: string; url: string }>;
   createPortalSession(customerId: string, returnUrl: string): Promise<{ url: string }>;
   retrieveSubscription(subscriptionId: string): Promise<GatewaySubscription>;
@@ -50,6 +60,10 @@ export class UnconfiguredStripeGateway implements StripeGateway {
   readonly isConfigured = false;
 
   createCustomer(): Promise<string> {
+    return Promise.reject(new Error("Stripe is not configured"));
+  }
+
+  hasCheckoutBlockingSubscription(): Promise<boolean> {
     return Promise.reject(new Error("Stripe is not configured"));
   }
 

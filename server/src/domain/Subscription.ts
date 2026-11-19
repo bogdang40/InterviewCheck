@@ -12,9 +12,14 @@ export type SubscriptionStatus =
   | "incomplete_expired"
   | "paused";
 
+export const CHECKOUT_BLOCKING_STATUSES: readonly SubscriptionStatus[] = [
+  "active", "trialing", "past_due", "incomplete", "paused", "unpaid",
+];
+
 export interface Subscription {
   readonly id: string;
   readonly userId: string;
+  readonly stripeCustomerId: string | null;
   readonly status: SubscriptionStatus;
   readonly priceId: string | null;
   readonly plan: Plan | null;
@@ -76,5 +81,9 @@ export class PlanCatalog {
 
   availablePlans(): Plan[] {
     return [...this.priceByPlan.keys()];
+  }
+
+  priceIds(): string[] {
+    return [...this.priceByPlan.values()];
   }
 }

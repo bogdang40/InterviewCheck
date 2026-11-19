@@ -104,6 +104,15 @@ describe("admin API", () => {
     expect((await patch(harness.app, `/v1/admin/users/${adminId}`, { disabled: true }, adminToken)).status).toBe(409);
   });
 
+  it("rolls back the account change and session revocation if the audit write fails", async () => {
+    const database = harness.container.database;
+    database.exec(`CREATE TRIGGER reject_audit BEFORE INSERT ON audit_log
+      WHEN NEW.action = 'admin.update_user' BEGIN SELECT RAISE(ABORT, 'audit failed'); END`);
+    expect((await patch(harness.app, `/v1/admin/users/${memberId}`, { disabled: true }, adminToken)).status).toBe(500);
+    expect(harness.container.users.findById(memberId)?.disabled).toBe(false);
+    expect((await get(harness.app, "/v1/me", memberToken)).status).toBe(200);
+  });
+
   it("reports stats and an audit trail", async () => {
     const stats = await json<AdminStats>(await get(harness.app, "/v1/admin/stats", adminToken));
     expect(stats).toEqual({ totalUsers: 2, admins: 1, liveSubscriptions: 0 });

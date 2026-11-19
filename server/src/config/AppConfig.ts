@@ -23,6 +23,7 @@ const optionalSecret = z
 const days = (fallback: number) => z.coerce.number().int().min(0).max(3650).default(fallback);
 
 const schema = z.object({
+  HOST: z.string().trim().min(1).default("0.0.0.0"),
   PORT: z.coerce.number().int().min(1).max(65535).default(8787),
   PUBLIC_BASE_URL: z.string().url().default("http://localhost:8787"),
   DATABASE_PATH: z.string().min(1).default("./data/access.sqlite"),

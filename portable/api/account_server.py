@@ -2,6 +2,7 @@
 from typing import Literal
 from uuid import UUID, uuid4
 import os
+import sqlite3
 
 from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
@@ -10,7 +11,8 @@ from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import Headers
 
-from . import account_admin, account_auth, account_db as db, account_stripe as billing
+from . import account_admin, account_auth, account_db as db, account_stripe as billing, account_stripe_webhooks as webhooks
+from .origin import workspace_client
 
 routes = APIRouter()
 
@@ -72,7 +74,8 @@ def login(action: Literal["login", "signup", "logout"], request: Request, form: 
     if request.app.state.embedded and form.email != os.getenv("INTERVIEWCHECK_OPERATOR_EMAIL", "").strip().lower():
         raise HTTPException(403, "Use the operator email assigned to this workspace.")
     public = not request.app.state.embedded or bool(os.getenv("INTERVIEWCHECK_PUBLIC_ORIGIN"))
-    result = account_auth.sign_in(action, form, request.client.host if request.client else "local", public_signup=public)
+    address = workspace_client(request) if request.app.state.embedded else (request.client.host if request.client else "local")
+    result = account_auth.sign_in(action, form, address, public_signup=public)
     return JSONResponse(result, status_code=201 if action == "signup" else 200)
 
 
@@ -106,8 +109,8 @@ async def portal(auth=Depends(identity), idempotency_key: UUID | None = Header(d
 
 @routes.post("/billing/webhook")
 async def webhook(request: Request):
-    event = await run_in_threadpool(billing.verify, await request.body(), request.headers.get("stripe-signature"))
-    return await billing.apply(event)
+    event = await run_in_threadpool(webhooks.verify, await request.body(), request.headers.get("stripe-signature"))
+    return await webhooks.apply(event)
 
 
 @routes.get("/billing/return")
@@ -153,4 +156,8 @@ app.mount("/v1", service(False))
 
 @app.get("/health")
 def health():
+    try:
+        db.check_database()
+    except (OSError, sqlite3.Error) as error:
+        raise HTTPException(503, "Account database is unavailable.") from error
     return {"ok": True, "version": "v1", "billingConfigured": plans()["configured"]}

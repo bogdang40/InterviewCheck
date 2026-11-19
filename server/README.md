@@ -19,6 +19,7 @@ npm run dev
 ```
 
 `GET http://localhost:8787/health` should answer `{"ok":true,...}`.
+Set `HOST=127.0.0.1` to bind the service to local traffic during development.
 
 Without Stripe keys the server still runs: signup, login, admin, and
 complimentary grants all work, and checkout answers `503 billing_not_configured`.
@@ -148,3 +149,13 @@ end without network access.
 `Dockerfile` and `fly.toml` are included. Any host that runs a Node 22
 container with a persistent volume for `DATABASE_PATH` works. Set
 `PUBLIC_BASE_URL` to the public origin so Stripe return pages resolve.
+
+Run one account service writer per database. Before upgrading an existing paid
+service, pause checkout and take a consistent SQLite backup. Let existing
+Checkout Sessions expire or close them in Stripe. Compare active subscriptions
+and customer IDs in Stripe with the account database, including any customers
+created by concurrent checkouts on older versions. Keep the original backup and
+the Stripe events received after it for rollback and replay. Reopen checkout
+after signed webhook delivery, renewal, cancellation, and account restore pass
+on the deployment. The [backend review](../docs/backend-production-review.md)
+records remaining release checks.

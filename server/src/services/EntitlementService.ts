@@ -21,7 +21,7 @@ export class EntitlementService {
 
   snapshotFor(user: User): AccessSnapshot {
     const now = this.clock();
-    const subscription = this.subscriptions.currentForUser(user.id);
+    const subscription = this.subscriptions.currentForUser(user.id, (candidate) => this.resolver.subscriptionExpiry(candidate, now) !== null);
     return {
       user: UserPresenter.toPublic(user),
       entitlement: this.resolver.resolve(user, subscription, now),

@@ -4,39 +4,6 @@
   gap: 19px;
   min-width: 0;
 }
-.queue-home .queue-hero {
-  min-height: 226px;
-}
-.queue-home.populated .queue-hero {
-  min-height: 178px;
-}
-.queue-hero .hero-copy {
-  width: 65%;
-  max-width: 760px;
-  padding: 26px 30px;
-}
-.queue-hero .hero-copy h1 {
-  margin-top: 0;
-}
-.queue-hero .hero-copy p {
-  max-width: 520px;
-}
-.queue-hero .hero-copy .row {
-  margin-top: 16px;
-}
-.queue-empty-start {
-  display: flex;
-  align-items: center;
-  gap: 18px;
-  padding: clamp(18px, 3vw, 32px);
-}
-.queue-illustration {
-  color: var(--green-ink);
-  background: var(--selected-bg);
-  border-radius: 10px;
-  padding: 12px;
-}
-.queue-empty-start p,
 .queue-head p,
 .archive-heading p,
 .archive-empty p {
@@ -62,14 +29,12 @@
 }
 .queue-head p,
 .queue-link,
-.queue-more,
-.archive-total {
+.queue-more {
   font-size: 13px;
 }
 .queue-link,
 .queue-more,
-.clear-filters,
-.archive-total {
+.clear-filters {
   display: inline-flex;
   align-items: center;
   gap: 7px;
@@ -88,8 +53,7 @@
 .queue-more {
   padding: 12px 22px;
 }
-.queue-loading,
-.archive-total {
+.queue-loading {
   color: var(--muted);
 }
 .work-list {
@@ -238,23 +202,8 @@
   .interview-archive {
     gap: 13px;
   }
-  .queue-home .queue-hero,
-  .queue-home.populated .queue-hero {
-    min-height: 167px;
-  }
-  .queue-hero .hero-copy {
-    width: 100%;
-    padding: 19px;
-  }
-  .queue-hero .hero-copy p {
-    max-width: 100%;
-  }
   .queue-head {
     padding: 16px;
-  }
-  .queue-empty-start {
-    align-items: start;
-    gap: 12px;
   }
   .work-row {
     grid-template-columns: auto minmax(0, 1fr) auto;

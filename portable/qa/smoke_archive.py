@@ -84,7 +84,9 @@ def smoke(archive):
                     except OSError:
                         time.sleep(0.25)
                 with urlopen(base, timeout=5) as response:
-                    assert b"Interview workspace" in response.read()
+                    assert response.headers.get_content_type() == "text/html"
+                    entry = (root / "web" / "out" / "index.html").read_bytes()
+                    assert entry and response.read() == entry, "Expected the packaged workspace entry page."
                 try:
                     urlopen(base + "/api/sessions", timeout=5).close()
                 except HTTPError as denied:

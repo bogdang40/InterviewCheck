@@ -53,4 +53,20 @@ describe("current subscription selection", () => {
     save("sub_live_a", "active", 0);
     expect(harness.container.subscriptions.currentForUser(userId)).toEqual(firstLive);
   });
+
+  it("keeps access when only an older subscription still grants it", () => {
+    const day = 86_400_000;
+    const paid = harness.container.subscriptions.upsert({
+      id: "sub_paid", userId, status: "active", priceId: "price_monthly", plan: "monthly",
+      currentPeriodEnd: new Date(harness.clock.now.getTime() + 7 * day), cancelAtPeriodEnd: false,
+    }, harness.clock.now);
+    harness.container.subscriptions.upsert({
+      id: "sub_expired", userId, status: "past_due", priceId: "price_annual", plan: "annual",
+      currentPeriodEnd: paid.currentPeriodEnd, cancelAtPeriodEnd: false,
+    }, new Date(harness.clock.now.getTime() + 1000));
+    harness.clock.now = new Date(harness.clock.now.getTime() + 4 * day);
+    const snapshot = harness.container.entitlements.snapshotFor(harness.container.users.requireById(userId));
+    expect(snapshot.entitlement).toMatchObject({ active: true, source: "subscription", plan: "monthly" });
+    expect(snapshot.subscription?.id).toBe("sub_paid");
+  });
 });

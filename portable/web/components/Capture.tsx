@@ -5,7 +5,8 @@ import { AudioLines, Square, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { integration, type ProviderStatus } from "@/lib/integrations";
-import { MeetingRecordings, RecordingExcerpt, type Segment } from "./MeetingRecordings";
+import { RecordingExcerpt } from "./RecordingExcerpt";
+import { MeetingRecordings, type Segment } from "./MeetingRecordings";
 import { useLiveCapture } from "./useLiveCapture";
 
 const extensions: Record<string, string> = { wav: "audio/wav", m4a: "audio/mp4", mp3: "audio/mpeg",
@@ -54,7 +55,7 @@ export default function Capture({ onText, onPendingChange }: {
         headers: { "Content-Type": extensions[file.name.split(".").pop()?.toLowerCase() || ""] || file.type || "application/octet-stream", "X-Send-Audio": "deepgram" },
         body: file, signal: controller.signal,
       });
-      receive(result.segments);
+      if (!controller.signal.aborted) receive(result.segments);
     } catch (e) { if (!controller.signal.aborted) setError((e as Error).message); }
     finally { if (!controller.signal.aborted) setUploading(false); }
   }
@@ -82,15 +83,17 @@ export default function Capture({ onText, onPendingChange }: {
             onClick={() => { setError(""); void live.start(source); }}><AudioLines /> Start transcription</Button>}
         </div>
         <label className="field">Recorded audio or video
-          <input type="file" accept="audio/*,video/mp4,video/webm,video/quicktime" disabled={uploading || active}
+          <input type="file" accept="audio/*,video/mp4,video/webm,video/quicktime" disabled={uploading || remoteBusy || active || !!draft || segments.length > 0}
             onChange={event => { setFile(event.target.files?.[0] ?? null); }} />
         </label>
         <Button type="button" variant="outline" disabled={!file || !consent || uploading || remoteBusy || active || !!draft || segments.length > 0}
           onClick={upload}><Upload /> {uploading ? "Transcribing" : "Send recording to Deepgram"}</Button>
       </>}
       {!active && !uploading && !draft && !segments.length && <MeetingRecordings providers={providers?.meetings || []} enabled={enabled} receive={receive} onBusy={setRemoteBusy} />}
-      {segments.length > 0 && <RecordingExcerpt key={fileVersion} segments={segments} select={setDraft} />}
-        {(draft || active || segments.length > 0) && <>
+      {segments.length > 0 && <RecordingExcerpt key={fileVersion} segments={segments}
+        onApply={text => { onText(text); setSegments([]); }}
+        onDiscard={() => setSegments([])} />}
+        {(draft || active) && <>
           <label className="field">Candidate excerpt<Textarea rows={4} value={draft} onChange={event => setDraft(event.target.value)} /></label>
           <Button type="button" variant="outline" disabled={active || !draft.trim()}
             onClick={() => { onText(draft.trim()); setDraft(""); setSegments([]); }}>Use this excerpt</Button>

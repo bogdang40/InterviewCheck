@@ -1,12 +1,14 @@
 """Run the portable client against the repository's real account service."""
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 import os
 from pathlib import Path
 import subprocess
+import sqlite3
 import time
 
 import httpx
 import pytest
+from fastapi.testclient import TestClient
 
 
 # Bind only to loopback and ask the OS for a free port. The service classes
@@ -69,3 +71,39 @@ def test_membership_session_uses_native_access_contract(workspace_url, tmp_path,
             assert client.get("/api/sessions").status_code == 401
             assert client.post(base + "access/login", json=identity).is_success
             assert client.get("/api/roles").status_code == 200
+
+
+def test_account_backup_can_switch_runtimes(tmp_path, monkeypatch):
+    from api.account_server import app as python_accounts
+
+    service_dir = Path(__file__).resolve().parents[2] / "server"
+    restored = tmp_path / "restored"
+    restored.mkdir()
+    source_db = tmp_path / "access.sqlite"
+    restored_db = restored / "access.sqlite"
+    identity = {"email": "restore@example.test", "password": "Synthetic-recovery-test-3182"}
+    with access_service(service_dir, tmp_path) as address, httpx.Client(base_url=address, trust_env=False) as node:
+        account = node.post("/v1/auth/signup", json=identity).raise_for_status().json()
+        token = {"Authorization": "Bearer " + account["token"]}
+        with closing(sqlite3.connect(source_db)) as source, closing(sqlite3.connect(restored_db)) as destination:
+            source.backup(destination)
+            assert destination.execute("PRAGMA integrity_check").fetchone() == ("ok",)
+            destination.execute("ALTER TABLE subscriptions DROP COLUMN stripe_customer_id")
+            destination.execute("PRAGMA user_version=4")
+            destination.commit()
+    monkeypatch.setenv("INTERVIEWCHECK_ACCESS_DB", str(restored_db))
+    monkeypatch.setenv("INTERVIEWCHECK_DB", str(restored / "review.sqlite"))
+    with TestClient(python_accounts) as python:
+        recovered = python.get("/v1/me", headers=token).raise_for_status().json()
+        assert recovered["user"]["id"] == account["user"]["id"]
+        assert recovered["entitlement"]["source"] == "trial"
+        assert python.post("/v1/auth/logout", headers=token).status_code == 204
+    with closing(sqlite3.connect(restored_db)) as destination:
+        assert destination.execute("PRAGMA user_version").fetchone() == (5,)
+        destination.execute("PRAGMA user_version=4")  # Also resume an interim database with the column already present.
+    with access_service(service_dir, restored) as address, httpx.Client(base_url=address, trust_env=False) as node:
+        assert node.get("/v1/me", headers=token).status_code == 401
+        logged_in = node.post("/v1/auth/login", json=identity).raise_for_status().json()
+        assert logged_in["user"]["id"] == account["user"]["id"]
+    with closing(sqlite3.connect(restored_db)) as destination:
+        assert destination.execute("PRAGMA user_version").fetchone() == (5,)

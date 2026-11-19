@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useSyncExternalStore } from "react"
 
 // Both renderers use the same signal surface so the still image survives a lost GPU context.
 function height(x: number, z: number, phase: number) {
@@ -9,11 +9,22 @@ function height(x: number, z: number, phase: number) {
   return envelope * (Math.cos(path * 1.65 + phase) * 0.69 + Math.sin(z * 1.6 - phase) * 0.28 + 0.3)
 }
 
+// Narrow screens use the still surface to keep the interview controls responsive.
+const motionQuery = "(prefers-reduced-motion: no-preference) and (min-width: 651px)"
+function observeMotion(listener: () => void) {
+  const query = window.matchMedia(motionQuery)
+  query.addEventListener("change", listener)
+  return () => query.removeEventListener("change", listener)
+}
+const canAnimate = () => window.matchMedia(motionQuery).matches
+const still = () => false
+
 export default function SignalField() {
   const host = useRef<HTMLDivElement>(null)
+  const animate = useSyncExternalStore(observeMotion, canAnimate, still)
   useEffect(() => {
     const el = host.current
-    if (!el) return
+    if (!el || !animate) return
     let closed = false
     let cleanup = () => {}
     void import("three").then((T) => {
@@ -29,19 +40,19 @@ export default function SignalField() {
       const camera = new T.OrthographicCamera(-4, 4, 2, -2, 0.1, 100)
       camera.position.set(2.2, 2.4, 6)
       camera.lookAt(0, 0.15, 0)
-      const lines = Array.from({ length: 62 }, (_, i) => {
+      const lines = Array.from({ length: 40 }, (_, i) => {
         const geometry = new T.BufferGeometry()
         const position = new T.BufferAttribute(new Float32Array(129 * 3), 3)
         geometry.setAttribute("position", position)
         const material = new T.LineBasicMaterial({
-          color: new T.Color().setHSL(0.36 + i * 0.0011, 0.55, 0.58 + 0.18 * Math.sin((i / 62) * Math.PI)),
+          color: new T.Color().setHSL(0.065 + i * 0.00045, 0.58, 0.49 + 0.12 * Math.sin((i / 40) * Math.PI)),
           transparent: true,
-          opacity: 0.78,
+          opacity: 0.72,
         })
         const line = new T.Line(geometry, material)
         line.frustumCulled = false
         scene.add(line)
-        return { geometry, position, material, z: (i / 61 - 0.5) * 4.6 }
+        return { geometry, position, material, z: (i / 39 - 0.5) * 4.6 }
       })
       function render(phase: number) {
         for (const { position, z } of lines) {
@@ -53,21 +64,21 @@ export default function SignalField() {
         }
         renderer.render(scene, camera)
       }
-      const reduced = window.matchMedia("(prefers-reduced-motion: reduce)")
+      let contextLost = false
       let frame = 0
       let last = 0
       let visible = true
       function tick(time: number) {
         if (time - last > 55) {
-          render(Math.sin(time / 8000) * 0.4)
+          render(Math.sin(time / 5900) * 0.64)
           last = time
         }
         frame = requestAnimationFrame(tick)
       }
       function update() {
         cancelAnimationFrame(frame)
-        render(0)
-        if (visible && !reduced.matches && !document.hidden) frame = requestAnimationFrame(tick)
+        if (contextLost || !visible || document.hidden) return
+        frame = requestAnimationFrame(tick)
       }
       function resize() {
         if (!el) return
@@ -90,13 +101,26 @@ export default function SignalField() {
         update()
       })
       visibility.observe(el)
-      reduced.addEventListener("change", update)
+      function onLost() {
+        contextLost = true
+        delete el!.dataset.ready
+        update()
+      }
+      function onRestored() {
+        contextLost = false
+        resize()
+        el!.dataset.ready = "true"
+        update()
+      }
+      renderer.domElement.addEventListener("webglcontextlost", onLost)
+      renderer.domElement.addEventListener("webglcontextrestored", onRestored)
       document.addEventListener("visibilitychange", update)
       resize()
       el.dataset.ready = "true"
       cleanup = () => {
         cancelAnimationFrame(frame)
-        reduced.removeEventListener("change", update)
+        renderer.domElement.removeEventListener("webglcontextlost", onLost)
+        renderer.domElement.removeEventListener("webglcontextrestored", onRestored)
         document.removeEventListener("visibilitychange", update)
         sizes.disconnect()
         visibility.disconnect()
@@ -108,27 +132,27 @@ export default function SignalField() {
         renderer.domElement.remove()
         delete el.dataset.ready
       }
-    })
+    }, () => { /* The still surface is already visible if the optional chunk fails. */ })
     return () => {
       closed = true
       cleanup()
     }
-  }, [])
+  }, [animate])
   return (
     <div className="signal-field" ref={host} aria-hidden="true">
       <svg viewBox="0 0 500 250" preserveAspectRatio="xMidYMid slice">
-        {Array.from({ length: 44 }, (_, i) => {
-          const z = (i / 43 - 0.5) * 4.6
-          const points = Array.from({ length: 95 }, (_, j) => {
-            const x = (j / 94 - 0.5) * 8
+        {Array.from({ length: 30 }, (_, i) => {
+          const z = (i / 29 - 0.5) * 4.6
+          const points = Array.from({ length: 73 }, (_, j) => {
+            const x = (j / 72 - 0.5) * 8
             // Different JS engines can round trigonometric results differently.
             // Subpixel precision is enough for the static fallback at any UI size.
-            const px = (250 + x * 64 - z * 17).toFixed(2)
-            const py = (120 + z * 20 - height(x, z, 0) * 78 - x * 4).toFixed(2)
+            const px = (250 + x * 64 - z * 17).toFixed(1)
+            const py = (120 + z * 20 - height(x, z, 0) * 78 - x * 4).toFixed(1)
             return `${px},${py}`
           })
           return (
-            <polyline key={i} points={points.join(" ")} fill="none" stroke="#8edbad" strokeWidth="1.05" />
+            <polyline key={i} points={points.join(" ")} fill="none" stroke="#b67e56" strokeWidth="1.05" />
           )
         })}
       </svg>

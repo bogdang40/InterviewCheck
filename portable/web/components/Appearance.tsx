@@ -11,12 +11,12 @@ const choices = [
 ] as const
 
 export default function Appearance() {
-  const [value, setValue] = useState<Preference>("system")
+  const [value, setValue] = useState<Preference>("dark")
   const id = useId()
   useEffect(() => {
     const sync = () => {
       const theme = document.documentElement.dataset.theme
-      setValue(theme === "light" || theme === "dark" ? theme : "system")
+      setValue(theme === "light" || theme === "system" ? theme : "dark")
     }
     sync()
     window.addEventListener("interviewcheck:appearance", sync)

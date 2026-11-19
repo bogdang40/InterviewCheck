@@ -4,6 +4,7 @@ import { api, message, type Answer, type Disposition } from "@/lib/api"
 import { practiceCases } from "@/lib/sample"
 import { Button } from "./ui/button"
 import { Textarea } from "./ui/textarea"
+import CandidateResponse from "./CandidateResponse"
 import MarkedText from "./MarkedText"
 import { Findings } from "./Evidence"
 import QuestionNavigator from "./QuestionNavigator"
@@ -48,7 +49,7 @@ export default function Sample({create}:{create:()=>void}) {
     {error && <div role="alert" className="error">{error} <Button variant="outline" onClick={()=>setRetry(x=>x+1)}>Retry</Button></div>}
     {item?<div className="review-grid"><QuestionNavigator answers={answers} active={item.id} disabled={false} onSelect={a=>setSelected(answers.findIndex(x=>x.id===a.id))}/>
       <article className="panel evidence"><span className="eyebrow">{scenario.topic.toUpperCase()}</span><h2>{item.question}</h2>
-        <p className="transcript-text"><MarkedText text={item.answer} passages={item.result.passages}/></p>
+        <CandidateResponse item={item}/>
         {sources.map((s,i)=><div className="source-box" key={s.label}><b>{s.label}</b><p><MarkedText text={s.text} side="source" passages={item.result.passages.filter(p=>p.source_index===i)}/></p>
           <label className="check"><input type="checkbox" checked={s.permitted} onChange={e=>{const flag=e.target.checked;setOverrides(o=>({...o,[key(i)]:flag}));changeNote({disposition:"pending"})}}/>
             {sources.length===1?"Permitted material":"Permit "+s.label}</label></div>)}

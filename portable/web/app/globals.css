@@ -1,25 +1,25 @@
 @import "tailwindcss";
 
 @theme {
-  --color-primary: #24664b;
+  --color-primary: #303437;
   --color-primary-foreground: #fff;
-  --color-secondary: #e5eee7;
-  --color-secondary-foreground: #203d32;
+  --color-secondary: #f2ebe3;
+  --color-secondary-foreground: #45362e;
   --color-background: #fff;
-  --color-accent: #edf3ef;
-  --color-accent-foreground: #194c36;
-  --color-muted-foreground: #607066;
-  --color-foreground: #1a2923;
-  --color-ring: #478763;
-  --color-input: #cbd5ce;
+  --color-accent: #f6e9de;
+  --color-accent-foreground: #503125;
+  --color-muted-foreground: #64605c;
+  --color-foreground: #232728;
+  --color-ring: #ad592f;
+  --color-input: #d8d4ce;
   --color-destructive: #9a3528;
 }
 :root {
   color-scheme: light;
-  --ink: #1b2923;
-  --muted: #5b6b62;
-  --line: #dbe2dc;
-  --green: #24664b;
+  --ink: #232728;
+  --muted: #66635e;
+  --line: #dedbd4;
+  --green: #303437;
   --mono: "IBM Plex Mono", monospace;
 }
 * {

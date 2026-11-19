@@ -7,7 +7,7 @@ import { useEffect, useState } from "react"
 import {
   BriefcaseBusiness,
   ChevronRight,
-  CircleHelp,
+  CirclePlay,
   UserRound,
   FolderClock,
   LayoutGrid,
@@ -95,8 +95,8 @@ export default function WorkspaceShell({ children }: { children: React.ReactNode
               ))}
             </nav>
             <div className="sidebar-foot">
-              <Link href="/sample/">
-                <CircleHelp size={17} />
+              <Link href="/sample/" aria-current={path === "/sample/" ? "page" : undefined}>
+                <CirclePlay size={17} />
                 Sample review
               </Link>
             </div>

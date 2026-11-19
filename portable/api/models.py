@@ -10,13 +10,13 @@ Body = Annotated[str, StringConstraints(min_length=1, max_length=24000)]
 RequestID = Annotated[UUID, Field(strict=False)]
 RoleVersion = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
 Disposition = Literal["pending", "explained", "unresolved", "disclosed"]
-EARLIER_NOTE_PREFIX = "Note from an earlier answer version:\n"
-NOTE_LIMIT = 12000
+EARLIER_ANSWER_NOTE = "Note from an earlier answer version:\n"
+REVIEW_NOTE_LIMIT = 12000
 
 
 def validate_note_length(note: str) -> str:
-    if len(note.removeprefix(EARLIER_NOTE_PREFIX)) > NOTE_LIMIT:
-        raise ValueError(f"The interviewer note exceeds {NOTE_LIMIT} characters.")
+    if len(note.removeprefix(EARLIER_ANSWER_NOTE)) > REVIEW_NOTE_LIMIT:
+        raise ValueError(f"The interviewer note exceeds {REVIEW_NOTE_LIMIT} characters.")
     return note
 
 
@@ -81,7 +81,7 @@ class AnswerEdit(AnswerInput):
 class ReviewInput(Input):
     expected_revision: int | None = Field(default=None, ge=1)
     disposition: Disposition
-    note: str = Field(max_length=NOTE_LIMIT + len(EARLIER_NOTE_PREFIX))
+    note: str = Field(max_length=REVIEW_NOTE_LIMIT + len(EARLIER_ANSWER_NOTE))
 
     @field_validator("note")
     @classmethod
