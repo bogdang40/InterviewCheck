@@ -1,10 +1,14 @@
 import { useRef, useState, type FormEvent } from "react"
-import { ArrowRight, BriefcaseBusiness, Plus } from "lucide-react"
-import { api, message, RoleConflict, type PermittedMaterial, type Role } from "@/lib/api"
+import { ArrowRight, BriefcaseBusiness, History, Plus } from "lucide-react"
+import { api, message, RoleConflict, type PermittedMaterial } from "@/lib/api"
+import type { CalibratedRole, RubricCriterion } from "@/lib/roleCalibration"
 import ReloadRole from "./ReloadRole"
 import ResourcePolicy from "./ResourcePolicy"
 import RoleFileActions from "./RoleFileActions"
 import Authoring from "./Authoring"
+import RoleRubricEditor, { sanitizeRubric } from "./RoleRubricEditor"
+import RoleVersionHistory from "./RoleVersionHistory"
+import RoleAnalyticsPanel from "./RoleAnalyticsPanel"
 import { Button } from "./ui/button"
 import { Input } from "./ui/input"
 import { Textarea } from "./ui/textarea"
@@ -13,10 +17,12 @@ export default function Roles({
   roles,
   onSave,
   prepare,
+  onReloadAll,
 }: {
-  roles: Role[]
-  onSave: (r: Role) => void
-  prepare: (role: Role) => void
+  roles: CalibratedRole[]
+  onSave: (r: CalibratedRole) => void
+  prepare: (role: CalibratedRole) => void
+  onReloadAll?: () => void
 }) {
   const authoringVersion = useRef(0)
   const savedQuestions = useRef<string[]>([])
@@ -25,6 +31,8 @@ export default function Roles({
   const [policy, setPolicy] = useState("")
   const [materials, setMaterials] = useState<PermittedMaterial[]>([])
   const [questions, setQuestions] = useState("")
+  const [rubric, setRubric] = useState<RubricCriterion[]>([])
+  const [changeNote, setChangeNote] = useState("")
   const [generating, setGenerating] = useState(false)
   const [version, setVersion] = useState<string>()
   const [conflict, setConflict] = useState(false)
@@ -32,7 +40,12 @@ export default function Roles({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
   const [id, setId] = useState(() => crypto.randomUUID())
-  function open(role?: Role) {
+  const [historyRoleId, setHistoryRoleId] = useState<string | null>(null)
+  const [analyticsRefreshKey, setAnalyticsRefreshKey] = useState(0)
+
+  const historyRole = roles.find((r) => r.id === historyRoleId) ?? null
+
+  function open(role?: CalibratedRole) {
     authoringVersion.current += 1
     savedQuestions.current = role?.questions ?? []
     setAdding(true)
@@ -45,7 +58,10 @@ export default function Roles({
     setPolicy(role?.policy ?? "")
     setMaterials(role?.permitted_sources ?? [])
     setQuestions(role?.questions.join("\n") ?? "")
+    setRubric(role?.rubric ?? [])
+    setChangeNote("")
   }
+
   async function save(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
     if (generating || busy || conflict) return
@@ -53,18 +69,27 @@ export default function Roles({
     setBusy(true)
     setError("")
     try {
-      const role = await api<Role>(version ? "roles/" + id : "roles", version ? "PUT" : "POST", {
-        id, version, policy, permitted_sources: materials,
+      const role = await api<CalibratedRole>(version ? "roles/" + id : "roles", version ? "PUT" : "POST", {
+        id,
+        version,
+        policy,
+        permitted_sources: materials,
         name: form.get("name"),
         description: form.get("description"),
-        questions: questions === savedQuestions.current.join("\n") ? savedQuestions.current :
-          questions.split("\n").map(s => s.trim()).filter(Boolean),
+        questions: questions === savedQuestions.current.join("\n")
+          ? savedQuestions.current
+          : questions.split("\n").map((s) => s.trim()).filter(Boolean),
+        rubric: sanitizeRubric(rubric),
+        change_note: changeNote.trim(),
       })
       onSave(role)
+      setAnalyticsRefreshKey((k) => k + 1)
       setAdding(false)
       setName("")
       setDescription("")
       setQuestions("")
+      setRubric([])
+      setChangeNote("")
       setId(crypto.randomUUID())
     } catch (e) {
       setConflict(e instanceof RoleConflict)
@@ -73,12 +98,13 @@ export default function Roles({
       setBusy(false)
     }
   }
+
   return (
     <>
       <div className="page-title">
         <span className="eyebrow">LIBRARY</span>
         <h1>Role library</h1>
-        <p>Prepare interview questions, assistance policies and permitted sources for each role.</p>
+        <p>Prepare interview questions, rubric criteria, assistance policies and permitted sources for each role.</p>
       </div>
       <section className="panel">
         <div className="panel-head">
@@ -89,7 +115,7 @@ export default function Roles({
             onClick={() => (adding ? setAdding(false) : open())}
             variant={adding ? "outline" : "default"}
           >
-            {!adding && <Plus />}
+            {!adding && <Plus aria-hidden="true" />}
             {adding ? "Cancel" : "Add role"}
           </Button>
         </div>
@@ -119,6 +145,13 @@ export default function Roles({
               <Textarea value={questions} onChange={(e) => setQuestions(e.target.value)} name="questions" />
             </label>
             <ResourcePolicy policy={policy} onPolicy={setPolicy} materials={materials} onMaterials={setMaterials}/>
+            <RoleRubricEditor
+              rubric={rubric}
+              changeNote={changeNote}
+              disabled={busy || generating || conflict}
+              onRubric={setRubric}
+              onChangeNote={setChangeNote}
+            />
             <Authoring
               pending={setGenerating}
               disabled={busy || conflict || questions.split("\n").filter(line => line.trim()).length >= 100}
@@ -152,29 +185,59 @@ export default function Roles({
         )}
         {roles.map((r) => (
           <div className="role-row" key={r.id}>
-            <BriefcaseBusiness />
+            <BriefcaseBusiness aria-hidden="true" />
             <div>
               <strong>{r.name}</strong>
               <p>{r.description || `${r.questions.length} planned questions`}</p>
-              {!!r.permitted_sources?.length && <small>{r.permitted_sources.length} permitted {r.permitted_sources.length === 1 ? "source" : "sources"}</small>}
+              <small>
+                v{r.version_number ?? 1}
+                {!!r.rubric?.length && ` | ${r.rubric.length} rubric ${r.rubric.length === 1 ? "criterion" : "criteria"}`}
+                {!!r.permitted_sources?.length && ` | ${r.permitted_sources.length} permitted ${r.permitted_sources.length === 1 ? "source" : "sources"}`}
+              </small>
               <RoleFileActions id={r.id} disabled={adding} onDuplicate={onSave} onEdit={open} />
             </div>
-            <Button disabled={adding} variant="outline" size="sm" onClick={() => open(r)}>
-              Edit role
-            </Button>
-            <Button variant="ghost" onClick={() => prepare(r)}>
-              Prepare <ArrowRight />
-            </Button>
+            <span className="ml-auto flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant={historyRoleId === r.id ? "secondary" : "outline"}
+                size="sm"
+                onClick={() => setHistoryRoleId((cur) => (cur === r.id ? null : r.id))}
+              >
+                <History aria-hidden="true" />
+                Versions
+              </Button>
+              <Button disabled={adding} variant="outline" size="sm" onClick={() => open(r)}>
+                Edit role
+              </Button>
+              <Button variant="ghost" onClick={() => prepare(r)}>
+                Prepare <ArrowRight aria-hidden="true" />
+              </Button>
+            </span>
           </div>
         ))}
         {!roles.length && !adding && (
           <div className="empty">
-            <BriefcaseBusiness />
+            <BriefcaseBusiness aria-hidden="true" />
             <strong>No roles saved</strong>
             <p>Add a role or migrate role profiles from a native database.</p>
+            <Button variant="outline" size="sm" onClick={() => open()}>
+              Create a role
+            </Button>
           </div>
         )}
       </section>
+      {historyRole && (
+        <RoleVersionHistory
+          role={historyRole}
+          onRestored={(updated) => {
+            onSave(updated)
+            setAnalyticsRefreshKey((k) => k + 1)
+          }}
+          onConflictReload={onReloadAll}
+          onClose={() => setHistoryRoleId(null)}
+        />
+      )}
+      <RoleAnalyticsPanel refreshKey={analyticsRefreshKey} />
     </>
   )
 }

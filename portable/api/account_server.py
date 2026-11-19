@@ -1,8 +1,10 @@
 """Python implementation of the native /v1 service. Workspace data is never routed here."""
-from typing import Literal
-from uuid import UUID, uuid4
+from contextlib import asynccontextmanager
 import os
 import sqlite3
+import sys
+from typing import Literal
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
@@ -11,8 +13,11 @@ from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import Headers
 
-from . import account_admin, account_auth, account_db as db, account_stripe as billing, account_stripe_webhooks as webhooks
+from . import account_admin, account_auth, account_db as db, account_security, account_stripe as billing, account_stripe_webhooks as webhooks, rate_limit
+from .access import embedded_enabled, production_mode
+from .error_sanitizer import sanitize_error_text
 from .origin import workspace_client
+from .security_headers import SecurityHeadersMiddleware
 
 routes = APIRouter()
 
@@ -24,15 +29,18 @@ class AccountBoundary:
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
             return await self.app(scope, receive, send)
-        if self.embedded:
-            from .access import embedded_enabled
-            if not embedded_enabled():
-                return await JSONResponse({"detail": "Embedded accounts are disabled."}, status_code=404)(scope, receive, send)
+        if self.embedded and not embedded_enabled():
+            return await JSONResponse({"detail": "Embedded accounts are disabled."}, status_code=404)(scope, receive, send)
+        mutating = scope["method"] not in {"GET", "HEAD", "OPTIONS"}
+        path = scope["path"]
+        headers = Headers(scope=scope)
+        if mutating and path not in {"/v1/billing/webhook", "/billing/webhook"}:
+            if (headers.get("origin") or headers.get("cookie")) and headers.get("x-interviewcheck") != "1":
+                return await JSONResponse({"error": {"code": "forbidden", "message": "Missing workspace request header."}}, status_code=403)(scope, receive, send)
         if scope["method"] in {"POST", "PATCH"}:
-            headers = Headers(scope=scope)
             if headers.get("content-type", "").split(";")[0].strip().lower() != "application/json":
-                # Existing native callers send logout and portal with an empty body.
-                empty_allowed = scope["path"].endswith(("/auth/logout", "/billing/portal"))
+                # Existing native callers send logout, portal, and revoke-sessions with an empty body.
+                empty_allowed = path.endswith(("/auth/logout", "/billing/portal", "/revoke-sessions"))
                 if not empty_allowed:
                     return await JSONResponse({"detail": "A JSON request is required."}, status_code=415)(scope, receive, send)
             data = bytearray()
@@ -61,6 +69,16 @@ def identity(authorization: str | None = Header(default=None)):
     return account_auth.authenticate(authorization)
 
 
+@routes.post("/auth/password")
+def change_password(form: account_auth.PasswordChange, request: Request, auth=Depends(identity)):
+    user, sid = auth
+    with db.connection() as conn:
+        row = conn.execute("SELECT device_name FROM sessions WHERE id=?", (sid,)).fetchone()
+    device_name = row["device_name"] if row and row["device_name"] else "Portable workspace"
+    address = workspace_client(request) if request.app.state.embedded else (request.client.host if request.client else "local")
+    return account_auth.change_password(user["id"], device_name, form, address)
+
+
 @routes.post("/auth/{action}")
 def login(action: Literal["login", "signup", "logout"], request: Request, form: account_auth.Login | None = None):
     if action == "logout":
@@ -71,9 +89,10 @@ def login(action: Literal["login", "signup", "logout"], request: Request, form: 
         return Response(status_code=204)
     if form is None:
         raise HTTPException(422, "Credentials are required.")
-    if request.app.state.embedded and form.email != os.getenv("INTERVIEWCHECK_OPERATOR_EMAIL", "").strip().lower():
+    operator_email = os.getenv("INTERVIEWCHECK_OPERATOR_EMAIL", "").strip().lower()
+    if action == "signup" and request.app.state.embedded and operator_email and form.email != operator_email:
         raise HTTPException(403, "Use the operator email assigned to this workspace.")
-    public = not request.app.state.embedded or bool(os.getenv("INTERVIEWCHECK_PUBLIC_ORIGIN"))
+    public = not request.app.state.embedded or production_mode()
     address = workspace_client(request) if request.app.state.embedded else (request.client.host if request.client else "local")
     result = account_auth.sign_in(action, form, address, public_signup=public)
     return JSONResponse(result, status_code=201 if action == "signup" else 200)
@@ -97,12 +116,12 @@ class Checkout(BaseModel):
     plan: Literal["monthly", "annual"]
 
 
-@routes.post("/billing/checkout")
+@routes.post("/billing/checkout", dependencies=[Depends(rate_limit.limit(rate_limit.BILLING_ACTION))])
 async def checkout(item: Checkout, auth=Depends(identity), idempotency_key: UUID | None = Header(default=None)):
     return await billing.create_link(auth[0], item.plan, request_id=str(idempotency_key or uuid4()))
 
 
-@routes.post("/billing/portal")
+@routes.post("/billing/portal", dependencies=[Depends(rate_limit.limit(rate_limit.BILLING_ACTION))])
 async def portal(auth=Depends(identity), idempotency_key: UUID | None = Header(default=None)):
     return await billing.create_link(auth[0], portal=True, request_id=str(idempotency_key or uuid4()))
 
@@ -124,12 +143,14 @@ def service(embedded):
     instance = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     instance.state.embedded = embedded
     instance.add_middleware(AccountBoundary, embedded=embedded)
+    instance.add_middleware(SecurityHeadersMiddleware, api_service=True)
 
     @instance.exception_handler(HTTPException)
     async def http_error(_, exc):
         codes = {401: "unauthenticated", 402: "subscription_required", 403: "forbidden", 404: "not_found",
                  409: "conflict", 422: "invalid_input", 429: "rate_limited", 503: "service_unavailable"}
-        return JSONResponse({"error": {"code": codes.get(exc.status_code, "request_error"), "message": str(exc.detail)}},
+        message = sanitize_error_text(str(exc.detail), "Account request failed.")
+        return JSONResponse({"error": {"code": codes.get(exc.status_code, "request_error"), "message": message}},
                             status_code=exc.status_code, headers={"Cache-Control": "no-store"})
 
     @instance.exception_handler(RequestValidationError)
@@ -138,20 +159,35 @@ def service(embedded):
         return JSONResponse({"error": {"code": "invalid_input", "message": "Check input fields: " + ", ".join(fields)}},
                             status_code=422)
 
-    @instance.middleware("http")
-    async def uncached(request, call_next):
-        response = await call_next(request)
-        response.headers["Cache-Control"] = "no-store"
-        response.headers["Referrer-Policy"] = "no-referrer"
-        return response
+    @instance.exception_handler(Exception)
+    async def internal_error(_, exc):
+        sys.stderr.write(f"[account] unhandled {exc.__class__.__name__}\n")
+        return JSONResponse({"error": {"code": "internal_error", "message": "Something went wrong."}},
+                            status_code=500, headers={"Cache-Control": "no-store"})
+
+    instance.include_router(account_security.router)
     instance.include_router(routes)
     instance.include_router(account_admin.router)
     return instance
 
 
+@asynccontextmanager
+async def _standalone_lifespan(_):
+    rate_limit.reset_all()
+    yield
+
+
 local_service = service(True)
-app = FastAPI(title="InterviewCheck accounts", docs_url=None, redoc_url=None, openapi_url=None)
+app = FastAPI(title="InterviewCheck accounts", docs_url=None, redoc_url=None, openapi_url=None, lifespan=_standalone_lifespan)
+app.add_middleware(SecurityHeadersMiddleware)
 app.mount("/v1", service(False))
+
+
+@app.exception_handler(Exception)
+async def standalone_internal_error(_, exc):
+    sys.stderr.write(f"[account] unhandled {exc.__class__.__name__}\n")
+    return JSONResponse({"error": {"code": "internal_error", "message": "Something went wrong."}},
+                        status_code=500, headers={"Cache-Control": "no-store"})
 
 
 @app.get("/health")

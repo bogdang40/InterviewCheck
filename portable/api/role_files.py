@@ -92,8 +92,8 @@ def download(db, key):
     })
 
 
-def duplicate(db, source_id, new_id):
+def duplicate(db, source_id, new_id, *, created_by: str = "local-operator"):
     if source_id == new_id:
         raise HTTPException(409, "Choose a new ID for the duplicate role.")
     source = saved_template(db, str(source_id))
-    return create_role(db, source.model_copy(update={"id": new_id}))
+    return create_role(db, source.model_copy(update={"id": new_id}), created_by=created_by)

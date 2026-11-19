@@ -38,7 +38,7 @@ export default function Dashboard({ overview, onCreate, onSample, onOpen }: Prop
         <img src="/studio-microphone.webp" alt="" width="830" height="850" fetchPriority="high"/>
       </div>
     </section>
-    {!overview ? <p className="queue-loading" role="status">Loading interviews…</p> : <>
+    {!overview ? <section className="panel inset" role="status"><p className="queue-loading">Loading interviews…</p></section> : <>
       <WorkspaceMetrics overview={overview}/>
       {!populated ? <SessionLog/> : <>
         <section className="panel queue-panel" aria-labelledby="pending-heading">

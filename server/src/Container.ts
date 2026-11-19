@@ -4,6 +4,7 @@ import { MigrationRunner } from "./db/Migrations.js";
 import { EntitlementResolver } from "./domain/Entitlement.js";
 import { PlanCatalog } from "./domain/Subscription.js";
 import { FixedWindowRateLimiter } from "./http/middleware/RateLimit.js";
+import { ApiTokenRepository } from "./repositories/ApiTokenRepository.js";
 import { AuditLogRepository } from "./repositories/AuditLogRepository.js";
 import { CheckoutRepository } from "./repositories/CheckoutRepository.js";
 import { SessionRepository } from "./repositories/SessionRepository.js";
@@ -17,6 +18,7 @@ import { BillingService } from "./services/BillingService.js";
 import { BillingWebhookService } from "./services/BillingWebhookService.js";
 import { EntitlementService } from "./services/EntitlementService.js";
 import { PasswordHasher } from "./services/PasswordHasher.js";
+import { SecurityService } from "./services/SecurityService.js";
 import { TokenService } from "./services/TokenService.js";
 import { StripeSdkGateway } from "./stripe/StripeSdkGateway.js";
 import { UnconfiguredStripeGateway, type StripeGateway } from "./stripe/StripeGateway.js";
@@ -32,6 +34,7 @@ export class Container {
   readonly database: Database;
   readonly users: UserRepository;
   readonly sessions: SessionRepository;
+  readonly apiTokens: ApiTokenRepository;
   readonly subscriptions: SubscriptionRepository;
   readonly audit: AuditLogRepository;
   readonly stripeEvents: StripeEventRepository;
@@ -41,7 +44,11 @@ export class Container {
   readonly billing: BillingService;
   readonly billingWebhook: BillingWebhookService;
   readonly admin: AdminService;
+  readonly security: SecurityService;
   readonly credentialLimiter: FixedWindowRateLimiter;
+  readonly adminReadLimiter: FixedWindowRateLimiter;
+  readonly adminWriteLimiter: FixedWindowRateLimiter;
+  readonly billingLimiter: FixedWindowRateLimiter;
 
   constructor(
     readonly config: AppConfig,
@@ -55,6 +62,7 @@ export class Container {
 
     this.users = new UserRepository(this.database);
     this.sessions = new SessionRepository(this.database);
+    this.apiTokens = new ApiTokenRepository(this.database);
     this.subscriptions = new SubscriptionRepository(this.database);
     this.audit = new AuditLogRepository(this.database);
     this.stripeEvents = new StripeEventRepository(this.database);
@@ -101,6 +109,23 @@ export class Container {
 
     this.admin = new AdminService(this.database, this.users, this.sessions, this.subscriptions, this.audit, this.entitlements, clock);
     this.credentialLimiter = new FixedWindowRateLimiter({ windowMs: 60_000, max: 10 });
+    this.adminReadLimiter = new FixedWindowRateLimiter({ windowMs: 60_000, max: 120 });
+    this.adminWriteLimiter = new FixedWindowRateLimiter({ windowMs: 60_000, max: 40 });
+    this.billingLimiter = new FixedWindowRateLimiter({ windowMs: 60_000, max: 20 });
+    this.security = new SecurityService(
+      this.database,
+      this.users,
+      this.sessions,
+      this.apiTokens,
+      this.audit,
+      {
+        credential: this.credentialLimiter,
+        adminRead: this.adminReadLimiter,
+        adminWrite: this.adminWriteLimiter,
+        billing: this.billingLimiter,
+      },
+      clock,
+    );
   }
 
   /** Startup work that touches data: prune dead sessions. */

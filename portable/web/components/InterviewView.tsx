@@ -1,3 +1,6 @@
+"use client"
+
+import dynamic from "next/dynamic"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { ArrowRight, CheckCheck, ClipboardList, FileText, Plus } from "lucide-react"
 import { Button } from "./ui/button"
@@ -12,16 +15,19 @@ import {
   type QuestionOrigin,
 } from "@/lib/api"
 import { useDraftGuard } from "@/lib/useDraftGuard"
+import { useReviewHotkeys } from "@/lib/useReviewHotkeys"
+import { useScoringCapabilities } from "@/lib/scoringHooks"
 import SavedDraft from "./SavedDraft"
 import MoveToTrash from "./MoveToTrash"
-import ATSNote from "./ATSNote"
 import ReportExport from "./ReportExport"
-import Evidence from "./Evidence"
+import Evidence, { type EvidenceHotkeyControls } from "./Evidence"
 import AnswerEditor from "./AnswerEditor"
 import QuestionLineage from "./QuestionLineage"
-import LocalRecordingPlayback from "./LocalRecordingPlayback"
-import TranscriptBatchImport from "./TranscriptBatchImport"
 import QuestionNavigator, { needsReview, nextPending } from "./QuestionNavigator"
+
+const ATSNote = dynamic(() => import("./ATSNote"), { ssr: false })
+const LocalRecordingPlayback = dynamic(() => import("./LocalRecordingPlayback"), { ssr: false })
+const TranscriptBatchImport = dynamic(() => import("./TranscriptBatchImport"), { ssr: false })
 
 type Props = {
   session: Interview
@@ -43,6 +49,7 @@ export default function InterviewView({ session, answerId, changed, onTransition
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
   const focusTarget = useRef<HTMLDivElement>(null)
+  const evidenceControls = useRef<EvidenceHotkeyControls | null>(null)
   const focusOnChange = useRef(false)
   const lastSelection = useRef(answerId)
   const selected = answerId ? session.answers.find((a) => a.id === answerId) : session.answers[0]
@@ -50,6 +57,7 @@ export default function InterviewView({ session, answerId, changed, onTransition
   const next = selected && nextPending(session.answers, selected.id)
   const blocked = dirty.size > 0 || busy
   const pending = session.answers.filter(needsReview).length
+  const capabilities = useScoringCapabilities()
 
   const onDirty = useCallback((id: string, value: boolean) => {
     setDirty((old) => {
@@ -61,6 +69,32 @@ export default function InterviewView({ session, answerId, changed, onTransition
     })
   }, [])
   useDraftGuard(dirty.size > 0)
+  const moveExchange = (delta: -1 | 1) => {
+    if (edit || blocked) return "Save or discard changes before switching exchanges."
+    const idx = index < 0 ? 0 : index + delta
+    if (idx < 0 || idx >= session.answers.length) return idx < 0 ? "Already on first exchange." : "Already on last exchange."
+    select(session.answers[idx].id)
+    return `Question ${idx + 1} of ${session.answers.length}: ${session.answers[idx].question}`
+  }
+  const applyOutcome = (value: "explained" | "unresolved") => {
+    if (edit || !selected || !evidenceControls.current) return "Open an exchange in review mode to set outcome."
+    if (!evidenceControls.current.setOutcome(value)) return "Cannot update outcome while saving or resolving a conflict."
+    return `Review outcome set to ${value === "explained" ? "Explained" : "Unresolved"}. Save review to persist.`
+  }
+  const { announcement } = useReviewHotkeys({
+    enabled: session.answers.length > 0,
+    onNext: () => moveExchange(1),
+    onPrev: () => moveExchange(-1),
+    onNextPending: () => {
+      if (edit || blocked) return "Save or discard changes before switching exchanges."
+      if (!next) return "No pending matches remaining."
+      select(next.id)
+      return `Next pending match: Question ${session.answers.indexOf(next) + 1} of ${session.answers.length}: ${next.question}`
+    },
+    onExplained: () => applyOutcome("explained"),
+    onUnresolved: () => applyOutcome("unresolved"),
+    onFocusNote: () => (!edit && selected && evidenceControls.current?.focusNote() ? "Focused interviewer note." : "Interviewer note is unavailable."),
+  })
   useEffect(() => {
     if (lastSelection.current !== answerId) {
       setEdit(null)
@@ -202,6 +236,9 @@ export default function InterviewView({ session, answerId, changed, onTransition
           onImported={imported}
         />
       )}
+      <p role="status" aria-live="polite" aria-atomic="true" style={{ fontSize: "12px", color: "var(--secondary-ink)", margin: announcement ? "0 0 10px" : "0", overflowWrap: "anywhere", maxWidth: "100%" }}>
+        {announcement}
+      </p>
       <fieldset disabled={dirty.has("transcript-import")} className="review-lock">
         <div className={session.answers.length ? "review-grid" : "review-grid single"}>
           {!!session.answers.length && (
@@ -228,6 +265,7 @@ export default function InterviewView({ session, answerId, changed, onTransition
                 onDirty={onDirty}
                 onSave={save}
                 onCancel={() => setEdit(null)}
+                embeddingAvailable={capabilities.embedding}
               />
             ) : selected ? (
               <Evidence
@@ -238,9 +276,12 @@ export default function InterviewView({ session, answerId, changed, onTransition
                 onDirty={onDirty}
                 canAdvance={!!next}
                 onSave={save}
+                judgeAvailable={capabilities.judge}
+                controlsRef={evidenceControls}
                 onFollowUp={
                   captureAllowed && !session.draft && !blocked
-                    ? () => begin(selected.result.follow_up, {parent_answer_id:selected.id})
+                    ? (questionText?: string) =>
+                        begin(questionText ?? selected.result.follow_up, { parent_answer_id: selected.id })
                     : undefined
                 }
                 onEdit={captureAllowed && !blocked ? () => setEdit(selected.id) : undefined}

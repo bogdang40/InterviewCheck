@@ -1,12 +1,22 @@
-import { useEffect, useState, type FormEvent } from "react"
+import dynamic from "next/dynamic"
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type MutableRefObject } from "react"
 import { ClipboardCheck, Pencil, Quote } from "lucide-react"
 import { api, message, RevisionConflict, statusText, type Answer, type Disposition } from "@/lib/api"
 import CandidateResponse from "./CandidateResponse"
 import MarkedText from "./MarkedText"
-import RevisionHistory from "./RevisionHistory"
 import ConflictReview from "./ConflictReview"
+import JudgeAssist from "./JudgeAssist"
 import { Button } from "./ui/button"
 import { Textarea } from "./ui/textarea"
+
+const RevisionHistory = dynamic(() => import("./RevisionHistory"), { ssr: false })
+
+const useIsomorphicLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect
+
+export type EvidenceHotkeyControls = {
+  setOutcome: (value: Extract<Disposition, "explained" | "unresolved">) => boolean
+  focusNote: () => boolean
+}
 
 const earlierNotePrefix = "Note from an earlier answer version:\n"
 
@@ -53,15 +63,19 @@ export default function Evidence({
   onDirty,
   onFollowUp,
   canAdvance,
+  judgeAvailable,
+  controlsRef,
 }: {
   item: Answer
   index: number
   sessionId: string
   onSave: (a: Answer, advance?: boolean) => void
   canAdvance?: boolean
-  onFollowUp?: () => void
+  onFollowUp?: (questionText?: string) => void
   onDirty: (id: string, value: boolean) => void
   onEdit?: () => void
+  judgeAvailable?: boolean
+  controlsRef?: MutableRefObject<EvidenceHotkeyControls | null>
 }) {
   const [item, setItem] = useState(initial)
   const [conflict, setConflict] = useState(false)
@@ -70,6 +84,7 @@ export default function Evidence({
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [saved, setSaved] = useState(false)
+  const noteRef = useRef<HTMLTextAreaElement>(null)
   const dirty = note !== item.note || disposition !== item.disposition
   useEffect(() => {
     if (!dirty && !busy && !conflict && initial.revision > item.revision) {
@@ -79,10 +94,31 @@ export default function Evidence({
       setSaved(false)
     }
   }, [initial, item.revision, dirty, busy, conflict])
-  useEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     onDirty(item.id, dirty || busy || conflict)
     return () => onDirty(item.id, false)
   }, [item.id, dirty, busy, conflict, onDirty])
+  useIsomorphicLayoutEffect(() => {
+    if (!controlsRef) return
+    const handle: EvidenceHotkeyControls = {
+      setOutcome: (value) => {
+        if (busy || conflict) return false
+        setDisposition(value)
+        setSaved(false)
+        return true
+      },
+      focusNote: () => {
+        if (busy || !noteRef.current) return false
+        noteRef.current.focus()
+        noteRef.current.scrollIntoView({ block: "nearest" })
+        return true
+      },
+    }
+    controlsRef.current = handle
+    return () => {
+      if (controlsRef.current === handle) controlsRef.current = null
+    }
+  }, [controlsRef, busy, conflict])
   async function save(e: FormEvent) {
     e.preventDefault()
     if (busy || conflict) return
@@ -120,8 +156,9 @@ export default function Evidence({
       <h2>{item.question}</h2>
       <CandidateResponse item={item}/>
       <Findings result={item.result} />
+      <JudgeAssist item={item} judgeAvailable={judgeAvailable} onFollowUp={onFollowUp} />
       {onFollowUp && (
-        <Button variant="outline" size="sm" onClick={onFollowUp}>
+        <Button variant="outline" size="sm" onClick={() => onFollowUp()}>
           Ask this follow up
         </Button>
       )}
@@ -166,6 +203,7 @@ export default function Evidence({
         <label className="field">
           Interviewer note
           <Textarea
+            ref={noteRef}
             disabled={busy}
             required={disposition === "disclosed"}
             maxLength={12000 + (note.startsWith(earlierNotePrefix) ? earlierNotePrefix.length : 0)}

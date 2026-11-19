@@ -17,6 +17,10 @@ export function parseQuery<Schema extends ZodTypeAny>(c: Context, schema: Schema
   return validate(schema, c.req.query());
 }
 
+export function parseParams<Schema extends ZodTypeAny>(c: Context, schema: Schema): z.infer<Schema> {
+  return validate(schema, c.req.param());
+}
+
 function validate<Schema extends ZodTypeAny>(schema: Schema, raw: unknown): z.infer<Schema> {
   const result = schema.safeParse(raw);
   if (!result.success) {

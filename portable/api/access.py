@@ -1,15 +1,16 @@
-"""Single operator membership using the native access service."""
+"""Account membership and entitlement verification using the access service."""
 import os
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID, uuid4
 
-import httpx
 from urllib.parse import urlsplit
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field, SecretStr
 from starlette.requests import HTTPConnection
 
+from . import rate_limit
+from .error_sanitizer import sanitize_error_text
 from .provider_http import configured, fetch_json, setting
 
 router = APIRouter()
@@ -18,6 +19,10 @@ COOKIE = "ic_access"
 
 def embedded_enabled():
     return os.getenv("INTERVIEWCHECK_ACCESS_MODE", "").strip().lower() == "embedded"
+
+
+def production_mode() -> bool:
+    return configured("INTERVIEWCHECK_PUBLIC_ORIGIN") or os.getenv("INTERVIEWCHECK_PRODUCTION", "").strip().lower() in {"1", "true", "yes"}
 
 
 def account_enabled():
@@ -41,24 +46,31 @@ def access_url(path: str) -> str:
 
 
 async def upstream(path, method="GET", *, token=None, body=None, idempotency=None, client_address=None):
-    options = {"headers": {"Authorization": f"Bearer {token}"}} if token else {}
+    headers: dict[str, str] = {"X-InterviewCheck": "1"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    if idempotency:
+        headers["Idempotency-Key"] = idempotency
+    options: dict[str, Any] = {"headers": headers}
     if body is not None:
         options["json"] = body
-    if idempotency:
-        options.setdefault("headers", {})["Idempotency-Key"] = idempotency
     if account_enabled() and embedded_enabled():
+        import httpx
         from .account_server import local_service
         transport = httpx.ASGITransport(app=local_service, client=(client_address or "127.0.0.1", 0))
         async with httpx.AsyncClient(transport=transport, base_url="http://127.0.0.1") as client:
             response = await client.request(method, "/" + path, **options)
         data = response.json() if response.content else {}
         if response.is_error:
-            raise HTTPException(response.status_code, data.get("error", {}).get("message") or data.get("detail") or "Account request failed.")
+            raw_msg = data.get("error", {}).get("message") or data.get("detail") or "Account request failed."
+            raise HTTPException(response.status_code, sanitize_error_text(raw_msg, "Account request failed."))
         return data
     return await fetch_json("Access service", method, access_url(path), **options)
 
 
 def verify_operator_email(email):
+    if not configured("INTERVIEWCHECK_OPERATOR_EMAIL"):
+        return
     if not isinstance(email, str) or email.casefold() != setting("INTERVIEWCHECK_OPERATOR_EMAIL").casefold():
         raise HTTPException(403, "Sign in with the operator account assigned to this workstation.")
 
@@ -80,25 +92,88 @@ def verify_account(data):
     if not isinstance(user, dict) or not isinstance(entitlement, dict) or type(entitlement.get("active")) is not bool:
         raise HTTPException(502, "The access service returned an invalid account.")
     verify_operator_email(user.get("email"))
-    if public_remote() and user.get("id") != operator_id():
+    if public_remote() and (configured("INTERVIEWCHECK_OPERATOR_ID") or configured("INTERVIEWCHECK_OPERATOR_EMAIL")) and user.get("id") != operator_id():
         raise HTTPException(403, "Sign in with the operator account assigned to this workstation.")
 
 
 async def snapshot(connection: HTTPConnection):
+    cached = getattr(connection.state, "_access_snapshot", None)
+    if cached is not None:
+        return cached
     token = connection.cookies.get(COOKIE)
     if not token:
         raise HTTPException(401, "Sign in under Account.")
     result = await upstream("me", token=token)
     verify_account(result)
+    connection.state._access_snapshot = result
     return result
 
 
 async def require_entitlement(request: HTTPConnection):
-    if account_enabled():
-        account = await snapshot(request)
-        if (account.get("entitlement") or {}).get("active") is not True:
-            raise HTTPException(402, "An active InterviewCheck plan is required.")
-        return account["user"]
+    if not account_enabled():
+        if production_mode():
+            raise HTTPException(503, "Configure embedded or remote account authentication in production mode.")
+        return
+    account = await snapshot(request)
+    if (account.get("entitlement") or {}).get("active") is not True:
+        raise HTTPException(402, "An active InterviewCheck plan is required.")
+    return account["user"]
+
+
+async def require_admin_session(request: HTTPConnection) -> tuple[dict[str, Any], str]:
+    token = request.cookies.get(COOKIE)
+    if not token:
+        raise HTTPException(401, "Sign in with an administrator account.")
+    enabled = account_enabled()
+    if not enabled or embedded_enabled():
+        from . import account_auth, account_db
+        if not account_db.database().is_file():
+            raise HTTPException(401, "Sign in with an administrator account.")
+        user, _ = account_auth.authenticate(f"Bearer {token}")
+        if user.get("disabled"):
+            raise HTTPException(401, "Session expired. Sign in again.")
+        if enabled:
+            verify_operator_email(user.get("email"))
+    else:
+        data = await upstream("me", token=token)
+        if not isinstance(data, dict) or not isinstance(data.get("user"), dict):
+            raise HTTPException(502, "The access service returned an invalid account.")
+        user = data["user"]
+        if user.get("disabled"):
+            raise HTTPException(401, "Session expired. Sign in again.")
+        if public_remote() or configured("INTERVIEWCHECK_OPERATOR_EMAIL") or configured("INTERVIEWCHECK_OPERATOR_ID"):
+            verify_account(data)
+    if user.get("role") != "admin":
+        raise HTTPException(403, "Admin access required.")
+    return user, token
+
+
+async def optional_actor(request: HTTPConnection) -> tuple[str, str]:
+    if not account_enabled():
+        return ("local-operator", "local-operator")
+    token = request.cookies.get(COOKIE)
+    if not token:
+        return ("local-operator", "local-operator")
+    try:
+        if embedded_enabled():
+            from . import account_auth, account_db
+            if not account_db.database().is_file():
+                return ("local-operator", "local-operator")
+            user, _ = account_auth.authenticate(f"Bearer {token}")
+        else:
+            cached = getattr(request.state, "_access_snapshot", None)
+            if cached is not None:
+                data = cached
+            else:
+                data = await upstream("me", token=token)
+                verify_account(data)
+                request.state._access_snapshot = data
+            user = data.get("user") or {}
+    except HTTPException:
+        return ("local-operator", "local-operator")
+    uid = str(user.get("id") or "local-operator")
+    email = str(user.get("email") or uid)
+    return (uid, email)
 
 
 class Credentials(BaseModel):
@@ -108,15 +183,47 @@ class Credentials(BaseModel):
     inviteCode: SecretStr | None = Field(default=None, max_length=200)
 
 
+class PasswordChangeRequest(BaseModel):
+    currentPassword: SecretStr = Field(min_length=10, max_length=200)
+    newPassword: SecretStr = Field(min_length=10, max_length=200)
+
+
 class Checkout(BaseModel):
     plan: Literal["monthly", "annual"] | None = None
+
+
+def _set_access_cookie(response: Response, request: Request, token: str) -> None:
+    secure = bool(os.getenv("INTERVIEWCHECK_PUBLIC_ORIGIN")) or request.url.scheme == "https"
+    response.set_cookie(COOKIE, token, httponly=True, secure=secure, samesite="strict", path="/api")
+
+
+@router.post("/access/password")
+async def change_password(form: PasswordChangeRequest, request: Request, response: Response):
+    token = request.cookies.get(COOKIE)
+    if not token:
+        raise HTTPException(401, "Sign in under Account.")
+    from .origin import workspace_client
+    data = await upstream(
+        "auth/password",
+        "POST",
+        token=token,
+        body={"currentPassword": form.currentPassword.get_secret_value(), "newPassword": form.newPassword.get_secret_value()},
+        client_address=workspace_client(request) if embedded_enabled() else None,
+    )
+    if not isinstance(data, dict) or not isinstance(data.get("token"), str) or not data["token"]:
+        raise HTTPException(502, "The access service returned an invalid session.")
+    verify_account(data)
+    _set_access_cookie(response, request, data["token"])
+    return {"email": data["user"]["email"], "active": data["entitlement"]["active"],
+            **({"admin": True} if data["user"].get("role") == "admin" else {})}
 
 
 @router.post("/access/{action}")
 async def sign_in(action: Literal["login", "signup"], form: Credentials, request: Request, response: Response):
     if action == "signup" and public_remote():
         raise HTTPException(403, "Create the operator account on the assigned access service first.")
-    verify_operator_email(form.email.strip())
+    if action == "signup":
+        verify_operator_email(form.email.strip())
     from .origin import workspace_client
     data = await upstream("auth/" + action, "POST", body={
         "email": form.email.strip(), "password": form.password.get_secret_value(), "deviceName": "Portable workspace",
@@ -126,7 +233,7 @@ async def sign_in(action: Literal["login", "signup"], form: Credentials, request
     if not isinstance(data, dict) or not isinstance(data.get("token"), str) or not data["token"]:
         raise HTTPException(502, "The access service returned an invalid session.")
     verify_account(data)
-    response.set_cookie(COOKIE, data["token"], httponly=True, secure=bool(os.getenv("INTERVIEWCHECK_PUBLIC_ORIGIN")) or request.url.scheme == "https", samesite="strict", path="/api")
+    _set_access_cookie(response, request, data["token"])
     return {"email": data["user"]["email"], "active": data["entitlement"]["active"],
             **({"admin": True} if data["user"].get("role") == "admin" else {})}
 
@@ -158,7 +265,7 @@ async def logout(request: Request, response: Response):
     return {"signed_out": True}
 
 
-@router.post("/billing/{action}")
+@router.post("/billing/{action}", dependencies=[Depends(rate_limit.limit(rate_limit.BILLING_ACTION))])
 async def billing(action: Literal["checkout", "portal"], request: Request, form: Checkout | None = None):
     await snapshot(request)
     if action == "checkout" and (form is None or form.plan is None):

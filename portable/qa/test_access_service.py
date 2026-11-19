@@ -74,6 +74,7 @@ def test_membership_session_uses_native_access_contract(workspace_url, tmp_path,
 
 
 def test_account_backup_can_switch_runtimes(tmp_path, monkeypatch):
+    from api import account_db
     from api.account_server import app as python_accounts
 
     service_dir = Path(__file__).resolve().parents[2] / "server"
@@ -99,11 +100,11 @@ def test_account_backup_can_switch_runtimes(tmp_path, monkeypatch):
         assert recovered["entitlement"]["source"] == "trial"
         assert python.post("/v1/auth/logout", headers=token).status_code == 204
     with closing(sqlite3.connect(restored_db)) as destination:
-        assert destination.execute("PRAGMA user_version").fetchone() == (5,)
+        assert destination.execute("PRAGMA user_version").fetchone() == (account_db.VERSION,)
         destination.execute("PRAGMA user_version=4")  # Also resume an interim database with the column already present.
     with access_service(service_dir, restored) as address, httpx.Client(base_url=address, trust_env=False) as node:
         assert node.get("/v1/me", headers=token).status_code == 401
         logged_in = node.post("/v1/auth/login", json=identity).raise_for_status().json()
         assert logged_in["user"]["id"] == account["user"]["id"]
     with closing(sqlite3.connect(restored_db)) as destination:
-        assert destination.execute("PRAGMA user_version").fetchone() == (5,)
+        assert destination.execute("PRAGMA user_version").fetchone() == (account_db.VERSION,)

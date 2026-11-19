@@ -17,6 +17,10 @@ def migrate_columns(db):
         db.execute("ALTER TABLE roles ADD COLUMN policy TEXT NOT NULL DEFAULT ''")
     if "permitted_sources" not in roles:
         db.execute("ALTER TABLE roles ADD COLUMN permitted_sources TEXT NOT NULL DEFAULT '[]'")
+    if "rubric_json" not in roles:
+        db.execute("ALTER TABLE roles ADD COLUMN rubric_json TEXT NOT NULL DEFAULT '[]'")
+    if "version_number" not in roles:
+        db.execute("ALTER TABLE roles ADD COLUMN version_number INTEGER NOT NULL DEFAULT 1")
     if "permitted_sources" not in context:
         db.execute("ALTER TABLE session_context ADD COLUMN permitted_sources TEXT NOT NULL DEFAULT '[]'")
 
@@ -25,18 +29,29 @@ def serialize_materials(materials):
     return json.dumps([entry.model_dump() for entry in materials], ensure_ascii=False)
 
 
+def serialize_rubric(rubric):
+    return json.dumps([entry.model_dump() for entry in rubric], ensure_ascii=False)
+
+
 def role_row(row):
+    keys = set(row.keys())
     role = {
         **dict(row),
         "questions": json.loads(row["questions"]),
         "permitted_sources": json.loads(row["permitted_sources"]),
+        "rubric": json.loads(row["rubric_json"]) if "rubric_json" in keys else [],
+        "version_number": int(row["version_number"]) if "version_number" in keys else 1,
     }
-    if role["legacy"]:
+    role.pop("rubric_json", None)
+    if role.get("legacy"):
         role["legacy"] = json.loads(role["legacy"])
     else:
-        del role["legacy"]
+        role.pop("legacy", None)
     # Bind open forms to the editable content, including templates restored from a backup.
-    fields = {key: role[key] for key in ("id", "name", "description", "questions", "policy", "permitted_sources")}
+    fields = {
+        key: role[key]
+        for key in ("id", "name", "description", "questions", "policy", "permitted_sources", "rubric")
+    }
     role["version"] = hashlib.sha256(json.dumps(fields, sort_keys=True).encode()).hexdigest()
     return role
 
@@ -47,7 +62,9 @@ def check_role_version(row, version):
                             headers={"X-InterviewCheck-Conflict": "role-version"})
 
 
-def create_role(db, role: RoleInput):
+def create_role(db, role: RoleInput, *, created_by: str = "local-operator"):
+    from . import role_versions
+
     key = str(role.id or uuid4())
     fields = (
         role.name,
@@ -55,27 +72,45 @@ def create_role(db, role: RoleInput):
         json.dumps(role.questions, ensure_ascii=False),
         role.policy,
         serialize_materials(role.permitted_sources),
+        serialize_rubric(role.rubric),
     )
     existing = db.execute("SELECT * FROM roles WHERE id=?", (key,)).fetchone()
     if existing:
         if (
-            tuple(existing[f] for f in ("name", "description", "questions", "policy", "permitted_sources"))
+            tuple(
+                existing[f]
+                for f in ("name", "description", "questions", "policy", "permitted_sources", "rubric_json")
+            )
             != fields
         ):
             raise HTTPException(409, "The role ID already belongs to different content.")
         return role_row(existing)
     db.execute(
-        "INSERT INTO roles(id,name,description,questions,policy,permitted_sources) VALUES (?,?,?,?,?,?)",
+        """INSERT INTO roles(id,name,description,questions,policy,permitted_sources,rubric_json,version_number)
+           VALUES (?,?,?,?,?,?,?,1)""",
         (key, *fields),
     )
-    return role_row(db.execute("SELECT * FROM roles WHERE id=?", (key,)).fetchone())
+    created = db.execute("SELECT * FROM roles WHERE id=?", (key,)).fetchone()
+    role_versions.record_snapshot_row(
+        db, created, change_note=role.change_note or "Initial version", created_by=created_by
+    )
+    return role_row(created)
 
 
-def update_role(db, key, role: RoleInput):
+def update_role(db, key, role: RoleInput, *, created_by: str = "local-operator"):
+    from . import role_versions
+
     existing = db.execute("SELECT * FROM roles WHERE id=?", (key,)).fetchone()
     if existing is None:
         raise HTTPException(404, "Role does not exist.")
     check_role_version(existing, role.version)
+    if role.version_number is not None and int(existing["version_number"]) != role.version_number:
+        raise HTTPException(
+            409,
+            "The saved role changed after you opened it.",
+            headers={"X-InterviewCheck-Conflict": "role-version"},
+        )
+    role_versions.ensure_initial_snapshot(db, key)
     # Clients predating role materials can still edit their supported fields.
     policy = role.policy if "policy" in role.model_fields_set else existing["policy"]
     sources = (
@@ -83,11 +118,30 @@ def update_role(db, key, role: RoleInput):
         if "permitted_sources" in role.model_fields_set
         else existing["permitted_sources"]
     )
-    db.execute(
-        "UPDATE roles SET name=?,description=?,questions=?,policy=?,permitted_sources=? WHERE id=?",
-        (role.name, role.description, json.dumps(role.questions, ensure_ascii=False), policy, sources, key),
+    rubric_json = (
+        serialize_rubric(role.rubric)
+        if "rubric" in role.model_fields_set
+        else existing["rubric_json"]
     )
-    return role_row(db.execute("SELECT * FROM roles WHERE id=?", (key,)).fetchone())
+    next_version = int(existing["version_number"]) + 1
+    db.execute(
+        """UPDATE roles
+           SET name=?,description=?,questions=?,policy=?,permitted_sources=?,rubric_json=?,version_number=?
+           WHERE id=?""",
+        (
+            role.name,
+            role.description,
+            json.dumps(role.questions, ensure_ascii=False),
+            policy,
+            sources,
+            rubric_json,
+            next_version,
+            key,
+        ),
+    )
+    updated = db.execute("SELECT * FROM roles WHERE id=?", (key,)).fetchone()
+    role_versions.record_snapshot_row(db, updated, change_note=role.change_note, created_by=created_by)
+    return role_row(updated)
 
 
 def session_defaults(db, item: SessionInput):

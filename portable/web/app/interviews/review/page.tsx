@@ -3,6 +3,7 @@
 import { Suspense } from "react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
+import { Button } from "@/components/ui/button"
 import InterviewView from "@/components/InterviewView"
 import WorkspaceError from "@/components/WorkspaceError"
 import type { Answer, Interview } from "@/lib/api"
@@ -15,12 +16,23 @@ function Record() {
   const session = useResource<Interview>(valid ? "sessions/" + id : null)
   if (!valid)
     return (
-      <p role="alert">
-        Choose a session from <Link href="/interviews/">Interviews</Link>.
-      </p>
+      <section className="panel stack">
+        <div className="page-title">
+          <span className="eyebrow">INTERVIEW RECORD</span>
+          <h1>Interview review</h1>
+        </div>
+        <p role="alert">
+          Choose a session from <Link href="/interviews/">Interviews</Link>.
+        </p>
+        <div>
+          <Button asChild variant="outline" size="sm">
+            <Link href="/interviews/">Open interviews</Link>
+          </Button>
+        </div>
+      </section>
     )
   if (session.error) return <WorkspaceError text={session.error} retry={session.reload} />
-  if (!session.data) return <p role="status">Loading interview…</p>
+  if (!session.data) return <section className="panel inset" role="status"><p className="muted">Loading interview…</p></section>
   function change(_: string, item: Answer) {
     session.update((previous) => {
       const answers = previous.answers.some((a) => a.id === item.id)

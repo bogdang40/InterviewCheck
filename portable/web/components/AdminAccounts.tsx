@@ -53,7 +53,7 @@ export function AdminAccounts() {
     select(result); await load(); setMessage("Account updated.");
   }
   return <section className="stack"><h3>Manage accounts</h3>
-    <form className="row" onSubmit={event => { event.preventDefault(); void act(async () => { setMember(undefined); await load(); }); }}>
+    <form className="row align-end" onSubmit={event => { event.preventDefault(); void act(async () => { setMember(undefined); await load(); }); }}>
       <label className="field">Find accounts<Input value={query} onChange={e => setQuery(e.target.value)} placeholder="Email address" /></label>
       <Button disabled={busy} variant="outline">Search accounts</Button>
     </form>
@@ -68,13 +68,13 @@ export function AdminAccounts() {
         <option value="user">User</option><option value="admin">Administrator</option></select></label>
       <label className="field">Complimentary access through (UTC)<Input type="date" value={grant}
         onChange={e => { setConfirm(false); setGrant(e.target.value); }} /></label>
-      <label><input type="checkbox" checked={disabled} onChange={e => { setConfirm(false); setDisabled(e.target.checked); }} /> Disable account and revoke sessions</label>
-      <label><input type="checkbox" checked={confirm} onChange={e => setConfirm(e.target.checked)} /> Confirm changes for {member.user.email}</label>
-      <Button disabled={busy || !confirm} onClick={() => act(save)}>Apply account changes</Button>
+      <label className="check"><input type="checkbox" checked={disabled} onChange={e => { setConfirm(false); setDisabled(e.target.checked); }} /> Disable account and revoke sessions</label>
+      <label className="check"><input type="checkbox" checked={confirm} onChange={e => setConfirm(e.target.checked)} /> Confirm changes for {member.user.email}</label>
+      <div><Button disabled={busy || !confirm} onClick={() => act(save)}>Apply account changes</Button></div>
     </div>}
-    <Button variant="outline" disabled={busy} onClick={() => act(async () => {
+    <div><Button variant="outline" disabled={busy} onClick={() => act(async () => {
       const response = await integration<{entries: Audit[]}>("admin/audit"); setAudit(response.entries);
-    })}>Recent account activity</Button>
+    })}>Recent account activity</Button></div>
     {audit.length > 0 && <ul>{audit.map(entry => <li key={entry.id}>{entry.at} · {entry.action}</li>)}</ul>}
     {message && <p role="status" className="notice">{message}</p>}
   </section>;

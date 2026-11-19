@@ -135,7 +135,30 @@
   font-size: 13px;
   font-weight: 600;
   color: var(--green-ink);
-  margin: 0 23px 20px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.align-end {
+  align-items: flex-end;
+}
+.inline-icon {
+  display: inline;
+  vertical-align: -2px;
+  margin-right: 4px;
+}
+.table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+.code-block {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--subtle);
+  padding: 12px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  font: 12px/1.5 var(--mono);
+  margin-top: 6px;
 }
 .bottom {
   display: flex;

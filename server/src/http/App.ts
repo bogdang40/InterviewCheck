@@ -6,7 +6,10 @@ import { HttpError } from "./HttpError.js";
 import type { AuthEnv } from "./middleware/Authenticate.js";
 import { AdminRoutes } from "./routes/AdminRoutes.js";
 import { AuthRoutes } from "./routes/AuthRoutes.js";
+import { BILLING_RETURN_STYLE_HASH } from "./routes/BillingReturnPage.js";
 import { BillingRoutes } from "./routes/BillingRoutes.js";
+import { MetricsRoutes } from "./routes/MetricsRoutes.js";
+import { SecurityRoutes } from "./routes/SecurityRoutes.js";
 
 export const API_VERSION = "v1";
 
@@ -18,10 +21,20 @@ export class AppFactory {
       await next();
       console.log(`[server] ${c.req.method} ${c.res.status} ${Date.now() - start}ms`);
     });
-    app.use(secureHeaders());
+    app.use(
+      secureHeaders({
+        xFrameOptions: "DENY",
+        permissionsPolicy: { camera: [], microphone: [], geolocation: [], payment: [], usb: [] },
+      }),
+    );
     app.use(async (c, next) => {
       c.header("Cache-Control", "no-store");
       await next();
+      const csp =
+        c.req.path === `/${API_VERSION}/billing/return`
+          ? `default-src 'none'; style-src '${BILLING_RETURN_STYLE_HASH}'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`
+          : "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
+      c.header("Content-Security-Policy", csp);
     });
     app.use(
       bodyLimit({
@@ -36,6 +49,14 @@ export class AppFactory {
     });
 
     const api = new Hono<AuthEnv>();
+    api.use("*", async (c, next) => {
+      if (!["GET", "HEAD", "OPTIONS"].includes(c.req.method) && c.req.path !== `/${API_VERSION}/billing/webhook`) {
+        if ((c.req.header("origin") || c.req.header("cookie")) && c.req.header("x-interviewcheck") !== "1") {
+          throw new HttpError(403, "forbidden", "Missing workspace request header.");
+        }
+      }
+      await next();
+    });
     api.route(
       "/",
       AuthRoutes.build({
@@ -45,9 +66,45 @@ export class AppFactory {
         trustProxy: container.config.TRUST_PROXY,
       }),
     );
-    api.route("/", BillingRoutes.build({ auth: container.auth, billing: container.billing,
-      webhook: container.billingWebhook, appUrlScheme: container.config.APP_URL_SCHEME }));
-    api.route("/", AdminRoutes.build({ auth: container.auth, admin: container.admin }));
+    api.route(
+      "/",
+      SecurityRoutes.build({
+        auth: container.auth,
+        security: container.security,
+      }),
+    );
+    api.route(
+      "/",
+      BillingRoutes.build({
+        auth: container.auth,
+        billing: container.billing,
+        webhook: container.billingWebhook,
+        appUrlScheme: container.config.APP_URL_SCHEME,
+        billingLimiter: container.billingLimiter,
+        trustProxy: container.config.TRUST_PROXY,
+      }),
+    );
+    api.route(
+      "/",
+      AdminRoutes.build({
+        auth: container.auth,
+        admin: container.admin,
+        security: container.security,
+        adminReadLimiter: container.adminReadLimiter,
+        adminWriteLimiter: container.adminWriteLimiter,
+        trustProxy: container.config.TRUST_PROXY,
+      }),
+    );
+    api.route(
+      "/admin/metrics",
+      MetricsRoutes.build({
+        auth: container.auth,
+        database: container.database,
+        security: container.security,
+        adminReadLimiter: container.adminReadLimiter,
+        trustProxy: container.config.TRUST_PROXY,
+      }),
+    );
     app.route(`/${API_VERSION}`, api);
 
     app.notFound((c) => c.json({ error: { code: "not_found", message: "No such route." } }, 404));

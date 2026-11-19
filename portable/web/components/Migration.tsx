@@ -78,10 +78,10 @@ export function Migration({ onImported }: { onImported?: () => void } ) {
         <p>Make a SQLite backup of the native database. Copy the backup to this computer.
           Run the import from the portable directory against the same workspace database as the service.</p>
         <div><strong>Windows PowerShell</strong>
-          <pre style={{whiteSpace: "pre-wrap"}}>{'.\\.venv\\Scripts\\python.exe -m api.migrate "C:\\path\\interview-snapshot.sqlite"'}</pre>
+          <pre className="code-block">{'.\\.venv\\Scripts\\python.exe -m api.migrate "C:\\path\\interview-snapshot.sqlite"'}</pre>
         </div>
         <div><strong>Linux</strong>
-          <pre style={{whiteSpace: "pre-wrap"}}>{'.venv/bin/python -m api.migrate "/path/interview-snapshot.sqlite"'}</pre>
+          <pre className="code-block">{'.venv/bin/python -m api.migrate "/path/interview-snapshot.sqlite"'}</pre>
         </div>
         <p>Open the interview archive after import. Each report retains its native scores, notes and references.
           Repeating an import skips records already present.</p>

@@ -77,11 +77,16 @@ describe("admin API", () => {
     expect(cleared.entitlement.active).toBe(false);
   });
 
-  it("promotes and demotes roles but never removes the last admin", async () => {
+  it("promotes and demotes roles, revokes sessions on role change, and never removes the last admin", async () => {
     const promoted = await json<AdminUserView>(await patch(harness.app, `/v1/admin/users/${memberId}`, { role: "admin" }, adminToken));
     expect(promoted.user.role).toBe("admin");
+    expect((await get(harness.app, "/v1/me", memberToken)).status).toBe(401);
+    const reauthed = await json<SignedInResponse>(await post(harness.app, "/v1/auth/login", { email: "member@example.com", password: "a-long-password" }));
+    const promotedToken = reauthed.token;
+
     expect((await patch(harness.app, `/v1/admin/users/${adminId}`, { role: "user" }, adminToken)).status).toBe(200);
-    expect((await patch(harness.app, `/v1/admin/users/${memberId}`, { role: "user" }, memberToken)).status).toBe(409);
+    expect((await get(harness.app, "/v1/me", adminToken)).status).toBe(401);
+    expect((await patch(harness.app, `/v1/admin/users/${memberId}`, { role: "user" }, promotedToken)).status).toBe(409);
   });
 
   it("lets a disabled admin be demoted even when they are the only other admin", async () => {
@@ -120,10 +125,63 @@ describe("admin API", () => {
     expect(audit.entries.map((entry) => entry.action)).toContain("auth.signup");
   });
 
-  it("validates patch bodies", async () => {
+  it("validates UUID path params, query limits, and patch bodies", async () => {
     expect((await patch(harness.app, `/v1/admin/users/${memberId}`, {}, adminToken)).status).toBe(400);
     expect((await patch(harness.app, `/v1/admin/users/${memberId}`, { role: "owner" }, adminToken)).status).toBe(400);
-    expect((await patch(harness.app, "/v1/admin/users/missing", { role: "admin" }, adminToken)).status).toBe(404);
+    expect((await patch(harness.app, "/v1/admin/users/missing", { role: "admin" }, adminToken)).status).toBe(400);
+    expect((await get(harness.app, "/v1/admin/users/missing", adminToken)).status).toBe(400);
+    expect((await get(harness.app, "/v1/admin/users/00000000-0000-4000-8000-000000000000", adminToken)).status).toBe(404);
+    expect((await patch(harness.app, "/v1/admin/users/00000000-0000-4000-8000-000000000000", { role: "admin" }, adminToken)).status).toBe(404);
+    for (const bad of ["0", "-1", "201", "1.5", "abc", "", "1e2"]) {
+      expect((await get(harness.app, `/v1/admin/audit?limit=${encodeURIComponent(bad)}`, adminToken)).status).toBe(400);
+      expect((await get(harness.app, `/v1/admin/users?limit=${encodeURIComponent(bad)}`, adminToken)).status).toBe(400);
+    }
+    expect((await get(harness.app, "/v1/admin/audit?limit=1", adminToken)).status).toBe(200);
+    expect((await get(harness.app, "/v1/admin/audit?limit=200", adminToken)).status).toBe(200);
+  });
+
+  it("enforces security headers, CSRF on browser /v1 mutations, and rate limits", async () => {
+    const health = await harness.app.request("/health");
+    expect(health.headers.get("x-frame-options")).toBe("DENY");
+    expect(health.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(health.headers.get("referrer-policy")).toBe("no-referrer");
+    expect(health.headers.get("permissions-policy")).toContain("camera=()");
+    expect(health.headers.get("content-security-policy")).toContain("default-src 'none'");
+
+    const billingReturn = await harness.app.request("/v1/billing/return?status=success");
+    expect(billingReturn.headers.get("content-security-policy")).toContain("style-src 'sha256-");
+
+    const browserCsrfBlocked = await harness.app.request(`/v1/admin/users/${memberId}`, {
+      method: "PATCH",
+      headers: { authorization: `Bearer ${adminToken}`, "content-type": "application/json", origin: "https://evil.example" },
+      body: JSON.stringify({ role: "admin" }),
+    });
+    expect(browserCsrfBlocked.status).toBe(403);
+
+    const cookieCsrfBlocked = await harness.app.request("/v1/auth/logout", {
+      method: "POST",
+      headers: { authorization: `Bearer ${memberToken}`, cookie: "ic_access=abc" },
+    });
+    expect(cookieCsrfBlocked.status).toBe(403);
+
+    const browserCsrfAllowed = await harness.app.request(`/v1/admin/users/${memberId}`, {
+      method: "PATCH",
+      headers: { authorization: `Bearer ${adminToken}`, "content-type": "application/json", origin: "https://app.example", "x-interviewcheck": "1" },
+      body: JSON.stringify({ complimentaryUntil: null }),
+    });
+    expect(browserCsrfAllowed.status).toBe(200);
+
+    let lastResponse!: Response;
+    for (let i = 0; i < 42; i += 1) {
+      lastResponse = await patch(harness.app, `/v1/admin/users/${memberId}`, { complimentaryUntil: null }, adminToken);
+    }
+    expect(lastResponse.status).toBe(429);
+    const retryAfter = lastResponse.headers.get("retry-after");
+    expect(retryAfter).toMatch(/^\d+$/);
+    expect(Number(retryAfter)).toBeGreaterThanOrEqual(1);
+    expect(await json(lastResponse)).toEqual({
+      error: { code: "rate_limited", message: "Too many attempts. Try again in a minute." },
+    });
   });
 
   it("treats LIKE wildcards in search as literal characters", async () => {

@@ -1,39 +1,24 @@
 "use client"
 
-import WorkspaceSearch from "./WorkspaceSearch"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
-import { useEffect, useState } from "react"
-import {
-  BriefcaseBusiness,
-  ChevronRight,
-  CirclePlay,
-  UserRound,
-  FolderClock,
-  LayoutGrid,
-  Plug,
-  AudioLines,
-  Database,
-  ArrowLeft,
-} from "lucide-react"
-import { MotionConfig, motion } from "framer-motion"
+import { useEffect, useId, useRef, useState } from "react"
+import { ArrowLeft, ChevronRight, LayoutGrid, Menu, UserRound } from "lucide-react"
 import { blankPreparation, interviewURL, PreparationContext, type Preparation } from "@/lib/workspace"
+import { useAccountStatus } from "@/lib/useAccountStatus"
+import { WorkspaceNav, workspaceMenu } from "./WorkspaceNav"
+import WorkspaceSearch from "./WorkspaceSearch"
 
-const menu = [
-  { path: "/", label: "Overview", icon: LayoutGrid },
-  { path: "/interviews/", label: "Interviews", icon: FolderClock },
-  { path: "/roles/", label: "Role library", icon: BriefcaseBusiness },
-  { path: "/connections/", label: "Connections", icon: Plug },
-  { path: "/data/", label: "Data", icon: Database },
-]
-const pages: Record<string, string> = Object.fromEntries(menu.map((item) => [item.path, item.label]))
+const pages: Record<string, string> = Object.fromEntries(workspaceMenu.map((item) => [item.path, item.label]))
 Object.assign(pages, {
   "/interviews/new/": "New interview",
   "/interviews/review/": "Interview record",
   "/interviews/brief/": "Review brief",
+  "/interviews/compare/": "Compare candidates",
   "/sample/": "Sample review",
   "/trash/": "Trash",
   "/account/": "Account",
+  "/admin/": "Model admin",
 })
 const bookmarks: Record<string, string> = {
   overview: "/",
@@ -49,10 +34,92 @@ export default function WorkspaceShell({ children }: { children: React.ReactNode
   const pathname = usePathname()
   const path = pathname === "/" ? "/" : pathname.replace(/\/?$/, "/")
   const [preparation, setPreparation] = useState<Preparation>(blankPreparation)
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const [isMobile, setIsMobile] = useState(false)
+  const drawerId = useId()
+  const toggleRef = useRef<HTMLButtonElement>(null)
+  const closeRef = useRef<HTMLButtonElement>(null)
+  const drawerRef = useRef<HTMLElement>(null)
+  const shouldRestoreFocusRef = useRef(false)
+  const { account, isAdmin } = useAccountStatus(path)
+  const showAdminNav = isAdmin || path.startsWith("/admin/")
+  const pageTitle = pages[path] ?? (path.startsWith("/admin/") ? "Model admin" : "Page")
+
   function prepare(input = blankPreparation) {
     setPreparation(input)
     router.push("/interviews/new/")
   }
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 820px)")
+    const sync = () => {
+      setIsMobile(mq.matches)
+      if (!mq.matches) setDrawerOpen(false)
+    }
+    sync()
+    mq.addEventListener("change", sync)
+    return () => mq.removeEventListener("change", sync)
+  }, [])
+
+  useEffect(() => {
+    setDrawerOpen(false)
+  }, [path])
+
+  useEffect(() => {
+    document.body.classList.toggle("drawer-open", drawerOpen && isMobile)
+    if (!drawerOpen || !isMobile) {
+      if (!drawerOpen && shouldRestoreFocusRef.current) {
+        shouldRestoreFocusRef.current = false
+        toggleRef.current?.focus()
+      }
+      return
+    }
+    closeRef.current?.focus()
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        shouldRestoreFocusRef.current = true
+        setDrawerOpen(false)
+        return
+      }
+      if (e.key !== "Tab") return
+      const drawer = drawerRef.current
+      if (!drawer) return
+      const focusable = Array.from(
+        drawer.querySelectorAll<HTMLElement>(
+          'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((el) => {
+        if (el.closest("[inert], [hidden]")) return false
+        const cs = window.getComputedStyle(el)
+        return cs.display !== "none" && cs.visibility !== "hidden"
+      })
+      if (focusable.length === 0) {
+        e.preventDefault()
+        return
+      }
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      const active = document.activeElement as HTMLElement | null
+      if (!active || !drawer.contains(active)) {
+        e.preventDefault()
+        ;(e.shiftKey ? last : first).focus()
+        return
+      }
+      if (e.shiftKey && active === first) {
+        e.preventDefault()
+        last.focus()
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault()
+        first.focus()
+      }
+    }
+    window.addEventListener("keydown", onKey)
+    return () => {
+      window.removeEventListener("keydown", onKey)
+      document.body.classList.remove("drawer-open")
+    }
+  }, [drawerOpen, isMobile])
+
   useEffect(() => {
     function restoreBookmark() {
       if (window.location.pathname !== "/") return
@@ -65,70 +132,77 @@ export default function WorkspaceShell({ children }: { children: React.ReactNode
     window.addEventListener("hashchange", restoreBookmark)
     return () => window.removeEventListener("hashchange", restoreBookmark)
   }, [router, pathname])
+
+  const backgroundInert = isMobile && drawerOpen ? true : undefined
+
+  function closeDrawer(restoreFocus = true) {
+    if (restoreFocus) shouldRestoreFocusRef.current = true
+    setDrawerOpen(false)
+  }
+
   return (
     <PreparationContext.Provider value={{ preparation, prepare }}>
-      <MotionConfig reducedMotion="user">
-        <div className="shell">
-          <a href="#main-content" className="skip-content">Skip to content</a>
-          <aside className="sidebar">
-            <Link className="brand" href="/" aria-label="InterviewCheck overview">
-              <span className="brand-mark">
-                <AudioLines size={24} strokeWidth={2.4} />
-              </span>
-              Interview<span className="brand-light">Check</span>
-            </Link>
-            <div className="mobile-tools"><WorkspaceSearch compact/><Link className="mobile-account" href="/account/" aria-label="Account"><UserRound size={15}/><span>Account</span></Link></div>
-            <span className="side-caption">WORKSPACE</span>
-            <nav aria-label="Workspace">
-              {menu.map(({ path: href, label, icon: Icon }) => (
-                <Link
-                  key={href}
-                  href={href}
-                  aria-label={label}
-                  aria-current={
-                    path === href || (href === "/interviews/" && path.startsWith(href)) ? "page" : undefined
-                  }
-                >
-                  <Icon />
-                  {href === "/roles/" ? <><span className="full-role-label">{label}</span><span className="compact-role-label">Roles</span></> : label}
+      <div className="shell">
+        <a href="#main-content" className="skip-content" inert={backgroundInert}>
+          Skip to content
+        </a>
+        {drawerOpen && isMobile && (
+          <div className="drawer-backdrop" onClick={() => closeDrawer(true)} aria-hidden="true" />
+        )}
+        <WorkspaceNav
+          path={path}
+          drawerId={drawerId}
+          drawerOpen={drawerOpen}
+          isMobile={isMobile}
+          showAdminNav={showAdminNav}
+          account={account}
+          closeRef={closeRef}
+          drawerRef={drawerRef}
+          onClose={() => closeDrawer(true)}
+          onNavigate={() => closeDrawer(false)}
+        />
+        <main className="main" id="main-content" tabIndex={-1} inert={backgroundInert}>
+          <header className="top">
+            <div className="top-left">
+              <button
+                ref={toggleRef}
+                type="button"
+                className="nav-toggle"
+                aria-label="Open navigation menu"
+                aria-expanded={drawerOpen}
+                aria-controls={drawerId}
+                onClick={() => setDrawerOpen(true)}
+              >
+                <Menu size={20} aria-hidden="true" />
+              </button>
+              <nav className="breadcrumb" aria-label="Breadcrumb">
+                <LayoutGrid size={15} className="breadcrumb-icon" aria-hidden="true" />
+                <Link href="/" className="breadcrumb-root">
+                  Workspace
                 </Link>
-              ))}
-            </nav>
-            <div className="sidebar-foot">
-              <Link href="/sample/" aria-current={path === "/sample/" ? "page" : undefined}>
-                <CirclePlay size={17} />
-                Sample review
+                <ChevronRight size={13} className="breadcrumb-sep" aria-hidden="true" />
+                <b>{pageTitle}</b>
+              </nav>
+            </div>
+            <div className="header-tools">
+              <WorkspaceSearch isAdmin={isAdmin} />
+              <Link className="account-link" href="/account/" aria-label="Account">
+                <UserRound size={16} aria-hidden="true" />
+                <span>Account</span>
               </Link>
             </div>
-          </aside>
-          <main className="main" id="main-content" tabIndex={-1}>
-            <header className="top">
-              <div className="breadcrumb">
-                <LayoutGrid size={15} />
-                <Link href="/">Workspace</Link>
-                <ChevronRight size={13} />
-                <b>{pages[path] ?? "Page"}</b>
-              </div>
-              <div className="header-tools"><WorkspaceSearch/><Link className="row" href="/account/"><UserRound size={16}/>Account</Link></div>
-            </header>
-            <motion.div
-              className="content"
-              key={path}
-              initial={{ opacity: 0.7, y: 4 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.18 }}
-            >
-              {path.startsWith("/interviews/") && path !== "/interviews/" && (
-                <Link className="back" href="/interviews/">
-                  <ArrowLeft size={14} />
-                  Interviews
-                </Link>
-              )}
-              {children}
-            </motion.div>
-          </main>
-        </div>
-      </MotionConfig>
+          </header>
+          <div className="content content-enter" key={path}>
+            {path.startsWith("/interviews/") && path !== "/interviews/" && (
+              <Link className="back" href="/interviews/">
+                <ArrowLeft size={14} aria-hidden="true" />
+                Interviews
+              </Link>
+            )}
+            {children}
+          </div>
+        </main>
+      </div>
     </PreparationContext.Provider>
   )
 }

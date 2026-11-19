@@ -43,7 +43,7 @@
 .queue-more,
 .clear-filters {
   font-weight: 600;
-  color: var(--green);
+  color: var(--green-ink);
 }
 .queue-link:hover,
 .queue-more:hover,
@@ -104,6 +104,8 @@
 .session-identity {
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .session-identity strong {
   font-size: 15px;
@@ -153,7 +155,7 @@
 }
 .archive-filters .field select,
 .archive-search > span {
-  border: 1px solid var(--line);
+  border: 1px solid var(--color-input);
   border-radius: 6px;
   background: var(--surface);
   color: var(--ink);
@@ -171,7 +173,7 @@
   width: 100%;
 }
 .archive-search > span:focus-within {
-  outline: 2px solid #36835e;
+  outline: 2px solid var(--color-ring);
   outline-offset: 2px;
 }
 .archive-search input:focus-visible {
@@ -242,7 +244,7 @@
     margin-left: 15px;
   }
 }
-@media (max-width: 370px) {
+@media (max-width: 540px) {
   .archive-filters {
     grid-template-columns: minmax(0, 1fr);
   }

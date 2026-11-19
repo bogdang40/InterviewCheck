@@ -50,7 +50,7 @@ export default function Sample({create}:{create:()=>void}) {
     {item?<div className="review-grid"><QuestionNavigator answers={answers} active={item.id} disabled={false} onSelect={a=>setSelected(answers.findIndex(x=>x.id===a.id))}/>
       <article className="panel evidence"><span className="eyebrow">{scenario.topic.toUpperCase()}</span><h2>{item.question}</h2>
         <CandidateResponse item={item}/>
-        {sources.map((s,i)=><div className="source-box" key={s.label}><b>{s.label}</b><p><MarkedText text={s.text} side="source" passages={item.result.passages.filter(p=>p.source_index===i)}/></p>
+        {sources.map((s,i)=><div className="source-box stack" key={s.label}><b>{s.label}</b><p><MarkedText text={s.text} side="source" passages={item.result.passages.filter(p=>p.source_index===i)}/></p>
           <label className="check"><input type="checkbox" checked={s.permitted} onChange={e=>{const flag=e.target.checked;setOverrides(o=>({...o,[key(i)]:flag}));changeNote({disposition:"pending"})}}/>
             {sources.length===1?"Permitted material":"Permit "+s.label}</label></div>)}
         <Findings result={item.result}/>
@@ -58,6 +58,6 @@ export default function Sample({create}:{create:()=>void}) {
           <option value="pending">Pending review</option><option value="explained">Explained</option><option value="unresolved">Unresolved</option></select></label>
           <label className="field">Practice note<Textarea maxLength={12000} value={item.note} onChange={e=>changeNote({note:e.target.value})}/></label>
           <small className="muted">{notes.filter(n=>n.disposition!=="pending").length} of {answers.length} practice outcomes recorded.</small></div>
-      </article></div>:!error && <p role="status">Comparing the practice exchanges…</p>}
+      </article></div>:!error && <section className="panel inset" role="status"><p className="muted">Comparing the practice exchanges…</p></section>}
   </>
 }
