@@ -202,6 +202,7 @@ def test_m17_prompt_template_edit_diff_conflict_and_rollback(e2e_workspace, desk
 
     prompt_section.get_by_label("Prompt slot").select_option("judge_rubric")
     expect(prompt_section.get_by_text("v1 active", exact=True)).to_be_visible()
+    expect(prompt_section.locator("article", has_text="v1").first).to_be_visible()
     original_system = prompt_section.get_by_label("System prompt").input_value()
 
     v2_system = "Evaluate candidate responses strictly for technical evidence and clarity."
@@ -257,6 +258,7 @@ def test_m17_prompt_template_edit_diff_conflict_and_rollback(e2e_workspace, desk
     page.get_by_role("tab", name="Prompts & SLA").click()
     prompt_section.get_by_label("Prompt slot").select_option("judge_rubric")
     expect(prompt_section.get_by_text("v4 active", exact=True)).to_be_visible()
+    expect(prompt_section.locator("article", has_text="v4").first).to_be_visible()
     _assert_no_secrets(page, "sk-m17-prompt-3333")
     collector.assert_clean()
 
