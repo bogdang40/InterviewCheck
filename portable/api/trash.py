@@ -82,10 +82,11 @@ def purge(sid: UUID, item: Purge):
     with store.connection(write=True) as db:
         active_marker(db, key, item.operation_version)
         bulk_operations.ensure_table(db)
-        if db.execute(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='answer_review_events'"
-        ).fetchone():
-            db.execute("DELETE FROM answer_review_events WHERE session_id=?", (key,))
+        for table in ("answer_review_events", "session_scorecards", "session_handoff_notes"):
+            if db.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)
+            ).fetchone():
+                db.execute(f"DELETE FROM {table} WHERE session_id=?", (key,))
         # All statements share the marker check and a single write transaction.
         # A future child table with a foreign key makes deletion fail atomically.
         for statement in (

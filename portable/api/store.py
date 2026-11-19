@@ -9,7 +9,7 @@ from uuid import uuid4
 
 from fastapi import HTTPException
 
-from . import bulk_operations, lineage, model_registry, role_analytics, role_kits, role_versions, search_fts
+from . import bulk_operations, lineage, model_registry, role_analytics, role_kits, role_versions, search_fts, session_scorecard
 from .role_kits import role_row, create_role
 from .models import EARLIER_ANSWER_NOTE, AnswerEdit, AnswerInput, ReviewInput, SessionInput
 
@@ -113,6 +113,7 @@ def initialize(path):
         bulk_operations.migrate(db)
         model_registry.migrate(db)
         search_fts.migrate(db)
+        session_scorecard.migrate(db)
         # Freeze plans for workspaces created before role IDs were recorded. Only
         # an unambiguous title can recover the original plan from that edition.
         db.execute("""INSERT OR IGNORE INTO session_context(session_id,role_id,questions,ended_at)
