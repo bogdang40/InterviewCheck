@@ -234,7 +234,11 @@ def account_operations():
 @router.get("/catalog")
 def catalog():
     dg_rows = model_resolver.list_model_summaries(provider="deepgram", capability="transcription")
-    dg_state = ("configured" if model_resolver.resolve_capability("transcription") is not None else "needs_setup") if dg_rows else None
+    dg_state = (
+        "configured"
+        if model_resolver.resolve_capability("transcription", provider="deepgram", allow_slug_lookup=False) is not None
+        else "needs_setup"
+    ) if dg_rows else None
     result = [
         card(
             "files",
@@ -282,8 +286,18 @@ def catalog():
         prov_rows = model_resolver.list_model_summaries(provider=prov_key)
         ref_rows = [r for r in prov_rows if r["capability"] == "reference"]
         qp_rows = [r for r in prov_rows if r["capability"] == "question_planning"]
-        ref_state = ("configured" if model_resolver.resolve_capability("reference", provider=prov_key) is not None else "needs_setup") if ref_rows else None
-        qp_state = ("configured" if model_resolver.resolve_capability("question_planning", provider=prov_key, allow_reference_fallback=True) is not None else "needs_setup") if (qp_rows or ref_rows) else None
+        ref_state = (
+            "configured"
+            if model_resolver.resolve_capability("reference", provider=prov_key, allow_slug_lookup=False) is not None
+            else "needs_setup"
+        ) if ref_rows else None
+        qp_state = (
+            "configured"
+            if model_resolver.resolve_capability(
+                "question_planning", provider=prov_key, allow_reference_fallback=True, allow_slug_lookup=False
+            ) is not None
+            else "needs_setup"
+        ) if (qp_rows or ref_rows) else None
         ops = [
             operation("References", "Generate reference answers", "Interview · Add an exchange", [keys], state=ref_state),
             operation("Question planning", "Draft planned questions", "Role library · Edit role", [keys], state=qp_state),

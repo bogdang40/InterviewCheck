@@ -47,6 +47,15 @@ def _key_file_path() -> Path:
     return store.db_path().with_name(".model_secret.key")
 
 
+def _decode_urlsafe_b64(encoded: bytes) -> bytes:
+    if not encoded or b"+" in encoded or b"/" in encoded:
+        raise ValueError("Invalid URL-safe base64 encoding.")
+    raw = base64.b64decode(encoded, altchars=b"-_", validate=True)
+    if base64.urlsafe_b64encode(raw) != encoded:
+        raise ValueError("Non-canonical URL-safe base64 encoding.")
+    return raw
+
+
 def _load_or_create_file_key(path: Path) -> bytes:
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     if not path.exists():
@@ -68,7 +77,7 @@ def _load_or_create_file_key(path: Path) -> bytes:
             raise SecretBoxError("Model secret file permissions are too broad; restrict to 0600.")
     try:
         raw = path.read_bytes().strip()
-        key = base64.urlsafe_b64decode(raw)
+        key = _decode_urlsafe_b64(raw)
     except (OSError, ValueError) as exc:
         raise SecretBoxError("Model secret key file could not be read.") from exc
     if len(key) != 32:
@@ -139,7 +148,7 @@ def decrypt_secret(ciphertext: str | None, *, aad: str = "") -> str:
     if not isinstance(ciphertext, str) or not ciphertext.startswith(PREFIX):
         raise SecretBoxError("Stored model credential has an unsupported format.")
     try:
-        raw = base64.urlsafe_b64decode(ciphertext[len(PREFIX):].encode("ascii"))
+        raw = _decode_urlsafe_b64(ciphertext[len(PREFIX):].encode("ascii"))
     except (ValueError, UnicodeError) as exc:
         raise SecretBoxError("Stored model credential could not be decoded.") from exc
     if len(raw) < NONCE_BYTES + TAG_BYTES + 1:

@@ -1,148 +1,24 @@
 """Authenticated admin API for connected AI and speech models."""
-import re
-from typing import Annotated, Any, Literal
+from typing import Any
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
-from pydantic import Field, SecretStr, StringConstraints, field_validator, model_validator
 
 from . import access, account_auth, account_db, model_probe, model_registry, model_resolver, secret_box, ssrf_guard, store
-from .models import Input
+from .model_schemas import (
+    ALLOWED_CAPABILITIES,
+    Capability,
+    ENDPOINT_REQUIRED_PROVIDERS,
+    KEY_REQUIRED_PROVIDERS,
+    ModelCreateInput,
+    ModelToggleInput,
+    ModelUpdateInput,
+    Provider,
+)
 from .provider_http import configured
 
 router = APIRouter(prefix="/api/admin/models", tags=["model-admin"])
-
-Provider = Literal["openai", "anthropic", "azure_openai", "deepgram", "openai_compatible"]
-Capability = Literal["reference", "question_planning", "transcription", "embedding", "judge"]
-ALLOWED_CAPABILITIES: dict[str, set[str]] = {
-    "openai": {"reference", "question_planning", "embedding", "judge"},
-    "anthropic": {"reference", "question_planning", "judge"},
-    "azure_openai": {"reference", "question_planning", "embedding", "judge"},
-    "openai_compatible": {"reference", "question_planning", "embedding", "judge"},
-    "deepgram": {"transcription"},
-}
-KEY_REQUIRED_PROVIDERS = {"openai", "anthropic", "azure_openai", "deepgram"}
-ENDPOINT_REQUIRED_PROVIDERS = {"azure_openai", "openai_compatible"}
-
-SlugStr = Annotated[str, StringConstraints(min_length=2, max_length=64, pattern=r"^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$")]
-DisplayNameStr = Annotated[str, StringConstraints(min_length=1, max_length=120)]
-ModelIdStr = Annotated[str, StringConstraints(min_length=1, max_length=180)]
-ApiVersionStr = Annotated[str, StringConstraints(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")]
-
-
-def _check_model_id(value: str) -> str:
-    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,179}", value) or ".." in value or "//" in value:
-        raise ValueError("Model identifier contains unsupported characters.")
-    return value
-
-
-def _check_display_name(value: str) -> str:
-    if any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
-        raise ValueError("Display name contains invalid control characters.")
-    return value
-
-
-class ModelParameters(Input):
-    temperature: float | None = Field(default=None, ge=0.0, le=2.0, allow_inf_nan=False)
-    max_tokens: int | None = Field(default=None, ge=1, le=128000)
-    timeout_s: float | None = Field(default=None, ge=1.0, le=180.0, allow_inf_nan=False)
-    fallback_priority: int = Field(default=100, ge=0, le=10000)
-
-
-class ModelParametersPatch(Input):
-    temperature: float | None = Field(default=None, ge=0.0, le=2.0, allow_inf_nan=False)
-    max_tokens: int | None = Field(default=None, ge=1, le=128000)
-    timeout_s: float | None = Field(default=None, ge=1.0, le=180.0, allow_inf_nan=False)
-    fallback_priority: int | None = Field(default=None, ge=0, le=10000)
-
-    @model_validator(mode="after")
-    def reject_null_priority(self):
-        if "fallback_priority" in self.model_fields_set and self.fallback_priority is None:
-            raise ValueError("fallback_priority cannot be null.")
-        return self
-
-
-class ModelCreateInput(Input):
-    slug: SlugStr | None = None
-    display_name: DisplayNameStr
-    provider: Provider
-    capability: Capability
-    model_id: ModelIdStr
-    endpoint: str | None = Field(default=None, min_length=8, max_length=512)
-    api_version: ApiVersionStr | None = None
-    parameters: ModelParameters = Field(default_factory=ModelParameters)
-    apiKey: SecretStr | None = Field(default=None, max_length=512)
-    enabled: bool = True
-    is_default: bool = False
-
-    @field_validator("display_name")
-    @classmethod
-    def valid_display_name(cls, value: str) -> str:
-        return _check_display_name(value)
-
-    @field_validator("model_id")
-    @classmethod
-    def valid_model_id(cls, value: str) -> str:
-        return _check_model_id(value)
-
-    @model_validator(mode="after")
-    def check_provider_rules(self):
-        if self.capability not in ALLOWED_CAPABILITIES[self.provider]:
-            raise ValueError("Selected capability is not supported for this provider.")
-        secret = self.apiKey.get_secret_value() if self.apiKey is not None else None
-        if self.provider in KEY_REQUIRED_PROVIDERS and not secret:
-            raise ValueError("An API key is required for this provider.")
-        if self.provider == "openai_compatible" and secret == "":
-            raise ValueError("Provide a non-empty API key or omit apiKey.")
-        if self.provider in ENDPOINT_REQUIRED_PROVIDERS and not self.endpoint:
-            raise ValueError("An HTTPS endpoint is required for this provider.")
-        if self.provider not in ENDPOINT_REQUIRED_PROVIDERS and self.endpoint is not None:
-            raise ValueError("Custom endpoints are only supported for azure_openai and openai_compatible.")
-        if self.provider == "azure_openai" and not self.api_version:
-            raise ValueError("An API version is required for Azure OpenAI.")
-        if self.provider != "azure_openai" and self.api_version is not None:
-            raise ValueError("api_version is only supported for azure_openai.")
-        return self
-
-
-class ModelUpdateInput(Input):
-    slug: SlugStr | None = None
-    display_name: DisplayNameStr | None = None
-    capability: Capability | None = None
-    model_id: ModelIdStr | None = None
-    endpoint: str | None = Field(default=None, min_length=8, max_length=512)
-    api_version: ApiVersionStr | None = None
-    parameters: ModelParametersPatch | None = None
-    apiKey: SecretStr | None = Field(default=None, max_length=512)
-    clearApiKey: bool = False
-    enabled: bool | None = None
-    is_default: bool | None = None
-
-    @field_validator("display_name")
-    @classmethod
-    def valid_display_name(cls, value: str | None) -> str | None:
-        return _check_display_name(value) if value is not None else None
-
-    @field_validator("model_id")
-    @classmethod
-    def valid_model_id(cls, value: str | None) -> str | None:
-        return _check_model_id(value) if value is not None else None
-
-    @model_validator(mode="after")
-    def check_patch(self):
-        if not self.model_fields_set:
-            raise ValueError("Specify at least one field to update.")
-        for field in ("slug", "display_name", "capability", "model_id", "parameters", "enabled", "is_default"):
-            if field in self.model_fields_set and getattr(self, field) is None:
-                raise ValueError(f"{field} cannot be null.")
-        if self.clearApiKey and self.apiKey is not None and self.apiKey.get_secret_value() != "":
-            raise ValueError("Cannot provide apiKey and clearApiKey together.")
-        return self
-
-
-class ModelToggleInput(Input):
-    enabled: bool
 
 
 async def require_admin(request: Request) -> dict[str, Any]:
@@ -169,10 +45,11 @@ async def require_admin(request: Request) -> dict[str, Any]:
 
 
 def _record_audit(review_db, *, actor: dict[str, Any], action: str, model_uuid: str, details: dict[str, Any], post_commit: list) -> None:
+    actor_id = actor.get("id")
     if account_db.database().is_file():
-        post_commit.append((action, model_uuid, actor["id"], details))
+        post_commit.append((action, model_uuid, actor_id, details))
     else:
-        model_registry.write_fallback_audit(review_db, actor_user_id=actor["id"], action=action, model_uuid=model_uuid, details=details)
+        model_registry.write_fallback_audit(review_db, actor_user_id=actor_id, action=action, model_uuid=model_uuid, details=details)
 
 
 def _flush_account_audits(post_commit: list) -> None:
@@ -273,16 +150,25 @@ async def update_model(model_id: UUID, item: ModelUpdateInput, actor: dict = Dep
     merged_enabled = item.enabled if item.enabled is not None else bool(existing["enabled"])
     merged_default = item.is_default if item.is_default is not None else bool(existing["is_default"])
     conn_changed = (
-        merged_model_id != existing["model_id"] or merged_endpoint != existing["endpoint"]
-        or merged_api_version != existing["api_version"] or rotated_key or cleared_key
+        merged_capability != existing["capability"]
+        or merged_model_id != existing["model_id"]
+        or merged_endpoint != existing["endpoint"]
+        or merged_api_version != existing["api_version"]
+        or rotated_key
+        or cleared_key
     )
+    next_error = None if conn_changed else existing["last_error"]
+    next_latency_ms = None if conn_changed else existing["last_latency_ms"]
+    next_checked_at = None if conn_changed else existing["last_checked_at"]
     if not merged_enabled:
-        next_status, next_error = "disabled", existing["last_error"]
+        next_status = "disabled"
     elif conn_changed or existing["status"] == "disabled":
-        next_status = "unverified" if conn_changed else ("error" if existing["last_error"] else ("connected" if existing["last_checked_at"] else "unverified"))
-        next_error = None if conn_changed else existing["last_error"]
+        next_status = (
+            "unverified" if conn_changed
+            else ("error" if existing["last_error"] else ("connected" if existing["last_checked_at"] else "unverified"))
+        )
     else:
-        next_status, next_error = existing["status"], existing["last_error"]
+        next_status = existing["status"]
 
     changed = sorted(f for f in item.model_fields_set if f not in {"apiKey", "clearApiKey"})
     post_commit: list = []
@@ -291,7 +177,8 @@ async def update_model(model_id: UUID, item: ModelUpdateInput, actor: dict = Dep
             db, model_uuid, slug=merged_slug, display_name=merged_name, capability=merged_capability,
             model_id=merged_model_id, endpoint=merged_endpoint, api_version=merged_api_version,
             parameters=params, encrypted_api_key=encrypted_key, key_hint=key_hint,
-            enabled=merged_enabled, is_default=merged_default, status=next_status, last_error=next_error,
+            enabled=merged_enabled, is_default=merged_default, status=next_status,
+            last_error=next_error, last_latency_ms=next_latency_ms, last_checked_at=next_checked_at,
         )
         details = {"slug": updated["slug"], "changed": changed, "rotated_key": rotated_key, "cleared_key": cleared_key}
         _record_audit(db, actor=actor, action="admin.model.update", model_uuid=model_uuid, details=details, post_commit=post_commit)

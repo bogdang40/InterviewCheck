@@ -248,3 +248,89 @@ def test_clear_api_key_and_probe_ssrf_block(env, monkeypatch):
     monkeypatch.setattr(ssrf_guard, "resolve_public_ips", lambda host, port=443: (_ for _ in ()).throw(ssrf_guard.SSRFValidationError("Endpoint resolves to a restricted network address.")))
     probed = env.post(f"/api/admin/models/{compat['id']}/probe")
     assert probed.status_code == 400 and probed.json()["model"]["status"] == "error"
+
+
+def test_reserved_slugs_rejected_and_autogen_skips_reserved(env):
+    _, admin_token = _seed_user(email="admin@example.invalid", role="admin")
+    env.cookies.set(access.COOKIE, admin_token)
+
+    for bad_slug in ("openai", "anthropic", "azure-openai", "deepgram", "openai-compatible"):
+        assert env.post("/api/admin/models", json=_valid_openai_payload(slug=bad_slug)).status_code == 422
+
+    created = env.post("/api/admin/models", json=_valid_openai_payload(slug="valid-oa-ref")).json()["model"]
+    for bad_slug in ("openai", "anthropic", "azure-openai", "deepgram", "openai-compatible"):
+        assert env.patch(f"/api/admin/models/{created['id']}", json={"slug": bad_slug}).status_code == 422
+
+    autogen = env.post("/api/admin/models", json=_valid_openai_payload(slug=None, provider="openai", model_id="compatible"))
+    assert autogen.status_code == 201
+    gen_slug = autogen.json()["model"]["slug"]
+    assert gen_slug not in model_registry.RESERVED_SLUGS and gen_slug.startswith("openai-compatible-")
+
+
+def test_capability_change_and_disabled_update_clear_stale_probe_state(env, monkeypatch):
+    _, admin_token = _seed_user(email="admin@example.invalid", role="admin")
+    env.cookies.set(access.COOKIE, admin_token)
+    mid = env.post("/api/admin/models", json=_valid_openai_payload(slug="state-reset-test")).json()["model"]["id"]
+
+    monkeypatch.setattr(model_probe, "probe_model", AsyncMock(return_value=model_probe.ProbeOutcome(
+        ok=True, status="connected", http_status=200, latency_ms=19, last_error=None, checked_at="2026-11-19T05:00:00Z",
+    )))
+    assert env.post(f"/api/admin/models/{mid}/probe").status_code == 200
+
+    cap_changed = env.patch(f"/api/admin/models/{mid}", json={"capability": "embedding"})
+    assert cap_changed.status_code == 200
+    m = cap_changed.json()["model"]
+    assert m["status"] == "unverified" and m["last_checked_at"] is None and m["last_latency_ms"] is None and m["last_error"] is None
+
+    # Failing probe -> disable -> rotate key -> re-enable must enter unverified, not error
+    monkeypatch.setattr(model_probe, "probe_model", AsyncMock(return_value=model_probe.ProbeOutcome(
+        ok=False, status="error", http_status=401, latency_ms=11, last_error="Authentication failed (HTTP 401).", checked_at="2026-11-19T05:01:00Z",
+    )))
+    assert env.post(f"/api/admin/models/{mid}/probe").status_code == 502
+    assert env.post(f"/api/admin/models/{mid}/toggle", json={"enabled": False}).status_code == 200
+    dis_patch = env.patch(f"/api/admin/models/{mid}", json={"apiKey": "sk-rotated-while-disabled"})
+    assert dis_patch.status_code == 200
+    dm = dis_patch.json()["model"]
+    assert dm["status"] == "disabled" and dm["last_error"] is None and dm["last_checked_at"] is None and dm["last_latency_ms"] is None
+    assert env.post(f"/api/admin/models/{mid}/toggle", json={"enabled": True}).json()["model"]["status"] == "unverified"
+
+    # Passing probe -> disable -> change model_id -> re-enable must enter unverified, not connected
+    monkeypatch.setattr(model_probe, "probe_model", AsyncMock(return_value=model_probe.ProbeOutcome(
+        ok=True, status="connected", http_status=200, latency_ms=14, last_error=None, checked_at="2026-11-19T05:02:00Z",
+    )))
+    assert env.post(f"/api/admin/models/{mid}/probe").status_code == 200
+    assert env.post(f"/api/admin/models/{mid}/toggle", json={"enabled": False}).status_code == 200
+    assert env.patch(f"/api/admin/models/{mid}", json={"model_id": "text-embedding-3-large"}).json()["model"]["last_checked_at"] is None
+    assert env.post(f"/api/admin/models/{mid}/toggle", json={"enabled": True}).json()["model"]["status"] == "unverified"
+
+
+def test_remote_actor_without_id_and_end_to_end_probe_timeout(env, monkeypatch):
+    monkeypatch.setenv("INTERVIEWCHECK_ACCESS_MODE", "remote")
+    monkeypatch.setenv("INTERVIEWCHECK_ACCESS_URL", "https://accounts.example.invalid")
+    monkeypatch.setattr(access, "upstream", AsyncMock(return_value={
+        "user": {"email": "no-id@example.invalid", "role": "admin", "disabled": False},
+        "entitlement": {"active": True},
+    }))
+    env.cookies.set(access.COOKIE, "remote-no-id-token")
+    created = env.post("/api/admin/models", json=_valid_openai_payload(slug="probe-timeout-e2e", parameters={"timeout_s": 3.0}))
+    assert created.status_code == 201
+    mid = created.json()["model"]["id"]
+    with store.connection() as db:
+        audit = db.execute("SELECT actor_user_id FROM model_audit WHERE model_id=?", (mid,)).fetchone()
+        assert audit is not None and audit["actor_user_id"] is None
+
+    seen_timeouts = []
+    orig_init = httpx.AsyncClient.__init__
+
+    def spy_init(self, *args, **kwargs):
+        seen_timeouts.append(kwargs.get("timeout"))
+        return orig_init(self, *args, **kwargs)
+
+    async def send_200(self, request, **kwargs):
+        return httpx.Response(200, json={"id": "gpt-4o"}, request=request)
+
+    monkeypatch.setattr(httpx.AsyncClient, "__init__", spy_init)
+    monkeypatch.setattr(httpx.AsyncClient, "send", send_200)
+    res = env.post(f"/api/admin/models/{mid}/probe")
+    assert res.status_code == 200 and res.json()["model"]["status"] == "connected"
+    assert seen_timeouts == [3.0]

@@ -18,8 +18,10 @@ CANONICAL_PROVIDER: dict[str, str] = {
     "openai": "openai",
     "anthropic": "anthropic",
     "azure_openai": "azure_openai",
+    "azure-openai": "azure_openai",
     "deepgram": "deepgram",
     "openai_compatible": "openai_compatible",
+    "openai-compatible": "openai_compatible",
 }
 DISPLAY_PROVIDER: dict[str, str] = {
     "openai": "OpenAI",
@@ -118,9 +120,14 @@ def _env(key: str) -> str:
     return os.getenv(key, "").strip()
 
 
-def _env_fallback(capability: str, provider: str | None) -> ResolvedModel | None:
+def _env_fallback(
+    capability: str,
+    provider: str | None,
+    *,
+    suppressed_providers: set[str] | frozenset[str] = frozenset(),
+) -> ResolvedModel | None:
     if capability == "transcription":
-        if provider in (None, "deepgram") and _env("DEEPGRAM_API_KEY"):
+        if provider in (None, "deepgram") and "deepgram" not in suppressed_providers and _env("DEEPGRAM_API_KEY"):
             return ResolvedModel(
                 source="env", id=None, slug=None, display_name="Deepgram", provider="deepgram",
                 capability="transcription", model_id="nova-2", api_key=_env("DEEPGRAM_API_KEY"),
@@ -128,7 +135,12 @@ def _env_fallback(capability: str, provider: str | None) -> ResolvedModel | None
             )
         return None
     if capability == "embedding":
-        if provider in (None, "openai") and _env("OPENAI_API_KEY") and _env("INTERVIEWCHECK_EMBEDDING_MODEL"):
+        if (
+            provider in (None, "openai")
+            and "openai" not in suppressed_providers
+            and _env("OPENAI_API_KEY")
+            and _env("INTERVIEWCHECK_EMBEDDING_MODEL")
+        ):
             return ResolvedModel(
                 source="env", id=None, slug=None, display_name="OpenAI", provider="openai",
                 capability="embedding", model_id=_env("INTERVIEWCHECK_EMBEDDING_MODEL"), api_key=_env("OPENAI_API_KEY"),
@@ -136,7 +148,12 @@ def _env_fallback(capability: str, provider: str | None) -> ResolvedModel | None
             )
         return None
     if capability == "judge":
-        if provider in (None, "openai") and _env("OPENAI_API_KEY") and _env("INTERVIEWCHECK_JUDGE_MODEL"):
+        if (
+            provider in (None, "openai")
+            and "openai" not in suppressed_providers
+            and _env("OPENAI_API_KEY")
+            and _env("INTERVIEWCHECK_JUDGE_MODEL")
+        ):
             return ResolvedModel(
                 source="env", id=None, slug=None, display_name="OpenAI", provider="openai",
                 capability="judge", model_id=_env("INTERVIEWCHECK_JUDGE_MODEL"), api_key=_env("OPENAI_API_KEY"),
@@ -147,6 +164,8 @@ def _env_fallback(capability: str, provider: str | None) -> ResolvedModel | None
         return None
     order = [provider] if provider else ["openai", "anthropic", "azure_openai"]
     for item in order:
+        if item in suppressed_providers:
+            continue
         if item == "openai" and _env("OPENAI_API_KEY") and _env("INTERVIEWCHECK_REFERENCE_MODEL"):
             return ResolvedModel(
                 source="env", id=None, slug=None, display_name="OpenAI", provider="openai",
@@ -176,39 +195,52 @@ def _env_fallback(capability: str, provider: str | None) -> ResolvedModel | None
 
 
 def resolve_capability(
-    capability: str, *, provider: str | None = None, allow_reference_fallback: bool = False
+    capability: str,
+    *,
+    provider: str | None = None,
+    allow_reference_fallback: bool = False,
+    allow_slug_lookup: bool = True,
 ) -> ResolvedModel | None:
     caps = (capability, "reference") if allow_reference_fallback and capability == "question_planning" else (capability,)
     if provider is not None:
-        direct = _find_by_slug_or_id(provider, caps)
-        if direct is not None:
-            return _from_row(direct) if direct["enabled"] == 1 else None
         norm_provider = CANONICAL_PROVIDER.get(provider)
         if norm_provider is None:
-            return None
+            if not allow_slug_lookup:
+                return None
+            direct = _find_by_slug_or_id(provider, caps)
+            if direct is None:
+                return None
+            return _from_row(direct) if direct["enabled"] == 1 else None
     else:
         norm_provider = None
 
     rows = _query_rows(capability, norm_provider)
-    if rows:
-        for row in rows:
-            if row["enabled"] == 1:
-                return _from_row(row)
-        return None
+    for row in rows:
+        if row["enabled"] == 1:
+            return _from_row(row)
+    blocked_providers = {row["provider"] for row in rows}
     if allow_reference_fallback and capability == "question_planning":
         ref_rows = _query_rows("reference", norm_provider)
-        if ref_rows:
-            for row in ref_rows:
-                if row["enabled"] == 1:
-                    return _from_row(row)
-            return None
-    return _env_fallback(capability, norm_provider)
+        for row in ref_rows:
+            if row["provider"] not in blocked_providers and row["enabled"] == 1:
+                return _from_row(row)
+        blocked_providers |= {row["provider"] for row in ref_rows}
+    return _env_fallback(capability, norm_provider, suppressed_providers=blocked_providers)
 
 
 def resolve_or_503(
-    capability: str, *, provider: str | None = None, allow_reference_fallback: bool = False
+    capability: str,
+    *,
+    provider: str | None = None,
+    allow_reference_fallback: bool = False,
+    allow_slug_lookup: bool = True,
 ) -> ResolvedModel:
-    target = resolve_capability(capability, provider=provider, allow_reference_fallback=allow_reference_fallback)
+    target = resolve_capability(
+        capability,
+        provider=provider,
+        allow_reference_fallback=allow_reference_fallback,
+        allow_slug_lookup=allow_slug_lookup,
+    )
     if target is None:
         label = capability.replace("_", " ")
         raise HTTPException(503, f"Configure an enabled {label} model before running this action.")
@@ -319,8 +351,6 @@ async def dispatch_completion(
         data = await fetch(label, "POST", url, json=body, headers=headers, params=params, timeout=timeout, **extra_fetch_opts)
         try:
             choice = data["choices"][0]
-            if choice.get("finish_reason") not in {"stop", "length", None} and choice.get("finish_reason") != "stop":
-                raise HTTPException(502, f"{label} did not complete its response.")
             if choice.get("finish_reason") != "stop":
                 raise HTTPException(502, f"{label} did not complete its response.")
             text = choice["message"]["content"]

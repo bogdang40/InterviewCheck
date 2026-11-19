@@ -253,3 +253,109 @@ def test_question_planning_falls_back_to_reference_and_respects_override(client)
     _register(slug="oa-qp-off", provider="openai", capability="question_planning", model_id="gpt-4.1", enabled=False)
     assert "OpenAI" not in client.get("/api/authoring/providers?capability=question_planning").json()
     assert "OpenAI" in client.get("/api/authoring/providers?capability=reference").json()
+
+
+def test_probe_sqlite_row_timeout_and_response_size_cap(client, monkeypatch):
+    import asyncio
+    timeouts = []
+    orig_init = httpx.AsyncClient.__init__
+
+    def spy_init(self, *args, **kwargs):
+        timeouts.append(kwargs.get("timeout"))
+        return orig_init(self, *args, **kwargs)
+
+    async def send_200(self, request, **kwargs):
+        return httpx.Response(200, json={"id": "gpt-4o"}, request=request)
+
+    monkeypatch.setattr(httpx.AsyncClient, "__init__", spy_init)
+    monkeypatch.setattr(httpx.AsyncClient, "send", send_200)
+
+    for idx, params in enumerate([{"timeout_s": 3.0}, {"timeout_s": 1.0}, {"timeout_s": 30.0}, {}]):
+        m = _register(slug=f"row-to-{idx}", provider="openai", capability="reference", model_id="gpt-4o", is_default=False, parameters=params)
+        with store.connection() as db:
+            row = model_registry.get_row(db, m["id"])
+        assert asyncio.run(model_probe.probe_model(row, api_key="sk-test")).ok is True
+    assert timeouts == [3.0, 2.0, 15.0, 10.0]
+
+    class BigStream(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            yield b"x" * 600_000
+            yield b"y" * 600_000
+
+    async def send_big_stream(self, request, **kwargs):
+        return httpx.Response(200, stream=BigStream(), request=request)
+
+    monkeypatch.setattr(httpx.AsyncClient, "send", send_big_stream)
+    big_out = asyncio.run(model_probe.probe_model({"provider": "openai", "capability": "reference", "model_id": "gpt-4o", "endpoint": None, "api_version": None}, api_key="sk-test"))
+    assert big_out.ok is False and big_out.http_status == 200 and "size limit" in (big_out.last_error or "")
+
+    async def send_big_cl(self, request, **kwargs):
+        return httpx.Response(200, headers={"content-length": str(model_probe.MAX_PROBE_RESPONSE_BYTES + 1)}, json={"id": "ok"}, request=request)
+
+    monkeypatch.setattr(httpx.AsyncClient, "send", send_big_cl)
+    cl_out = asyncio.run(model_probe.probe_model({"provider": "openai", "capability": "reference", "model_id": "gpt-4o", "endpoint": None, "api_version": None}, api_key="sk-test"))
+    assert cl_out.ok is False and cl_out.http_status == 200 and "size limit" in (cl_out.last_error or "")
+
+
+def test_reserved_slug_row_cannot_hijack_catalog_or_canonical_resolution(client):
+    from api import model_resolver
+    _register(slug="openai", provider="anthropic", capability="reference", model_id="claude-sonnet-4-6", enabled=False)
+    _register(slug="oa-ref", provider="openai", capability="reference", model_id="gpt-4o", enabled=True)
+
+    catalog = {p["id"]: p for p in client.get("/api/integrations/catalog").json()["providers"]}
+    assert all(op["state"] == "configured" for op in catalog["openai"]["operations"])
+    assert model_resolver.resolve_capability("reference", provider="openai").slug == "oa-ref"
+    assert model_resolver.resolve_capability("reference", provider="oa-ref").slug == "oa-ref"
+
+
+def test_disabled_provider_row_does_not_suppress_other_providers_fallbacks(client, monkeypatch):
+    from api import model_resolver
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-env-openai")
+    monkeypatch.setenv("INTERVIEWCHECK_REFERENCE_MODEL", "gpt-4o-mini")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-env-anthropic")
+    monkeypatch.setenv("INTERVIEWCHECK_ANTHROPIC_MODEL", "claude-sonnet-4-6")
+
+    _register(slug="oa-disabled", provider="openai", capability="reference", model_id="gpt-4o", enabled=False)
+    assert client.get("/api/integrations/status").json()["reference"] is True
+
+    fetch = AsyncMock(return_value={"stop_reason": "end_turn", "content": [{"type": "text", "text": "Anthropic fallback"}]})
+    monkeypatch.setattr(integrations, "fetch_json", fetch)
+    res = client.post("/api/integrations/reference", json={"role": "SRE", "question": "Q?"})
+    assert res.status_code == 200 and res.json()["text"] == "Anthropic fallback"
+    assert client.post("/api/authoring/reference", json={"provider": "OpenAI", "style": "Spoken answer", "role": "SRE", "question": "Q?"}).status_code == 503
+
+    _register(slug="oa-qp-off", provider="openai", capability="question_planning", model_id="gpt-4.1", enabled=False)
+    _register(slug="ant-ref-on", provider="anthropic", capability="reference", model_id="claude-sonnet-4-6", enabled=True)
+    assert model_resolver.resolve_capability("question_planning", provider=None, allow_reference_fallback=True).slug == "ant-ref-on"
+    assert model_resolver.resolve_capability("question_planning", provider="OpenAI", allow_reference_fallback=True) is None
+
+
+def test_authoring_references_accepts_default_registry_slug(client, monkeypatch):
+    _register(slug="oa-ref", provider="openai", capability="reference", model_id="gpt-4o", is_default=True)
+    assert "OpenAI" in client.get("/api/authoring/providers?capability=reference").json()
+    model_slugs = [m["slug"] for m in client.get("/api/authoring/models?capability=reference").json()["models"]]
+    assert "oa-ref" in model_slugs
+
+    monkeypatch.setattr(authoring, "fetch_json", AsyncMock(return_value={"choices": [{"finish_reason": "stop", "message": {"content": "Ref answer"}}]}))
+    resp = client.post("/api/authoring/references", json={"role": "SRE", "question": "Q?", "pairs": [{"provider": "oa-ref", "style": "Spoken answer"}], "existing_reference_count": 0})
+    assert resp.status_code == 200 and resp.json()["results"][0]["source"]["text"] == "Ref answer"
+
+
+def test_integrations_reference_honors_model_config_parameters(client, monkeypatch):
+    oa = _register(slug="oa-cfg", provider="openai", capability="reference", model_id="gpt-4o", parameters={"timeout_s": 12.0, "max_tokens": 600, "temperature": 0.2})
+    fetch_oa = AsyncMock(return_value={"status": "completed", "output": [{"type": "message", "content": [{"type": "output_text", "text": "OA tuned"}]}]})
+    monkeypatch.setattr(integrations, "fetch_json", fetch_oa)
+    assert client.post("/api/integrations/reference", json={"role": "SRE", "question": "Q?"}).status_code == 200
+    assert fetch_oa.await_args.kwargs["timeout"] == 12.0
+    assert fetch_oa.await_args.kwargs["json"]["max_output_tokens"] == 600
+    assert fetch_oa.await_args.kwargs["json"]["temperature"] == 0.2
+
+    with store.connection(write=True) as db:
+        model_registry.toggle_model(db, oa["id"], enabled=False)
+    _register(slug="ant-cfg", provider="anthropic", capability="reference", model_id="claude-sonnet-4-6", parameters={"timeout_s": 12.0, "max_tokens": 600, "temperature": 0.2})
+    fetch_ant = AsyncMock(return_value={"stop_reason": "end_turn", "content": [{"type": "text", "text": "Ant tuned"}]})
+    monkeypatch.setattr(integrations, "fetch_json", fetch_ant)
+    assert client.post("/api/integrations/reference", json={"role": "SRE", "question": "Q?"}).status_code == 200
+    assert fetch_ant.await_args.kwargs["timeout"] == 12.0
+    assert fetch_ant.await_args.kwargs["json"]["max_tokens"] == 600
+    assert fetch_ant.await_args.kwargs["json"]["temperature"] == 0.2

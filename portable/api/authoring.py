@@ -32,7 +32,7 @@ def _providers_for(cap: Literal["reference", "question_planning"]) -> list[str]:
     allow_ref = cap == "question_planning"
     names: list[str] = []
     for canonical in ("OpenAI", "Anthropic", "Azure OpenAI"):
-        if model_resolver.resolve_capability(cap, provider=canonical, allow_reference_fallback=allow_ref) is not None:
+        if model_resolver.resolve_capability(cap, provider=canonical, allow_reference_fallback=allow_ref, allow_slug_lookup=False) is not None:
             names.append(canonical)
     seen = set(names)
     rows = model_resolver.list_model_summaries(capability=cap)
@@ -76,7 +76,9 @@ def models(capability: Annotated[Literal["reference", "question_planning"] | Non
                     "source": "registry",
                 })
         for canonical in ("OpenAI", "Anthropic", "Azure OpenAI"):
-            resolved = model_resolver.resolve_capability(cap, provider=canonical, allow_reference_fallback=(cap == "question_planning"))
+            resolved = model_resolver.resolve_capability(
+                cap, provider=canonical, allow_reference_fallback=(cap == "question_planning"), allow_slug_lookup=False
+            )
             if resolved is not None and resolved.source == "env":
                 items.append({
                     "id": None,
@@ -159,9 +161,9 @@ async def references(form: Lineup):
         raise HTTPException(422, "Choose each provider and format only once.")
     if form.existing_reference_count + len(pairs) > 12:
         raise HTTPException(422, "The selected requests exceed the twelve reference limit.")
-    available = set(providers("reference"))
-    if any(provider not in available for provider, _ in pairs):
-        raise HTTPException(503, "Configure all selected providers before starting the request.")
+    for provider in {item_provider for item_provider, _ in pairs}:
+        if model_resolver.resolve_capability("reference", provider=provider) is None:
+            raise HTTPException(503, "Configure all selected providers before starting the request.")
 
     async def generate(item):
         pair = item.model_dump()

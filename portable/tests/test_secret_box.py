@@ -1,3 +1,4 @@
+import base64
 import os
 import stat
 import pytest
@@ -32,7 +33,7 @@ def test_aad_mismatch_and_tampering_fail_cleanly(monkeypatch):
     assert secret not in str(exc_info.value)
 
     raw = bytearray(token[3:].encode("ascii"))
-    raw[-2] = ord("A") if raw[-2] != ord("A") else ord("B")
+    raw[8] = ord("A") if raw[8] != ord("A") else ord("B")
     tampered = "v1:" + raw.decode("ascii")
     with pytest.raises(secret_box.SecretBoxError):
         secret_box.decrypt_secret(tampered, aad="row-a")
@@ -41,6 +42,48 @@ def test_aad_mismatch_and_tampering_fail_cleanly(monkeypatch):
         secret_box.decrypt_secret("v2:not-supported", aad="row-a")
     assert secret_box.decrypt_secret(None, aad="row-a") == ""
     assert secret_box.decrypt_secret("", aad="row-a") == ""
+
+
+def test_non_canonical_base64_and_corrupt_key_file_fail(tmp_path, monkeypatch):
+    monkeypatch.setenv("INTERVIEWCHECK_MODEL_SECRET_KEY", "fixture-master-secret-key")
+    secret = "sk-super-secret-value-9999"
+    token = secret_box.encrypt_secret(secret, aad="row-a")
+    b64 = token[3:]
+    assert b64.endswith("=")
+
+    alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+    flipped_char = alphabet[alphabet.index(b64[-2]) ^ 1]
+    padded_tamper = "v1:" + b64[:-2] + flipped_char + "="
+    assert base64.urlsafe_b64decode(padded_tamper[3:]) == base64.urlsafe_b64decode(b64)
+
+    std_b64 = base64.b64encode(b"\xfb\xff" + base64.urlsafe_b64decode(b64)[2:]).decode("ascii")
+    assert "+" in std_b64 and "/" in std_b64
+
+    for bad_token in (
+        padded_tamper,
+        "v1:" + b64[:7] + "!!@@##" + b64[7:],
+        token + " ",
+        "v1:" + b64[:7] + " " + b64[7:],
+        token[:-1],
+        "v1:",
+        "v1:π",
+        "v1:" + std_b64,
+    ):
+        with pytest.raises(secret_box.SecretBoxError):
+            secret_box.decrypt_secret(bad_token, aad="row-a")
+
+    monkeypatch.delenv("INTERVIEWCHECK_MODEL_SECRET_KEY", raising=False)
+    key_file = tmp_path / ".model_secret.key"
+    valid_key_b64 = base64.urlsafe_b64encode(b"A" * 32)
+    flipped_key_char = alphabet[alphabet.index(valid_key_b64.decode("ascii")[-2]) ^ 1].encode("ascii")
+    non_canonical_key = valid_key_b64[:-2] + flipped_key_char + b"="
+    std_key = base64.b64encode(b"\xfb\xff" + b"A" * 30)
+
+    for bad_key in (b"!!@@##", std_key, non_canonical_key, valid_key_b64[:-1], b""):
+        key_file.write_bytes(bad_key)
+        key_file.chmod(0o600)
+        with pytest.raises(secret_box.SecretBoxError):
+            secret_box.encrypt_secret("sk-key-file-check", aad="m1")
 
 
 def test_key_file_creation_permissions_and_env_switch(tmp_path, monkeypatch):

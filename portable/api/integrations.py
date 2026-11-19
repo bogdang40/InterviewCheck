@@ -1,4 +1,5 @@
-from typing import Literal
+import math
+from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -43,23 +44,35 @@ class ReferenceRequest(BaseModel):
 @workspace.post("/reference")
 async def reference(body: ReferenceRequest):
     target = model_resolver.resolve_or_503("reference")
+    limit_tokens = target.config.get("max_tokens") or 1200
     if target.provider != "openai":
         model_id, text = await model_resolver.dispatch_completion(
             target,
             "Provide a short sample interview answer to the supplied question for the stated role.",
             f"Role: {body.role}\nInterview question: {body.question}",
             fetch_fn=fetch_json,
-            max_tokens=1200,
+            max_tokens=limit_tokens,
         )
         return {"label": f"{target.display_name} {model_id}"[:180], "text": text}
 
     extra_opts = {"ssrf_safe": True} if fetch_json is _ORIG_FETCH_JSON else {}
-    data = await fetch_json("OpenAI", "POST", "https://api.openai.com/v1/responses", timeout=75,
+    raw_timeout = target.config.get("timeout_s")
+    if isinstance(raw_timeout, (int, float)) and not isinstance(raw_timeout, bool) and math.isfinite(raw_timeout):
+        timeout = min(max(float(raw_timeout), 1.0), 180.0)
+    else:
+        timeout = 75.0
+    payload: dict[str, Any] = {
+        "model": target.model_id,
+        "store": False,
+        "max_output_tokens": limit_tokens,
+        "instructions": "Provide a short sample interview answer to the supplied question for the stated role.",
+        "input": f"Role: {body.role}\nInterview question: {body.question}",
+    }
+    if target.config.get("temperature") is not None:
+        payload["temperature"] = target.config["temperature"]
+    data = await fetch_json("OpenAI", "POST", "https://api.openai.com/v1/responses", timeout=timeout,
                             headers={"Authorization": "Bearer " + target.api_key},
-                            json={"model": target.model_id, "store": False, "max_output_tokens": 1200,
-                                  "instructions": "Provide a short sample interview answer to the supplied question for the stated role.",
-                                  "input": f"Role: {body.role}\nInterview question: {body.question}"},
-                            **extra_opts)
+                            json=payload, **extra_opts)
     try:
         if data.get("status") != "completed":
             raise HTTPException(502, "OpenAI did not complete the reference answer.")

@@ -12,6 +12,15 @@ from . import store
 PROVIDERS = ("openai", "anthropic", "azure_openai", "deepgram", "openai_compatible")
 CAPABILITIES = ("reference", "question_planning", "transcription", "embedding", "judge")
 STATUSES = ("connected", "unverified", "error", "disabled")
+RESERVED_SLUGS = frozenset({
+    "openai",
+    "anthropic",
+    "azure_openai",
+    "azure-openai",
+    "deepgram",
+    "openai_compatible",
+    "openai-compatible",
+})
 DEFAULT_PARAMETERS = {
     "temperature": None,
     "max_tokens": None,
@@ -141,9 +150,9 @@ def generate_unique_slug(db: sqlite3.Connection, base: str) -> str:
     stem = re.sub(r"[^a-z0-9]+", "-", base.lower()).strip("-")[:50].strip("-")
     if len(stem) < 2:
         stem = "model"
-    candidate = stem
+    candidate = stem if stem not in RESERVED_SLUGS else f"{stem[:43]}-{uuid4().hex[:6]}"
     for _ in range(8):
-        if db.execute("SELECT 1 FROM connected_models WHERE slug=?", (candidate,)).fetchone() is None:
+        if candidate not in RESERVED_SLUGS and db.execute("SELECT 1 FROM connected_models WHERE slug=?", (candidate,)).fetchone() is None:
             return candidate
         candidate = f"{stem[:43]}-{uuid4().hex[:6]}"
     return f"{stem[:38]}-{uuid4().hex[:10]}"
@@ -222,6 +231,8 @@ def update_model(
     is_default: bool,
     status: str,
     last_error: str | None,
+    last_latency_ms: int | None,
+    last_checked_at: str | None,
 ) -> dict[str, Any]:
     now = store.timestamp()
     if is_default:
@@ -234,7 +245,7 @@ def update_model(
             """UPDATE connected_models SET
                 slug=?, display_name=?, capability=?, model_id=?, endpoint=?, api_version=?,
                 config_json=?, encrypted_api_key=?, key_hint=?, enabled=?, is_default=?,
-                status=?, last_error=?, updated_at=?
+                status=?, last_error=?, last_latency_ms=?, last_checked_at=?, updated_at=?
                WHERE id=?""",
             (
                 slug,
@@ -250,6 +261,8 @@ def update_model(
                 1 if is_default else 0,
                 status,
                 last_error,
+                last_latency_ms,
+                last_checked_at,
                 now,
                 model_uuid,
             ),
