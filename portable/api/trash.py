@@ -86,7 +86,13 @@ def purge(sid: UUID, item: Purge):
     with store.connection(write=True) as db:
         active_marker(db, key, item.operation_version)
         bulk_operations.ensure_table(db)
-        for table in ("answer_review_events", "session_scorecards", "session_handoff_notes", "session_anonymizations"):
+        for table in (
+            "answer_review_events",
+            "session_scorecards",
+            "session_handoff_notes",
+            "session_anonymizations",
+            "session_assignments",
+        ):
             if _has_table(db, table):
                 db.execute(f"DELETE FROM {table} WHERE session_id=?", (key,))
         # All statements share the marker check and a single write transaction.

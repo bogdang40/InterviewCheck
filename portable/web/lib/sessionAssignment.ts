@@ -1,0 +1,93 @@
+import { extractApiError } from "./roleCalibration"
+
+export type AssignmentPriority = "low" | "normal" | "high"
+
+export type SessionAssignment = {
+  session_id: string; assignee_email: string; assigned_by: string
+  priority: AssignmentPriority; due_at: string | null; updated_at: string
+}
+
+export type SessionAssignmentResponse = { assignment: SessionAssignment | null; suggested_reviewers: string[] }
+export type SessionAssignmentInput = { assignee_email: string; priority?: AssignmentPriority; due_at?: string | null }
+
+export type AssignmentQueueItem = {
+  session_id: string; candidate: string; role: string; lifecycle: string; review_count: number
+  assignee_email: string | null; assigned_by: string | null; priority: AssignmentPriority | string
+  due_at: string | null; updated_at: string | null
+}
+
+export type AssignmentQueueCounts = { assigned_to_me: number; high_priority: number; unassigned: number }
+export type AssignmentQueueResponse = { viewer_email: string; counts: AssignmentQueueCounts; items: AssignmentQueueItem[] }
+export type AssignmentQueueFilters = { assignee?: string; priority?: "" | AssignmentPriority; limit?: number }
+
+async function requestAssignmentApi<T>(url: string, options: RequestInit = {}): Promise<T> {
+  const headers = new Headers(options.headers)
+  headers.set("X-InterviewCheck", "1")
+  if (options.body !== undefined && !headers.has("Content-Type")) headers.set("Content-Type", "application/json")
+  const response = await fetch(url, { ...options, credentials: "include", cache: "no-store", headers })
+  const data = await response.json().catch(() => null)
+  if (!response.ok) throw new Error(extractApiError(data, response.status))
+  return data as T
+}
+
+export function toDueAtIso(dateValue: string): string | null {
+  const trimmed = dateValue.trim()
+  if (!trimmed) return null
+  return /^\d{4}-\d{2}-\d{2}$/.test(trimmed) ? `${trimmed}T23:59:59Z` : trimmed
+}
+
+export function toDateInputValue(isoValue: string | null | undefined): string {
+  return isoValue ? isoValue.slice(0, 10) : ""
+}
+
+export async function fetchSessionAssignment(sessionId: string, signal?: AbortSignal): Promise<SessionAssignmentResponse> {
+  const data = await requestAssignmentApi<Partial<SessionAssignmentResponse>>(
+    `/api/sessions/${encodeURIComponent(sessionId)}/assignment`,
+    { method: "GET", signal },
+  )
+  return {
+    assignment: data?.assignment ?? null,
+    suggested_reviewers: Array.isArray(data?.suggested_reviewers) ? data.suggested_reviewers : [],
+  }
+}
+
+export async function saveSessionAssignment(sessionId: string, payload: SessionAssignmentInput): Promise<SessionAssignment> {
+  const data = await requestAssignmentApi<{ assignment: SessionAssignment }>(
+    `/api/sessions/${encodeURIComponent(sessionId)}/assignment`,
+    { method: "PUT", body: JSON.stringify(payload) },
+  )
+  return data.assignment
+}
+
+export function clearSessionAssignment(sessionId: string): Promise<{ cleared: boolean; session_id: string }> {
+  return requestAssignmentApi<{ cleared: boolean; session_id: string }>(
+    `/api/sessions/${encodeURIComponent(sessionId)}/assignment`,
+    { method: "DELETE" },
+  )
+}
+
+export async function fetchAssignmentQueue(
+  filters: AssignmentQueueFilters = {},
+  signal?: AbortSignal,
+): Promise<AssignmentQueueResponse> {
+  const params = new URLSearchParams()
+  if (filters.assignee) params.set("assignee", filters.assignee)
+  if (filters.priority) params.set("priority", filters.priority)
+  if (typeof filters.limit === "number" && Number.isFinite(filters.limit) && filters.limit >= 1) {
+    params.set("limit", String(Math.trunc(filters.limit)))
+  }
+  const qs = params.toString()
+  const data = await requestAssignmentApi<Partial<AssignmentQueueResponse>>(
+    `/api/interviews/assignments${qs ? `?${qs}` : ""}`,
+    { method: "GET", signal },
+  )
+  return {
+    viewer_email: typeof data?.viewer_email === "string" ? data.viewer_email : "",
+    counts: {
+      assigned_to_me: data?.counts?.assigned_to_me ?? 0,
+      high_priority: data?.counts?.high_priority ?? 0,
+      unassigned: data?.counts?.unassigned ?? 0,
+    },
+    items: Array.isArray(data?.items) ? data.items : [],
+  }
+}

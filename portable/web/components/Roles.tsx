@@ -1,7 +1,8 @@
 import { useRef, useState, type FormEvent } from "react"
-import { ArrowRight, BriefcaseBusiness, History, Plus } from "lucide-react"
+import { ArrowRight, BriefcaseBusiness, Copy, History, Plus } from "lucide-react"
 import { api, message, RoleConflict, type PermittedMaterial } from "@/lib/api"
 import type { CalibratedRole, RubricCriterion } from "@/lib/roleCalibration"
+import { cloneRole } from "@/lib/roleTemplates"
 import ReloadRole from "./ReloadRole"
 import ResourcePolicy from "./ResourcePolicy"
 import Authoring from "./Authoring"
@@ -41,8 +42,27 @@ export default function Roles({
   const [historyRoleId, setHistoryRoleId] = useState<string | null>(null)
   const [analyticsRefreshKey, setAnalyticsRefreshKey] = useState(0)
   const [status, setStatus] = useState("")
+  const [cloningId, setCloningId] = useState<string | null>(null)
+  const [cloneError, setCloneError] = useState("")
 
   const historyRole = roles.find((r) => r.id === historyRoleId) ?? null
+
+  async function handleClone(role: CalibratedRole) {
+    if (cloningId || busy || generating) return
+    setCloningId(role.id)
+    setCloneError("")
+    setStatus("")
+    try {
+      const cloned = await cloneRole(role.id)
+      onSave(cloned)
+      setAnalyticsRefreshKey((k) => k + 1)
+      setStatus(`Cloned role ${role.name} as ${cloned.name}.`)
+    } catch (err) {
+      setCloneError(message(err))
+    } finally {
+      setCloningId(null)
+    }
+  }
 
   function open(role?: CalibratedRole, preserveStatus = false) {
     authoringVersion.current += 1
@@ -50,6 +70,7 @@ export default function Roles({
     setVersion(role?.version)
     setConflict(false)
     setError("")
+    setCloneError("")
     if (!preserveStatus) setStatus("")
     setId(role?.id ?? crypto.randomUUID())
     setName(role?.name ?? "")
@@ -129,6 +150,11 @@ export default function Roles({
             className="mx-[22px] mb-3 rounded-md border border-[var(--success-line)] bg-[var(--success-bg)] px-3 py-2 text-sm text-[var(--success-text)]"
           >
             {status}
+          </p>
+        )}
+        {cloneError && (
+          <p role="alert" className="mx-[22px] mb-3 error">
+            {cloneError}
           </p>
         )}
         {adding && (
@@ -236,6 +262,18 @@ export default function Roles({
                 onClick={() => open(r)}
               >
                 Edit role
+              </Button>
+              <Button
+                type="button"
+                disabled={adding || cloningId !== null}
+                variant="outline"
+                size="sm"
+                className="min-h-[44px] md:min-h-8"
+                aria-label={`Clone role ${r.name}`}
+                onClick={() => void handleClone(r)}
+              >
+                <Copy aria-hidden="true" />
+                {cloningId === r.id ? "Cloning..." : "Clone"}
               </Button>
               <Button
                 variant="ghost"

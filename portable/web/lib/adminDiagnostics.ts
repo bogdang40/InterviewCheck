@@ -1,5 +1,7 @@
 import {
+  AdminApiError,
   adminRequest,
+  extractApiError,
   type ConnectedModel,
   type ModelCapability,
   type ModelParameters,
@@ -214,4 +216,41 @@ export function simulateModelChain(payload: SimulateChainPayload): Promise<Simul
 
 export async function getAdminDiagnostics(): Promise<DiagnosticsData> {
   return normalizeDiagnostics(await adminRequest<UnknownRecord>("/api/admin/models/diagnostics"))
+}
+
+function resolveBundleFilename(header: string | null): string {
+  const match = header ? /filename="?([^";]+)"?/i.exec(header) : null
+  const cleaned = (match?.[1]?.split(/[\\/]/).pop() || "").trim().replace(/[^a-zA-Z0-9._-]/g, "-")
+  return cleaned || "interviewcheck-diagnostics.json"
+}
+
+export async function downloadDiagnosticBundle(): Promise<string> {
+  const response = await fetch("/api/admin/diagnostics/bundle", {
+    method: "GET",
+    credentials: "include",
+    cache: "no-store",
+    headers: { "X-InterviewCheck": "1" },
+  })
+  if (!response.ok) {
+    const data = await response.json().catch(() => null)
+    const code =
+      data && typeof data === "object" && "error" in data
+        ? (data as { error?: { code?: string } }).error?.code
+        : undefined
+    throw new AdminApiError(response.status, extractApiError(data, response.status), code)
+  }
+  const filename = resolveBundleFilename(response.headers.get("Content-Disposition"))
+  const objectUrl = URL.createObjectURL(await response.blob())
+  try {
+    const anchor = document.createElement("a")
+    anchor.href = objectUrl
+    anchor.download = filename
+    anchor.style.display = "none"
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
+  } finally {
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
+  }
+  return filename
 }

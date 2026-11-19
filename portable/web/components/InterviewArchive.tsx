@@ -37,7 +37,13 @@ function setFilter(key: Filter | null, value = "") {
   else window.history.replaceState(null, "", destination)
 }
 
-export default function InterviewArchive({ onCreate }: { onCreate: () => void }) {
+export default function InterviewArchive({
+  onCreate,
+  onReady,
+}: {
+  onCreate: () => void
+  onReady?: () => void
+}) {
   const params = useSearchParams()
   const [query, setQuery] = useState(params.get("q") || "")
   const [tagInput, setTagInput] = useState(params.get("tag") || "")
@@ -69,6 +75,9 @@ export default function InterviewArchive({ onCreate }: { onCreate: () => void })
   const resource = useResource<FeedPage>("interviews/feed?" + criteria.toString())
   const rolesResource = useResource<Array<{ id: string; name: string }>>("roles")
   const data = search === query && tagSearch === tagInput ? resource.data : null
+  useEffect(() => {
+    if (resource.data !== null || resource.error !== "") onReady?.()
+  }, [resource.data, resource.error, onReady])
   const [workspaceTags, setWorkspaceTags] = useState<WorkspaceTag[] | null>(null)
   const [tagsRefresh, setTagsRefresh] = useState(0)
   useEffect(() => {

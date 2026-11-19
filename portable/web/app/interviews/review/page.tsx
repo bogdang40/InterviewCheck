@@ -1,6 +1,7 @@
 "use client"
 
 import { Suspense } from "react"
+import dynamic from "next/dynamic"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -8,6 +9,15 @@ import InterviewView from "@/components/InterviewView"
 import WorkspaceError from "@/components/WorkspaceError"
 import type { Answer, Interview } from "@/lib/api"
 import { useResource } from "@/lib/workspace"
+
+const SessionAssignmentBar = dynamic(() => import("@/components/SessionAssignmentBar"), {
+  ssr: false,
+  loading: () => (
+    <section className="panel inset" role="status">
+      <p className="muted">Loading assignment...</p>
+    </section>
+  ),
+})
 
 function Record() {
   const query = useSearchParams()
@@ -48,14 +58,17 @@ function Record() {
     })
   }
   return (
-    <InterviewView
-      key={id}
-      session={session.data}
-      answerId={query.get("answer")}
-      changed={change}
-      onDraftChange={draft=>session.update(previous=>({...previous,draft}))}
-      onTransition={(next) => session.update(() => next)}
-    />
+    <div className="stack">
+      <SessionAssignmentBar sessionId={session.data.id} />
+      <InterviewView
+        key={id}
+        session={session.data}
+        answerId={query.get("answer")}
+        changed={change}
+        onDraftChange={draft=>session.update(previous=>({...previous,draft}))}
+        onTransition={(next) => session.update(() => next)}
+      />
+    </div>
   )
 }
 export default function ReviewPage() {
