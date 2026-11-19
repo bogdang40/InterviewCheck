@@ -94,43 +94,49 @@ def test_m7_admin_tablist_modal_and_health_drawer_keyboard_focus(e2e_workspace, 
     expect(page.get_by_role("heading", name="Model administration")).to_be_visible()
 
     # AdminConsole WAI-ARIA tablist: aria-controls, id="panel-*", roving tabIndex, Arrow/Home/End keys.
-    tabs = page.get_by_role("tablist", name="Admin sections").get_by_role("tab")
-    expect(tabs).to_have_count(3)
-    models_tab = page.get_by_role("tab", name="Models")
-    accounts_tab = page.get_by_role("tab", name="Accounts")
-    audit_tab = page.get_by_role("tab", name="Audit log")
+    tablist = page.get_by_role("tablist", name="Admin sections")
+    tabs = tablist.get_by_role("tab")
+    expect(tabs.first).to_be_visible()
+    tab_count = tabs.count()
+    assert tab_count >= 3
+    for label, panel_id in (
+        ("Models", "panel-models"),
+        ("Accounts", "panel-accounts"),
+        ("Audit log", "panel-audit"),
+        ("Diagnostics", "panel-diagnostics"),
+    ):
+        expect(tablist.get_by_role("tab", name=label)).to_have_attribute("aria-controls", panel_id)
 
-    expect(models_tab).to_have_attribute("aria-controls", "panel-models")
-    expect(accounts_tab).to_have_attribute("aria-controls", "panel-accounts")
-    expect(audit_tab).to_have_attribute("aria-controls", "panel-audit")
+    models_tab = tabs.nth(0)
+    last_tab = tabs.nth(tab_count - 1)
     expect(models_tab).to_have_attribute("tabindex", "0")
-    expect(accounts_tab).to_have_attribute("tabindex", "-1")
-    expect(audit_tab).to_have_attribute("tabindex", "-1")
+    for idx in range(1, tab_count):
+        expect(tabs.nth(idx)).to_have_attribute("tabindex", "-1")
     expect(page.locator("#panel-models[role='tabpanel']")).to_be_visible()
 
     models_tab.focus()
-    page.keyboard.press("ArrowRight")
-    expect(accounts_tab).to_be_focused()
-    expect(accounts_tab).to_have_attribute("aria-selected", "true")
-    expect(accounts_tab).to_have_attribute("tabindex", "0")
-    expect(models_tab).to_have_attribute("tabindex", "-1")
-    expect(page.locator("#panel-accounts[role='tabpanel']")).to_be_visible()
-
-    page.keyboard.press("ArrowRight")
-    expect(audit_tab).to_be_focused()
-    expect(audit_tab).to_have_attribute("aria-selected", "true")
-    expect(page.locator("#panel-audit[role='tabpanel']")).to_be_visible()
+    for idx in range(1, tab_count):
+        page.keyboard.press("ArrowRight")
+        current_tab = tabs.nth(idx)
+        expect(current_tab).to_be_focused()
+        expect(current_tab).to_have_attribute("aria-selected", "true")
+        expect(current_tab).to_have_attribute("tabindex", "0")
+        expect(tabs.nth(idx - 1)).to_have_attribute("tabindex", "-1")
+        panel_id = current_tab.get_attribute("aria-controls")
+        assert panel_id
+        expect(page.locator(f"#{panel_id}[role='tabpanel']")).to_be_visible()
 
     page.keyboard.press("ArrowRight")
     expect(models_tab).to_be_focused()
     expect(models_tab).to_have_attribute("aria-selected", "true")
 
     page.keyboard.press("End")
-    expect(audit_tab).to_be_focused()
+    expect(last_tab).to_be_focused()
+    expect(last_tab).to_have_attribute("aria-selected", "true")
     page.keyboard.press("Home")
     expect(models_tab).to_be_focused()
     page.keyboard.press("ArrowLeft")
-    expect(audit_tab).to_be_focused()
+    expect(last_tab).to_be_focused()
     page.keyboard.press("Home")
     expect(page.locator("#panel-models[role='tabpanel']")).to_be_visible()
 
@@ -344,6 +350,7 @@ def test_m7_all_12_routes_zero_overflow_both_themes(e2e_workspace, e2e_browser, 
         routes = ALL_ROUTES + (f"/interviews/review/?id={sid}", f"/interviews/brief/?id={sid}")
         for theme in ("dark", "light"):
             page.goto(e2e_workspace.base_url + "/account/", wait_until="domcontentloaded")
+            expect(page.get_by_text(ADMIN_EMAIL)).to_be_visible()
             page.get_by_role("radio", name=theme.capitalize()).check()
             expect(page.locator("html")).to_have_attribute("data-theme", theme)
             for route in routes:

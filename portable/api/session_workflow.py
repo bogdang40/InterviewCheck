@@ -1,9 +1,9 @@
 """Capture lifecycle and editable role templates."""
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
-from . import role_kits, store
+from . import access, role_kits, store
 from .models import AnswerInput, RoleInput
 
 router = APIRouter()
@@ -42,11 +42,12 @@ def get_role(rid: UUID):
 
 
 @router.put("/roles/{rid}")
-def edit_role(rid: UUID, item: RoleInput):
+async def edit_role(rid: UUID, item: RoleInput, request: Request):
     if item.id is not None and item.id != rid:
         raise HTTPException(409, "The role ID differs from the requested role.")
+    _, actor_email = await access.optional_actor(request)
     with store.connection(write=True) as db:
-        return role_kits.update_role(db, str(rid), item)
+        return role_kits.update_role(db, str(rid), item, created_by=actor_email)
 
 
 @router.post("/sessions/{sid}/preview")

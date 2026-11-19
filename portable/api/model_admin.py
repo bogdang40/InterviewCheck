@@ -5,8 +5,13 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
-from . import access, account_db, model_probe, model_registry, model_resolver, model_telemetry, rate_limit, secret_box, ssrf_guard, store
+from . import (
+    access, account_db, key_rotation, model_budgets, model_probe, model_registry,
+    model_resolver, model_routing_sim, model_telemetry, rate_limit, secret_box, ssrf_guard, store,
+)
 from .error_sanitizer import sanitize_error_text
+from .model_routing_sim import ChainSimulateInput
+from .models import Input
 from .model_schemas import (
     ALLOWED_CAPABILITIES,
     Capability,
@@ -58,6 +63,64 @@ def fleet_telemetry():
         return model_telemetry.fleet_telemetry(db)
 
 
+@router.get("/diagnostics", dependencies=[Depends(require_admin), Depends(rate_limit.limit(rate_limit.ADMIN_READ))])
+def fleet_diagnostics():
+    with store.connection() as db:
+        return {
+            "usage": model_budgets.fleet_usage_summary(db),
+            "telemetry": model_telemetry.fleet_telemetry(db),
+            "transcription": model_routing_sim.transcription_diagnostics(db),
+            "generated_at": store.timestamp(),
+        }
+
+
+@router.post("/simulate-chain", dependencies=[Depends(require_admin), Depends(rate_limit.limit(rate_limit.ADMIN_READ))])
+def simulate_chain(item: ChainSimulateInput):
+    with store.connection() as db:
+        return model_routing_sim.simulate_chain(
+            db,
+            item.capability,
+            provider=item.provider,
+            allow_reference_fallback=item.allow_reference_fallback,
+        )
+
+
+class RotateKeysInput(Input):
+    dry_run: bool = False
+
+
+@router.get("/key-status", dependencies=[Depends(require_admin), Depends(rate_limit.limit(rate_limit.ADMIN_READ))])
+def model_key_status():
+    try:
+        with store.connection() as db:
+            return key_rotation.key_status(db)
+    except secret_box.SecretBoxError as exc:
+        raise HTTPException(503, sanitize_error_text(str(exc), "Model encryption key could not be loaded.")) from exc
+
+
+@router.post("/rotate-keys", dependencies=[Depends(rate_limit.limit(rate_limit.ADMIN_WRITE))])
+def rotate_model_keys(item: RotateKeysInput | None = None, actor: dict = Depends(require_admin)):
+    dry_run = item.dry_run if item is not None else False
+    post_commit: list = []
+    try:
+        with store.connection(write=not dry_run) as db:
+            report = key_rotation.rotate_database_secrets(db, dry_run=dry_run)
+            details = report.to_dict()
+            if not dry_run:
+                _record_audit(
+                    db,
+                    actor=actor,
+                    action="admin.model.rotate_keys",
+                    model_uuid=report.active_key_id,
+                    details=details,
+                    post_commit=post_commit,
+                )
+    except secret_box.SecretBoxError as exc:
+        raise HTTPException(400, sanitize_error_text(str(exc), "Stored model credentials could not be rotated.")) from exc
+    _flush_account_audits(post_commit)
+    return details
+
+
 @router.get("/{model_id}/health", dependencies=[Depends(require_admin), Depends(rate_limit.limit(rate_limit.ADMIN_READ))])
 def model_health(model_id: UUID, limit: int = Query(default=25, ge=1, le=50)):
     with store.connection() as db:
@@ -75,7 +138,7 @@ async def create_model(item: ModelCreateInput, actor: dict = Depends(require_adm
 
     model_uuid = str(uuid4())
     raw_key = item.apiKey.get_secret_value() if item.apiKey is not None else ""
-    encrypted_key = secret_box.encrypt_secret(raw_key, aad=model_uuid) if raw_key else None
+    encrypted_key = secret_box.encrypt_secret(raw_key, aad=model_uuid, envelope="v2") if raw_key else None
     key_hint = secret_box.mask_key_hint(raw_key) if raw_key else None
     post_commit: list = []
 
@@ -135,7 +198,7 @@ async def update_model(model_id: UUID, item: ModelUpdateInput, actor: dict = Dep
             raise HTTPException(422, "Cannot clear the API key for this provider.")
         encrypted_key, key_hint, cleared_key = None, None, True
     elif "apiKey" in item.model_fields_set and raw_key != "":
-        encrypted_key = secret_box.encrypt_secret(raw_key, aad=model_uuid)
+        encrypted_key = secret_box.encrypt_secret(raw_key, aad=model_uuid, envelope="v2")
         key_hint = secret_box.mask_key_hint(raw_key)
         rotated_key = True
 

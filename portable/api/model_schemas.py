@@ -55,6 +55,10 @@ class ModelParameters(Input):
     fallback_priority: int = Field(default=100, ge=0, le=10000)
     max_retries: int = Field(default=0, ge=0, le=3)
     rpm_limit: int | None = Field(default=None, ge=1, le=10000)
+    daily_token_limit: int | None = Field(default=None, ge=1, le=100_000_000)
+    monthly_cost_limit_usd: float | None = Field(default=None, ge=0.01, le=100_000.0, allow_inf_nan=False)
+    input_cost_per_1m_usd: float | None = Field(default=None, ge=0.0, le=1000.0, allow_inf_nan=False)
+    output_cost_per_1m_usd: float | None = Field(default=None, ge=0.0, le=1000.0, allow_inf_nan=False)
 
 
 class ModelParametersPatch(Input):
@@ -64,6 +68,10 @@ class ModelParametersPatch(Input):
     fallback_priority: int | None = Field(default=None, ge=0, le=10000)
     max_retries: int | None = Field(default=None, ge=0, le=3)
     rpm_limit: int | None = Field(default=None, ge=1, le=10000)
+    daily_token_limit: int | None = Field(default=None, ge=1, le=100_000_000)
+    monthly_cost_limit_usd: float | None = Field(default=None, ge=0.01, le=100_000.0, allow_inf_nan=False)
+    input_cost_per_1m_usd: float | None = Field(default=None, ge=0.0, le=1000.0, allow_inf_nan=False)
+    output_cost_per_1m_usd: float | None = Field(default=None, ge=0.0, le=1000.0, allow_inf_nan=False)
 
     @model_validator(mode="after")
     def reject_null_priority(self):
