@@ -1,4 +1,5 @@
 """Read-only runtime model resolution and completion dispatch."""
+from collections.abc import Callable
 from contextlib import closing
 from dataclasses import dataclass, field
 import os
@@ -7,7 +8,7 @@ from typing import Any, Literal
 
 from fastapi import HTTPException
 
-from . import model_registry, provider_http, secret_box, ssrf_guard, store
+from . import model_budgets, model_registry, provider_http, secret_box, ssrf_guard, store
 
 CANONICAL_PROVIDER: dict[str, str] = {
     "OpenAI": "openai",
@@ -313,6 +314,7 @@ async def dispatch_completion(
     *,
     fetch_fn=None,
     max_tokens: int | None = None,
+    on_usage: Callable[[int, int], None] | None = None,
 ) -> tuple[str, str]:
     fetch = fetch_fn or provider_http.fetch_json
     extra_fetch_opts = {"ssrf_safe": True} if fetch is provider_http.fetch_json else {}
@@ -335,6 +337,8 @@ async def dispatch_completion(
             headers={"x-api-key": target.api_key, "anthropic-version": "2023-06-01"},
             json=body, timeout=timeout, **extra_fetch_opts,
         )
+        if on_usage is not None:
+            on_usage(*model_budgets.extract_usage(target.provider, data))
         if not isinstance(data, dict) or data.get("stop_reason") not in {"end_turn", "stop_sequence"}:
             raise HTTPException(502, "Anthropic did not complete its response.")
         blocks = data.get("content")
@@ -368,6 +372,8 @@ async def dispatch_completion(
         if target.config.get("temperature") is not None:
             body["temperature"] = target.config["temperature"]
         data = await fetch(label, "POST", url, json=body, headers=headers, params=params, timeout=timeout, **extra_fetch_opts)
+        if on_usage is not None:
+            on_usage(*model_budgets.extract_usage(target.provider, data))
         try:
             choice = data["choices"][0]
             if choice.get("finish_reason") != "stop":

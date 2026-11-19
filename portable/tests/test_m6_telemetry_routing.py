@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 import pytest
 
 from api import (
-    access, account_db, audio, authoring, integrations, model_execution,
+    access, account_db, audio, authoring, integrations, model_circuit, model_execution,
     model_probe, model_registry, model_resolver, model_telemetry,
     scoring_hooks, secret_box, ssrf_guard, store,
 )
@@ -240,6 +240,8 @@ def test_cross_provider_failover_audio_and_scoring_and_slug_scoping(env, monkeyp
     assert auth_calls == ["gpt-4o", "gpt-4o", "gpt-4o-backup"]
 
     auth_calls.clear()
+    with store.connection(write=True) as db:
+        model_circuit.record_outcome(db, p1["id"], ok=True)
     assert env.post("/api/authoring/reference", json={"provider": "oa-p1", "style": "Spoken answer", "role": "SRE", "question": "Q?"}).status_code == 503
     assert auth_calls == ["gpt-4o", "gpt-4o"]
 

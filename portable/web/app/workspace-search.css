@@ -1,7 +1,10 @@
 .header-tools,
 .search-launch,
 .search-input-row,
-.search-hit {
+.search-hit,
+.search-footer-row,
+.shortcut-dialog-head,
+.shortcut-dialog-title {
   display: flex;
   align-items: center;
 }
@@ -14,27 +17,34 @@
   color: var(--secondary-ink);
   padding: 5px 8px;
 }
-.search-launch kbd {
+.search-launch kbd,
+.search-hit kbd,
+.search-shortcuts-btn kbd,
+.shortcut-keys kbd {
   font: 10px var(--mono);
   border: 1px solid var(--line);
   border-radius: 4px;
-  padding: 2px 4px;
+  padding: 2px 5px;
+  background: var(--subtle);
+  color: var(--ink);
 }
-.search-dialog {
+.search-dialog,
+.shortcut-dialog {
   position: fixed;
   inset: 12vh auto auto 50%;
   transform: translateX(-50%);
-  width: min(590px, calc(100vw - 24px));
+  width: min(610px, calc(100vw - 24px));
   padding: 0;
-  max-height: 75vh;
+  max-height: 76vh;
   overflow: auto;
-  background: var(--surface, var(--surface));
+  background: var(--surface);
   color: var(--ink);
   border: 1px solid var(--line);
   border-radius: 12px;
   box-shadow: 0 16px 60px #101d1940;
 }
-.search-dialog::backdrop {
+.search-dialog::backdrop,
+.shortcut-dialog::backdrop {
   background: #10221b77;
 }
 .search-input-row {
@@ -52,21 +62,55 @@
   outline: none;
   font-size: 16px;
   background: transparent;
+  color: var(--ink);
 }
-.search-input-row button {
-  padding: 5px;
+.search-input-row button,
+.shortcut-close {
+  padding: 6px;
+  border-radius: 6px;
+  color: var(--secondary-ink);
+}
+.search-input-row button:hover,
+.shortcut-close:hover {
+  background: var(--subtle);
+  color: var(--ink);
 }
 .search-body {
   max-height: 48vh;
   overflow: auto;
 }
+.search-section-label {
+  padding: 8px 16px 4px;
+  font: 600 10px/1.4 var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-top: 1px solid var(--line);
+}
+.search-section-label:first-child {
+  border-top: 0;
+}
 .search-hit {
   gap: 12px;
-  padding: 12px 16px;
+  padding: 10px 16px;
   color: var(--ink);
+}
+.search-hit-action {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  font: inherit;
+}
+.search-hit:hover {
+  background: var(--subtle);
 }
 .search-hit[aria-selected="true"] {
   background: var(--color-accent);
+  color: var(--color-accent-foreground);
+}
+.search-hit > svg {
+  flex-shrink: 0;
 }
 .search-hit > span {
   flex: 1;
@@ -84,11 +128,110 @@
   color: var(--muted);
   font-style: normal;
 }
+.search-hit[aria-selected="true"] small,
+.search-hit[aria-selected="true"] em {
+  color: var(--color-accent-foreground);
+}
+.search-footer-row {
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--line);
+}
 .search-footer {
-  padding: 12px 16px;
+  padding: 0;
+}
+.search-shortcuts-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--secondary-ink);
+  font-size: 12px;
+}
+.search-shortcuts-btn:hover {
+  background: var(--subtle);
+  color: var(--ink);
+}
+.shortcut-dialog {
+  padding: 18px 20px 20px;
+}
+.shortcut-dialog-head {
+  justify-content: space-between;
+  gap: 12px;
+}
+.shortcut-dialog-title {
+  gap: 9px;
+}
+.shortcut-dialog-title h2 {
+  font-size: 18px;
+}
+.shortcut-dialog-lead {
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.shortcut-groups {
+  margin-top: 16px;
+  display: grid;
+  gap: 16px;
+}
+.shortcut-group h3 {
+  font: 600 11px/1.4 var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+.shortcut-list {
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.shortcut-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 160px) minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 9px 12px;
+  border-top: 1px solid var(--line);
+}
+.shortcut-row:first-child {
+  border-top: 0;
+}
+.shortcut-keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.shortcut-keys kbd {
+  font-size: 11px;
+  padding: 2px 6px;
+}
+.shortcut-row dd {
+  margin: 0;
+  font-size: 13px;
+  color: var(--secondary-ink);
+  overflow-wrap: anywhere;
 }
 @media (max-width: 639px) {
-  .search-dialog {
+  .search-dialog,
+  .shortcut-dialog {
     inset-block-start: 6vh;
+  }
+  .shortcut-dialog {
+    padding: 14px;
+  }
+  .search-footer-row {
+    flex-wrap: wrap;
+  }
+  .shortcut-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
   }
 }
