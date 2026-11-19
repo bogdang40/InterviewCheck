@@ -63,7 +63,7 @@ Status key: [ ] todo · [~] in progress · [x] done (commit)
 - [x] D13 Crash recovery: an interview left open is finished and scored at the next launch,
       marked "ended unexpectedly" in the report and exports.
 - [x] D14 Mac conventions: one main window (re-opening brings it forward, no copies), View ›
-      Interview/Roles/Reports ⌘1–⌘3, Show/Hide Sidebar, File › Print Report ⌘P, "Live" Dock badge.
+      Interview/Roles/Reports ⌘1-⌘3, Show/Hide Sidebar, File › Print Report ⌘P, "Live" Dock badge.
 - [x] D15 Documents in: job description and résumé from PDF, Word (.docx/.doc), RTF, ODT or text.
       Roles: Duplicate, Export… and File › Import Role… (JSON, always imported as a new role).
 - [x] D16 Reports list: sort (newest, oldest, highest score, candidate), role filter, flagged-only,
@@ -136,7 +136,7 @@ tools; pull finished meeting recordings for scoring; optionally post a private n
 
 ## Log (times from commits)
 - 20:05 plan written.
-- 20:16 6da0258 A1–A6: native window + sidebar, menus, Settings, companion, Carbon shortcuts
+- 20:16 6da0258 A1-A6: native window + sidebar, menus, Settings, companion, Carbon shortcuts
   only while live, native screens. Launched from ~/Applications: real window, no crash.
 - 20:20 65814e8 A7: app icon, accent colour, `-InterviewCheckStartSection`.
 - 20:22 d855c55 A8: permissions asked at Start (Deepgram key, mic, call audio).
@@ -147,18 +147,18 @@ tools; pull finished meeting recordings for scoring; optionally post a private n
 - 20:36 f77cb14 B1: memanager -> InterviewCheck everywhere.
 - 20:42 B2: Packages/InterviewCheckKit (core, 34 tests via `swift test` in 0.03 s);
   app 247 tests pass. B4: README, ARCHITECTURE, scripts/ci.sh.
-- 20:46–21:00 D1–D6 (commits 2b?..07d691e): status strip, paginated PDF, menu bar item,
+- 20:46-21:00 D1-D6 (commits 2b?..07d691e): status strip, paginated PDF, menu bar item,
   welcome, Release + DMG + hardened runtime, Analyze Recording. 263 app + 38 package tests.
-- 21:01–21:13 D7 privacy (810551e), D8 audio settings (c337c94), D10 calibration (verdicts + tuner,
+- 21:01-21:13 D7 privacy (810551e), D8 audio settings (c337c94), D10 calibration (verdicts + tuner,
   schema v18). D9 deferred. 268 app + 41 package tests.
 - 21:16 D11 demo interview (honest answer low, read-from-AI answer high). 270 app tests.
 - 21:22 D12 notes, report timing strip, CSV export. 272 app + 42 package tests.
 - 21:28 demo: one card per prompt style (Copilot / Talking points / STAR), bullets keep line breaks, demo + companion windows not restored at launch, Welcome › Watch a Demo Interview. 273 app tests.
 - 21:31 D13 crash recovery: interviews left open by a quit/crash are closed, scored offline (low confidence) and marked interrupted at next launch (schema v20).
-- 21:37 D14: fixed File/View commands opening a second main window (WindowGroup → Window); ⌘1–3, ⌘P, Dock badge, sidebar commands. Checked in the installed app via System Events.
+- 21:37 D14: fixed File/View commands opening a second main window (WindowGroup → Window); ⌘1-3, ⌘P, Dock badge, sidebar commands. Checked in the installed app via System Events.
 - 21:43 D15 documents in (DocumentText replaces the candidate-app extractor), role duplicate/export/import. 278 app tests.
 - 21:46 D16 reports sort/filter; fixed list centring (frame applied before the inset). 280 app tests.
-- 22:04 E1–E2 connectors core + app wiring. 282 app + 12 connector tests.
+- 22:04 E1-E2 connectors core + app wiring. 282 app + 12 connector tests.
 - 22:09 E3a Greenhouse v3 / Lever / Ashby / Workable connectors from the vendors' docs (research in session scratchpad). 21 connector tests.
 - 22:11 E4 unified APIs (Merge, Kombo, Unified.to, Apideck). 25 connector tests.
 - 22:17 E5 Google / Microsoft Graph / Zoom connectors + WebVTT; public-client OAuth (no secret). 31 connector tests.
@@ -174,7 +174,7 @@ tools; pull finished meeting recordings for scoring; optionally post a private n
 - 00:10 Release reinstalled in ~/Applications: window after 2.0 s, 107 MB, 0% CPU at idle.
 - 00:20 18e9083 E11 Mail (IMAP) connector; ICS cancellations and SEQUENCE. 59 connector tests (+ an opt-in live TLS greeting check).
 - 00:25 798ff92 E12 Calendly + Cal.com connectors ("Booking links" section). 66 connector tests.
-- 00:28–00:31 6dde412 download header fix; 5c7292f E13 Webex. 71 connector tests.
+- 00:28-00:31 6dde412 download header fix; 5c7292f E13 Webex. 71 connector tests.
 - 00:34 1be7a1f Sync notes: a list cut at a page limit (any connector) shows "Stopped after N …; some may be missing." on the account, without counting as a failure. 73 connector + 312 app tests.
 - 00:36 528bdbd E14 automatic Prepare before each interview. 318 app tests.
 - 00:44 85c5593 E15 other calendars (Google, Outlook). 75 connector tests.

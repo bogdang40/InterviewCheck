@@ -269,18 +269,23 @@ def write_answer(db, key, item: AnswerInput, replace_id=None, *, session=None):
 def update_review(db, key, aid, review: ReviewInput, *, actor: tuple[str, str] = ("local-operator", "local-operator")):
     current = get_answer(db, key, aid)
     check_revision(current, review.expected_revision)
-    if (current["disposition"], current["note"]) == (review.disposition, review.note):
+    prior_actor_disp = role_analytics.latest_reviewer_disposition(db, aid, actor[0])
+    effective_prev = prior_actor_disp if prior_actor_disp is not None else "pending"
+    actor_changed = effective_prev != review.disposition
+    answer_changed = (current["disposition"], current["note"]) != (review.disposition, review.note)
+    if not answer_changed and not actor_changed:
         return current
-    db.execute("UPDATE answers SET disposition=?,note=?,revision=revision+1 WHERE session_id=? AND id=?",
-               (review.disposition, review.note, key, aid))
-    if current["disposition"] != review.disposition:
+    if answer_changed:
+        db.execute("UPDATE answers SET disposition=?,note=?,revision=revision+1 WHERE session_id=? AND id=?",
+                   (review.disposition, review.note, key, aid))
+    if actor_changed:
         role_analytics.record_review_event(
             db,
             session_id=key,
             answer_id=aid,
             reviewer_id=actor[0],
             reviewer_email=actor[1],
-            previous_disposition=current["disposition"],
+            previous_disposition=effective_prev,
             disposition=review.disposition,
         )
     return get_answer(db, key, aid)

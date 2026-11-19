@@ -1,5 +1,6 @@
 "use client"
 
+import dynamic from "next/dynamic"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { Suspense, useEffect, useRef, useState } from "react"
@@ -10,6 +11,15 @@ import Migration from "@/components/Migration"
 import WorkspaceError from "@/components/WorkspaceError"
 import { usePreparation, useResource } from "@/lib/workspace"
 import type { CalibratedRole } from "@/lib/roleCalibration"
+
+const CalibrationQueuePanel = dynamic(() => import("@/components/CalibrationQueuePanel"), {
+  ssr: false,
+  loading: () => (
+    <section className="panel inset" role="status">
+      <p className="muted">Loading calibration queue...</p>
+    </section>
+  ),
+})
 
 function RoleLibrary() {
   const id = useSearchParams().get("role")
@@ -64,6 +74,7 @@ function RoleLibrary() {
   return <div className="stack">
     <Roles roles={list.data} onSave={role => list.update(old => [role, ...old.filter(row => row.id !== role.id)])}
       prepare={role => prepare({ candidate: "", role: role.name, roleId: role.id })} onReloadAll={list.reload}/>
+    <CalibrationQueuePanel roles={list.data ?? []} />
     <Migration onImported={list.reload}/>
   </div>
 }

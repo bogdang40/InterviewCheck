@@ -182,7 +182,12 @@ def test_scenario_d_mobile_field_review_backup_restore_and_multi_route_audit(
             toggle2.click()
             nav2.get_by_role("link", name=label, exact=True).click()
             expect(page2).to_have_url(re.compile(url_pat))
-            expect(page2.get_by_text(expected_text, exact=True)).to_be_visible()
+            target = (
+                page2.locator(".role-row").get_by_text(expected_text, exact=True)
+                if label == "Role library"
+                else page2.get_by_text(expected_text, exact=True)
+            )
+            expect(target).to_be_visible()
             assert_no_horizontal_overflow(page2)
         col2.assert_clean()
     finally:

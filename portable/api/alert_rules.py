@@ -267,8 +267,13 @@ async def evaluate_alerts(actor: dict = Depends(model_admin.require_admin)):
     results = [(rule, key, await _deliver(rule, payload, "alert.triggered", key)) for rule, key, payload in pending]
     with store.connection(write=True) as db:
         for rule, key, (ok, status, err) in results:
+            if db.execute("SELECT 1 FROM alert_rules WHERE id=?", (rule["id"],)).fetchone() is None:
+                continue
             at = store.timestamp()
-            deliveries.append(_record_delivery(db, rule["id"], key, ok, status, err, at))
+            try:
+                deliveries.append(_record_delivery(db, rule["id"], key, ok, status, err, at))
+            except sqlite3.IntegrityError:
+                continue
             if ok:
                 db.execute("UPDATE alert_rules SET last_triggered_at=?, updated_at=? WHERE id=?", (at, at, rule["id"]))
         model_admin._record_audit(db, actor=actor, action="admin.alert.evaluate", model_uuid="fleet",
@@ -283,7 +288,11 @@ async def test_alert(rule_id: UUID, actor: dict = Depends(model_admin.require_ad
         rule = _get_rule(db, rid)
     ok, status, err = await _deliver(rule, _event_payload(rule, "alert.test", event_key, store.timestamp(), []), "alert.test", event_key)
     with store.connection(write=True) as db:
-        delivery = _record_delivery(db, rid, event_key, ok, status, err, store.timestamp())
+        _get_rule(db, rid)
+        try:
+            delivery = _record_delivery(db, rid, event_key, ok, status, err, store.timestamp())
+        except sqlite3.IntegrityError as exc:
+            raise HTTPException(404, "Alert rule not found.") from exc
         model_admin._record_audit(db, actor=actor, action="admin.alert.test", model_uuid=rid, details={"ok": ok, "http_status": status}, post_commit=post_commit)
     model_admin._flush_account_audits(post_commit)
     return {"ok": ok, "delivery": delivery}
