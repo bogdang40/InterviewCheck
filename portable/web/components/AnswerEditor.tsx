@@ -23,6 +23,7 @@ export default function AnswerEditor({
   onDraftSaved,
   onSave,
   onCancel,
+  embeddingAvailable,
 }: {
   session: Interview
   onDirty: (id: string, value: boolean) => void
@@ -33,6 +34,7 @@ export default function AnswerEditor({
   initial?: Answer
   onSave: (a: Answer) => void
   onCancel?: () => void
+  embeddingAvailable?: boolean
 }) {
   const [initial, setInitial] = useState(original)
   const [conflict, setConflict] = useState(false)
@@ -208,7 +210,13 @@ export default function AnswerEditor({
             append: incoming => setSources(list => [...list, ...incoming.slice(0, 12 - list.length)]),
           }}
         />
-        <LiveComparison sessionId={session.id} question={question} answer={answer} sources={sources} />
+        <LiveComparison
+          sessionId={session.id}
+          question={question}
+          answer={answer}
+          sources={sources}
+          embeddingAvailable={embeddingAvailable}
+        />
         {initial && <small className="muted">An edit reopens the review and keeps the existing note.</small>}
         {capturePending && <p className="notice">Apply or discard the captured excerpt before saving.</p>}
         {conflict && initial && <ConflictReview sessionId={session.id} answerId={id} resolve={(latest, keepDraft) => {

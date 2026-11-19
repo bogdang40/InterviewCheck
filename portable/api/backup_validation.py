@@ -1,10 +1,19 @@
 """Verify relationships, native compatibility and evidence before writing a restored record."""
 
+from datetime import datetime
 from uuid import UUID
 
 from .evidence import Words, compare
 from .lineage import validate_graph
 from .models import AnswerInput, Reference, RoleInput, SessionInput, validate_note_length
+
+
+def check_session_chronology(created_at: str, ended_at: str | None, trashed_at: str | None) -> None:
+    created = datetime.fromisoformat(created_at)
+    if ended_at is not None and datetime.fromisoformat(ended_at) < created:
+        raise ValueError("Session ended_at cannot precede created_at.")
+    if trashed_at is not None and datetime.fromisoformat(trashed_at) < created:
+        raise ValueError("Session trashed_at cannot precede created_at.")
 
 
 def verify_finding(answer, session, inherited_grams):
@@ -74,6 +83,7 @@ def verify_records(backup):
     if published & saved:
         raise ValueError("An exchange and draft have the same ID.")
     for session in backup.sessions:
+        check_session_chronology(session.created_at, session.ended_at, session.trashed_at)
         validate_graph(session.planned_questions, session.answers, session.draft)
         if session.legacy is None:
             SessionInput.model_validate(

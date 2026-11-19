@@ -19,18 +19,18 @@
   --color-background: #ffffff;
   --color-accent: #faece2;
   --color-accent-foreground: #4c2d1e;
-  --color-muted-foreground: #595753;
+  --color-muted-foreground: #575550;
   --color-foreground: #1b1e20;
   --color-ring: #9e471e;
-  --color-input: #8f8a80;
+  --color-input: #78736a;
   --color-border: var(--line);
   --color-destructive: #962b20;
 }
 :root {
   color-scheme: light;
   --ink: #1b1e20;
-  --muted: #595753;
-  --line: #d4d0c7;
+  --muted: #575550;
+  --line: #cbc6bc;
   --green: #262b2e;
   --mono: "IBM Plex Mono", monospace;
 }
@@ -64,14 +64,41 @@ button:disabled {
 }
 :focus-visible {
   outline: 2px solid var(--color-ring);
-  outline-offset: 3px;
+  outline-offset: 2px;
 }
-h1,
-h2,
-h3,
-p {
-  margin: 0;
+[data-slot="button"], [data-slot="input"], [data-slot="textarea"] {
+  transition-property: color, background-color, border-color, box-shadow;
 }
+@media (prefers-reduced-motion: reduce) {
+  [data-slot="button"], [data-slot="input"], [data-slot="textarea"] {
+    transition: none;
+  }
+}
+select:focus-visible,
+input:not([type="checkbox"]):not([type="radio"]):focus-visible,
+textarea:focus-visible {
+  border-color: var(--color-ring);
+}
+.studio-hero :focus-visible {
+  --color-ring: #ffaa7e;
+  outline-color: #ffaa7e;
+}
+@media (max-width: 820px) {
+  select,
+  .field input:not([type="checkbox"]):not([type="radio"]):not([type="file"]) {
+    min-height: 44px;
+  }
+  .check {
+    min-height: 44px;
+    align-items: center;
+  }
+  input[type="checkbox"],
+  input[type="radio"] {
+    min-width: 18px;
+    min-height: 18px;
+  }
+}
+h1, h2, h3, p { margin: 0; }
 h1 {
   font-weight: 600;
   letter-spacing: -0.055em;

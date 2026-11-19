@@ -1,23 +1,22 @@
-import math
-from typing import Any, Literal
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
-from . import access, access_admin, ats, audio, authoring, booking_sources, meeting_files, model_resolver, oauth_tokens, prompt_framing, rate_limit
+from . import access, access_admin, access_security, ats, audio, authoring, booking_sources, meeting_files, model_execution, model_resolver, oauth_tokens, prompt_framing, rate_limit
 from .connection_catalog import router as catalog
 from .mailbox import SETTINGS as MAIL_SETTINGS
 from .calendar_sources import calendar_file, cloud_calendar
 from .provider_http import configured, fetch_json
 
-_ORIG_FETCH_JSON = fetch_json
 router = APIRouter(prefix="/api/integrations")
 router.include_router(access.router)
 router.include_router(access_admin.router)
 router.include_router(audio.router)
 router.include_router(meeting_files.router)
+router.include_router(access_security.router)
 workspace = APIRouter(dependencies=[Depends(access.require_entitlement)])
 
 
@@ -73,51 +72,17 @@ class ReferenceRequest(BaseModel):
 
 @workspace.post("/reference", dependencies=[Depends(rate_limit.limit(rate_limit.AI_REQUEST))])
 async def reference(body: ReferenceRequest):
-    target = model_resolver.resolve_or_503("reference")
-    limit_tokens = target.config.get("max_tokens") or 1200
     instructions = prompt_framing.frame_instructions(
         "Provide a short sample interview answer to the supplied question for the stated role.",
         output_rule="Return plain text only.",
     )
     user_input = prompt_framing.untrusted_json_prompt({"role": body.role.strip(), "question": body.question.strip()})
-    if target.provider != "openai":
-        model_id, text = await model_resolver.dispatch_completion(
-            target,
-            instructions,
-            user_input,
-            fetch_fn=fetch_json,
-            max_tokens=limit_tokens,
-        )
-        return {"label": f"{target.display_name} {model_id}"[:180], "text": prompt_framing.sanitize_model_text(text)}
-
-    extra_opts = {"ssrf_safe": True} if fetch_json is _ORIG_FETCH_JSON else {}
-    raw_timeout = target.config.get("timeout_s")
-    if isinstance(raw_timeout, (int, float)) and not isinstance(raw_timeout, bool) and math.isfinite(raw_timeout):
-        timeout = min(max(float(raw_timeout), 1.0), 180.0)
-    else:
-        timeout = 75.0
-    payload: dict[str, Any] = {
-        "model": target.model_id,
-        "store": False,
-        "max_output_tokens": limit_tokens,
-        "instructions": instructions,
-        "input": user_input,
-    }
-    if target.config.get("temperature") is not None:
-        payload["temperature"] = target.config["temperature"]
-    data = await fetch_json("OpenAI", "POST", "https://api.openai.com/v1/responses", timeout=timeout,
-                            headers={"Authorization": "Bearer " + target.api_key},
-                            json=payload, **extra_opts)
-    try:
-        if data.get("status") != "completed":
-            raise HTTPException(502, "OpenAI did not complete the reference answer.")
-        text = "\n".join(part["text"] for item in data["output"] if item.get("type") == "message"
-                         for part in item["content"] if part.get("type") == "output_text").strip()
-    except (KeyError, TypeError, AttributeError) as exc:
-        raise HTTPException(502, "OpenAI returned an invalid reference.") from exc
-    if not text:
-        raise HTTPException(502, "OpenAI returned an empty reference.")
-    return {"label": "OpenAI " + target.model_id, "text": prompt_framing.sanitize_model_text(text)}
+    _, (label, text) = await model_execution.execute_reference_chain(
+        instructions,
+        user_input,
+        fetch_fn=fetch_json,
+    )
+    return {"label": label, "text": prompt_framing.sanitize_model_text(text)}
 
 
 class FileText(BaseModel):

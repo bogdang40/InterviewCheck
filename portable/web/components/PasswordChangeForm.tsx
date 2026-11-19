@@ -23,6 +23,10 @@ export function PasswordChangeForm({
     e.preventDefault()
     setError("")
     setStatus("")
+    if (!currentPassword) {
+      setError("Current password is required.")
+      return
+    }
     if (newPassword.length < 10) {
       setError("New password must be at least 10 characters.")
       return
@@ -48,7 +52,7 @@ export function PasswordChangeForm({
   }
 
   return (
-    <form className="panel stack" onSubmit={submit} aria-label="Change password">
+    <form className="panel stack" onSubmit={submit} aria-label="Change password" noValidate>
       <h3 className="row">
         <KeyRound size={16} aria-hidden="true" />
         <span>Change password</span>
@@ -63,7 +67,6 @@ export function PasswordChangeForm({
             type="password"
             autoComplete="current-password"
             required
-            minLength={10}
             disabled={busy}
             value={currentPassword}
             onChange={(e) => setCurrentPassword(e.target.value)}

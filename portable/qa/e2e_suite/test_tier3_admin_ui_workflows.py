@@ -1,6 +1,5 @@
 """Tier 3 opaque-box browser /admin/ workflows and /account/ session rotation tests."""
 import re
-import time
 
 import pytest
 from playwright.sync_api import expect
@@ -321,24 +320,17 @@ def test_account_password_rotation_revokes_other_browser_context_session(e2e_wor
         collector_a.assert_clean()
 
         # Context B's old session cookie was revoked.
-        page_b.goto(e2e_workspace.base_url + "/account/", wait_until="domcontentloaded")
+        page_b.goto(e2e_workspace.base_url + "/account/", wait_until="networkidle")
         expect(page_b.get_by_role("button", name="Sign in", exact=True)).to_be_visible()
-        page_b.wait_for_timeout(150)
         collector_b.reset()
 
         # Old password fails in context B; new password succeeds.
         page_b.get_by_label("Operator email").fill(ADMIN1_EMAIL)
         page_b.get_by_label("Password", exact=True).fill(ADMIN_PASS)
-        with page_b.expect_response(lambda r: "/api/integrations/access/login" in r.url) as resp_info:
+        with page_b.expect_console_message(lambda m: m.type == "error" and "401" in m.text):
             page_b.get_by_role("button", name="Sign in", exact=True).click()
-        assert resp_info.value.status == 401
         expect(page_b.locator("main").get_by_role("alert")).to_be_visible()
-        deadline = time.monotonic() + 2.0
-        while not collector_b.console_errors and time.monotonic() < deadline:
-            page_b.wait_for_timeout(25)
-        assert collector_b.console_errors and all("401" in msg for msg in collector_b.console_errors), (
-            collector_b.console_errors
-        )
+        assert collector_b.console_errors and all("401" in msg for msg in collector_b.console_errors), collector_b.console_errors
         collector_b.reset()
 
         page_b.get_by_label("Password", exact=True).fill(NEW_ADMIN_PASS)
