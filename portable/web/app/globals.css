@@ -69,6 +69,11 @@ button:disabled {
 [data-slot="button"], [data-slot="input"], [data-slot="textarea"] {
   transition-property: color, background-color, border-color, box-shadow;
 }
+@media (prefers-reduced-motion: reduce) {
+  [data-slot="button"], [data-slot="input"], [data-slot="textarea"] {
+    transition: none;
+  }
+}
 select:focus-visible,
 input:not([type="checkbox"]):not([type="radio"]):focus-visible,
 textarea:focus-visible {

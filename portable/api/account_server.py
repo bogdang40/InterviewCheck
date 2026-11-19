@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import Headers
 
-from . import account_admin, account_auth, account_db as db, account_security, account_stripe as billing, account_stripe_webhooks as webhooks, rate_limit
+from . import account_admin, account_auth, account_db as db, account_security, account_stripe as billing, account_stripe_webhooks as webhooks, rate_limit, totp_service
 from .access import embedded_enabled, production_mode
 from .error_sanitizer import sanitize_error_text
 from .origin import workspace_client
@@ -39,8 +39,8 @@ class AccountBoundary:
                 return await JSONResponse({"error": {"code": "forbidden", "message": "Missing workspace request header."}}, status_code=403)(scope, receive, send)
         if scope["method"] in {"POST", "PATCH"}:
             if headers.get("content-type", "").split(";")[0].strip().lower() != "application/json":
-                # Existing native callers send logout, portal, and revoke-sessions with an empty body.
-                empty_allowed = path.endswith(("/auth/logout", "/billing/portal", "/revoke-sessions"))
+                # Existing native callers send logout, portal, setup, and revoke-sessions with an empty body.
+                empty_allowed = path.endswith(("/auth/logout", "/billing/portal", "/revoke-sessions", "/auth/totp/setup"))
                 if not empty_allowed:
                     return await JSONResponse({"detail": "A JSON request is required."}, status_code=415)(scope, receive, send)
             data = bytearray()
@@ -67,6 +67,37 @@ class AccountBoundary:
 
 def identity(authorization: str | None = Header(default=None)):
     return account_auth.authenticate(authorization)
+
+
+def totp_identity(auth=Depends(identity)):
+    user, _ = auth
+    rate_limit.require_limit(rate_limit.TOTP_ACTION, f"user:{user['id']}")
+    return auth
+
+
+@routes.get("/auth/totp/status")
+def totp_status(auth=Depends(identity)):
+    return totp_service.status(auth[0])
+
+
+@routes.post("/auth/totp/setup")
+def totp_setup(auth=Depends(identity)):
+    return totp_service.setup(auth[0])
+
+
+@routes.post("/auth/totp/verify")
+def totp_verify(item: totp_service.TotpCodeInput, auth=Depends(totp_identity)):
+    return totp_service.verify(auth[0], item.code)
+
+
+@routes.post("/auth/totp/disable")
+def totp_disable(item: totp_service.TotpDisableInput, auth=Depends(totp_identity)):
+    return totp_service.disable(auth[0], item.currentPassword.get_secret_value(), item.code)
+
+
+@routes.post("/auth/totp/backup-codes/regenerate")
+def totp_regenerate(item: totp_service.TotpCodeInput, auth=Depends(totp_identity)):
+    return totp_service.regenerate_backup_codes(auth[0], item.code)
 
 
 @routes.post("/auth/password")
@@ -149,9 +180,13 @@ def service(embedded):
     async def http_error(_, exc):
         codes = {401: "unauthenticated", 402: "subscription_required", 403: "forbidden", 404: "not_found",
                  409: "conflict", 422: "invalid_input", 429: "rate_limited", 503: "service_unavailable"}
+        code = getattr(exc, "error_code", None) or codes.get(exc.status_code, "request_error")
         message = sanitize_error_text(str(exc.detail), "Account request failed.")
-        return JSONResponse({"error": {"code": codes.get(exc.status_code, "request_error"), "message": message}},
-                            status_code=exc.status_code, headers={"Cache-Control": "no-store"})
+        headers = {"Cache-Control": "no-store"}
+        if exc.headers:
+            headers.update(exc.headers)
+        return JSONResponse({"error": {"code": code, "message": message}},
+                            status_code=exc.status_code, headers=headers)
 
     @instance.exception_handler(RequestValidationError)
     async def invalid(_, exc):

@@ -8,11 +8,21 @@ export const credentialsSchema = z.object({
   password: z.string().min(10, "Password must be at least 10 characters.").max(200),
   deviceName: z.string().trim().max(120).optional(),
   adminSecret: z.string().max(200).optional(),
+  totpCode: z.string().trim().max(32).optional(),
 });
 
 export const passwordChangeSchema = z.object({
   currentPassword: z.string().min(10, "Password must be at least 10 characters.").max(200),
   newPassword: z.string().min(10, "Password must be at least 10 characters.").max(200),
+});
+
+export const totpCodeSchema = z.object({
+  code: z.string().trim().regex(/^\d{6}$/, "Verification code must be 6 digits."),
+});
+
+export const totpDisableSchema = z.object({
+  currentPassword: z.string().min(10, "Password must be at least 10 characters.").max(200),
+  code: z.string().trim().min(6, "Verification code is required.").max(32),
 });
 
 export const checkoutSchema = z.object({
@@ -77,7 +87,7 @@ export const adminRevokeSessionsSchema = z.object({
   sessionId: z.string().uuid("Invalid session id.").optional(),
 });
 
-export const LIMITER_NAMES = ["credential", "adminRead", "adminWrite", "billing"] as const;
+export const LIMITER_NAMES = ["credential", "adminRead", "adminWrite", "billing", "totp"] as const;
 
 export const adminRateLimitQuerySchema = z.object({
   limiter: z.enum(LIMITER_NAMES).optional(),

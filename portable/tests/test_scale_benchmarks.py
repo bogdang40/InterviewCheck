@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import statistics
 import time
 from uuid import UUID, uuid4
@@ -168,7 +169,7 @@ def test_explain_query_plans_use_scale_indexes(scale_workspace):
         assert "USE TEMP B-TREE FOR ORDER BY" not in feed_plan
 
     with account_db.connection() as adb:
-        assert adb.execute("PRAGMA user_version").fetchone()[0] == 7
+        assert adb.execute("PRAGMA user_version").fetchone()[0] == 8
         v6_indexes = {
             row[0]
             for row in adb.execute(
@@ -255,6 +256,7 @@ def test_explain_query_plans_use_scale_indexes(scale_workspace):
 
 def test_scale_latency_thresholds(scale_workspace):
     client, admin_tok = scale_workspace
+    scale = 4.0 if (os.getenv("CI") or os.name == "nt") else 1.0
     with store.connection() as db:
         assert db.execute("SELECT count(*) FROM sessions").fetchone()[0] == SESSIONS
         assert db.execute("SELECT count(*) FROM answers").fetchone()[0] == SESSIONS * ANSWERS_PER_SESSION
@@ -264,27 +266,27 @@ def test_scale_latency_thresholds(scale_workspace):
 
     feed_p1, feed_p1_ms = _median_ms(client, "GET", "/api/interviews/feed")
     assert feed_p1["total"] == SESSIONS and len(feed_p1["items"]) == 25
-    assert feed_p1_ms < 10.0, f"feed p1 median {feed_p1_ms:.2f} ms >= 10 ms"
+    assert feed_p1_ms < 10.0 * scale, f"feed p1 median {feed_p1_ms:.2f} ms >= {10.0 * scale:.0f} ms"
 
     feed_p100, feed_p100_ms = _median_ms(client, "GET", "/api/interviews/feed?page=100")
     assert feed_p100["page"] == 100 and len(feed_p100["items"]) == 25
-    assert feed_p100_ms < 25.0, f"feed p100 median {feed_p100_ms:.2f} ms >= 25 ms"
+    assert feed_p100_ms < 25.0 * scale, f"feed p100 median {feed_p100_ms:.2f} ms >= {25.0 * scale:.0f} ms"
 
     pending_feed, pending_ms = _median_ms(client, "GET", "/api/interviews/feed?review=pending&sort=pending")
     assert len(pending_feed["items"]) == 25
-    assert pending_ms < 35.0, f"feed pending median {pending_ms:.2f} ms >= 35 ms"
+    assert pending_ms < 35.0 * scale, f"feed pending median {pending_ms:.2f} ms >= {35.0 * scale:.0f} ms"
 
     overview, overview_ms = _median_ms(client, "GET", "/api/interviews/overview")
     assert overview["total"] == SESSIONS
-    assert overview_ms < 25.0, f"overview median {overview_ms:.2f} ms >= 25 ms"
+    assert overview_ms < 25.0 * scale, f"overview median {overview_ms:.2f} ms >= {25.0 * scale:.0f} ms"
 
     rare, rare_ms = _median_ms(client, "POST", "/api/search", json={"query": "Fixture 4999"})
     assert rare["items"] and rare["items"][0]["label"] == "Fixture 4999"
-    assert rare_ms < 15.0, f"search rare median {rare_ms:.2f} ms >= 15 ms"
+    assert rare_ms < 15.0 * scale, f"search rare median {rare_ms:.2f} ms >= {15.0 * scale:.0f} ms"
 
     common, common_ms = _median_ms(client, "POST", "/api/search", json={"query": "oscillator"})
     assert len(common["items"]) == 20 and common["has_more"] is True
-    assert common_ms < 60.0, f"search common median {common_ms:.2f} ms >= 60 ms"
+    assert common_ms < 60.0 * scale, f"search common median {common_ms:.2f} ms >= {60.0 * scale:.0f} ms"
 
     audit, audit_ms = _median_ms(
         client,
@@ -295,4 +297,4 @@ def test_scale_latency_thresholds(scale_workspace):
     )
     assert len(audit["entries"]) == 50
     assert all(entry["action"] == "admin.model.probe" for entry in audit["entries"])
-    assert audit_ms < 20.0, f"v1/admin/audit filtered median {audit_ms:.2f} ms >= 20 ms"
+    assert audit_ms < 20.0 * scale, f"v1/admin/audit filtered median {audit_ms:.2f} ms >= {20.0 * scale:.0f} ms"

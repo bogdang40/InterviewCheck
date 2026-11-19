@@ -15,7 +15,7 @@ from uuid import uuid4
 from fastapi import HTTPException
 
 DAY = 86_400_000
-VERSION = 7
+VERSION = 8
 INDEXES = (
     "CREATE INDEX IF NOT EXISTS idx_users_created_id ON users(created_at DESC, id ASC)",
     "CREATE INDEX IF NOT EXISTS idx_audit_log_action_id ON audit_log(action, id DESC)",
@@ -37,10 +37,16 @@ SCHEMA = [
     "CREATE INDEX idx_subscriptions_user ON subscriptions(user_id,updated_at DESC)",
     """CREATE TABLE stripe_events (id TEXT PRIMARY KEY,type TEXT NOT NULL,received_at INTEGER NOT NULL,applied_at INTEGER)""",
     """CREATE TABLE audit_log (id INTEGER PRIMARY KEY AUTOINCREMENT,at INTEGER NOT NULL,actor_user_id TEXT,
-    action TEXT NOT NULL,target_user_id TEXT,details TEXT)""",
+    action TEXT NOT NULL,target_user_id TEXT,details TEXT,prev_hash TEXT,entry_hash TEXT)""",
     "CREATE INDEX idx_audit_log_at ON audit_log(at DESC)",
     *INDEXES,
 ]
+
+
+class AccountError(HTTPException):
+    def __init__(self, status_code: int, code: str, detail: str, headers: dict[str, str] | None = None):
+        super().__init__(status_code=status_code, detail=detail, headers=headers)
+        self.error_code = code
 
 
 def now():
@@ -105,6 +111,25 @@ def prepare(db):
         revoked_at INTEGER)""")
     db.execute("CREATE INDEX IF NOT EXISTS idx_api_tokens_user ON api_tokens(user_id, created_at DESC)")
     db.execute("CREATE TABLE IF NOT EXISTS login_email_windows (email TEXT PRIMARY KEY,start INTEGER NOT NULL,hits INTEGER NOT NULL)")
+    db.execute("""CREATE TABLE IF NOT EXISTS user_totp (
+        user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        secret_enc TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 0 CHECK(enabled IN (0,1)),
+        verified_at INTEGER,
+        created_at INTEGER NOT NULL,
+        last_used_step INTEGER)""")
+    if not db.execute("SELECT 1 FROM pragma_table_info('user_totp') WHERE name=?", ("last_used_step",)).fetchone():
+        db.execute("ALTER TABLE user_totp ADD COLUMN last_used_step INTEGER")
+    db.execute("""CREATE TABLE IF NOT EXISTS user_backup_codes (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        code_hash TEXT NOT NULL,
+        used_at INTEGER,
+        created_at INTEGER NOT NULL)""")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_backup_codes_user ON user_backup_codes(user_id, used_at)")
+    for col in ("prev_hash", "entry_hash"):
+        if not db.execute("SELECT 1 FROM pragma_table_info('audit_log') WHERE name=?", (col,)).fetchone():
+            db.execute(f"ALTER TABLE audit_log ADD COLUMN {col} TEXT")
     for sql in INDEXES:
         db.execute(sql)
     db.execute(f"PRAGMA user_version={VERSION}")
@@ -133,9 +158,69 @@ def connection(*, write=False):
             yield db
 
 
-def audit(db, event, target, actor=None, details=None):
-    db.execute("INSERT INTO audit_log(at,actor_user_id,action,target_user_id,details) VALUES(?,?,?,?,?)",
-               (now(), actor, event, target, json.dumps(details) if details else None))
+def compute_audit_hash(
+    prev_hash: str | None,
+    at: int,
+    actor_user_id: str | None,
+    action: str,
+    target_user_id: str | None,
+    details: str | None,
+) -> str:
+    payload = f"{prev_hash or 'GENESIS'}|{at}|{actor_user_id or ''}|{action}|{target_user_id or ''}|{details or ''}"
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def audit(db, event, target, actor=None, details=None, *, at=None):
+    ts = now() if at is None else at
+    details_json = json.dumps(details) if details else None
+    db.execute("SAVEPOINT sp_audit_record")
+    try:
+        prev = db.execute("SELECT entry_hash FROM audit_log ORDER BY id DESC LIMIT 1").fetchone()
+        prev_hash = prev[0] if prev else None
+        entry_hash = compute_audit_hash(prev_hash, ts, actor, event, target, details_json)
+        db.execute(
+            "INSERT INTO audit_log(at,actor_user_id,action,target_user_id,details,prev_hash,entry_hash) VALUES(?,?,?,?,?,?,?)",
+            (ts, actor, event, target, details_json, prev_hash, entry_hash),
+        )
+        db.execute("RELEASE SAVEPOINT sp_audit_record")
+    except Exception:
+        db.execute("ROLLBACK TO SAVEPOINT sp_audit_record")
+        db.execute("RELEASE SAVEPOINT sp_audit_record")
+        raise
+
+
+def verify_audit_chain(db) -> dict:
+    rows = db.execute(
+        "SELECT id, at, actor_user_id, action, target_user_id, details, prev_hash, entry_hash FROM audit_log ORDER BY id ASC"
+    ).fetchall()
+    verified_count = 0
+    legacy_unchained = 0
+    expected_prev_hash: str | None = None
+    seen_chained = False
+    for row in rows:
+        row_id = int(row["id"])
+        entry_hash = row["entry_hash"]
+        prev_hash = row["prev_hash"]
+        if entry_hash is None:
+            if seen_chained or prev_hash is not None:
+                return {"ok": False, "verifiedCount": verified_count, "legacyUnchainedCount": legacy_unchained,
+                        "firstBrokenId": row_id, "headHash": expected_prev_hash}
+            legacy_unchained += 1
+            continue
+        seen_chained = True
+        if prev_hash != expected_prev_hash:
+            return {"ok": False, "verifiedCount": verified_count, "legacyUnchainedCount": legacy_unchained,
+                    "firstBrokenId": row_id, "headHash": expected_prev_hash}
+        expected_entry = compute_audit_hash(
+            expected_prev_hash, int(row["at"]), row["actor_user_id"], row["action"], row["target_user_id"], row["details"]
+        )
+        if not hmac.compare_digest(expected_entry, entry_hash):
+            return {"ok": False, "verifiedCount": verified_count, "legacyUnchainedCount": legacy_unchained,
+                    "firstBrokenId": row_id, "headHash": expected_prev_hash}
+        expected_prev_hash = entry_hash
+        verified_count += 1
+    return {"ok": True, "verifiedCount": verified_count, "legacyUnchainedCount": legacy_unchained,
+            "firstBrokenId": None, "headHash": expected_prev_hash}
 
 
 def check_database():

@@ -10,7 +10,7 @@ import type { AuditLogRepository } from "../repositories/AuditLogRepository.js";
 import type { SessionRepository } from "../repositories/SessionRepository.js";
 import type { UserRepository } from "../repositories/UserRepository.js";
 
-export type LimiterName = "credential" | "adminRead" | "adminWrite" | "billing";
+export type LimiterName = "credential" | "adminRead" | "adminWrite" | "billing" | "totp";
 
 export interface SessionView {
   readonly id: string;

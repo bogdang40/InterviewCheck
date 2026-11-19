@@ -10,6 +10,7 @@ import { BILLING_RETURN_STYLE_HASH } from "./routes/BillingReturnPage.js";
 import { BillingRoutes } from "./routes/BillingRoutes.js";
 import { MetricsRoutes } from "./routes/MetricsRoutes.js";
 import { SecurityRoutes } from "./routes/SecurityRoutes.js";
+import { TotpRoutes } from "./routes/TotpRoutes.js";
 
 export const API_VERSION = "v1";
 
@@ -68,6 +69,14 @@ export class AppFactory {
     );
     api.route(
       "/",
+      TotpRoutes.build({
+        auth: container.auth,
+        totp: container.totp,
+        totpLimiter: container.totpLimiter,
+      }),
+    );
+    api.route(
+      "/",
       SecurityRoutes.build({
         auth: container.auth,
         security: container.security,
@@ -89,6 +98,7 @@ export class AppFactory {
       AdminRoutes.build({
         auth: container.auth,
         admin: container.admin,
+        audit: container.audit,
         security: container.security,
         adminReadLimiter: container.adminReadLimiter,
         adminWriteLimiter: container.adminWriteLimiter,
@@ -110,6 +120,9 @@ export class AppFactory {
     app.notFound((c) => c.json({ error: { code: "not_found", message: "No such route." } }, 404));
     app.onError((error, c) => {
       if (error instanceof HttpError) {
+        if (error.code === "totp_required") {
+          c.header("X-InterviewCheck-TOTP", "required");
+        }
         return c.json(error.toBody(), error.status as 400);
       }
       const code = (error as { code?: unknown }).code;
