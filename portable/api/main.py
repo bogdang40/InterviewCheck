@@ -8,7 +8,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import access, ats_notes, authoring, backup, bulk_operations, drafts, model_admin, model_execution, rate_limit, role_analytics, role_versions, scoring_hooks, store, trash
+from . import access, ats_notes, authoring, backup, bulk_operations, drafts, health_probes, model_admin, model_execution, rate_limit, role_analytics, role_versions, scoring_hooks, secret_box, store, trash
 from .access import embedded_enabled, require_entitlement
 from .error_sanitizer import sanitize_error_text
 from .evidence import compare
@@ -35,6 +35,11 @@ async def lifespan(_):
         from .account_db import check_database
         check_database()
     store.initialize(store.db_path())
+    if secret_box.key_source() == "file":
+        try:
+            secret_box.active_key_id()
+        except secret_box.SecretBoxError:
+            pass
     yield
 
 
@@ -169,6 +174,7 @@ workspace.include_router(ats_notes.router)
 workspace.include_router(discovery)
 workspace.include_router(interview_catalog)
 workspace.include_router(exports)
+app.include_router(health_probes.router)
 app.include_router(authoring.router)
 app.include_router(model_admin.router)
 app.include_router(scoring_hooks.router)

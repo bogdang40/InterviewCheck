@@ -14,6 +14,7 @@ import {
 } from "@/lib/adminDiagnostics"
 import { AdminApiError, CAPABILITY_LABELS, PROVIDER_LABELS, type ConnectedModel } from "@/lib/adminModels"
 import { formatLatency, formatUptime } from "@/lib/adminTelemetry"
+import { KeyRotationCard } from "./KeyRotationCard"
 
 type AudioCheck = {
   stream?: MediaStream
@@ -48,6 +49,7 @@ export function DiagnosticsTab({ models, onAuthInvalid }: { models: ConnectedMod
   const [audioLevel, setAudioLevel] = useState(-72)
   const [audioStatus, setAudioStatus] = useState("")
   const [audioMeta, setAudioMeta] = useState("")
+  const [keyRefreshTick, setKeyRefreshTick] = useState(0)
   const mountedRef = useRef(true)
   const audioRef = useRef<AudioCheck | null>(null)
 
@@ -145,7 +147,7 @@ export function DiagnosticsTab({ models, onAuthInvalid }: { models: ConnectedMod
           <h2>Diagnostics &amp; usage</h2>
           <p className="muted">Daily token budgets, monthly cost ceilings, fleet P95 latency, transcription readiness, and local audio capture.</p>
         </div>
-        <Button type="button" variant="outline" size="sm" disabled={loading} onClick={() => void load()}>
+        <Button type="button" variant="outline" size="sm" disabled={loading} onClick={() => { setKeyRefreshTick((n) => n + 1); void load() }}>
           <RefreshCw size={14} aria-hidden="true" />
           {loading ? "Refreshing…" : "Refresh diagnostics"}
         </Button>
@@ -244,6 +246,8 @@ export function DiagnosticsTab({ models, onAuthInvalid }: { models: ConnectedMod
         {audioMeta && <span className="admin-mono">{audioMeta}</span>}
         {audioStatus && <p role="status" className="notice">{audioStatus}</p>}
       </section>
+
+      <KeyRotationCard onAuthInvalid={onAuthInvalid} refreshSignal={keyRefreshTick} />
     </section>
   )
 }
