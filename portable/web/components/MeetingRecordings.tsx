@@ -56,6 +56,6 @@ export function MeetingRecordings({ providers, enabled, receive, onBusy }: {
         })}>{selected.kind === "meeting" ? "List files for this meeting" : selected.kind === "transcript" ? "Import saved transcript" : "Send recording to Deepgram"}</Button>
     </>}
     {busy && <p role="status">Reading meeting file…</p>}
-    {error && <p role="alert" className="notice">{error}</p>}
+    {error && <p role="alert" className="error">{error}</p>}
   </div>;
 }

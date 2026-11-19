@@ -9,10 +9,10 @@ import type { ProviderStatus } from "@/lib/integrations"
 export default function AccountPage() {
   const status = useResource<ProviderStatus>("integrations/status")
   return <div className="stack">
-    <div className="page-title"><h1>Account</h1></div>
+    <div className="page-title"><span className="eyebrow">ACCESS & APPEARANCE</span><h1>Account</h1></div>
     {status.error ? <WorkspaceError text={status.error} retry={status.reload}/> :
-      status.data ? <AccountConnection enabled={status.data.access} inviteRequired={status.data.inviteRequired}/> :
-      <p role="status">Loading account settings…</p>}
+      status.data ? <AccountConnection enabled={status.data.access} inviteRequired={status.data.inviteRequired} signedIn={status.data.signedIn}/> :
+      <section className="panel inset" role="status"><p className="muted">Loading account settings…</p></section>}
     <Appearance/>
   </div>
 }

@@ -84,11 +84,19 @@ export default function TrashList() {
       {result.error ? (
         <WorkspaceError text={result.error} retry={result.reload} />
       ) : !data ? (
-        <p role="status">Loading Trash…</p>
+        <section className="panel inset" role="status">
+          <p className="muted">Loading Trash…</p>
+        </section>
       ) : !data.items.length ? (
-        <section className="panel form-panel">
+        <section className="panel empty">
+          <div className="empty-icon">
+            <Trash2 size={20} aria-hidden="true" />
+          </div>
           <h2>Trash is empty</h2>
-          <Link href="/interviews/">View interviews</Link>
+          <p>Interviews moved to Trash appear here until restored or permanently deleted.</p>
+          <Button asChild variant="outline" size="sm">
+            <Link href="/interviews/">View interviews</Link>
+          </Button>
         </section>
       ) : (
         <>
@@ -178,7 +186,7 @@ export default function TrashList() {
             </ul>
           </section>
           {data.total > data.page_size && (
-            <div className="row">
+            <div className="archive-pages">
               <Button
                 variant="outline"
                 disabled={busy || !!deleting || data.page <= 1}

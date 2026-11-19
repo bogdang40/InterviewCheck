@@ -76,7 +76,8 @@ export default function ReviewBrief({ sessionId }: { sessionId: string }) {
   return (
     <div className="brief-layout">
       <header className="brief-heading">
-        <div>
+        <div className="page-title">
+          <span className="eyebrow">BRIEF</span>
           <h1>Review brief</h1>
           <p>Prepare a summary of passage comparisons and interviewer outcomes.</p>
         </div>

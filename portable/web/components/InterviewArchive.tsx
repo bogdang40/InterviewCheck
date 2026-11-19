@@ -146,6 +146,11 @@ export default function InterviewArchive({ onCreate }: Props) {
           </button>
         )}
         {resource.error && <WorkspaceError text={resource.error} retry={resource.reload} />}
+        {!data && !resource.error && (
+          <div className="archive-empty">
+            <p className="muted">Loading interviews…</p>
+          </div>
+        )}
         {data && data.items.length > 0 && (
           <ul className="work-list">
             {data.items.map((session) => (

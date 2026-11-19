@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { Suspense, useEffect, useRef } from "react"
+import { Button } from "@/components/ui/button"
 import Roles from "@/components/Roles"
 import Migration from "@/components/Migration"
 import WorkspaceError from "@/components/WorkspaceError"
@@ -26,11 +27,11 @@ function RoleLibrary() {
       <section className="panel stack"><h2>Interview plan</h2><p>{role.policy || "No assistance policy saved."}</p>
         {role.questions.length > 0 && <ol>{role.questions.map((question, i) => <li key={i}>{i + 1}. {question}</li>)}</ol>}
         {role.permitted_sources.map((source, i) => <details key={i}><summary>{source.label}</summary><p>{source.text}</p></details>)}
-        <div><button className="text-action" onClick={() => prepare({ candidate: "", role: role.name, roleId: role.id })}>Prepare interview</button></div>
+        <div><Button onClick={() => prepare({ candidate: "", role: role.name, roleId: role.id })}>Prepare interview</Button></div>
       </section>
     </div>
   }
-  if (!list.data) return <p role="status">Loading role library…</p>
+  if (!list.data) return <section className="panel inset" role="status"><p className="muted">Loading role library…</p></section>
   return <div className="stack">
     <Roles roles={list.data} onSave={role => list.update(old => [role, ...old.filter(row => row.id !== role.id)])}
       prepare={role => prepare({ candidate: "", role: role.name, roleId: role.id })}/>
@@ -39,5 +40,5 @@ function RoleLibrary() {
 }
 
 export default function RolesPage() {
-  return <Suspense fallback={<p role="status">Loading role library…</p>}><RoleLibrary/></Suspense>
+  return <Suspense fallback={<section className="panel inset" role="status"><p className="muted">Loading role library…</p></section>}><RoleLibrary/></Suspense>
 }

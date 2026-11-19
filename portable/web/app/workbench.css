@@ -51,6 +51,9 @@
   border-block: 1px solid var(--line);
   padding: 11px 2px;
   margin-bottom: 18px;
+  overflow-wrap: anywhere;
+  min-width: 0;
+  gap: 12px;
 }
 .record-context details {
   flex: 1;
@@ -87,7 +90,7 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #ab751e;
+  background: var(--attention);
   display: inline-block;
 }
 .review-grid {
@@ -174,7 +177,7 @@
   outline: none;
 }
 .review-pane:focus-visible {
-  outline: 2px solid var(--green);
+  outline: 2px solid var(--color-ring);
   outline-offset: 4px;
 }
 .review-pane > .evidence h2 {
@@ -227,9 +230,11 @@
   }
   .record-context {
     gap: 9px;
+    flex-wrap: wrap;
   }
   .record-context > span {
     font-size: 12px;
+    white-space: normal;
   }
 }
 @media (max-width: 590px) {

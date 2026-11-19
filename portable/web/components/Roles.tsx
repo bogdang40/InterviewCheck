@@ -170,6 +170,9 @@ export default function Roles({
             <BriefcaseBusiness />
             <strong>No roles saved</strong>
             <p>Add a role or migrate role profiles from a native database.</p>
+            <Button variant="outline" size="sm" onClick={() => open()}>
+              Create a role
+            </Button>
           </div>
         )}
       </section>

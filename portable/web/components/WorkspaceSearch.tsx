@@ -63,9 +63,9 @@ export default function WorkspaceSearch({ compact = false }: { compact?: boolean
       >
         <Search size={16} />
         {!compact && (
-          <>
+          <span className="search-label">
             Search <kbd>Ctrl / ⌘ K</kbd>
-          </>
+          </span>
         )}
       </button>
       <dialog

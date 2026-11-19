@@ -7,6 +7,7 @@ import { useWorkspaceSearch } from "@/lib/search"
 import { useResource } from "@/lib/workspace"
 import { dateLabel, message, type Session } from "@/lib/api"
 import { Button } from "./ui/button"
+import { Input } from "./ui/input"
 import WorkspaceError from "./WorkspaceError"
 
 type Counts = { new: number; identical: number; conflict: number }
@@ -105,7 +106,7 @@ export default function WorkspaceBackup() {
         {(sessions.data?.total ?? 0) > 20 && (
           <label className="field">
             Find an interview
-            <input
+            <Input
               type="search"
               value={term}
               onChange={(e) => setTerm(e.target.value)}
@@ -184,27 +185,29 @@ export default function WorkspaceBackup() {
         {preview && (
           <div className="restore-plan">
             <h3>Restore preview</h3>
-            <table>
-              <caption className="sr-only">Backup record counts</caption>
-              <thead>
-                <tr>
-                  <th>Records</th>
-                  <th>New</th>
-                  <th>Identical</th>
-                  <th>Conflicts</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(["roles", "sessions"] as const).map((kind) => (
-                  <tr key={kind}>
-                    <th>{kind === "roles" ? "Roles" : "Interviews"}</th>
-                    <td>{preview[kind].new}</td>
-                    <td>{preview[kind].identical}</td>
-                    <td>{preview[kind].conflict}</td>
+            <div className="table-wrap">
+              <table>
+                <caption className="sr-only">Backup record counts</caption>
+                <thead>
+                  <tr>
+                    <th>Records</th>
+                    <th>New</th>
+                    <th>Identical</th>
+                    <th>Conflicts</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {(["roles", "sessions"] as const).map((kind) => (
+                    <tr key={kind}>
+                      <th>{kind === "roles" ? "Roles" : "Interviews"}</th>
+                      <td>{preview[kind].new}</td>
+                      <td>{preview[kind].identical}</td>
+                      <td>{preview[kind].conflict}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
             <p>
               {preview.answers} captured exchanges and {preview.drafts} saved drafts in this file.{" "}
               {preview.trashed} interviews will remain in Trash.

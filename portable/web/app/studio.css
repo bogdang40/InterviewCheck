@@ -99,20 +99,25 @@
   .studio-art img { height: 80%; top: 7%; }
   .studio-art .signal-field { opacity: .4; }
   .studio-hero { min-height: 240px; }
-  .workspace-metrics { gap: 7px; }
-  .metric-card { padding: 14px 10px; gap: 9px; }
+  .workspace-metrics { gap: 10px; }
+  .metric-card { padding: 14px 12px; gap: 9px; }
   .metric-label { display: grid; gap: 6px; align-content: start; align-self: stretch; font-size: 12px; }
   .metric-arrow { width: 12px; }
-  .start-panels { grid-template-columns: 1fr; gap: 13px; }
+  .start-panels { grid-template-columns: minmax(0, 1fr); gap: 13px; }
+}
+@media (max-width: 520px) {
+  .workspace-metrics { grid-template-columns: minmax(0, 1fr); }
+  .metric-card { grid-template-columns: 1fr auto auto; align-items: center; padding: 14px 16px; }
+  .metric-label { grid-column: 1; display: flex; align-items: center; gap: 9px; font-size: 13px; }
 }
 @media (max-width: 450px) {
   .studio-copy { width: 100%; padding: 21px 18px; }
-  .studio-copy p { max-width: 63%; font-size: 13px; }
-  .studio-art { left: 62%; bottom: 52px; }
+  .studio-copy p { max-width: 100%; font-size: 13px; }
+  .studio-art { left: 56%; bottom: 44px; opacity: 0.25; }
   .studio-art img { height: min(94%, 190px); top: 9px; }
   .studio-art::after { display: none; }
-  .studio-actions { gap: 2px; }
-  .studio-actions [data-slot="button"] { padding-inline: 10px; }
+  .studio-actions { gap: 8px; }
+  .studio-actions [data-slot="button"] { padding-inline: 12px; }
 }
 
 @media (min-width: 651px) {

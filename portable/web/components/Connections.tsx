@@ -81,13 +81,13 @@ export default function Connections({ onPrepare }: { onPrepare: (candidate: stri
         <Button variant="outline" disabled={busy}>Find candidate</Button>
       </form> : <p className="muted">Configure a supported ATS on the server for candidate lookup.</p>)}
     </section>
-    {error && <p className="notice" role="alert">{error}</p>}
+    {error && <p className="error" role="alert">{error}</p>}
     {busy && <p role="status">Reading records…</p>}
     {records && <section className="panel stack"><h2>Imported records</h2>
       {records.note && <p className="muted">{records.note}</p>}
       {records.items.length === 0 && <p>No records found.</p>}
-      {records.items.map((row, index) => <div className="row" key={index}>
-        <div><strong>{row.title || row.candidate}</strong>{(row.start || row.role) && <p className="muted">{row.start || row.role}</p>}</div>
+      {records.items.map((row, index) => <div className="spread" key={index}>
+        <div className="entry-copy"><strong>{row.title || row.candidate}</strong>{(row.start || row.role) && <p className="muted">{row.start || row.role}</p>}</div>
         <Button variant="outline" disabled={busy} onClick={() => selectRow(row)}>Select</Button>
       </div>)}</section>}
     {selected && <form className="panel stack" onSubmit={e => { e.preventDefault(); onPrepare(selected.candidate.trim(), selected.role.trim()); }}>

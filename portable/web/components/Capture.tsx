@@ -67,7 +67,7 @@ export default function Capture({ onText, onPendingChange }: {
   return <details className="capture-tools">
     <summary><AudioLines size={16} aria-hidden /> Capture audio</summary>
     <div className="stack">
-      {error && <p role="alert" className="notice">{error}</p>}
+      {error && <p role="alert" className="error">{error}</p>}
       {!enabled ? <p className="muted">Configure an enabled transcription model in Admin or server settings to transcribe call audio or a recording.</p> : <>
         <label><input type="checkbox" checked={consent} disabled={active || uploading}
           onChange={event => setConsent(event.target.checked)} /> Participants agreed to send this audio to Deepgram.</label>
@@ -95,10 +95,12 @@ export default function Capture({ onText, onPendingChange }: {
         onDiscard={() => setSegments([])} />}
         {(draft || active) && <>
           <label className="field">Candidate excerpt<Textarea rows={4} value={draft} onChange={event => setDraft(event.target.value)} /></label>
-          <Button type="button" variant="outline" disabled={active || !draft.trim()}
-            onClick={() => { onText(draft.trim()); setDraft(""); setSegments([]); }}>Use this excerpt</Button>
-          <Button type="button" variant="ghost" disabled={active || uploading || remoteBusy}
-            onClick={() => { setDraft(""); setSegments([]); }}>Discard excerpt</Button>
+          <div className="row">
+            <Button type="button" variant="outline" disabled={active || !draft.trim()}
+              onClick={() => { onText(draft.trim()); setDraft(""); setSegments([]); }}>Use this excerpt</Button>
+            <Button type="button" variant="ghost" disabled={active || uploading || remoteBusy}
+              onClick={() => { setDraft(""); setSegments([]); }}>Discard excerpt</Button>
+          </div>
         </>}
     </div>
   </details>;

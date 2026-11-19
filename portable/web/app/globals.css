@@ -1,25 +1,37 @@
 @import "tailwindcss";
 
+@custom-variant dark {
+  &:where([data-theme="dark"], [data-theme="dark"] *) {
+    @slot;
+  }
+  @media (prefers-color-scheme: dark) {
+    &:where(:root:not([data-theme="light"]), :root:not([data-theme="light"]) *) {
+      @slot;
+    }
+  }
+}
+
 @theme {
-  --color-primary: #303437;
-  --color-primary-foreground: #fff;
+  --color-primary: #262b2e;
+  --color-primary-foreground: #ffffff;
   --color-secondary: #f2ebe3;
-  --color-secondary-foreground: #45362e;
-  --color-background: #fff;
-  --color-accent: #f6e9de;
-  --color-accent-foreground: #503125;
-  --color-muted-foreground: #64605c;
-  --color-foreground: #232728;
-  --color-ring: #ad592f;
-  --color-input: #d8d4ce;
-  --color-destructive: #9a3528;
+  --color-secondary-foreground: #3f2d23;
+  --color-background: #ffffff;
+  --color-accent: #faece2;
+  --color-accent-foreground: #4c2d1e;
+  --color-muted-foreground: #595753;
+  --color-foreground: #1b1e20;
+  --color-ring: #9e471e;
+  --color-input: #8f8a80;
+  --color-border: var(--line);
+  --color-destructive: #962b20;
 }
 :root {
   color-scheme: light;
-  --ink: #232728;
-  --muted: #66635e;
-  --line: #dedbd4;
-  --green: #303437;
+  --ink: #1b1e20;
+  --muted: #595753;
+  --line: #d4d0c7;
+  --green: #262b2e;
   --mono: "IBM Plex Mono", monospace;
 }
 * {

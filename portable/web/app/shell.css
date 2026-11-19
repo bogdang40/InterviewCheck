@@ -1,6 +1,6 @@
 .shell {
   display: grid;
-  grid-template-columns: 216px minmax(0, 1fr);
+  grid-template-columns: 236px minmax(0, 1fr);
   min-height: 100vh;
 }
 .sidebar {
@@ -10,18 +10,26 @@
   background: var(--surface);
   border-right: 1px solid var(--line);
   color: var(--ink);
-  padding: 27px 15px 17px;
+  padding: 24px 14px 16px;
   display: flex;
   flex-direction: column;
+  overflow-y: auto;
+}
+.sidebar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 .brand {
   display: flex;
   align-items: center;
-  font-size: 23px;
+  font-size: 21px;
   font-weight: 690;
-  letter-spacing: -1.3px;
+  letter-spacing: -1px;
   line-height: 1;
-  padding: 0 5px;
+  padding: 0 4px;
+  white-space: nowrap;
 }
 .brand-light {
   font-weight: 430;
@@ -30,11 +38,12 @@
   background: #252a2c;
   color: #ffad83;
   border-radius: 8px;
-  width: 35px;
-  height: 35px;
+  width: 31px;
+  height: 32px;
   display: grid;
   place-items: center;
-  margin-right: 9px;
+  flex-shrink: 0;
+  margin-right: 8px;
 }
 .side-caption,
 .eyebrow,
@@ -48,19 +57,20 @@
 .side-caption {
   font-size: 10px;
   color: var(--muted);
-  margin: 53px 14px 13px;
+  margin: 34px 12px 10px;
 }
 .sidebar nav {
   display: grid;
-  gap: 5px;
+  gap: 4px;
 }
 .sidebar nav a,
 .sidebar-foot > a {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 11px;
   border-radius: 6px;
-  padding: 11px 14px;
+  padding: 10px 12px;
+  min-height: 40px;
   font-weight: 500;
   color: var(--secondary-ink);
   font-size: 14px;
@@ -70,57 +80,48 @@
   background: var(--subtle);
   color: var(--ink);
 }
-.sidebar nav a[aria-current] {
+.sidebar nav a[aria-current],
+.sidebar-foot > a[aria-current] {
   background: var(--selected-bg);
   color: var(--green-ink);
-  box-shadow: inset 2px 0 #c46d43;
+  box-shadow: inset 2px 0 var(--color-ring);
 }
-.sidebar nav svg {
+.sidebar nav svg,
+.sidebar-foot svg {
   width: 17px;
   height: 17px;
+  flex-shrink: 0;
 }
 .sidebar-foot {
   margin-top: auto;
-  padding-top: 14px;
+  padding-top: 12px;
   border-top: 1px solid var(--line);
-}
-.station {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  border-top: 1px solid #314139;
-  margin-top: 15px;
-  padding: 21px 5px 3px;
-}
-.station-icon {
-  width: 34px;
-  height: 34px;
   display: grid;
-  place-items: center;
-  background: #22352b;
-  border-radius: 9px;
-  color: #b5d4be;
+  gap: 8px;
 }
-.station strong,
-.station small {
-  display: block;
-  font-size: 12px;
-}
-.station small {
-  color: #9bb0a1;
-  font-size: 11px;
+.session-pill {
+  padding: 0 12px 2px;
+  font: 11px/1.4 var(--mono);
+  color: var(--muted);
 }
 .main {
   min-width: 0;
 }
 .top {
-  height: 70px;
+  height: 64px;
   border-bottom: 1px solid var(--line);
-  padding: 0 clamp(20px, 3.2vw, 56px);
+  padding: 0 clamp(20px, 3vw, 48px);
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   background: var(--surface);
+}
+.top-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
 }
 .breadcrumb,
 .host-label,
@@ -137,10 +138,15 @@
 .breadcrumb {
   color: var(--secondary-ink);
   font-size: 13px;
+  min-width: 0;
 }
 .breadcrumb b {
   font-weight: 580;
   color: var(--green-ink);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .host-label {
   font: 11px var(--mono);
@@ -150,7 +156,7 @@
   color: var(--icon);
 }
 .content {
-  max-width: 1510px;
+  max-width: 1440px;
   margin: auto;
-  padding: clamp(22px, 3vw, 48px) clamp(20px, 3.2vw, 56px) 20px;
+  padding: clamp(24px, 2.8vw, 44px) clamp(24px, 3vw, 48px) 32px;
 }

@@ -54,6 +54,8 @@
 }
 .brief-preview {
   background: var(--surface);
+  overflow-wrap: anywhere;
+  min-width: 0;
 }
 .brief-preview-label {
   display: flex;

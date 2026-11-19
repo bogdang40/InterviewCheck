@@ -1,14 +1,26 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AdminAccounts } from "./AdminAccounts";
+import { PasswordChangeForm } from "./PasswordChangeForm";
 import { integration, submit } from "@/lib/integrations";
+import { notifyAccountChanged } from "@/lib/useAccountStatus";
 
 type Account = { email: string; active: boolean; admin?: boolean };
 
-export function AccountConnection({ enabled, inviteRequired }: { enabled: boolean; inviteRequired?: boolean }) {
+export function AccountConnection({
+  enabled,
+  inviteRequired,
+  signedIn,
+}: {
+  enabled: boolean;
+  inviteRequired?: boolean;
+  signedIn?: boolean;
+}) {
   const [account, setAccount] = useState<Account | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -25,10 +37,13 @@ export function AccountConnection({ enabled, inviteRequired }: { enabled: boolea
     const data = await response.json();
     if (!response.ok) throw new Error(data.detail || "Could not load the account.");
     setAccount(data as Account);
+    notifyAccountChanged();
   }, []);
   useEffect(() => {
-    if (enabled) void refresh().catch(e => setError(e.message));
-  }, [enabled, refresh]);
+    if (enabled && signedIn !== false) {
+      void refresh().catch(e => setError(e.message));
+    }
+  }, [enabled, signedIn, refresh]);
 
   useEffect(() => {
     if (!account) return;
@@ -53,19 +68,31 @@ export function AccountConnection({ enabled, inviteRequired }: { enabled: boolea
     {!enabled ? <p className="muted">Local workspace. Enable embedded accounts or configure a remote access service to sign in.</p> :
       account ? <>
         <p>{account.email} · {account.active ? "Access active" : "Subscription required"}</p>
-        {plans.length > 0 ? <div className="row">
-          <label>Plan <select value={plan} onChange={e => setPlan(e.target.value)}>{plans.map(p => <option value={p} key={p}>{p === "annual" ? "Annual" : "Monthly"}</option>)}</select></label>
+        {plans.length > 0 ? <div className="row align-end">
+          <label className="field">Plan <select value={plan} onChange={e => setPlan(e.target.value)}>{plans.map(p => <option value={p} key={p}>{p === "annual" ? "Annual" : "Monthly"}</option>)}</select></label>
           <Button variant="outline" disabled={busy} onClick={() => act(() => billing("checkout"))}>Open checkout</Button>
           <Button variant="outline" disabled={busy} onClick={() => act(() => billing("portal"))}>Billing portal</Button>
         </div> : <p className="muted">Billing plans are unavailable.</p>}
         <div className="row">
           <Button variant="outline" disabled={busy} onClick={() => act(refresh)}>Refresh access</Button>
-          <Button variant="ghost" disabled={busy} onClick={() => act(async () => { await submit("logout"); setAccount(null); })}>Sign out</Button>
+          <Button variant="ghost" disabled={busy} onClick={() => act(async () => { await submit("logout"); setAccount(null); notifyAccountChanged(); })}>Sign out</Button>
         </div>
+        <PasswordChangeForm onRotated={next => setAccount(next)} />
+        {account.admin && <div className="panel inset spread">
+          <div>
+            <strong><ShieldCheck size={16} className="inline-icon" aria-hidden="true" /> Model and admin console</strong>
+            <p className="muted">Configure connected AI models, probe provider endpoints, and review audit logs.</p>
+          </div>
+          <Button asChild size="sm">
+            <Link href="/admin/">Open model admin panel</Link>
+          </Button>
+        </div>}
         {account.admin && <AdminAccounts />}
       </> : <form className="stack" onSubmit={e => { e.preventDefault(); void act(async () => {
-        setAccount(await submit<Account>("access/" + (signup ? "signup" : "login"), { email, password, ...(signup && invite ? {inviteCode: invite} : {}), ...(signup && adminSecret ? {adminSecret} : {}) }));
+        const next = await submit<Account>("access/" + (signup ? "signup" : "login"), { email, password, ...(signup && invite ? {inviteCode: invite} : {}), ...(signup && adminSecret ? {adminSecret} : {}) });
+        setAccount(next);
         setPassword(""); setInvite(""); setAdminSecret("");
+        notifyAccountChanged();
       }); }}>
         <label className="field">Operator email<Input type="email" autoComplete="username" required value={email} onChange={e => setEmail(e.target.value)} /></label>
         <label className="field">Password<Input type="password" minLength={10} required autoComplete={signup ? "new-password" : "current-password"}
@@ -77,6 +104,6 @@ export function AccountConnection({ enabled, inviteRequired }: { enabled: boolea
         <div className="row"><Button disabled={busy}>{signup ? "Create account" : "Sign in"}</Button>
           <Button type="button" variant="ghost" onClick={() => setSignup(!signup)}>{signup ? "Use existing account" : "Create an account"}</Button></div>
       </form>}
-    {error && <p role="alert" className="notice">{error}</p>}
+    {error && <p role="alert" className="error">{error}</p>}
   </section>;
 }
