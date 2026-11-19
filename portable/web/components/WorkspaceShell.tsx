@@ -14,6 +14,7 @@ Object.assign(pages, {
   "/interviews/new/": "New interview",
   "/interviews/review/": "Interview record",
   "/interviews/brief/": "Review brief",
+  "/interviews/compare/": "Compare candidates",
   "/sample/": "Sample review",
   "/trash/": "Trash",
   "/account/": "Account",
@@ -184,7 +185,7 @@ export default function WorkspaceShell({ children }: { children: React.ReactNode
               </nav>
             </div>
             <div className="header-tools">
-              <WorkspaceSearch />
+              <WorkspaceSearch isAdmin={isAdmin} />
               <Link className="account-link" href="/account/" aria-label="Account">
                 <UserRound size={16} aria-hidden="true" />
                 <span>Account</span>

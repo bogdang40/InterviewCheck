@@ -25,10 +25,10 @@ export function notifyAccountChanged() {
   }
 }
 
-export function useAccountStatus(trigger?: string): AccountState {
+export function useAccountStatus(trigger?: string, enabled = true): AccountState {
   const [status, setStatus] = useState<ProviderStatus | null>(null)
   const [account, setAccount] = useState<AccountSnapshot | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(enabled)
   const [tick, setTick] = useState(0)
 
   const refresh = useCallback(() => {
@@ -36,14 +36,19 @@ export function useAccountStatus(trigger?: string): AccountState {
   }, [])
 
   useEffect(() => {
+    if (!enabled) return
     function onAccountEvent() {
       setTick((n) => n + 1)
     }
     window.addEventListener(ACCOUNT_EVENT, onAccountEvent)
     return () => window.removeEventListener(ACCOUNT_EVENT, onAccountEvent)
-  }, [])
+  }, [enabled])
 
   useEffect(() => {
+    if (!enabled) {
+      setLoading(false)
+      return
+    }
     const controller = new AbortController()
     setLoading(true)
     fetch("/api/integrations/status", { cache: "no-store", signal: controller.signal })
