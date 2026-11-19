@@ -155,10 +155,12 @@ def test_m16_wcag_contrast_and_focus_rings_light_dark(e2e_workspace, desktop_pag
         page.get_by_role("radio", name=theme.capitalize()).check()
         expect(page.locator("html")).to_have_attribute("data-theme", theme)
         for route in routes:
-            page.goto(e2e_workspace.base_url + route, wait_until="domcontentloaded")
+            page.goto(e2e_workspace.base_url + route, wait_until="load")
+            expect(page.locator("html")).to_have_attribute("data-theme", theme)
             expect(page.locator("main#main-content")).to_be_visible()
             if route == "/admin/":
                 expect(page.get_by_role("tablist", name="Admin sections")).to_be_visible()
+            page.evaluate("() => (document.fonts ? document.fonts.ready : Promise.resolve())")
             _assert_route_contrast(page, route, theme)
 
         page.goto(e2e_workspace.base_url + "/", wait_until="domcontentloaded")
