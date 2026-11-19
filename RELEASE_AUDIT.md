@@ -1,7 +1,7 @@
 # InterviewCheck Release Audit (`RELEASE_AUDIT.md`)
 
-**Branch**: `feat/interviewcheck-production` (based on M9 commit `0246ed6adbce468822791271d683f9bb1c7949b2` plus M10 working tree fixes)  
-**Audit Date (UTC)**: `2026-11-19`  
+**Branch**: `feat/interviewcheck-production` (M0 through M26 release audit)
+**Audit Date (UTC)**: `2026-11-19`
 **Release Status**: `PASS` across static, Next.js production server (`start`), and Next.js development (`dev`) modes
 
 ## 1. Milestone Summary (M0 through M10)
@@ -87,11 +87,24 @@ Run from `/Users/abekhadra/Desktop/STARKTECH/InterviewCheck` with `PATH="/opt/ho
 
 ### Production Audit Aggregator (`scripts/run_production_audit.py --with-dr --json`)
 
-Run from repository root (`PYTHONPATH=portable portable/.venv/bin/python scripts/run_production_audit.py --with-dr --json`):
+Run from repository root (`PYTHONPATH=portable portable/.venv/bin/python scripts/run_production_audit.py --with-dr --json`), or include `--with-bundle` after `npm run export` to validate `portable/web/out/`:
 
 1. `source_size_backend`: `scripts/check-source-size.py` enforces `<= 400` lines across `portable/api`, `portable/tests`, `portable/qa`, `server/src`, `server/test`, and `scripts` (including splitting `portable/api/model_execution.py` policy/quota helpers into `portable/api/model_execution_policy.py`).
-2. `source_size_web_docs`: enforces `<= 400` lines across `portable/web/{app,components,lib}` and `docs/`.
-3. `zero_em_en_dashes`: verifies zero `\u2014` or `\u2013` characters across all first-party code, tests, scripts, and docs.
+2. `source_size_web_docs`: enforces `<= 400` lines across `portable/web/{app,components,lib}`, `docs/`, root markdown docs (`README.md`, `RELEASE_AUDIT.md`, `TEST_READY.md`, `TEST_INFRA.md`, `PLAN.md`), and web runtime/CSP configs (`inject-csp.mjs`, `web-runtime.mjs`, `next.config.ts`).
+3. `zero_em_en_dashes`: verifies zero `\u2014` or `\u2013` characters across all first-party code, tests, scripts, docs, and root text/config files.
 4. `deploy_config`: `scripts/check_deploy_config.py --json` validates compose, Caddy, Dockerfile, and `vm-rollout.sh`.
 5. `edge_security_asgi`: `scripts/verify_edge_security.py --asgi --json` verifies host, origin, CSRF, CORS, proxy-header, and security headers.
 6. `dr_drill`: `scripts/dr_drill.py --json` verifies `access.sqlite3` v8 parity, concurrent WAL backup/restore, key rotation, and probes.
+7. `web_bundle_budget` (`--with-bundle`): verifies every exported route in `portable/web/out/` has `< 600 KiB` (`614,400` B) initial ESM JS and zero `WebGLRenderer`/`framer-motion`/`MotionConfig`/`OrthographicCamera` or server secret markers in `_next/static/chunks/`.
+
+## 7. Final Release Summary (M23 through M26)
+
+| Milestone | Scope | Key Deliverables |
+|---|---|---|
+| M23 | Release hygiene & alert/calibration ops | `alert_history.py`, `calibration_queue.py`, `AlertDeliveryHistoryPanel.tsx`, `CalibrationQueuePanel.tsx`, `test_m23_release_hygiene.py` |
+| M24 | Diagnostics export, templates & assignments | `diagnostics_export.py`, `rubric_templates.py`, `session_assignment.py`, `RoleRubricTemplates.tsx`, `ArchiveAssignmentsStrip.tsx` |
+| M25 | Bulk assignments & fleet health timeline | Bulk assignment actions, `retention_policy.py` cold-import fix, `model_health_timeline.py`, `FleetHealthTimelinePanel.tsx` |
+| M26 | Visual rubric, mobile polish & audit hardening | 44px mobile touch-target CSS polish, `visual_rubric.py` + `m3_screenshot_pack.py`, `--with-bundle` audit, `test_m26_release_audit.py` |
+
+1. **Final Visual Rubric Coverage**: `portable/qa/visual_rubric.py` and `portable/qa/e2e_suite/test_m26_visual_rubric_all_surfaces_e2e.py` verify all `13` routes (including `/interviews/compare/` and `/admin/`), all `8` `/admin/` tabs (`Models`, `Accounts`, `Audit log`, `Diagnostics`, `Playground`, `Security`, `Prompts & SLA`, `Compliance`), and `WorkspaceSearch` across `1440x900` desktop and `390x844` mobile in `dark` and `light` themes (`>= 44px` mobile touch targets, `>= 4.5` heading/body/token contrast, `>= 3.0` control border contrast, zero overflow/clipping/overlaps/CSP/console errors).
+2. **Static Bundle & Audit Gate**: `PYTHONPATH=portable portable/.venv/bin/python scripts/run_production_audit.py --with-dr --with-bundle --json` enforces the `< 600 KiB` per-route ESM JS budget alongside backend/web/doc line limits, zero em/en dashes, deploy config, ASGI edge security, and DR v8 verification.

@@ -72,3 +72,13 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+@media (max-width: 680px) {
+  .actionsRow [data-slot="button"],
+  .formActions [data-slot="button"],
+  .sectionHead [data-slot="button"],
+  .userPickerRow [data-slot="button"],
+  .securityTab [data-slot="button"] {
+    min-height: 44px;
+    padding-inline: 12px;
+  }
+}

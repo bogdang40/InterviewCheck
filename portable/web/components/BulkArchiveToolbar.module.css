@@ -111,4 +111,5 @@
   .filterInputWrap, .tagInput, .tagGroup, .actions, .confirmControls { width: 100%; }
   .rowCheck { padding: 0 2px 0 12px; }
   .rowLink { padding-left: 8px; }
+  .chip { min-height: 44px; }
 }
