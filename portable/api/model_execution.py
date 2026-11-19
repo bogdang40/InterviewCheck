@@ -1,51 +1,28 @@
 """Resilient model chain execution with RPM quotas, retries, failover, and live telemetry."""
 import asyncio
 from collections.abc import Awaitable, Callable
-import math
 import sqlite3
-import threading
 import time
 from typing import Any
 
 from fastapi import HTTPException
 
-from . import model_budgets, model_resolver, model_telemetry, provider_http, ssrf_guard, store
+from . import model_budgets, model_circuit, model_resolver, model_telemetry, provider_http, ssrf_guard, store
 from .error_sanitizer import sanitize_error_text
+from .model_execution_policy import (
+    ModelQuotaLimiter,
+    QUOTA_LIMITER,
+    _clamped_retries,
+    _is_ssrf_error,
+    _rpm_limit,
+    _safe_finite_float,
+    _safe_timeout,
+    reset_quotas,
+)
 
 FAILOVER_STATUSES = frozenset({429, 502, 503, 504})
 _ORIG_RESOLVE_OR_503 = model_resolver.resolve_or_503
 _ORIG_DISPATCH_COMPLETION = model_resolver.dispatch_completion
-
-
-class ModelQuotaLimiter:
-    def __init__(self, window_seconds: int = 60) -> None:
-        self.window_seconds = window_seconds
-        self._lock = threading.Lock()
-        self._buckets: dict[str, tuple[int, float]] = {}
-
-    def consume(self, model_id: str, rpm_limit: int) -> None:
-        now = time.monotonic()
-        with self._lock:
-            count, start = self._buckets.get(model_id, (0, now))
-            elapsed = now - start
-            if elapsed >= self.window_seconds:
-                self._buckets[model_id] = (1, now)
-                return
-            if count >= rpm_limit:
-                retry_after = max(1, int(self.window_seconds - elapsed + 0.999))
-                raise HTTPException(429, "Model request rate quota exceeded.", headers={"Retry-After": str(retry_after)})
-            self._buckets[model_id] = (count + 1, start)
-
-    def reset(self) -> None:
-        with self._lock:
-            self._buckets.clear()
-
-
-QUOTA_LIMITER = ModelQuotaLimiter()
-
-
-def reset_quotas() -> None:
-    QUOTA_LIMITER.reset()
 
 
 def resolve_candidates(
@@ -76,15 +53,21 @@ def resolve_candidates(
     return chain
 
 
-def _is_ssrf_error(exc: BaseException) -> bool:
-    seen: set[int] = set()
-    cur: BaseException | None = exc
-    while cur is not None and id(cur) not in seen:
-        seen.add(id(cur))
-        if isinstance(cur, ssrf_guard.SSRFValidationError):
-            return True
-        cur = cur.__cause__ or cur.__context__
-    return False
+def _redact_target_secrets(text: str | None, target: model_resolver.ResolvedModel | None) -> str | None:
+    if not text or target is None:
+        return text
+    cleaned = str(text)
+    for attr in ("api_key", "signing_secret"):
+        secret = getattr(target, attr, None)
+        if isinstance(secret, str) and len(secret) >= 4 and secret in cleaned:
+            cleaned = cleaned.replace(secret, "[REDACTED]")
+    return cleaned
+
+
+def _sanitize_target_error(
+    text: str | None, fallback: str, target: model_resolver.ResolvedModel | None, *, max_len: int = 400
+) -> str:
+    return sanitize_error_text(_redact_target_secrets(text, target), fallback, max_len=max_len)
 
 
 def _record_outcome(
@@ -99,16 +82,18 @@ def _record_outcome(
 ) -> None:
     if target.id is None:
         return
+    safe_error = _redact_target_secrets(error, target) if (not ok and error) else error
     try:
         with store.connection(write=True) as db:
             model_telemetry.record_check(
                 db, target.id, source="live", ok=ok, http_status=http_status,
-                latency_ms=latency_ms, error=error, checked_at=store.timestamp(),
+                latency_ms=latency_ms, error=safe_error, checked_at=store.timestamp(),
             )
             model_budgets.record_usage(
                 db, target.id, input_tokens=input_tokens, output_tokens=output_tokens,
                 ok=ok, config=target.config,
             )
+            model_circuit.record_outcome(db, target.id, ok=ok, error=safe_error, secret=target.api_key)
     except (sqlite3.Error, OverflowError, ValueError):
         pass
 
@@ -135,40 +120,9 @@ async def _validate_target_endpoint(target: model_resolver.ResolvedModel, *, res
         if resolve_dns:
             await ssrf_guard.validate_endpoint_url_async(target.endpoint or "", provider=ssrf_provider, resolve_dns=True)
     except ssrf_guard.SSRFValidationError as exc:
-        detail = sanitize_error_text(str(exc), "Blocked unsafe provider endpoint.")
+        detail = _sanitize_target_error(str(exc), "Blocked unsafe provider endpoint.", target)
         _record_outcome(target, ok=False, http_status=400, latency_ms=0, error=detail)
         raise HTTPException(400, detail) from exc
-
-
-def _safe_finite_float(value: Any) -> float | None:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return None
-    try:
-        fval = float(value)
-    except (TypeError, ValueError, OverflowError):
-        return None
-    return fval if math.isfinite(fval) else None
-
-
-def _safe_timeout(raw: Any, *, default: float, low: float, high: float) -> float:
-    fval = _safe_finite_float(raw)
-    if fval is None:
-        return default
-    return min(max(fval, low), high)
-
-
-def _clamped_retries(target: model_resolver.ResolvedModel) -> int:
-    fval = _safe_finite_float(target.config.get("max_retries", 0))
-    if fval is None:
-        return 0
-    return min(max(int(fval), 0), 3)
-
-
-def _rpm_limit(target: model_resolver.ResolvedModel) -> int | None:
-    raw = target.config.get("rpm_limit")
-    if isinstance(raw, bool) or not isinstance(raw, int) or raw < 1:
-        return None
-    return raw
 
 
 async def _run_chain(
@@ -183,14 +137,26 @@ async def _run_chain(
     )
     last_exc: HTTPException | None = None
     budget_blocked = False
+    circuit_retry_after: int | None = None
     for target in candidates:
         decision = _check_target_budget(target)
         if decision is not None and not decision.allowed:
             budget_blocked = True
             continue
+        c_decision = model_circuit.check_target(target.id)
+        if c_decision is not None and not c_decision.allowed:
+            wait_s = max(1, int(c_decision.retry_after_s or 1))
+            circuit_retry_after = wait_s if circuit_retry_after is None else min(circuit_retry_after, wait_s)
+            continue
         retries = _clamped_retries(target)
         rpm_limit = _rpm_limit(target)
         for attempt in range(retries + 1):
+            if attempt > 0:
+                retry_circuit = model_circuit.check_target(target.id)
+                if retry_circuit is not None and not retry_circuit.allowed:
+                    wait_s = max(1, int(retry_circuit.retry_after_s or 1))
+                    circuit_retry_after = wait_s if circuit_retry_after is None else min(circuit_retry_after, wait_s)
+                    break
             await _validate_target_endpoint(target, resolve_dns=real_transport)
             if target.id is not None and rpm_limit is not None:
                 try:
@@ -211,7 +177,7 @@ async def _run_chain(
                 result = await call_fn(target, _record_tokens)
             except ssrf_guard.SSRFValidationError as exc:
                 elapsed = int((time.monotonic() - started) * 1000)
-                detail = sanitize_error_text(str(exc), "Blocked unsafe provider endpoint.")
+                detail = _sanitize_target_error(str(exc), "Blocked unsafe provider endpoint.", target)
                 _record_outcome(
                     target, ok=False, http_status=400, latency_ms=elapsed, error=detail,
                     input_tokens=usage_holder[0], output_tokens=usage_holder[1],
@@ -219,14 +185,15 @@ async def _run_chain(
                 raise HTTPException(400, detail) from exc
             except HTTPException as exc:
                 elapsed = int((time.monotonic() - started) * 1000)
-                detail = sanitize_error_text(str(exc.detail), "Provider call failed.")
+                detail = _sanitize_target_error(str(exc.detail), "Provider call failed.", target)
                 _record_outcome(
                     target, ok=False, http_status=exc.status_code, latency_ms=elapsed, error=detail,
                     input_tokens=usage_holder[0], output_tokens=usage_holder[1],
                 )
+                safe_exc = HTTPException(exc.status_code, detail, headers=getattr(exc, "headers", None))
                 if _is_ssrf_error(exc) or exc.status_code not in FAILOVER_STATUSES:
-                    raise
-                last_exc = exc
+                    raise safe_exc from exc
+                last_exc = safe_exc
                 if attempt < retries:
                     await asyncio.sleep(min(0.2 * (attempt + 1), 0.5))
                     continue
@@ -239,8 +206,15 @@ async def _run_chain(
             return target, result
     if budget_blocked:
         raise HTTPException(429, "Model budget ceiling reached.")
-    assert last_exc is not None
-    raise last_exc
+    if last_exc is not None:
+        raise last_exc
+    if circuit_retry_after is not None:
+        raise HTTPException(
+            503,
+            "All configured models are temporarily circuit-open.",
+            headers={"Retry-After": str(circuit_retry_after)},
+        )
+    raise HTTPException(503, "No configured model could complete the request.")
 
 
 def _dispatch_kwargs(record_tokens: Callable[[int, int], None]) -> dict[str, Any]:

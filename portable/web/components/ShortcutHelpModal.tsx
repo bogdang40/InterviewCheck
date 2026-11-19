@@ -27,6 +27,12 @@ const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
   {
     heading: "Review workbench & admin console",
     items: [
+      { keys: ["j"], description: "Select the next interview exchange" },
+      { keys: ["k"], description: "Select the previous interview exchange" },
+      { keys: ["n"], description: "Jump to the next pending match" },
+      { keys: ["e"], description: "Set review outcome to Explained (click Save review to persist)" },
+      { keys: ["u"], description: "Set review outcome to Unresolved (click Save review to persist)" },
+      { keys: ["f"], description: "Focus the interviewer note field" },
       { keys: ["ArrowUp", "ArrowDown"], description: "Step between interview questions in the navigator" },
       { keys: ["ArrowLeft", "ArrowRight"], description: "Switch tabs in the Model Admin console" },
       { keys: ["Home", "End"], description: "Jump to the first or last question or admin tab" },
