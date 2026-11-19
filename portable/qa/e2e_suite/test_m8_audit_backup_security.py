@@ -222,13 +222,17 @@ def test_m8_backup_checksum_ui_and_tamper_rejection(e2e_workspace, desktop_page,
     monkeypatch.setenv("INTERVIEWCHECK_DB", str(target_db))
 
     page, collector = desktop_page
-    page.goto(e2e_workspace.base_url + "/data/", wait_until="domcontentloaded")
-    page.get_by_label("Workspace backup file").set_input_files(backup_file)
+    page.goto(e2e_workspace.base_url + "/data/", wait_until="networkidle")
+    backup_input = page.get_by_label("Workspace backup file")
+    expect(backup_input).to_have_attribute("data-hydrated", "true")
+    backup_input.set_input_files(backup_file)
     sha_input = page.get_by_label("Expected SHA-256 checksum (optional)")
 
     # Mismatched checksum on Preview -> explicit 409 role="alert" without restoring records.
     sha_input.fill("0" * 64)
-    page.get_by_role("button", name="Preview restore").click()
+    preview_btn = page.get_by_role("button", name="Preview restore")
+    expect(preview_btn).to_be_enabled()
+    preview_btn.click()
     expect(page.locator('p[role="alert"]')).to_contain_text("does not match")
     with e2e_workspace.client() as c:
         assert c.get("/api/sessions").json() == []
@@ -268,7 +272,8 @@ def test_m8_backup_checksum_ui_and_tamper_rejection(e2e_workspace, desktop_page,
     tamper_db = tmp_path / "tamper_target.sqlite"
     store.initialize(tamper_db)
     monkeypatch.setenv("INTERVIEWCHECK_DB", str(tamper_db))
-    page.reload(wait_until="domcontentloaded")
+    page.reload(wait_until="networkidle")
+    expect(backup_input).to_have_attribute("data-hydrated", "true")
 
     nested = {"leaf": 1}
     for _ in range(16):

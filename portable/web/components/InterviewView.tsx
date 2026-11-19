@@ -28,6 +28,7 @@ import QuestionNavigator, { needsReview, nextPending } from "./QuestionNavigator
 const ATSNote = dynamic(() => import("./ATSNote"), { ssr: false })
 const LocalRecordingPlayback = dynamic(() => import("./LocalRecordingPlayback"), { ssr: false })
 const TranscriptBatchImport = dynamic(() => import("./TranscriptBatchImport"), { ssr: false })
+const SessionScorecardPanel = dynamic(() => import("./SessionScorecardPanel"), { ssr: false })
 
 type Props = {
   session: Interview
@@ -315,6 +316,7 @@ export default function InterviewView({ session, answerId, changed, onTransition
           </div>
         </div>
       </fieldset>
+      <SessionScorecardPanel key={`scorecard-${session.id}`} sessionId={session.id} />
       {!dirty.size && <ATSNote key={session.id} session={session} />}
       <div className="record-management"><MoveToTrash sessionId={session.id} candidate={session.candidate} disabled={blocked}/></div>
     </>

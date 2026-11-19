@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react"
+import dynamic from "next/dynamic"
 import { Plus, Trash2, ScanText } from "lucide-react"
 import { api, message, DraftConflict, type Draft, type QuestionOrigin, RevisionConflict, type Answer, type Interview, type Source } from "@/lib/api"
 import { Button } from "./ui/button"
@@ -6,24 +7,18 @@ import { Input } from "./ui/input"
 import { Textarea } from "./ui/textarea"
 import Authoring from "./Authoring"
 import LiveComparison from "./LiveComparison"
-import Capture from "./Capture"
 import { DraftConflictView } from "./SavedDraft"
-import ConflictReview from "./ConflictReview"
 import TranscriptImport from "./TranscriptImport"
 import { noQuestionOrigin, originOf, OriginPicker } from "./QuestionLineage"
+import { editorDraftKey, formatDraftTimestamp, useLocalDraftRecovery } from "@/lib/localDraftBuffer"
+
+const Capture = dynamic(() => import("./Capture"), { ssr: false })
+const ConflictReview = dynamic(() => import("./ConflictReview"), { ssr: false })
 
 const emptySource = () => ({ label: "", text: "", permitted: false })
 export default function AnswerEditor({
-  session,
-  onDirty,
-  initial: original,
-  firstQuestion = "",
-  firstOrigin,
-  draft: resumed,
-  onDraftSaved,
-  onSave,
-  onCancel,
-  embeddingAvailable,
+  session, onDirty, initial: original, firstQuestion = "", firstOrigin,
+  draft: resumed, onDraftSaved, onSave, onCancel, embeddingAvailable,
 }: {
   session: Interview
   onDirty: (id: string, value: boolean) => void
@@ -50,58 +45,88 @@ export default function AnswerEditor({
   const [generating, setGenerating] = useState(false)
   const [busy, setBusy] = useState("")
   const [error, setError] = useState("")
+  const serverRevision = initial?.revision ?? baseline?.revision
   const savedOrigin = originOf(initial || baseline)
-  const dirty =
-    origin.parent_answer_id !== savedOrigin.parent_answer_id || origin.planned_slot !== savedOrigin.planned_slot ||
+  const sourcesJson = JSON.stringify(sources)
+  const contentDirty =
+    (origin.parent_answer_id ?? null) !== (savedOrigin.parent_answer_id ?? null) ||
+    (origin.planned_slot ?? null) !== (savedOrigin.planned_slot ?? null) ||
     question !== (initial?.question ?? baseline?.question ?? "") ||
     answer !== (initial?.answer ?? baseline?.answer ?? "") ||
-    JSON.stringify(sources) !== JSON.stringify(initial?.references ?? baseline?.references ?? []) ||
-    draftConflict || conflict ||
-    capturePending ||
-    generating ||
-    !!busy
+    sourcesJson !== JSON.stringify(initial?.references ?? baseline?.references ?? [])
+  const dirty = contentDirty || draftConflict || conflict || capturePending || generating || !!busy
   useEffect(() => {
     onDirty("editor", dirty)
     return () => onDirty("editor", false)
   }, [onDirty, dirty])
-  function setQuestion(value: string) {
+  const snapshot = JSON.stringify([question, answer, sources, origin.parent_answer_id ?? null, origin.planned_slot ?? null])
+  const { recovered, clear: clearLocalBuffer, markRestored } = useLocalDraftRecovery(
+    editorDraftKey(session.id, initial?.id), contentDirty, snapshot,
+    () => ({ text: answer, question, sources, origin, answerId: initial?.id, baseRevision: serverRevision }),
+    (b) => {
+      if ((b.answerId ?? null) !== (initial?.id ?? null)) return true
+      const sQ = initial?.question ?? baseline?.question ?? "", sA = initial?.answer ?? baseline?.answer ?? ""
+      const sS = initial?.references ?? baseline?.references ?? [], bo = b.origin ?? savedOrigin
+      return b.text === sA && (b.question ?? sQ) === sQ &&
+        JSON.stringify(b.sources ?? sS) === JSON.stringify(sS) &&
+        (bo.parent_answer_id ?? null) === (savedOrigin.parent_answer_id ?? null) &&
+        (bo.planned_slot ?? null) === (savedOrigin.planned_slot ?? null)
+    },
+  )
+  const restoreLocalDraft = () => {
+    if (!recovered) return
     authoringVersion.current += 1
-    writeQuestion(value)
+    if (recovered.question !== undefined) writeQuestion(recovered.question)
+    setAnswer(recovered.text)
+    if (recovered.sources !== undefined) setSources(recovered.sources)
+    if (recovered.origin !== undefined) setOrigin(recovered.origin)
+    markRestored()
   }
-  function change(index: number, update: Partial<Source>) {
-    setSources((s) => s.map((r, i) => (i === index ? { ...r, ...update } : r)))
-  }
+  const setQuestion = (value: string) => { authoringVersion.current += 1; writeQuestion(value) }
+  const change = (index: number, update: Partial<Source>) => setSources((s) => s.map((r, i) => (i === index ? { ...r, ...update } : r)))
   async function park() {
     if(capturePending || generating || busy || draftConflict) return
     setBusy("draft");setError("")
     try{
       const saved=await api<Draft>("sessions/"+session.id+"/draft","PUT",{id,question,answer,references:sources,...origin,expected_revision:baseline?.revision??0})
-      onDraftSaved(saved)
+      clearLocalBuffer(); onDraftSaved(saved)
     }catch(e){if(e instanceof DraftConflict)setDraftConflict(true);else setError(message(e))}finally{setBusy("")}
   }
   async function submit(e: FormEvent) {
     e.preventDefault()
     if (capturePending || generating || busy || conflict || draftConflict) return
-    setBusy("save")
-    setError("")
+    setBusy("save"); setError("")
     try {
       const path = baseline ? `sessions/${session.id}/draft/publish` : `sessions/${session.id}/answers` + (initial ? `/${initial.id}` : "")
-      onSave(await api<Answer>(path, initial ? "PUT" : "POST", { id, question, answer, references: sources, ...origin,
-        ...(initial || baseline ? { expected_revision: (initial || baseline)?.revision } : {}) }))
+      const saved = await api<Answer>(path, initial ? "PUT" : "POST", { id, question, answer, references: sources, ...origin,
+        ...(initial || baseline ? { expected_revision: (initial || baseline)?.revision } : {}) })
+      clearLocalBuffer(); onSave(saved)
     } catch (e) {
       if(e instanceof DraftConflict) setDraftConflict(true)
       else if (e instanceof RevisionConflict) setConflict(true)
       else setError(message(e))
-    } finally {
-      setBusy("")
-    }
+    } finally { setBusy("") }
   }
+  const stale = recovered && recovered.baseRevision !== undefined && recovered.baseRevision !== serverRevision
   return (
     <section className="panel form-panel">
       <div className="form-heading">
         <span className="eyebrow">CAPTURE</span>
         <h2>{initial ? "Edit exchange" : "Add an exchange"}</h2>
       </div>
+      {recovered && (
+        <section className="notice stack" role="region" aria-label="Local draft recovery" style={{ marginBottom: "14px" }}>
+          <div className="spread">
+            <strong>Unsaved local edits found</strong>
+            <small>Saved <time dateTime={recovered.savedAt}>{formatDraftTimestamp(recovered.savedAt)}</time></small>
+          </div>
+          {stale && <p className="error" role="status">Server revision changed ({serverRevision ?? "none"}) since base revision {recovered.baseRevision}.</p>}
+          <div className="row">
+            <Button type="button" size="sm" variant="outline" onClick={restoreLocalDraft}>Restore local edits</Button>
+            <Button type="button" size="sm" variant="ghost" onClick={clearLocalBuffer}>Discard local copy</Button>
+          </div>
+        </section>
+      )}
       <form className="stack" onSubmit={submit}>
         <fieldset className="editor-fields stack" disabled={!!busy}>
 
@@ -222,7 +247,7 @@ export default function AnswerEditor({
         {conflict && initial && <ConflictReview sessionId={session.id} answerId={id} resolve={(latest, keepDraft) => {
           setInitial(latest)
           setConflict(false)
-          if (!keepDraft) onSave(latest)
+          if (!keepDraft) { clearLocalBuffer(); onSave(latest) }
         }} />}
         {error && (
           <p className="error" role="alert">
@@ -231,7 +256,7 @@ export default function AnswerEditor({
         )}
         {draftConflict && <DraftConflictView sessionId={session.id} resolve={(latest,keep)=>{
           setBaseline(latest??undefined);setId(latest?.id??crypto.randomUUID());setDraftConflict(false)
-          if(latest && !keep){setQuestion(latest.question);setAnswer(latest.answer);setSources(latest.references);setOrigin(originOf(latest))}
+          if(latest && !keep){writeQuestion(latest.question);setAnswer(latest.answer);setSources(latest.references);setOrigin(originOf(latest));clearLocalBuffer()}
         }}/>}
         <div className="row">
           <Button disabled={!!busy || generating || capturePending || conflict || draftConflict}>
@@ -246,6 +271,7 @@ export default function AnswerEditor({
               variant="ghost"
               disabled={capturePending || generating || !!busy}
               onClick={() => {
+                clearLocalBuffer()
                 if (initial && original && initial.revision > original.revision) onSave(initial)
                 else onCancel()
               }}

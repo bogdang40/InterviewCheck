@@ -1,0 +1,265 @@
+"""Per-session rubric scorecards and structured panel handoff notes."""
+from typing import Any, Literal
+from uuid import UUID, uuid4
+import json
+import sqlite3
+
+from fastapi import APIRouter, HTTPException, Request
+from pydantic import Field, field_validator
+
+from . import access, prompt_framing, store
+from .models import Input
+
+router = APIRouter()
+
+HandoffCategory = Literal["observation", "follow_up", "decision", "concern"]
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS session_scorecards (
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  criterion_id TEXT NOT NULL,
+  criterion_label TEXT NOT NULL,
+  weight INTEGER NOT NULL DEFAULT 1,
+  rating INTEGER NOT NULL CHECK(rating BETWEEN 1 AND 5),
+  rationale TEXT NOT NULL DEFAULT '',
+  updated_by TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (session_id, criterion_id)
+);
+CREATE TABLE IF NOT EXISTS session_handoff_notes (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  author_email TEXT NOT NULL,
+  category TEXT NOT NULL CHECK(category IN ('observation','follow_up','decision','concern')),
+  body TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_handoff_notes_session
+  ON session_handoff_notes(session_id, created_at DESC, id DESC);
+"""
+
+
+def migrate(db: sqlite3.Connection) -> None:
+    db.executescript(SCHEMA)
+
+
+class ScorecardItemInput(Input):
+    criterion_id: str = Field(min_length=1, max_length=256)
+    criterion_label: str = Field(min_length=1, max_length=500)
+    weight: int = Field(default=1, ge=1, le=100)
+    rating: int = Field(ge=1, le=5)
+    rationale: str = Field(default="", max_length=2000)
+
+    @field_validator("criterion_id", "criterion_label", mode="after")
+    @classmethod
+    def clean_identifier(cls, value: str) -> str:
+        cleaned = prompt_framing.strip_control_chars(value, allow_newlines=False).strip()
+        if not cleaned:
+            raise ValueError("Criterion field cannot be empty.")
+        return cleaned
+
+    @field_validator("rationale", mode="after")
+    @classmethod
+    def clean_rationale(cls, value: str) -> str:
+        cleaned = prompt_framing.strip_control_chars(value, allow_newlines=True).strip()
+        if len(cleaned) > 2000:
+            raise ValueError("Rationale exceeds 2000 characters.")
+        return cleaned
+
+
+class ScorecardSaveInput(Input):
+    items: list[ScorecardItemInput] = Field(max_length=25)
+
+    @field_validator("items")
+    @classmethod
+    def require_unique_criteria(cls, value: list[ScorecardItemInput]) -> list[ScorecardItemInput]:
+        seen: set[str] = set()
+        for item in value:
+            if item.criterion_id in seen:
+                raise ValueError("Duplicate criterion_id values are not permitted.")
+            seen.add(item.criterion_id)
+        return value
+
+
+class HandoffNoteInput(Input):
+    category: HandoffCategory
+    body: str = Field(min_length=1, max_length=2000)
+
+    @field_validator("body", mode="after")
+    @classmethod
+    def clean_body(cls, value: str) -> str:
+        cleaned = prompt_framing.strip_control_chars(value, allow_newlines=True).strip()
+        if not cleaned:
+            raise ValueError("Handoff note body cannot be empty.")
+        if len(cleaned) > 2000:
+            raise ValueError("Handoff note body exceeds 2000 characters.")
+        return cleaned
+
+
+def _roles_have_rubric(db: sqlite3.Connection) -> bool:
+    return any(col[1] == "rubric_json" for col in db.execute("PRAGMA table_info(roles)"))
+
+
+def _load_role_rubric(db: sqlite3.Connection, session_id: str) -> list[dict[str, Any]]:
+    if not _roles_have_rubric(db):
+        return []
+    row = db.execute(
+        "SELECT r.rubric_json FROM session_context c JOIN roles r ON r.id=c.role_id WHERE c.session_id=?",
+        (session_id,),
+    ).fetchone()
+    if row is None or not row["rubric_json"]:
+        return []
+    try:
+        raw = json.loads(row["rubric_json"])
+    except (ValueError, TypeError):
+        return []
+    if not isinstance(raw, list):
+        return []
+    criteria: list[dict[str, Any]] = []
+    for idx, entry in enumerate(raw, 1):
+        if not isinstance(entry, dict):
+            continue
+        label = str(entry.get("criterion") or entry.get("criterion_label") or "").strip()
+        if not label:
+            continue
+        cid = str(entry.get("id") or entry.get("criterion_id") or "").strip() or f"rubric-{idx}"
+        try:
+            weight = max(1, min(100, int(entry.get("weight", 1))))
+        except (TypeError, ValueError):
+            weight = 1
+        criteria.append({"criterion_id": cid, "criterion_label": label, "weight": weight})
+    return criteria
+
+
+def _compute_weighted_score_pct(items: list[dict[str, Any]]) -> float | None:
+    weighted_sum = 0
+    total_weight = 0
+    for item in items:
+        rating = item.get("rating")
+        weight = item.get("weight", 0)
+        if isinstance(rating, int) and 1 <= rating <= 5 and isinstance(weight, int) and weight > 0:
+            weighted_sum += rating * weight
+            total_weight += weight
+    if total_weight <= 0:
+        return None
+    return round((weighted_sum / (total_weight * 5)) * 100, 1)
+
+
+def _load_scorecard_state(db: sqlite3.Connection, session_id: str) -> dict[str, Any]:
+    store.get_summary(db, session_id)
+    saved_rows = db.execute(
+        """SELECT criterion_id, criterion_label, weight, rating, rationale, updated_by, updated_at
+           FROM session_scorecards WHERE session_id=? ORDER BY rowid""",
+        (session_id,),
+    ).fetchall()
+    saved_by_id = {row["criterion_id"]: dict(row) for row in saved_rows}
+    items: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for crit in _load_role_rubric(db, session_id):
+        cid = crit["criterion_id"]
+        if cid in seen:
+            continue
+        seen.add(cid)
+        saved = saved_by_id.get(cid)
+        if saved is not None:
+            items.append(saved)
+        else:
+            items.append({
+                "criterion_id": cid,
+                "criterion_label": crit["criterion_label"],
+                "weight": crit["weight"],
+                "rating": None,
+                "rationale": "",
+                "updated_by": None,
+                "updated_at": None,
+            })
+    for row in saved_rows:
+        cid = row["criterion_id"]
+        if cid not in seen:
+            seen.add(cid)
+            items.append(dict(row))
+    notes = [
+        dict(row)
+        for row in db.execute(
+            """SELECT id, session_id, author_email, category, body, created_at
+               FROM session_handoff_notes WHERE session_id=? ORDER BY created_at DESC, id DESC""",
+            (session_id,),
+        ).fetchall()
+    ]
+    return {
+        "session_id": session_id,
+        "items": items,
+        "weighted_score_pct": _compute_weighted_score_pct(items),
+        "handoff_notes": notes,
+    }
+
+
+@router.get("/sessions/{sid}/scorecard")
+def get_scorecard(sid: UUID):
+    with store.connection() as db:
+        return _load_scorecard_state(db, str(sid))
+
+
+@router.put("/sessions/{sid}/scorecard")
+async def save_scorecard(sid: UUID, payload: ScorecardSaveInput, request: Request):
+    key = str(sid)
+    _, actor_email = await access.optional_actor(request)
+    now = store.timestamp()
+    with store.connection(write=True) as db:
+        store.get_summary(db, key)
+        db.execute("DELETE FROM session_scorecards WHERE session_id=?", (key,))
+        for item in payload.items:
+            db.execute(
+                """INSERT INTO session_scorecards(
+                       session_id, criterion_id, criterion_label, weight, rating, rationale, updated_by, updated_at
+                   ) VALUES (?,?,?,?,?,?,?,?)""",
+                (
+                    key,
+                    item.criterion_id,
+                    item.criterion_label,
+                    item.weight,
+                    item.rating,
+                    item.rationale,
+                    actor_email,
+                    now,
+                ),
+            )
+        return _load_scorecard_state(db, key)
+
+
+@router.post("/sessions/{sid}/handoff-notes", status_code=201)
+async def create_handoff_note(sid: UUID, payload: HandoffNoteInput, request: Request):
+    key = str(sid)
+    _, actor_email = await access.optional_actor(request)
+    note_id = str(uuid4())
+    created_at = store.timestamp()
+    with store.connection(write=True) as db:
+        store.get_summary(db, key)
+        db.execute(
+            """INSERT INTO session_handoff_notes(id, session_id, author_email, category, body, created_at)
+               VALUES (?,?,?,?,?,?)""",
+            (note_id, key, actor_email, payload.category, payload.body, created_at),
+        )
+    return {
+        "id": note_id,
+        "session_id": key,
+        "author_email": actor_email,
+        "category": payload.category,
+        "body": payload.body,
+        "created_at": created_at,
+    }
+
+
+@router.delete("/sessions/{sid}/handoff-notes/{nid}")
+def delete_handoff_note(sid: UUID, nid: UUID):
+    key = str(sid)
+    note_id = str(nid)
+    with store.connection(write=True) as db:
+        store.get_summary(db, key)
+        cur = db.execute(
+            "DELETE FROM session_handoff_notes WHERE id=? AND session_id=?",
+            (note_id, key),
+        )
+        if cur.rowcount == 0:
+            raise HTTPException(404, "Handoff note does not exist in this session.")
+    return {"deleted": True, "id": note_id}
