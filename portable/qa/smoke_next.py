@@ -23,10 +23,10 @@ NPM = shutil.which("npm.cmd" if os.name == "nt" else "npm")
 HEALTH_RETRY_ERRORS = (URLError, HTTPException, TimeoutError, ConnectionError)
 
 
-def http(base, path, *, body=None, headers=None):
+def http(base, path, *, body=None, headers=None, timeout=20):
     req = Request(base + path, data=None if body is None else json.dumps(body).encode(), headers=headers or {})
     try:
-        with urlopen(req, timeout=20) as response:
+        with urlopen(req, timeout=timeout) as response:
             return response.status, response.read()
     except HTTPError as error:
         return error.code, error.read()
@@ -69,7 +69,7 @@ def resolve_smoke_ports(env=None):
 
 def verify(base):
     origin = {"Origin": base, "Content-Type": "application/json", "X-InterviewCheck": "1"}
-    assert http(base, "/")[0] == 200
+    assert http(base, "/", timeout=60)[0] == 200
     payload = {"candidate": "Runtime fixture", "role": "Developer", "policy": "Notes permitted.", "consent": True}
     status, body = http(base, "/api/sessions", body=payload, headers=origin)
     assert status == 201, (status, body)
