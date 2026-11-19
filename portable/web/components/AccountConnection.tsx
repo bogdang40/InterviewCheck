@@ -9,6 +9,7 @@ import { AccountSecurityPanel } from "./AccountSecurityPanel";
 import { AdminAccounts } from "./AdminAccounts";
 import { PasswordChangeForm } from "./PasswordChangeForm";
 import { integration, submit } from "@/lib/integrations";
+import { submitAccessAuth } from "@/lib/totpApi";
 import { notifyAccountChanged } from "@/lib/useAccountStatus";
 
 type Account = { email: string; active: boolean; admin?: boolean };
@@ -25,6 +26,8 @@ export function AccountConnection({
   const [account, setAccount] = useState<Account | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [totpCode, setTotpCode] = useState("");
+  const [totpRequired, setTotpRequired] = useState(false);
   const [invite, setInvite] = useState("");
   const [plans, setPlans] = useState<string[]>([]);
   const [adminSecret, setAdminSecret] = useState("");
@@ -97,20 +100,45 @@ export function AccountConnection({
         </div>}
         {account.admin && <AdminAccounts />}
       </> : <form className="stack" onSubmit={e => { e.preventDefault(); void act(async () => {
-        const next = await submit<Account>("access/" + (signup ? "signup" : "login"), { email, password, ...(signup && invite ? {inviteCode: invite} : {}), ...(signup && adminSecret ? {adminSecret} : {}) });
-        setAccount(next);
-        setPassword(""); setInvite(""); setAdminSecret("");
+        if (!signup && totpRequired && !totpCode.trim()) {
+          throw new Error("Enter your 6-digit authenticator code or backup code.");
+        }
+        const res = await submitAccessAuth<Account>(signup ? "signup" : "login", {
+          email,
+          password,
+          ...(!signup && totpRequired && totpCode.trim() ? { totpCode: totpCode.trim() } : {}),
+          ...(signup && invite ? { inviteCode: invite } : {}),
+          ...(signup && adminSecret ? { adminSecret } : {}),
+        });
+        if (!res.ok) {
+          setTotpRequired(true);
+          setTotpCode("");
+          return;
+        }
+        setAccount(res.account);
+        setPassword(""); setTotpCode(""); setTotpRequired(false); setInvite(""); setAdminSecret("");
         notifyAccountChanged();
       }); }}>
-        <label className="field">Operator email<Input type="email" autoComplete="username" required value={email} onChange={e => setEmail(e.target.value)} /></label>
+        <label className="field">Operator email<Input type="email" autoComplete="username" required value={email} onChange={e => {
+          setEmail(e.target.value);
+          if (totpRequired) { setTotpRequired(false); setTotpCode(""); }
+        }} /></label>
         <label className="field">Password<Input type="password" minLength={10} required autoComplete={signup ? "new-password" : "current-password"}
           value={password} onChange={e => setPassword(e.target.value)} /></label>
+        {!signup && totpRequired && (
+          <div className="panel inset stack">
+            <p role="status" className="notice">Two-factor authentication is required. Enter a 6-digit authenticator code or a single-use backup code.</p>
+            <label className="field">Authenticator or backup code
+              <Input type="text" autoComplete="one-time-code" required placeholder="123456 or XXXX-XXXX" value={totpCode} onChange={e => setTotpCode(e.target.value)} />
+            </label>
+          </div>
+        )}
         {signup && inviteRequired && <label className="field">Invitation code<Input type="password" required
           autoComplete="off" value={invite} onChange={e => setInvite(e.target.value)} /></label>}
         {signup && <details><summary>Administrator setup</summary><label className="field">Bootstrap secret<Input type="password"
           autoComplete="off" value={adminSecret} onChange={e => setAdminSecret(e.target.value)} /></label></details>}
-        <div className="row"><Button disabled={busy}>{signup ? "Create account" : "Sign in"}</Button>
-          <Button type="button" variant="ghost" onClick={() => setSignup(!signup)}>{signup ? "Use existing account" : "Create an account"}</Button></div>
+        <div className="row"><Button disabled={busy}>{signup ? "Create account" : totpRequired ? "Verify and sign in" : "Sign in"}</Button>
+          <Button type="button" variant="ghost" onClick={() => { setSignup(!signup); setTotpRequired(false); setTotpCode(""); setError(""); }}>{signup ? "Use existing account" : "Create an account"}</Button></div>
       </form>}
     {error && <p role="alert" className="error">{error}</p>}
   </section>;

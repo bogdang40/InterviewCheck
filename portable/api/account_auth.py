@@ -10,7 +10,7 @@ from uuid import uuid4
 from fastapi import HTTPException
 from pydantic import BaseModel, Field, SecretStr, field_validator
 
-from . import account_db as store
+from . import account_db as store, totp_service
 
 IP_WINDOW_MS = 60_000
 EMAIL_WINDOW_MS = 15 * 60_000
@@ -23,6 +23,7 @@ class Login(BaseModel):
     deviceName: str = Field(default="", max_length=120)
     adminSecret: SecretStr | None = Field(default=None, max_length=200)
     inviteCode: SecretStr | None = Field(default=None, max_length=200)
+    totpCode: str | None = Field(default=None, max_length=32)
 
     @field_validator("email")
     @classmethod
@@ -67,13 +68,18 @@ def limit(address):
         raise HTTPException(429, "Too many sign in attempts. Try again in a minute.")
 
 
+def _record_email_failure(db, email: str, ts: int) -> None:
+    db.execute("DELETE FROM login_email_windows WHERE start <= ?", (ts - EMAIL_WINDOW_MS,))
+    db.execute("INSERT INTO login_email_windows(email,start,hits) VALUES(?,?,1) ON CONFLICT(email) DO UPDATE SET hits=hits+1", (email, ts))
+
+
 def _email_window(email: str, *, record: bool = False) -> None:
     ts = store.now()
     with store.connection(write=True) as db:
-        db.execute("DELETE FROM login_email_windows WHERE start <= ?", (ts - EMAIL_WINDOW_MS,))
         if record:
-            db.execute("INSERT INTO login_email_windows(email,start,hits) VALUES(?,?,1) ON CONFLICT(email) DO UPDATE SET hits=hits+1", (email, ts))
+            _record_email_failure(db, email, ts)
             return
+        db.execute("DELETE FROM login_email_windows WHERE start <= ?", (ts - EMAIL_WINDOW_MS,))
         row = db.execute("SELECT hits FROM login_email_windows WHERE email=?", (email,)).fetchone()
     if row and row["hits"] >= MAX_LOGIN_ATTEMPTS:
         raise HTTPException(429, "Too many sign in attempts. Try again later.")
@@ -111,15 +117,35 @@ def sign_in(action, form, address, *, public_signup=False):
     if not (row and valid):
         _email_window(form.email, record=True)
         raise HTTPException(401, "Email or password is incorrect.")
+    invalid_totp = False
     with store.connection(write=True) as db:
         ts = store.now()
-        result = db.execute("UPDATE users SET last_login_at=?,updated_at=? WHERE id=? AND disabled=0",
-                            (ts, ts, row["id"]))
-        if not result.rowcount:
+        user = db.execute("SELECT id,disabled FROM users WHERE id=?", (row["id"],)).fetchone()
+        if not user or user["disabled"]:
             raise HTTPException(403, "Account is disabled.")
-        db.execute("DELETE FROM login_email_windows WHERE email=?", (form.email,))
-        store.audit(db, "auth.login", row["id"], row["id"])
-        return new_session(db, row["id"], form.deviceName)
+        two_factor: str | None = None
+        if totp_service.is_enabled(db, row["id"]):
+            code = (form.totpCode or "").strip()
+            if not code:
+                raise store.AccountError(
+                    401,
+                    "totp_required",
+                    "Two-factor authentication code is required.",
+                    headers={"X-InterviewCheck-TOTP": "required"},
+                )
+            two_factor = totp_service.verify_login_factor(db, row["id"], code, ts)
+            if not two_factor:
+                _record_email_failure(db, form.email, ts)
+                invalid_totp = True
+        if not invalid_totp:
+            result = db.execute("UPDATE users SET last_login_at=?,updated_at=? WHERE id=? AND disabled=0",
+                                (ts, ts, row["id"]))
+            if not result.rowcount:
+                raise HTTPException(403, "Account is disabled.")
+            db.execute("DELETE FROM login_email_windows WHERE email=?", (form.email,))
+            store.audit(db, "auth.login", row["id"], row["id"], {"twoFactor": two_factor} if two_factor else None)
+            return new_session(db, row["id"], form.deviceName)
+    raise store.AccountError(401, "invalid_totp_code", "Invalid two-factor authentication code.")
 
 
 def change_password(user_id, device_name, form: PasswordChange, address: str):

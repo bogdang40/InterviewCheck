@@ -54,6 +54,18 @@ ADMIN_PROBE = FixedWindowRateLimiter(15, 60)
 AI_REQUEST = FixedWindowRateLimiter(20, 60)
 INTEGRATION_REMOTE = FixedWindowRateLimiter(30, 60)
 BILLING_ACTION = FixedWindowRateLimiter(20, 60)
+CSP_REPORT = FixedWindowRateLimiter(60, 60)
+TOTP_ACTION = FixedWindowRateLimiter(10, 60)
+
+
+def require_limit(limiter: FixedWindowRateLimiter, key: str) -> None:
+    allowed, retry_after = limiter.hit(key)
+    if not allowed:
+        raise HTTPException(
+            429,
+            "Too many requests. Try again in a minute.",
+            headers={"Retry-After": str(retry_after)},
+        )
 
 
 def limit(limiter: FixedWindowRateLimiter, *, scope: str = "ip") -> Callable[[Request], None]:
@@ -65,12 +77,6 @@ def limit(limiter: FixedWindowRateLimiter, *, scope: str = "ip") -> Callable[[Re
         else:
             address = request.client.host if request.client else "local"
         key = f"{scope}:{address}" if scope != "ip" else address
-        allowed, retry_after = limiter.hit(key)
-        if not allowed:
-            raise HTTPException(
-                429,
-                "Too many requests. Try again in a minute.",
-                headers={"Retry-After": str(retry_after)},
-            )
+        require_limit(limiter, key)
 
     return dependency

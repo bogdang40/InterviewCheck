@@ -128,6 +128,39 @@ export const MIGRATION_STEPS: readonly MigrationStep[] = [
       )`,
     ],
   },
+  {
+    version: 8,
+    statements: (database) => {
+      const statements: string[] = [
+        `CREATE TABLE IF NOT EXISTS user_totp (
+          user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+          secret_enc TEXT NOT NULL,
+          enabled INTEGER NOT NULL DEFAULT 0 CHECK(enabled IN (0,1)),
+          verified_at INTEGER,
+          created_at INTEGER NOT NULL,
+          last_used_step INTEGER
+        )`,
+        `CREATE TABLE IF NOT EXISTS user_backup_codes (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          code_hash TEXT NOT NULL,
+          used_at INTEGER,
+          created_at INTEGER NOT NULL
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_backup_codes_user ON user_backup_codes(user_id, used_at)`,
+      ];
+      const hasUserTotp = Boolean(database.get("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", "user_totp"));
+      if (hasUserTotp && !database.get("SELECT 1 FROM pragma_table_info('user_totp') WHERE name = ?", "last_used_step")) {
+        statements.push("ALTER TABLE user_totp ADD COLUMN last_used_step INTEGER");
+      }
+      for (const col of ["prev_hash", "entry_hash"]) {
+        if (!database.get("SELECT 1 FROM pragma_table_info('audit_log') WHERE name = ?", col)) {
+          statements.push(`ALTER TABLE audit_log ADD COLUMN ${col} TEXT`);
+        }
+      }
+      return statements;
+    },
+  },
 ];
 
 export class MigrationRunner {

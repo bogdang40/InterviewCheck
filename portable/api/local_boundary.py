@@ -44,12 +44,15 @@ class LocalBoundary:
             return await reject(403, "The request must originate from this workspace.")
         mutating = scope["method"] not in {"GET", "HEAD", "OPTIONS"}
         path = scope["path"]
+        is_csp_report = scope["method"] == "POST" and path == "/api/csp-report"
         csrf_guarded = path.startswith("/api/") or (path.startswith("/v1/") and path != "/v1/billing/webhook")
         if mutating and csrf_guarded:
-            if headers.get("x-interviewcheck") != "1":
+            if not is_csp_report and headers.get("x-interviewcheck") != "1":
                 return await reject(403, "Missing workspace request header.")
             limit = 24 * 1024 ** 2 if path == "/api/integrations/transcribe" else 2 * 1024 ** 2
-            if path.startswith("/v1/"):
+            if is_csp_report:
+                limit = 8192
+            elif path.startswith("/v1/"):
                 limit = _EARLY_AUTH_BYTES
             elif path in {"/api/backups/preview", "/api/backups/restore"}:
                 from .backup_schema import LIMIT
@@ -60,7 +63,7 @@ class LocalBoundary:
                 return await reject(400, "Invalid content length.")
             if declared < 0 or declared > limit:
                 return await reject(413, "Input exceeds the size limit.")
-            workspace_guarded = path.startswith("/api/") and not path.startswith("/api/integrations/access/")
+            workspace_guarded = path.startswith("/api/") and not path.startswith("/api/integrations/access/") and not is_csp_report
             checked_large = False
             if workspace_guarded and declared > _EARLY_AUTH_BYTES:
                 checked_large = True

@@ -15,7 +15,7 @@ router = APIRouter()
 
 API_TOKEN_SCOPES = ("read:interviews", "write:interviews", "export:reports", "read:telemetry", "admin:models")
 ScopeName = Literal["read:interviews", "write:interviews", "export:reports", "read:telemetry", "admin:models"]
-_VALID_LIMITERS = {"credential", "adminRead", "adminWrite", "adminProbe", "aiRequest", "integrationRemote", "billing"}
+_VALID_LIMITERS = {"credential", "adminRead", "adminWrite", "adminProbe", "aiRequest", "integrationRemote", "billing", "totp"}
 
 
 class ApiTokenCreate(BaseModel):
@@ -56,6 +56,7 @@ def _limiter_names() -> dict[int, str]:
         id(rate_limit.ADMIN_READ): "adminRead", id(rate_limit.ADMIN_WRITE): "adminWrite",
         id(rate_limit.ADMIN_PROBE): "adminProbe", id(rate_limit.AI_REQUEST): "aiRequest",
         id(rate_limit.INTEGRATION_REMOTE): "integrationRemote", id(rate_limit.BILLING_ACTION): "billing",
+        id(rate_limit.TOTP_ACTION): "totp",
     }
 
 

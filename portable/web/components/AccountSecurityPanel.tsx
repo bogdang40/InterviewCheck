@@ -1,6 +1,7 @@
 "use client"
 
-import { useCallback, useEffect, useState, type FormEvent } from "react"
+import dynamic from "next/dynamic"
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import { Check, Copy, KeyRound, Laptop, RefreshCw, X } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -10,6 +11,8 @@ import {
   revokeAccountSession, revokeApiToken,
   type AccountSession, type ApiTokenScope, type ApiTokenSummary,
 } from "@/lib/accountSecurity"
+
+const TotpSetupCard = dynamic(() => import("./TotpSetupCard").then((m) => m.TotpSetupCard), { ssr: false })
 
 const fmt = (iso: string | null | undefined) => {
   if (!iso) return "Never"
@@ -35,20 +38,37 @@ export function AccountSecurityPanel({
   const [ttlDaysRaw, setTtlDaysRaw] = useState("")
   const [revealedToken, setRevealedToken] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const abortRef = useRef<AbortController | null>(null)
 
   const visibleScopes = API_TOKEN_SCOPES.filter((s) => s !== "admin:models" || isAdmin)
 
   const refresh = useCallback(async () => {
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
     setLoading(true); setError("")
     try {
-      const [sessionList, tokenList] = await Promise.all([listAccountSessions(), listApiTokens()])
+      const [sessionList, tokenList] = await Promise.all([
+        listAccountSessions(controller.signal),
+        listApiTokens(controller.signal),
+      ])
+      if (controller.signal.aborted || abortRef.current !== controller) return
       setSessions(sessionList); setTokens(tokenList)
     } catch (err) {
+      if (controller.signal.aborted || ((err instanceof DOMException || err instanceof Error) && err.name === "AbortError")) return
       setError(err instanceof Error ? err.message : "Could not load account security settings.")
-    } finally { setLoading(false) }
+    } finally {
+      if (abortRef.current === controller) setLoading(false)
+    }
   }, [])
 
-  useEffect(() => { void refresh() }, [refresh])
+  useEffect(() => {
+    void refresh()
+    return () => {
+      abortRef.current?.abort()
+      abortRef.current = null
+    }
+  }, [refresh])
   useEffect(() => {
     if (!isAdmin) setScopes((prev) => prev.filter((s) => s !== "admin:models"))
   }, [isAdmin])
@@ -116,6 +136,8 @@ export function AccountSecurityPanel({
       </div>
       {error && <p role="alert" className="error">{error}</p>}
       {status && <p role="status" className="notice">{status}</p>}
+
+      <TotpSetupCard />
 
       <section className="panel inset stack" aria-label="Active device sessions">
         <h4 className="row"><Laptop size={16} aria-hidden="true" /><span>Active device sessions</span></h4>

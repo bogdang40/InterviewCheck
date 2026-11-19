@@ -212,7 +212,8 @@ def run_drill(work_dir: Path, *, writers: int = 3, readers: int = 3, ops_per_thr
         store.initialize(review_db)
         role, admin_id, m_a, m_b, sec_a, sec_b = _seed_workspace(sensitive)
         seed_review, seed_access = _db_counts(review_db, access_db)
-        _require(seed_access["user_version"] == 7, f"Expected access.sqlite3 v7, got v{seed_access['user_version']}.")
+        _require(seed_access["user_version"] == account_db.VERSION,
+                 f"Expected access.sqlite3 v{account_db.VERSION}, got v{seed_access['user_version']}.")
         wal_stress, json_bytes, json_sha256 = _run_wal_stress(
             role_id=role["id"], role_name=role["name"], actor_id=admin_id, writers=writers, readers=readers,
             ops_per_thread=ops_per_thread, review_db=review_db, access_db=access_db, backup_review=backup_review, backup_access=backup_access)

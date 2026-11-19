@@ -1,6 +1,7 @@
 import { isIP } from "node:net";
 import type { Context, MiddlewareHandler } from "hono";
 import { getConnInfo } from "@hono/node-server/conninfo";
+import type { AuthEnv } from "./Authenticate.js";
 
 export interface RateLimitOptions {
   readonly windowMs: number;
@@ -212,6 +213,21 @@ export class ClientAddressResolver {
 export function rateLimit(limiter: FixedWindowRateLimiter, trustProxy: boolean): MiddlewareHandler {
   return async (c, next) => {
     const { remaining, retryAfterSeconds } = limiter.hitWithRetry(ClientAddressResolver.resolve(c, trustProxy));
+    if (remaining < 0) {
+      return c.json(
+        { error: { code: "rate_limited", message: "Too many attempts. Try again in a minute." } },
+        429,
+        { "Retry-After": String(retryAfterSeconds) },
+      );
+    }
+    await next();
+  };
+}
+
+export function rateLimitUser(limiter: FixedWindowRateLimiter): MiddlewareHandler<AuthEnv> {
+  return async (c, next) => {
+    const user = c.get("user");
+    const { remaining, retryAfterSeconds } = limiter.hitWithRetry(`user:${user.id}`);
     if (remaining < 0) {
       return c.json(
         { error: { code: "rate_limited", message: "Too many attempts. Try again in a minute." } },

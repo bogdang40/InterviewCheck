@@ -1,5 +1,6 @@
 import { Hono, type Context } from "hono";
 import type { ZodTypeAny, z } from "zod";
+import type { AuditLogRepository } from "../../repositories/AuditLogRepository.js";
 import type { AdminService } from "../../services/AdminService.js";
 import type { AuthService } from "../../services/AuthService.js";
 import type { SecurityService } from "../../services/SecurityService.js";
@@ -19,6 +20,7 @@ import {
 export interface AdminRouteDeps {
   auth: AuthService;
   admin: AdminService;
+  audit: AuditLogRepository;
   security: SecurityService;
   adminReadLimiter: FixedWindowRateLimiter;
   adminWriteLimiter: FixedWindowRateLimiter;
@@ -124,6 +126,10 @@ export class AdminRoutes {
         }),
       );
     });
+
+    router.get("/admin/audit/verify", readGuard, (c) =>
+      c.json(deps.audit.verifyChain(), 200, { "Cache-Control": "no-store" }),
+    );
 
     return router;
   }

@@ -93,7 +93,7 @@ class SecurityHeadersMiddleware:
             return (
                 f"default-src 'none'; script-src 'self'; style-src 'self' '{PRINT_STYLE_HASH}'; "
                 "img-src 'none'; font-src 'none'; connect-src 'none'; object-src 'none'; "
-                "base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+                "base-uri 'none'; form-action 'none'; frame-ancestors 'none'; report-uri /api/csp-report"
             )
         if path in {"/v1/billing/return", "/billing/return"} and content_type == "text/html":
             return _BILLING_RETURN_CSP
@@ -115,7 +115,7 @@ class SecurityHeadersMiddleware:
                     f"default-src 'self'; script-src {script_src}; style-src 'self' 'unsafe-inline'; "
                     "img-src 'self' data: blob:; font-src 'self'; media-src 'self' blob:; "
                     f"connect-src 'self' {ws_origin}; object-src 'none'; base-uri 'self'; "
-                    "form-action 'self'; frame-ancestors 'none'"
+                    "form-action 'self'; frame-ancestors 'none'; report-uri /api/csp-report"
                 )
             return _STATIC_ASSET_CSP
         return _API_CSP

@@ -27,7 +27,7 @@ const BASELINE_CSP =
   "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
   "img-src 'self' data: blob:; font-src 'self'; media-src 'self' blob:; " +
   "connect-src 'self' ws: wss:; object-src 'none'; base-uri 'self'; " +
-  "form-action 'self'; frame-ancestors 'none'"
+  "form-action 'self'; frame-ancestors 'none'; report-uri /api/csp-report"
 
 export default function config(phase: string): NextConfig {
   return {

@@ -12,6 +12,7 @@ import {
   testAlertRule, updateAlertRule, type AdminUserSession, type AlertDelivery, type AlertRule,
   type AlertTriggerType, type RateLimitEntry,
 } from "@/lib/adminSecurityAlerts"
+import { CspReportsPanel } from "./CspReportsPanel"
 import styles from "./SecurityAlertsTab.module.css"
 
 const CAPABILITIES: readonly ModelCapability[] = ["reference", "question_planning", "transcription", "embedding", "judge"]
@@ -342,6 +343,8 @@ export function SecurityAlertsTab({ onAuthInvalid }: { onAuthInvalid: (msg: stri
           )}
         </div>
       </section>
+
+      <CspReportsPanel onAuthInvalid={onAuthInvalid} />
     </div>
   )
 }
