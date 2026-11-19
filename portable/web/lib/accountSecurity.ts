@@ -89,8 +89,8 @@ async function securityRequest<T>(path: string, options: RequestInit = {}): Prom
   return data as T
 }
 
-export async function listAccountSessions(): Promise<AccountSession[]> {
-  const data = await securityRequest<{ sessions?: AccountSession[] }>("sessions")
+export async function listAccountSessions(signal?: AbortSignal): Promise<AccountSession[]> {
+  const data = await securityRequest<{ sessions?: AccountSession[] }>("sessions", { signal })
   return Array.isArray(data?.sessions) ? data.sessions : []
 }
 
@@ -101,8 +101,8 @@ export function revokeAccountSession(id: string): Promise<{ revoked: boolean; id
   )
 }
 
-export async function listApiTokens(): Promise<ApiTokenSummary[]> {
-  const data = await securityRequest<{ tokens?: ApiTokenSummary[] }>("tokens")
+export async function listApiTokens(signal?: AbortSignal): Promise<ApiTokenSummary[]> {
+  const data = await securityRequest<{ tokens?: ApiTokenSummary[] }>("tokens", { signal })
   return Array.isArray(data?.tokens) ? data.tokens : []
 }
 

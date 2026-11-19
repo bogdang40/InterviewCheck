@@ -10,15 +10,19 @@ import type { AdminBootstrap } from "./AdminBootstrap.js";
 import type { AccessSnapshot, EntitlementService } from "./EntitlementService.js";
 import type { PasswordHasher } from "./PasswordHasher.js";
 import type { TokenService } from "./TokenService.js";
+import type { TotpService } from "./TotpService.js";
 
 export interface Credentials {
   email: string;
   password: string;
   deviceName?: string | undefined;
   adminSecret?: string | undefined;
+  totpCode?: string | undefined;
 }
 
 const SQLITE_CONSTRAINT_UNIQUE = 2067;
+const LOGIN_EMAIL_WINDOW_MS = 15 * 60_000;
+const LOGIN_EMAIL_MAX = 10;
 
 export interface SignedInResponse extends AccessSnapshot {
   readonly token: string;
@@ -40,6 +44,7 @@ export class AuthService {
     private readonly entitlements: EntitlementService,
     private readonly bootstrap: AdminBootstrap,
     private readonly policy: AccessPolicy,
+    private readonly totp: TotpService,
     private readonly clock: () => Date = () => new Date(),
   ) {}
 
@@ -77,13 +82,59 @@ export class AuthService {
       throw new HttpError(401, "invalid_credentials", "Email or password is incorrect.");
     }
     const now = this.clock();
-    return this.database.transaction(() => {
+    const outcome = this.database.transaction(() => {
       const current = this.users.findById(user.id);
       if (!current || current.disabled) throw new HttpError(403, "account_disabled", "This account has been disabled.");
+      let twoFactorMethod: "totp" | "backup_code" | null = null;
+      if (this.totp.isEnabled(current.id)) {
+        if (this.isEmailLockedOut(email, now)) {
+          throw new HttpError(429, "rate_limited", "Too many attempts. Try again in a minute.");
+        }
+        const code = credentials.totpCode?.trim();
+        if (!code) {
+          throw new HttpError(401, "totp_required", "Two-factor authentication code is required.");
+        }
+        twoFactorMethod = this.totp.verifyLoginFactor(current.id, code, now);
+        if (!twoFactorMethod) {
+          this.recordFailedEmailAttempt(email, now);
+          return null;
+        }
+        this.database.run("DELETE FROM login_email_windows WHERE email = ?", email);
+      }
       const updated = this.users.update(current.id, { lastLoginAt: now }, now);
-      this.audit.record({ actorUserId: current.id, action: "auth.login", targetUserId: current.id }, now);
+      this.audit.record(
+        {
+          actorUserId: current.id,
+          action: "auth.login",
+          targetUserId: current.id,
+          ...(twoFactorMethod ? { details: { twoFactor: twoFactorMethod } } : {}),
+        },
+        now,
+      );
       return this.issueSession(updated, credentials.deviceName ?? null, now);
     });
+    if (!outcome) {
+      throw new HttpError(401, "invalid_totp_code", "Invalid two-factor authentication code.");
+    }
+    return outcome;
+  }
+
+  private isEmailLockedOut(email: string, now: Date): boolean {
+    const cutoff = now.getTime() - LOGIN_EMAIL_WINDOW_MS;
+    this.database.run("DELETE FROM login_email_windows WHERE start <= ?", cutoff);
+    const row = this.database.get<{ hits: number }>("SELECT hits FROM login_email_windows WHERE email = ?", email);
+    return Number(row?.hits ?? 0) >= LOGIN_EMAIL_MAX;
+  }
+
+  private recordFailedEmailAttempt(email: string, now: Date): void {
+    const nowMs = now.getTime();
+    this.database.run("DELETE FROM login_email_windows WHERE start <= ?", nowMs - LOGIN_EMAIL_WINDOW_MS);
+    this.database.run(
+      `INSERT INTO login_email_windows (email, start, hits) VALUES (?, ?, 1)
+       ON CONFLICT(email) DO UPDATE SET hits = hits + 1`,
+      email,
+      nowMs,
+    );
   }
 
   async authenticate(token: string): Promise<AuthenticatedRequest | null> {

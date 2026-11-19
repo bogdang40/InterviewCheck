@@ -1,18 +1,18 @@
-# Overnight work, 7–8 November 2026
+# Overnight work, 7-8 November 2026
 
 Everything is committed in the local git repository at `~/InterviewCheck` and nothing
 was pushed or sent anywhere. The installed app (`~/Applications/InterviewCheck.app`) is
 the latest Release build (installed 03:10), and `build/InterviewCheck-1.0.0.dmg` (about 8 MB) packages it
 for another Mac. It is not notarized yet, so macOS warns before opening it there. The full step-by-step log is in [native-app-plan.md](native-app-plan.md).
 
-**Afternoon update (12:40–14:40):** a second pass on the evidence, the demo and first impressions. See
+**Afternoon update (12:40-14:40):** a second pass on the evidence, the demo and first impressions. See
 [next-level-plan.md](next-level-plan.md) for what changed, with screenshots.
 
 ## What it is now
 
 - **A normal Mac app.** It has one main window with the standard close, minimize and
   zoom buttons, which can be moved and resized. A sidebar holds Interview, Roles,
-  Reports and Connections (⌘1–⌘4). It also has a Settings window (⌘,), full menus, a
+  Reports and Connections (⌘1-⌘4). It also has a Settings window (⌘,), full menus, a
   menu bar item while an interview is live, its own icon, a Dock menu and Shortcuts
   actions. Nothing is hidden from screen sharing.
 - **A scalable codebase.**

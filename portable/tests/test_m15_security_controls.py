@@ -48,14 +48,14 @@ def test_v7_migration_and_unsupported_v8_rejected(env, tmp_path, monkeypatch):
         raw.execute("PRAGMA user_version=6")
 
     with account_db.connection() as db:
-        assert db.execute("PRAGMA user_version").fetchone()[0] == 7
+        assert db.execute("PRAGMA user_version").fetchone()[0] == account_db.VERSION
         tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         assert {"api_tokens", "login_email_windows"}.issubset(tables)
         idx = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='index'")}
         assert "idx_api_tokens_user" in idx
 
     with sqlite3.connect(v6_path) as raw:
-        raw.execute("PRAGMA user_version=8")
+        raw.execute(f"PRAGMA user_version={account_db.VERSION + 1}")
     with pytest.raises(HTTPException) as exc:
         with account_db.connection():
             pass

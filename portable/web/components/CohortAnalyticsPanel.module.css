@@ -1,0 +1,66 @@
+.panel {
+  margin-top: 22px; padding: clamp(18px, 2.5vw, 32px);
+  display: grid; gap: 18px; min-width: 0;
+}
+.header {
+  display: flex; flex-wrap: wrap; align-items: flex-start;
+  justify-content: space-between; gap: 12px;
+}
+.headerText { min-width: 0; display: grid; gap: 4px; }
+.headerActions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.filters {
+  display: grid; grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px; align-items: end;
+}
+.filterField { min-width: 0; }
+.filterField select, .filterField input { min-height: 40px; }
+.metrics {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px;
+}
+.metricCard {
+  border: 1px solid var(--line); border-radius: 8px; background: var(--subtle);
+  padding: 12px 14px; display: grid; gap: 3px; min-width: 0;
+}
+.metricLabel { font-size: 12px; color: var(--muted); font-weight: 550; }
+.metricValue { font-size: 22px; font-weight: 650; font-variant-numeric: tabular-nums; color: var(--ink); }
+.metricSub { font-size: 11px; color: var(--secondary-ink); }
+.chartsGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.cardBox {
+  border: 1px solid var(--line); border-radius: 8px; background: var(--surface);
+  padding: 14px; display: grid; gap: 10px; min-width: 0; align-content: start;
+}
+.cardTitle { font-size: 15px; font-weight: 620; color: var(--ink); }
+.histogram, .bucketRow { display: grid; gap: 6px; }
+.bucketRow { gap: 4px; }
+.bucketMeta {
+  display: flex; justify-content: space-between; gap: 8px;
+  font-size: 12px; color: var(--secondary-ink); font-variant-numeric: tabular-nums;
+}
+.barTrack {
+  height: 10px; border-radius: 999px; background: var(--subtle);
+  border: 1px solid var(--line); overflow: hidden;
+}
+.barFill { height: 100%; border-radius: 999px; background: var(--green-ink); transition: width 0.2s ease; }
+.tableWrap { width: 100%; overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
+.table { width: 100%; border-collapse: collapse; text-align: left; font-size: 13px; }
+.table thead { background: var(--subtle); color: var(--secondary-ink); }
+.table th, .table td { padding: 8px 10px; border-top: 1px solid var(--line); vertical-align: top; }
+.table thead th { border-top: 0; font-weight: 600; white-space: nowrap; }
+.candidateLink { color: var(--green-ink); font-weight: 600; text-decoration: underline; }
+.tagRow { display: flex; flex-wrap: wrap; gap: 4px; }
+.tagButton, .tagPill {
+  border: 1px solid var(--selected-line); background: var(--selected-bg); color: var(--green-ink);
+  border-radius: 999px; padding: 2px 8px; font-size: 11px; font-weight: 600;
+}
+.emptyBox {
+  border: 1px dashed var(--line); border-radius: 8px; padding: 20px;
+  display: grid; gap: 8px; justify-items: start; background: var(--subtle);
+}
+@media (max-width: 960px) {
+  .filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .chartsGrid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 540px) {
+  .filters { grid-template-columns: minmax(0, 1fr); }
+  .filterField select, .filterField input { min-height: 44px; }
+}

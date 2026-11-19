@@ -41,7 +41,7 @@ call ┘   (StreamClock maps   └─ candidate words ───┘          │
                                                               │
   TimingSignal · FluencySignal · SimilaritySignal · JudgeSignal → CheatScorer
                                                               │
-                         AnswerScore (0–95%, confidence, reasons, follow-ups)
+                         AnswerScore (0-95%, confidence, reasons, follow-ups)
 ```
 
 - **InterviewCheckKit** holds everything that can be computed from words,

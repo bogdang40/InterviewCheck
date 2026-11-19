@@ -11,7 +11,9 @@ from starlette.requests import HTTPConnection
 
 from . import rate_limit
 from .error_sanitizer import sanitize_error_text
-from .provider_http import configured, fetch_json, setting
+from .provider_http import configured, fetch_json as _provider_fetch_json, read_json, setting
+
+fetch_json = _provider_fetch_json
 
 router = APIRouter()
 COOKIE = "ic_access"
@@ -45,6 +47,44 @@ def access_url(path: str) -> str:
     return root + "/v1/" + path
 
 
+def _raise_upstream_error(status: int, data: Any, resp_headers: Any) -> None:
+    err = data.get("error") if isinstance(data, dict) else None
+    err_code = err.get("code") if isinstance(err, dict) else None
+    raw_msg = (err.get("message") if isinstance(err, dict) else None) or (
+        data.get("detail") if isinstance(data, dict) else None
+    ) or "Account request failed."
+    totp_req = status == 401 and (
+        err_code == "totp_required" or resp_headers.get("x-interviewcheck-totp") == "required"
+    )
+    headers = {"X-InterviewCheck-TOTP": "required"} if totp_req else None
+    raise HTTPException(status, sanitize_error_text(raw_msg, "Account request failed."), headers=headers)
+
+
+async def _post_remote_login(url: str, options: dict[str, Any]) -> dict[str, Any]:
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=30, follow_redirects=False) as client:
+            async with client.stream("POST", url, **options) as response:
+                if not 200 <= response.status_code < 300:
+                    status = response.status_code
+                    if status == 401:
+                        try:
+                            data = await read_json(response, "Access service", 65_536)
+                        except (ValueError, HTTPException):
+                            data = {}
+                        if (isinstance(data, dict) and isinstance(data.get("error"), dict) and data["error"].get("code") == "totp_required") or response.headers.get("x-interviewcheck-totp") == "required":
+                            _raise_upstream_error(401, data, response.headers)
+                    code = status if status in {400, 401, 402, 403, 404, 409, 422, 429, 503} else 502
+                    raise HTTPException(code, f"Access service returned HTTP {status}.")
+                return {} if response.status_code == 204 else await read_json(response, "Access service", 4_000_000)
+    except (ValueError, UnicodeError) as exc:
+        raise HTTPException(502, "Access service returned invalid JSON.") from exc
+    except httpx.TimeoutException as exc:
+        raise HTTPException(504, "Access service request timed out.") from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(502, "Could not reach Access service.") from exc
+
+
 async def upstream(path, method="GET", *, token=None, body=None, idempotency=None, client_address=None):
     headers: dict[str, str] = {"X-InterviewCheck": "1"}
     if token:
@@ -62,9 +102,10 @@ async def upstream(path, method="GET", *, token=None, body=None, idempotency=Non
             response = await client.request(method, "/" + path, **options)
         data = response.json() if response.content else {}
         if response.is_error:
-            raw_msg = data.get("error", {}).get("message") or data.get("detail") or "Account request failed."
-            raise HTTPException(response.status_code, sanitize_error_text(raw_msg, "Account request failed."))
+            _raise_upstream_error(response.status_code, data, response.headers)
         return data
+    if path == "auth/login" and method == "POST" and fetch_json is _provider_fetch_json:
+        return await _post_remote_login(access_url(path), options)
     return await fetch_json("Access service", method, access_url(path), **options)
 
 
@@ -97,11 +138,15 @@ def verify_account(data):
 
 
 async def snapshot(connection: HTTPConnection):
+    cached = getattr(connection.state, "_access_snapshot", None)
+    if cached is not None:
+        return cached
     token = connection.cookies.get(COOKIE)
     if not token:
         raise HTTPException(401, "Sign in under Account.")
     result = await upstream("me", token=token)
     verify_account(result)
+    connection.state._access_snapshot = result
     return result
 
 
@@ -113,6 +158,7 @@ async def require_entitlement(request: HTTPConnection):
     account = await snapshot(request)
     if (account.get("entitlement") or {}).get("active") is not True:
         raise HTTPException(402, "An active InterviewCheck plan is required.")
+    return account["user"]
 
 
 async def require_admin_session(request: HTTPConnection) -> tuple[dict[str, Any], str]:
@@ -156,8 +202,13 @@ async def optional_actor(request: HTTPConnection) -> tuple[str, str]:
                 return ("local-operator", "local-operator")
             user, _ = account_auth.authenticate(f"Bearer {token}")
         else:
-            data = await upstream("me", token=token)
-            verify_account(data)
+            cached = getattr(request.state, "_access_snapshot", None)
+            if cached is not None:
+                data = cached
+            else:
+                data = await upstream("me", token=token)
+                verify_account(data)
+                request.state._access_snapshot = data
             user = data.get("user") or {}
     except HTTPException:
         return ("local-operator", "local-operator")
@@ -171,6 +222,7 @@ class Credentials(BaseModel):
     password: SecretStr = Field(min_length=10, max_length=200)
     adminSecret: SecretStr | None = Field(default=None, max_length=200)
     inviteCode: SecretStr | None = Field(default=None, max_length=200)
+    totpCode: str | None = Field(default=None, max_length=32)
 
 
 class PasswordChangeRequest(BaseModel):
@@ -215,10 +267,12 @@ async def sign_in(action: Literal["login", "signup"], form: Credentials, request
     if action == "signup":
         verify_operator_email(form.email.strip())
     from .origin import workspace_client
+    totp_code = form.totpCode.strip() if action == "login" and form.totpCode and form.totpCode.strip() else None
     data = await upstream("auth/" + action, "POST", body={
         "email": form.email.strip(), "password": form.password.get_secret_value(), "deviceName": "Portable workspace",
         **({"inviteCode": form.inviteCode.get_secret_value()} if form.inviteCode else {}),
-        **({"adminSecret": form.adminSecret.get_secret_value()} if form.adminSecret else {})
+        **({"adminSecret": form.adminSecret.get_secret_value()} if form.adminSecret else {}),
+        **({"totpCode": totp_code} if totp_code else {}),
     }, client_address=workspace_client(request) if embedded_enabled() else None)
     if not isinstance(data, dict) or not isinstance(data.get("token"), str) or not data["token"]:
         raise HTTPException(502, "The access service returned an invalid session.")

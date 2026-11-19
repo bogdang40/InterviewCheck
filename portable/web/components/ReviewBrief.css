@@ -33,6 +33,24 @@
   color: var(--muted);
   font-size: 14px;
 }
+.brief-bulk-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.brief-options details > summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 6px 8px;
+  border-radius: 6px;
+}
+.brief-options details > summary:focus-visible,
+.brief-choices .check:has(input:focus-visible),
+.brief-choices input[type="checkbox"]:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+}
 .brief-choices {
   margin: 12px 0;
   display: grid;
@@ -50,8 +68,27 @@
   font-size: 13px;
   padding-right: 5px;
 }
+.brief-choices .check {
+  min-height: 44px;
+  align-items: center;
+  padding: 4px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.brief-choices input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  min-height: 20px;
+  flex-shrink: 0;
+}
 .brief-options > button {
   justify-self: start;
+}
+.brief-status {
+  margin: 0;
+  font-size: 13px;
+  overflow-wrap: anywhere;
 }
 .brief-preview {
   background: var(--surface);
@@ -72,17 +109,9 @@
   font-size: clamp(24px, 3vw, 33px);
   margin-bottom: 10px;
 }
-.brief-preview h3 {
-  margin: 22px 0 6px;
-}
-.brief-preview h4 {
-  font-size: 15px;
-  font-weight: 650;
-  margin: 10px 0 4px;
-}
-.brief-preview p {
-  margin: 5px 0;
-}
+.brief-preview h3 { margin: 22px 0 6px; }
+.brief-preview h4 { font-size: 15px; font-weight: 650; margin: 10px 0 4px; }
+.brief-preview p { margin: 5px 0; }
 .brief-preview pre {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -92,13 +121,13 @@
   border-radius: 5px;
 }
 @media (max-width: 850px) {
-  .brief-body {
-    grid-template-columns: minmax(0, 1fr);
-  }
+  .brief-body { grid-template-columns: minmax(0, 1fr); }
+  .brief-heading a,
+  .brief-bulk-actions button,
+  .brief-options > button,
+  .brief-clear-btn { min-height: 44px; }
 }
 @media (max-width: 380px) {
   .brief-options,
-  .brief-preview {
-    padding: 14px;
-  }
+  .brief-preview { padding: 14px; }
 }

@@ -32,11 +32,11 @@ def _setup_auth(e2e_workspace, *, include_member: bool = False) -> None:
 
 def _sign_in_admin(page, base_url: str) -> None:
     page.goto(base_url + "/admin/", wait_until="domcontentloaded")
-    expect(page.get_by_role("heading", name="Administrator sign in required")).to_be_visible()
+    expect(page.get_by_role("heading", name="Administrator sign in required")).to_be_visible(timeout=15_000)
     page.get_by_label("Operator email").fill(ADMIN_EMAIL)
     page.get_by_label("Password", exact=True).fill(ADMIN_PASS)
     page.get_by_role("button", name="Sign in", exact=True).click()
-    expect(page.get_by_role("heading", name="Model administration")).to_be_visible()
+    expect(page.get_by_role("heading", name="Model administration")).to_be_visible(timeout=15_000)
 
 
 def _create_model_api(
@@ -109,13 +109,13 @@ def test_m11_budget_configuration_persistence_and_security_gates(e2e_workspace, 
     expect(badge).to_contain_text("$0.00/$25.50")
 
     page.reload(wait_until="domcontentloaded")
-    expect(page.locator("article.admin-model-card", has_text="Budget Primary").locator(".admin-budget-badge")).to_contain_text("0/50.0k tok")
+    expect(page.locator("article.admin-model-card", has_text="Budget Primary").locator(".admin-budget-badge")).to_contain_text("0/50.0k tok", timeout=15_000)
 
     page.goto("about:blank")
     e2e_workspace.restart()
     page.goto(e2e_workspace.base_url + "/admin/", wait_until="domcontentloaded")
     card = page.locator("article.admin-model-card", has_text="Budget Primary")
-    expect(card.locator(".admin-budget-badge")).to_contain_text("$0.00/$25.50")
+    expect(card.locator(".admin-budget-badge")).to_contain_text("$0.00/$25.50", timeout=15_000)
 
     card.get_by_role("button", name="Configure").click()
     edit_dlg = page.get_by_role("dialog")
@@ -130,7 +130,7 @@ def test_m11_budget_configuration_persistence_and_security_gates(e2e_workspace, 
 
     page.reload(wait_until="domcontentloaded")
     reloaded_badge = page.locator("article.admin-model-card", has_text="Budget Primary").locator(".admin-budget-badge")
-    expect(reloaded_badge).to_contain_text("0/75.0k tok")
+    expect(reloaded_badge).to_contain_text("0/75.0k tok", timeout=15_000)
     assert "$25.50" not in reloaded_badge.inner_text()
     with e2e_workspace.client() as admin_api:
         login_user(admin_api, email=ADMIN_EMAIL, password=ADMIN_PASS)

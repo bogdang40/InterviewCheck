@@ -169,7 +169,7 @@ def test_explain_query_plans_use_scale_indexes(scale_workspace):
         assert "USE TEMP B-TREE FOR ORDER BY" not in feed_plan
 
     with account_db.connection() as adb:
-        assert adb.execute("PRAGMA user_version").fetchone()[0] == 7
+        assert adb.execute("PRAGMA user_version").fetchone()[0] == 8
         v6_indexes = {
             row[0]
             for row in adb.execute(
@@ -256,14 +256,13 @@ def test_explain_query_plans_use_scale_indexes(scale_workspace):
 
 def test_scale_latency_thresholds(scale_workspace):
     client, admin_tok = scale_workspace
+    scale = 4.0 if (os.getenv("CI") or os.name == "nt") else 1.0
     with store.connection() as db:
         assert db.execute("SELECT count(*) FROM sessions").fetchone()[0] == SESSIONS
         assert db.execute("SELECT count(*) FROM answers").fetchone()[0] == SESSIONS * ANSWERS_PER_SESSION
     with account_db.connection() as adb:
         assert adb.execute("SELECT count(*) FROM users").fetchone()[0] == USERS
         assert adb.execute("SELECT count(*) FROM audit_log").fetchone()[0] >= AUDIT_ROWS
-
-    scale = 4.0 if (os.getenv("CI") or os.name == "nt") else 1.0
 
     feed_p1, feed_p1_ms = _median_ms(client, "GET", "/api/interviews/feed")
     assert feed_p1["total"] == SESSIONS and len(feed_p1["items"]) == 25

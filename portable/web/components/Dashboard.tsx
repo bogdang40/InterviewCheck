@@ -24,13 +24,13 @@ export default function Dashboard({ overview, onCreate, onSample, onOpen }: Prop
   const populated = total > 0
 
   return <div className={"queue-home" + (populated ? " populated" : "")}>
-    <section className="studio-hero">
+    <section className="studio-hero" aria-labelledby="workspace-heading">
       <div className="studio-copy">
-        <h1>Interview <em>workspace</em></h1>
+        <h1 id="workspace-heading">Interview <em>workspace</em></h1>
         {!populated && <p>Capture interview answers, compare sources and record the candidate’s explanation.</p>}
         <div className="studio-actions">
-          <Button onClick={onCreate}><Plus/>New interview</Button>
-          <Button variant="ghost" onClick={onSample}>Open sample <ArrowRight/></Button>
+          <Button onClick={onCreate}><Plus aria-hidden="true"/>New interview</Button>
+          <Button variant="ghost" onClick={onSample}>Open sample <ArrowRight aria-hidden="true"/></Button>
         </div>
       </div>
       <div className="studio-art" aria-hidden="true">
@@ -38,9 +38,23 @@ export default function Dashboard({ overview, onCreate, onSample, onOpen }: Prop
         <img src="/studio-microphone.webp" alt="" width="830" height="850" fetchPriority="high"/>
       </div>
     </section>
-    {!overview ? <section className="panel inset" role="status"><p className="queue-loading">Loading interviews…</p></section> : <>
+    {!overview ? <section className="panel inset" role="status" aria-live="polite"><p className="queue-loading">Loading interviews…</p></section> : <>
       <WorkspaceMetrics overview={overview}/>
-      {!populated ? <SessionLog/> : <>
+      {!populated ? <>
+        <section className="panel stack" aria-labelledby="empty-workspace-heading">
+          <div className="queue-head">
+            <div>
+              <h2 id="empty-workspace-heading">Get started</h2>
+              <p>Review existing interviews or configure role rubrics before capturing a new session.</p>
+            </div>
+          </div>
+          <div className="row">
+            <Button asChild variant="outline"><Link href="/interviews/">Open interviews</Link></Button>
+            <Button asChild variant="outline"><Link href="/roles/">Manage roles</Link></Button>
+          </div>
+        </section>
+        <SessionLog/>
+      </> : <>
         <section className="panel queue-panel" aria-labelledby="pending-heading">
           <div className="queue-head"><div><h2 id="pending-heading">Review queue</h2>
             <p>{pendingAnswers ? `${pendingAnswers} pending ${pendingAnswers === 1 ? "match" : "matches"} across ${pendingSessions} ${pendingSessions === 1 ? "interview" : "interviews"}`

@@ -1,12 +1,17 @@
+import dynamic from "next/dynamic"
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type MutableRefObject } from "react"
 import { ClipboardCheck, Pencil, Quote } from "lucide-react"
 import { api, message, RevisionConflict, statusText, type Answer, type Disposition } from "@/lib/api"
 import CandidateResponse from "./CandidateResponse"
 import MarkedText from "./MarkedText"
-import ConflictReview from "./ConflictReview"
 import JudgeAssist from "./JudgeAssist"
 import { Button } from "./ui/button"
 import { Textarea } from "./ui/textarea"
+import { formatDraftTimestamp, reviewDraftKey, useLocalDraftRecovery } from "@/lib/localDraftBuffer"
+
+const ConflictReview = dynamic(() => import("./ConflictReview"), { ssr: false })
+
+const RevisionHistory = dynamic(() => import("./RevisionHistory"), { ssr: false })
 
 const useIsomorphicLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect
 
@@ -83,12 +88,23 @@ export default function Evidence({
     [saved, setSaved] = useState(false)
   const noteRef = useRef<HTMLTextAreaElement>(null)
   const dirty = note !== item.note || disposition !== item.disposition
+  const { recovered, clear: clearLocalBuffer, markRestored } = useLocalDraftRecovery(
+    reviewDraftKey(sessionId, item.id), dirty, JSON.stringify([note, disposition]),
+    () => ({ text: note, note, disposition, baseRevision: item.revision }),
+    (b) => (b.note ?? b.text) === item.note && (b.disposition === undefined || b.disposition === item.disposition),
+  )
+  const restoreLocalDraft = () => {
+    if (!recovered) return
+    setNote(recovered.note ?? recovered.text)
+    if (recovered.disposition === "pending" || recovered.disposition === "explained" ||
+      recovered.disposition === "unresolved" || recovered.disposition === "disclosed") {
+      setDisposition(recovered.disposition)
+    }
+    setSaved(false); markRestored()
+  }
   useEffect(() => {
     if (!dirty && !busy && !conflict && initial.revision > item.revision) {
-      setItem(initial)
-      setNote(initial.note)
-      setDisposition(initial.disposition)
-      setSaved(false)
+      setItem(initial); setNote(initial.note); setDisposition(initial.disposition); setSaved(false)
     }
   }, [initial, item.revision, dirty, busy, conflict])
   useIsomorphicLayoutEffect(() => {
@@ -127,6 +143,7 @@ export default function Evidence({
       const result = await api<Answer>(`sessions/${sessionId}/answers/${item.id}`, "PATCH", {
         note, disposition, expected_revision: item.revision,
       })
+      clearLocalBuffer()
       setItem(result)
       setNote(result.note)
       setDisposition(result.disposition)
@@ -139,6 +156,7 @@ export default function Evidence({
       setBusy(false)
     }
   }
+  const stale = recovered && recovered.baseRevision !== undefined && recovered.baseRevision !== item.revision
   return (
     <article className="panel evidence">
       <div className="spread">
@@ -180,6 +198,20 @@ export default function Evidence({
           <pre>{JSON.stringify(item.legacy, null, 2)}</pre>
         </details>
       )}
+      {recovered && (
+        <section className="notice stack" role="region" aria-label="Local draft recovery" style={{ marginTop: "12px" }}>
+          <div className="spread">
+            <strong>Unsaved local edits found</strong>
+            <small>Saved <time dateTime={recovered.savedAt}>{formatDraftTimestamp(recovered.savedAt)}</time></small>
+          </div>
+          {stale && <p className="error" role="status">Server revision changed ({item.revision}) since base revision {recovered.baseRevision}.</p>}
+          <div className="row">
+            <Button type="button" size="sm" variant="outline" onClick={restoreLocalDraft}>Restore local edits</Button>
+            <Button type="button" size="sm" variant="ghost" onClick={clearLocalBuffer}>Discard local copy</Button>
+          </div>
+        </section>
+      )}
+      <RevisionHistory sessionId={sessionId} answerId={item.id} revision={item.revision} conflict={conflict}/>
       <form className="stack" onSubmit={save} onChange={() => setSaved(false)}>
         <div className="dual">
           <label className="field">
@@ -209,20 +241,12 @@ export default function Evidence({
           />
         </label>
         {conflict && <ConflictReview sessionId={sessionId} answerId={item.id} resolve={(latest, keepDraft) => {
-          setItem(latest)
-          setConflict(false)
-          setSaved(false)
+          setItem(latest); setConflict(false); setSaved(false)
           if (!keepDraft) {
-            setNote(latest.note)
-            setDisposition(latest.disposition)
-            onSave(latest)
+            clearLocalBuffer(); setNote(latest.note); setDisposition(latest.disposition); onSave(latest)
           }
         }} />}
-        {error && (
-          <p role="alert" className="error">
-            {error}
-          </p>
-        )}
+        {error && <p role="alert" className="error">{error}</p>}
         <div className="row">
           <Button disabled={busy || conflict} variant="outline">
             <ClipboardCheck />
@@ -236,11 +260,10 @@ export default function Evidence({
               variant="ghost"
               disabled={busy}
               onClick={() => {
-                setNote(item.note)
-                setDisposition(item.disposition)
+                clearLocalBuffer()
+                setNote(item.note); setDisposition(item.disposition)
                 if (item.revision > initial.revision) onSave(item)
-                setError("")
-                setSaved(false)
+                setError(""); setSaved(false)
               }}
             >
               Discard review changes

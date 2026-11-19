@@ -1,11 +1,12 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { Activity, Mic, RefreshCw, Square } from "lucide-react"
+import { Activity, Download, Mic, RefreshCw, Square } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   computeFleetP95Latency,
+  downloadDiagnosticBundle,
   formatCompactTokens,
   formatUsd,
   getAdminDiagnostics,
@@ -50,8 +51,25 @@ export function DiagnosticsTab({ models, onAuthInvalid }: { models: ConnectedMod
   const [audioStatus, setAudioStatus] = useState("")
   const [audioMeta, setAudioMeta] = useState("")
   const [keyRefreshTick, setKeyRefreshTick] = useState(0)
+  const [exporting, setExporting] = useState(false)
+  const [exportStatus, setExportStatus] = useState("")
   const mountedRef = useRef(true)
   const audioRef = useRef<AudioCheck | null>(null)
+
+  const handleExportBundle = useCallback(async () => {
+    if (exporting) return
+    setExporting(true); setError(""); setExportStatus("")
+    try {
+      const filename = await downloadDiagnosticBundle()
+      if (mountedRef.current) setExportStatus(`Downloaded diagnostic bundle (${filename}).`)
+    } catch (err) {
+      if (!mountedRef.current) return
+      if (err instanceof AdminApiError && (err.status === 401 || err.status === 403)) { onAuthInvalid(err.message); return }
+      setError(err instanceof Error ? err.message : "Could not export diagnostic bundle.")
+    } finally {
+      if (mountedRef.current) setExporting(false)
+    }
+  }, [exporting, onAuthInvalid])
 
   const stopAudioCheck = useCallback((message: string, updateState = true) => {
     const check = audioRef.current
@@ -147,13 +165,20 @@ export function DiagnosticsTab({ models, onAuthInvalid }: { models: ConnectedMod
           <h2>Diagnostics &amp; usage</h2>
           <p className="muted">Daily token budgets, monthly cost ceilings, fleet P95 latency, transcription readiness, and local audio capture.</p>
         </div>
-        <Button type="button" variant="outline" size="sm" disabled={loading} onClick={() => { setKeyRefreshTick((n) => n + 1); void load() }}>
-          <RefreshCw size={14} aria-hidden="true" />
-          {loading ? "Refreshing…" : "Refresh diagnostics"}
-        </Button>
+        <div className="row">
+          <Button type="button" variant="outline" size="sm" disabled={exporting} onClick={() => void handleExportBundle()}>
+            <Download size={14} aria-hidden="true" />
+            {exporting ? "Exporting..." : "Export diagnostic bundle"}
+          </Button>
+          <Button type="button" variant="outline" size="sm" disabled={loading} onClick={() => { setKeyRefreshTick((n) => n + 1); void load() }}>
+            <RefreshCw size={14} aria-hidden="true" />
+            {loading ? "Refreshing…" : "Refresh diagnostics"}
+          </Button>
+        </div>
       </div>
 
       {error && <p role="alert" className="error">{error}</p>}
+      {exportStatus && <p role="status" aria-live="polite" className="notice">{exportStatus}</p>}
 
       <div className="admin-summary-grid" aria-label="Fleet diagnostic summary">
         <article className="panel admin-metric">

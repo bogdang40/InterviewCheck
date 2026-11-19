@@ -78,7 +78,7 @@ def workspace_url(tmp_path, monkeypatch, frontend):
 
     with socket.create_server(("127.0.0.1", api_port)) as listener:
         port = listener.getsockname()[1]
-        server = uvicorn.Server(uvicorn.Config(app, access_log=False, log_level="warning"))
+        server = uvicorn.Server(uvicorn.Config(app, access_log=False, log_level="warning", timeout_keep_alive=300))
         thread = threading.Thread(target=server.run, kwargs={"sockets": [listener]}, daemon=True)
         thread.start()
         try:

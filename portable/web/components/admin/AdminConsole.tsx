@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic"
 import { useCallback, useEffect, useState } from "react"
-import { Cpu, FileClock, FlaskConical, Plus, RefreshCw, ShieldAlert, SlidersHorizontal, Stethoscope, Users } from "lucide-react"
+import { Cpu, FileClock, FlaskConical, Plus, RefreshCw, ShieldAlert, ShieldCheck, SlidersHorizontal, Stethoscope, Users } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { getAdminDiagnostics, type DiagnosticsData } from "@/lib/adminDiagnostics"
@@ -19,6 +19,7 @@ import {
   getFleetTelemetry,
   type FleetTelemetryResponse,
 } from "@/lib/adminTelemetry"
+import { mergeBatchModels } from "@/lib/adminModelPresets"
 import { type ProviderStatus } from "@/lib/integrations"
 import { type AccountSnapshot } from "@/lib/useAccountStatus"
 import { AdminGate } from "./AdminGate"
@@ -31,13 +32,14 @@ import "./AdminConsole.css"
 
 const AccountsTab = dynamic(() => import("./AccountsTab").then((m) => m.AccountsTab), { ssr: false })
 const AuditLogTab = dynamic(() => import("./AuditLogTab").then((m) => m.AuditLogTab), { ssr: false })
+const ComplianceTab = dynamic(() => import("./ComplianceTab").then((m) => m.ComplianceTab), { ssr: false })
 const DiagnosticsTab = dynamic(() => import("./DiagnosticsTab").then((m) => m.DiagnosticsTab), { ssr: false })
 const PlaygroundTab = dynamic(() => import("./PlaygroundTab").then((m) => m.PlaygroundTab), { ssr: false })
 const PromptsAndSlaTab = dynamic(() => import("./PromptsAndSlaTab").then((m) => m.PromptsAndSlaTab), { ssr: false })
 const SecurityAlertsTab = dynamic(() => import("./SecurityAlertsTab").then((m) => m.SecurityAlertsTab), { ssr: false })
 const ModelFormModal = dynamic(() => import("./ModelFormModal").then((m) => m.ModelFormModal), { ssr: false })
 
-type AdminTab = "models" | "accounts" | "audit" | "diagnostics" | "playground" | "security" | "prompts"
+type AdminTab = "models" | "accounts" | "audit" | "diagnostics" | "playground" | "security" | "prompts" | "compliance"
 
 const ADMIN_TABS: readonly AdminTabItem<AdminTab>[] = [
   { id: "models", label: "Models", Icon: Cpu },
@@ -47,6 +49,7 @@ const ADMIN_TABS: readonly AdminTabItem<AdminTab>[] = [
   { id: "playground", label: "Playground", Icon: FlaskConical },
   { id: "security", label: "Security", Icon: ShieldAlert },
   { id: "prompts", label: "Prompts & SLA", Icon: SlidersHorizontal },
+  { id: "compliance", label: "Compliance", Icon: ShieldCheck },
 ]
 
 export default function AdminConsole() {
@@ -295,6 +298,14 @@ export default function AdminConsole() {
                 onToggle={(m) => void handleToggle(m)}
                 onDelete={(m) => void handleDelete(m)}
                 onViewHealth={(m) => setHealthModel(m)}
+                onBatchUpdated={(updated, msg) => {
+                  setModels((prev) => mergeBatchModels(prev, updated))
+                  void refreshTelemetry()
+                  setBannerError("")
+                  setBannerStatus(msg)
+                }}
+                onBatchError={(msg) => { if (msg) setBannerStatus(""); setBannerError(msg) }}
+                onAuthInvalid={onAuthInvalid}
               />
               <RoutingSimulatorPanel onAuthInvalid={onAuthInvalid} />
             </>
@@ -308,6 +319,7 @@ export default function AdminConsole() {
       {tab === "playground" && <div id="panel-playground" role="tabpanel" aria-labelledby="tab-playground"><PlaygroundTab models={models} onAuthInvalid={onAuthInvalid} /></div>}
       {tab === "security" && <div id="panel-security" role="tabpanel" aria-labelledby="tab-security"><SecurityAlertsTab onAuthInvalid={onAuthInvalid} /></div>}
       {tab === "prompts" && <div id="panel-prompts" role="tabpanel" aria-labelledby="tab-prompts"><PromptsAndSlaTab models={models} onAuthInvalid={onAuthInvalid} /></div>}
+      {tab === "compliance" && <div id="panel-compliance" role="tabpanel" aria-labelledby="tab-compliance"><ComplianceTab onAuthInvalid={onAuthInvalid} /></div>}
 
       {modalOpen && (
         <ModelFormModal

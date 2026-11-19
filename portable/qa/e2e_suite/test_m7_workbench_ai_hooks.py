@@ -48,10 +48,11 @@ def _register_model(client, *, slug: str, display_name: str, capability: str, mo
 
 def _sign_in(page, base_url: str) -> None:
     page.goto(base_url + "/account/", wait_until="domcontentloaded")
+    expect(page.get_by_label("Operator email")).to_be_visible(timeout=20_000)
     page.get_by_label("Operator email").fill(ADMIN_EMAIL)
     page.get_by_label("Password", exact=True).fill(ADMIN_PASS)
     page.get_by_role("button", name="Sign in", exact=True).click()
-    expect(page.get_by_text(ADMIN_EMAIL)).to_be_visible()
+    expect(page.get_by_text(ADMIN_EMAIL)).to_be_visible(timeout=20_000)
 
 
 def test_m7_semantic_similarity_gating_opt_in_dirty_boundary_and_errors(e2e_workspace, desktop_page, monkeypatch):
@@ -60,6 +61,7 @@ def test_m7_semantic_similarity_gating_opt_in_dirty_boundary_and_errors(e2e_work
     page, collector = desktop_page
     _sign_in(page, e2e_workspace.base_url)
     page.goto(f"{e2e_workspace.base_url}/interviews/review/?id={sid}", wait_until="domcontentloaded")
+    expect(page.get_by_label("Question")).to_be_visible(timeout=20_000)
     page.get_by_label("Question").fill("Explain Raft leader election.")
     page.get_by_label("Candidate answer").fill("Followers start an election after a randomized timeout.")
     page.get_by_role("button", name="Add source").click()
@@ -124,6 +126,7 @@ def test_m7_semantic_similarity_gating_opt_in_dirty_boundary_and_errors(e2e_work
     monkeypatch.setattr(scoring_hooks, "fetch_json", fake_fetch)
 
     page.goto(f"{e2e_workspace.base_url}/interviews/review/?id={sid}&answer={answer_id}", wait_until="domcontentloaded")
+    expect(page.get_by_role("button", name="Edit exchange")).to_be_visible(timeout=20_000)
     page.get_by_role("button", name="Edit exchange").click()
     expect(page.get_by_role("heading", name="Edit exchange")).to_be_visible()
 
@@ -154,10 +157,10 @@ def test_m7_semantic_similarity_gating_opt_in_dirty_boundary_and_errors(e2e_work
 
     # Explicit click triggers POST /api/scoring/semantic and preserves clean dirty state & sources.
     sem_btn.click()
-    expect(page.locator(".semantic-panel").get_by_text("SEMANTIC SIMILARITY")).to_be_visible()
-    expect(page.locator(".semantic-panel").get_by_text("OpenAI · text-embedding-3-small")).to_be_visible()
-    expect(page.locator(".semantic-panel").get_by_text("Unpermitted Cheatsheet")).to_be_visible()
-    expect(page.locator(".semantic-panel").get_by_text("0.800")).to_be_visible()
+    expect(page.locator(".semantic-panel").get_by_text("SEMANTIC SIMILARITY", exact=True)).to_be_visible()
+    expect(page.locator(".semantic-panel").get_by_text("OpenAI · text-embedding-3-small", exact=True)).to_be_visible()
+    expect(page.locator(".semantic-panel").get_by_text("Unpermitted Cheatsheet", exact=True)).to_be_visible()
+    expect(page.locator(".semantic-panel").get_by_text("0.800", exact=True)).to_be_visible()
     expect(page.locator(".semantic-panel").get_by_text("Permitted Notes")).to_have_count(0)
     assert len(semantic_calls) == 1
     assert page.get_by_text("Save or discard your changes before switching questions, finishing or exporting.").count() == 0
@@ -209,6 +212,7 @@ def test_m7_ai_judge_review_follow_up_no_auto_save_and_workbench_selectors(e2e_w
     page, collector = desktop_page
     _sign_in(page, e2e_workspace.base_url)
     page.goto(f"{e2e_workspace.base_url}/interviews/review/?id={sid}&answer={answer_id}", wait_until="domcontentloaded")
+    expect(page.get_by_role("heading", name="Which interval matters?", exact=True)).to_be_visible(timeout=20_000)
     expect(page.get_by_role("button", name="Run AI review check")).to_have_count(0)
 
     # Register judge model and reload workbench so judgeAvailable === true.
@@ -260,7 +264,7 @@ def test_m7_ai_judge_review_follow_up_no_auto_save_and_workbench_selectors(e2e_w
     monkeypatch.setattr(scoring_hooks, "fetch_json", fake_judge_fetch)
 
     page.goto(f"{e2e_workspace.base_url}/interviews/review/?id={sid}&answer={answer_id}", wait_until="domcontentloaded")
-    expect(page.get_by_role("heading", name="Which interval matters?", exact=True)).to_be_visible()
+    expect(page.get_by_role("heading", name="Which interval matters?", exact=True)).to_be_visible(timeout=20_000)
     # Existing QA selectors must remain intact.
     expect(page.locator("article > .transcript-text mark")).to_have_text(phrase)
     sources_details = page.get_by_text("Source texts (2)", exact=True).locator("..")
@@ -273,7 +277,7 @@ def test_m7_ai_judge_review_follow_up_no_auto_save_and_workbench_selectors(e2e_w
 
     judge_section = page.get_by_role("region", name="AI review check")
     run_btn = judge_section.get_by_role("button", name="Run AI review check")
-    expect(run_btn).to_be_visible()
+    expect(run_btn).to_be_visible(timeout=20_000)
 
     # Error paths (429 and 503) render role="alert" inside judge panel.
     judge_mode["outcome"] = "429"

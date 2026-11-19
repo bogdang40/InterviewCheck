@@ -30,6 +30,14 @@ def migrate(db: sqlite3.Connection) -> None:
     db.executescript(SCHEMA)
 
 
+def latest_reviewer_disposition(db: sqlite3.Connection, answer_id: str, reviewer_id: str) -> str | None:
+    row = db.execute(
+        "SELECT disposition FROM answer_review_events WHERE answer_id=? AND reviewer_id=? ORDER BY id DESC LIMIT 1",
+        (answer_id, reviewer_id),
+    ).fetchone()
+    return row["disposition"] if row is not None else None
+
+
 def record_review_event(
     db: sqlite3.Connection,
     *,

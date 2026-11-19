@@ -28,7 +28,17 @@ function PageContent() {
 
 export default function BriefPage() {
   return (
-    <Suspense fallback={<h1>Review brief</h1>}>
+    <Suspense
+      fallback={
+        <section className="panel stack" role="status" aria-live="polite">
+          <div className="page-title">
+            <span className="eyebrow">BRIEF</span>
+            <h1>Review brief</h1>
+            <p>Loading brief workspace...</p>
+          </div>
+        </section>
+      }
+    >
       <PageContent />
     </Suspense>
   )

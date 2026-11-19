@@ -10,6 +10,7 @@ import { BILLING_RETURN_STYLE_HASH } from "./routes/BillingReturnPage.js";
 import { BillingRoutes } from "./routes/BillingRoutes.js";
 import { MetricsRoutes } from "./routes/MetricsRoutes.js";
 import { SecurityRoutes } from "./routes/SecurityRoutes.js";
+import { TotpRoutes } from "./routes/TotpRoutes.js";
 
 export const API_VERSION = "v1";
 
@@ -24,6 +25,7 @@ export class AppFactory {
     app.use(
       secureHeaders({
         xFrameOptions: "DENY",
+        referrerPolicy: "no-referrer",
         permissionsPolicy: { camera: [], microphone: [], geolocation: [], payment: [], usb: [] },
       }),
     );
@@ -35,6 +37,13 @@ export class AppFactory {
           ? `default-src 'none'; style-src '${BILLING_RETURN_STYLE_HASH}'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`
           : "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
       c.header("Content-Security-Policy", csp);
+      c.header("Referrer-Policy", "no-referrer");
+    });
+    app.use("*", async (c, next) => {
+      if (c.req.method === "OPTIONS" && c.req.header("access-control-request-method") !== undefined) {
+        throw new HttpError(403, "forbidden", "Cross-origin preflight requests are not permitted.");
+      }
+      await next();
     });
     app.use(
       bodyLimit({
@@ -68,6 +77,14 @@ export class AppFactory {
     );
     api.route(
       "/",
+      TotpRoutes.build({
+        auth: container.auth,
+        totp: container.totp,
+        totpLimiter: container.totpLimiter,
+      }),
+    );
+    api.route(
+      "/",
       SecurityRoutes.build({
         auth: container.auth,
         security: container.security,
@@ -89,7 +106,9 @@ export class AppFactory {
       AdminRoutes.build({
         auth: container.auth,
         admin: container.admin,
+        audit: container.audit,
         security: container.security,
+        database: container.database,
         adminReadLimiter: container.adminReadLimiter,
         adminWriteLimiter: container.adminWriteLimiter,
         trustProxy: container.config.TRUST_PROXY,
@@ -110,6 +129,9 @@ export class AppFactory {
     app.notFound((c) => c.json({ error: { code: "not_found", message: "No such route." } }, 404));
     app.onError((error, c) => {
       if (error instanceof HttpError) {
+        if (error.code === "totp_required") {
+          c.header("X-InterviewCheck-TOTP", "required");
+        }
         return c.json(error.toBody(), error.status as 400);
       }
       const code = (error as { code?: unknown }).code;

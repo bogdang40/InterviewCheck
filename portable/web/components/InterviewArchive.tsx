@@ -4,8 +4,8 @@ import { useSearchParams } from "next/navigation"
 import { ArrowUpRight, Archive, Columns2, Plus, Search, X } from "lucide-react"
 import { message } from "@/lib/api"
 import {
-  bulkArchive, bulkExport, bulkTag, collectTags, pruneSelection, toggleSelection,
-  type BulkExportFormat, type FeedPage,
+  bulkArchive, bulkExport, bulkTag, fetchWorkspaceTags, mergeWorkspaceTags, pruneSelection, toggleSelection,
+  type BulkExportFormat, type FeedPage, type WorkspaceTag,
 } from "@/lib/bulkArchive"
 import { buildComparePageUrl } from "@/lib/compareInterviews"
 import type { SessionSort } from "@/lib/interview-list"
@@ -21,7 +21,8 @@ import { Input } from "./ui/input"
 const states = new Set(["active", "finished", "archived"])
 const reviewStates = new Set(["pending", "clear"])
 const sorts = new Set(["newest", "oldest", "candidate", "pending"])
-const filterKeys = ["q", "status", "review", "tag", "sort", "page"] as const
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const filterKeys = ["q", "status", "review", "role_id", "tag", "sort", "page"] as const
 type Filter = (typeof filterKeys)[number]
 
 function setFilter(key: Filter | null, value = "") {
@@ -36,7 +37,13 @@ function setFilter(key: Filter | null, value = "") {
   else window.history.replaceState(null, "", destination)
 }
 
-export default function InterviewArchive({ onCreate }: { onCreate: () => void }) {
+export default function InterviewArchive({
+  onCreate,
+  onReady,
+}: {
+  onCreate: () => void
+  onReady?: () => void
+}) {
   const params = useSearchParams()
   const [query, setQuery] = useState(params.get("q") || "")
   const [tagInput, setTagInput] = useState(params.get("tag") || "")
@@ -47,6 +54,8 @@ export default function InterviewArchive({ onCreate }: { onCreate: () => void })
   }, [params])
   const status = states.has(params.get("status") || "") ? params.get("status")! : ""
   const review = reviewStates.has(params.get("review") || "") ? params.get("review")! : ""
+  const rawRoleId = params.get("role_id") || ""
+  const roleId = UUID_RE.test(rawRoleId) ? rawRoleId : ""
   const sort = sorts.has(params.get("sort") || "") ? (params.get("sort") as SessionSort) : "newest"
   const requestedPage = Number(params.get("page") || 1)
   const page = Number.isSafeInteger(requestedPage) && requestedPage > 0 && requestedPage <= 2147483647 ? requestedPage : 1
@@ -59,10 +68,26 @@ export default function InterviewArchive({ onCreate }: { onCreate: () => void })
 
   const trimmedTag = tagSearch.trim().slice(0, 32)
   const criteria = new URLSearchParams({
-    q: search.slice(0, 160), status, review, sort, page: String(page), ...(trimmedTag ? { tag: trimmedTag } : {}),
+    q: search.slice(0, 160), status, review, sort, page: String(page),
+    ...(roleId ? { role_id: roleId } : {}),
+    ...(trimmedTag ? { tag: trimmedTag } : {}),
   })
   const resource = useResource<FeedPage>("interviews/feed?" + criteria.toString())
+  const rolesResource = useResource<Array<{ id: string; name: string }>>("roles")
   const data = search === query && tagSearch === tagInput ? resource.data : null
+  useEffect(() => {
+    if (resource.data !== null || resource.error !== "") onReady?.()
+  }, [resource.data, resource.error, onReady])
+  const [workspaceTags, setWorkspaceTags] = useState<WorkspaceTag[] | null>(null)
+  const [tagsRefresh, setTagsRefresh] = useState(0)
+  useEffect(() => {
+    const controller = new AbortController()
+    fetchWorkspaceTags(controller.signal)
+      .then(setWorkspaceTags)
+      .catch((err) => { if (!(err instanceof DOMException && err.name === "AbortError")) setWorkspaceTags(null) })
+    return () => controller.abort()
+  }, [tagsRefresh])
+
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [bulkBusy, setBulkBusy] = useState(false)
   const [bulkError, setBulkError] = useState("")
@@ -71,10 +96,13 @@ export default function InterviewArchive({ onCreate }: { onCreate: () => void })
 
   const visibleIds = useMemo(() => (data?.items ?? []).map((item) => item.id), [data])
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds])
-  const availableTags = useMemo(() => collectTags(data?.items ?? [], trimmedTag), [data, trimmedTag])
+  const availableTags = useMemo(
+    () => mergeWorkspaceTags(workspaceTags, data?.items ?? [], trimmedTag),
+    [workspaceTags, data, trimmedTag],
+  )
   useEffect(() => setSelectedIds((prev) => pruneSelection(prev, visibleIds)), [visibleIds])
 
-  const changed = Boolean(query || status || review || tagInput.trim() || sort !== "newest" || page !== 1)
+  const changed = Boolean(query || status || review || roleId || tagInput.trim() || sort !== "newest" || page !== 1)
   const first = data ? (data.page - 1) * data.page_size + 1 : 0
   const last = data ? first + data.items.length - 1 : 0
   const count = !data
@@ -108,6 +136,7 @@ export default function InterviewArchive({ onCreate }: { onCreate: () => void })
         ),
       }))
       setBulkNotice(`Updated tags on ${res.updated} ${res.updated === 1 ? "interview" : "interviews"}.`)
+      setTagsRefresh((n) => n + 1)
       resource.reload()
     }, true)
 
@@ -123,6 +152,7 @@ export default function InterviewArchive({ onCreate }: { onCreate: () => void })
       setSelectedIds([])
       setArchivedCount(res.archived)
       setBulkNotice(`Moved ${res.archived} ${res.archived === 1 ? "interview" : "interviews"} to Trash.`)
+      setTagsRefresh((n) => n + 1)
       resource.reload()
     }, true)
 
@@ -178,6 +208,18 @@ export default function InterviewArchive({ onCreate }: { onCreate: () => void })
             </select>
           </label>
           <label className="field">
+            Role
+            <select aria-label="Filter by role" value={roleId} onChange={(e) => setFilter("role_id", e.target.value)}>
+              <option value="">All roles</option>
+              {roleId && !(rolesResource.data ?? []).some((r) => r.id === roleId) && (
+                <option value={roleId}>Selected role</option>
+              )}
+              {(rolesResource.data ?? []).map((role) => (
+                <option key={role.id} value={role.id}>{role.name}</option>
+              ))}
+            </select>
+          </label>
+          <label className="field">
             Sort interviews
             <select value={sort} onChange={(e) => setFilter("sort", e.target.value)}>
               <option value="newest">Newest first</option>
@@ -197,16 +239,17 @@ export default function InterviewArchive({ onCreate }: { onCreate: () => void })
           </label>
           {availableTags.length > 0 && (
             <div className={styles.chipList} role="group" aria-label="Tag filters">
-              {availableTags.map((tag) => {
-                const active = tagInput.trim() === tag
-                const next = active ? "" : tag
+              {availableTags.map((entry) => {
+                const active = tagInput.trim() === entry.tag
+                const next = active ? "" : entry.tag
                 return (
                   <button
-                    key={tag} type="button" aria-pressed={active}
+                    key={entry.tag} type="button" aria-pressed={active}
                     className={active ? `${styles.chip} ${styles.chipActive}` : styles.chip}
                     onClick={() => { setTagInput(next); setTagSearch(next); setFilter("tag", next) }}
                   >
-                    {tag}
+                    <span>{entry.tag}</span>
+                    {entry.count > 0 && <span className="ml-1 opacity-75">({entry.count})</span>}
                   </button>
                 )
               })}

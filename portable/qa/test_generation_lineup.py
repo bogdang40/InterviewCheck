@@ -59,7 +59,7 @@ def test_role_edit_then_revert_discards_late_reply(workspace_url, browser_page, 
     assert finished.wait(3)
     expect(planned).to_have_value("Existing plan?")
     page.get_by_role("button", name="Save role", exact=True).click()
-    expect(page.get_by_role("button", name="Edit role", exact=True)).to_be_visible()
+    expect(page.get_by_role("button", name="Edit role Initial role", exact=True)).to_be_visible()
     assert calls == [{"role": "Initial role", "description": "Only this description is authorized."}]
     assert httpx.get(workspace_url + "/api/roles").json()[0]["questions"] == ["Existing plan?"]
 

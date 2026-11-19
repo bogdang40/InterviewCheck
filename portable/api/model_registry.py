@@ -74,7 +74,7 @@ CREATE INDEX IF NOT EXISTS idx_model_audit_action_id ON model_audit(action, id D
 
 
 def migrate(db: sqlite3.Connection) -> None:
-    from . import alert_rules, model_circuit, model_telemetry, prompt_templates
+    from . import alert_rules, audit_integrity, csp_reports, model_circuit, model_telemetry, prompt_templates
 
     db.executescript(SCHEMA)
     model_telemetry.migrate(db)
@@ -82,6 +82,8 @@ def migrate(db: sqlite3.Connection) -> None:
     alert_rules.migrate(db)
     model_circuit.migrate(db)
     prompt_templates.migrate(db)
+    audit_integrity.migrate(db)
+    csp_reports.migrate(db)
 
 
 def parse_parameters(config_json: str | None) -> dict[str, Any]:
@@ -359,7 +361,13 @@ def write_fallback_audit(
     model_uuid: str,
     details: dict[str, Any] | None = None,
 ) -> None:
-    db.execute(
-        "INSERT INTO model_audit(at, actor_user_id, action, model_id, details) VALUES (?,?,?,?,?)",
-        (store.timestamp(), actor_user_id, action, model_uuid, json.dumps(details) if details else None),
+    from . import audit_integrity
+
+    audit_integrity.append_model_audit(
+        db,
+        at=store.timestamp(),
+        actor_user_id=actor_user_id,
+        action=action,
+        model_uuid=model_uuid,
+        details=details,
     )

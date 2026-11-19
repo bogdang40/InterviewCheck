@@ -324,7 +324,7 @@ def test_m8_browser_xss_escaping_csp_and_responsive_viewports(e2e_workspace, e2e
         page.get_by_label("Description").fill(xss_ans)
         page.get_by_label("Planned questions, one per line").fill(xss_q)
         page.get_by_role("button", name="Save role").click()
-        expect(page.get_by_text(xss_role, exact=True)).to_be_visible()
+        expect(page.locator(".role-row").get_by_text(xss_role, exact=True)).to_be_visible()
 
         # Create session with XSS payload.
         page.goto(e2e_workspace.base_url + "/interviews/new/", wait_until="domcontentloaded")
@@ -347,7 +347,7 @@ def test_m8_browser_xss_escaping_csp_and_responsive_viewports(e2e_workspace, e2e
         for width, height, mobile in [(1440, 900, False), (390, 844, True)]:
             page.set_viewport_size({"width": width, "height": height})
             checks = [
-                ("/roles/", lambda: expect(page.get_by_text(xss_role, exact=True)).to_be_visible()),
+                ("/roles/", lambda: expect(page.locator(".role-row").get_by_text(xss_role, exact=True)).to_be_visible()),
                 (f"/interviews/review/?id={sid}", lambda: expect(page.get_by_role("heading", name=xss_q, exact=True)).to_be_visible()),
                 (f"/interviews/brief/?id={sid}", lambda: expect(page.get_by_role("heading", name="Interview review brief")).to_be_visible()),
                 ("/data/", lambda: expect(page.get_by_role("heading", name="Restore from a backup")).to_be_visible()),

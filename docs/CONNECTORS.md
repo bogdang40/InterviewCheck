@@ -154,12 +154,12 @@ Notes:
 | Recruitee | ✓ (your events) | ✓ | ✓ | ✓ (only you) | Company ID + personal API token |
 | Zoho Recruit | ✓ | ✓ | ✓ | Note | Self Client: client ID, secret, refresh token |
 | Teamtailor | from calendar | ✓ | ✓ | Note | Admin API key; your user ID for notes |
-| BambooHR | from calendar | – (not in its API) | ✓ | Comment | Subdomain + API key |
+| BambooHR | from calendar | - (not in its API) | ✓ | Comment | Subdomain + API key |
 | JazzHR | from calendar | ✓ | ✓ | ✓ (only you) | API key |
 | Breezy HR | from calendar | ✓ | ✓ | Team note | Personal access token |
-| Personio | from calendar | – | – | – | Client ID + secret (Recruiting read) |
-| Bullhorn (staffing) | ✓ (Interview appointments) | ✓ | ✓ | – (notes cannot be private) | API key from Bullhorn Support + API user name; browser sign-in |
-| JobAdder (staffing) | ✓ (interviews + scheduler events) | ✓ | ✓ | – (notes cannot be private) | Approved developer app (client ID + secret); browser sign-in |
+| Personio | from calendar | - | - | - | Client ID + secret (Recruiting read) |
+| Bullhorn (staffing) | ✓ (Interview appointments) | ✓ | ✓ | - (notes cannot be private) | API key from Bullhorn Support + API user name; browser sign-in |
+| JobAdder (staffing) | ✓ (interviews + scheduler events) | ✓ | ✓ | - (notes cannot be private) | Approved developer app (client ID + secret); browser sign-in |
 
 Bullhorn and JobAdder match the sign-in redirect exactly, so register
 `http://127.0.0.1:53871/callback`; InterviewCheck always listens on that port for them (and

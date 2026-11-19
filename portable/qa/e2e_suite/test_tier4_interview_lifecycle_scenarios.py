@@ -93,7 +93,7 @@ def test_scenario_b_consented_live_interview_mocked_audio_review_and_export(e2e_
         page.get_by_label("Description").fill("Fault-tolerant backend systems.")
         page.get_by_label("Planned questions, one per line").fill("How do you design idempotent retries?")
         page.get_by_role("button", name="Save role").click()
-        expect(page.get_by_text("Distributed Systems Architect", exact=True)).to_be_visible()
+        expect(page.locator(".role-row").get_by_text("Distributed Systems Architect", exact=True)).to_be_visible()
 
         # Prepare and start consented interview.
         page.locator(".role-row").filter(has_text="Distributed Systems Architect").get_by_role("button", name="Prepare").click()

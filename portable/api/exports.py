@@ -105,41 +105,94 @@ def text_block(title, value):
     return f"<h3>{escape(title)}</h3><p>{escape(str(value))}</p>"
 
 
-def print_answer(index, record, origin):
+def _has_table(db, name: str) -> bool:
+    return db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)).fetchone() is not None
+
+
+def render_scorecard(db, sid: str) -> str:
+    if not _has_table(db, "session_scorecards"):
+        return ""
+    rows = db.execute("SELECT criterion_label,weight,rating,rationale FROM session_scorecards WHERE session_id=? ORDER BY rowid", (sid,)).fetchall()
+    if not rows:
+        return ""
+    total_w = sum(int(r["weight"]) for r in rows)
+    pct = round(sum(int(r["rating"]) * int(r["weight"]) for r in rows) / (total_w * 5) * 100, 1) if total_w > 0 else 0.0
+    items = "".join(
+        f"<dt>{escape(r['criterion_label'])} (weight {int(r['weight'])})</dt>"
+        f"<dd>Rating: {int(r['rating'])}/5" + (f" - {escape(r['rationale'])}" if r["rationale"] else "") + "</dd>"
+        for r in rows
+    )
+    return f"<section><h2>Rubric scorecard</h2><p>Weighted score: {pct:.1f}%</p><dl>{items}</dl></section>"
+
+
+def render_handoff_notes(db, sid: str) -> str:
+    if not _has_table(db, "session_handoff_notes"):
+        return ""
+    rows = db.execute(
+        "SELECT author_email,category,body,created_at FROM session_handoff_notes WHERE session_id=? ORDER BY created_at DESC, id DESC",
+        (sid,),
+    ).fetchall()
+    if not rows:
+        return "<section><h2>Panel handoff notes</h2><p>No handoff notes recorded.</p></section>"
+    items = "".join(f"<dt>{escape(r['category'])} by {escape(r['author_email'])} ({escape(r['created_at'])})</dt><dd>{escape(r['body'])}</dd>" for r in rows)
+    return f"<section><h2>Panel handoff notes</h2><dl>{items}</dl></section>"
+
+
+def print_answer(index, record, origin, *, include_sources=True, include_legacy=True, redact_candidate=False):
     finding = record["result"]
-    blocks = [f"<article><h2>Question {index}</h2><p>{escape(record['question'])}</p>",
-              text_block("Captured answer", record["answer"]), text_block("Comparison", finding["explanation"])]
+    blocks = [f"<article><h2>Question {index}</h2><p>{escape(record['question'])}</p>"]
+    if not redact_candidate:
+        blocks.append(text_block("Captured answer", record["answer"]))
+    blocks.append(text_block("Comparison", finding["explanation"]))
     if origin:
         blocks.append(text_block("Question origin", origin))
+    if redact_candidate:
+        blocks.append(text_block("Matched passages", len(finding["passages"])))
     for item in finding["passages"]:
-        blocks.extend([text_block("Source", item["label"]), text_block("Total matching words", item["words"]),
-                       text_block("Candidate excerpt", item["answer_excerpt"]), text_block("Source excerpt", item["source_excerpt"])])
-    for ref in record["references"]:
-        blocks.append(text_block(("Permitted source: " if ref["permitted"] else "Comparison source: ") + ref["label"], ref["text"]))
-    blocks.extend([text_block("Follow up", finding["follow_up"]), text_block("Review outcome", record["disposition"]),
-                   text_block("Interviewer note", record["note"] or "No note recorded.")])
-    if record.get("legacy"):
+        blocks.extend([text_block("Source", item["label"]), text_block("Total matching words", item["words"])])
+        if not redact_candidate:
+            blocks.append(text_block("Candidate excerpt", item["answer_excerpt"]))
+            if include_sources:
+                blocks.append(text_block("Source excerpt", item["source_excerpt"]))
+    if include_sources:
+        for ref in record["references"]:
+            blocks.append(text_block(("Permitted source: " if ref["permitted"] else "Comparison source: ") + ref["label"], ref["text"]))
+    if not redact_candidate:
+        blocks.append(text_block("Follow up", finding["follow_up"]))
+    blocks.extend([text_block("Review outcome", record["disposition"]), text_block("Interviewer note", record["note"] or "No note recorded.")])
+    if include_legacy and not redact_candidate and record.get("legacy"):
         blocks.append("<h3>Original native answer record</h3><pre>" + escape(json.dumps(record["legacy"], indent=2, ensure_ascii=False)) + "</pre>")
     return "".join(blocks) + "</article>"
 
 
 @router.get("/sessions/{sid}/print", response_class=HTMLResponse)
-def print_view(sid: UUID):
+def print_view(
+    sid: UUID,
+    include_sources: bool = True,
+    include_scorecard: bool = True,
+    include_handoff_notes: bool = False,
+    include_legacy: bool = True,
+    redact_candidate: bool = False,
+):
     with store.connection() as db:
         session = store.get_session(db, str(sid))
-    heading = "Interview review for " + (session["candidate"] or "unnamed candidate")
+        scorecard = render_scorecard(db, str(sid)) if include_scorecard else ""
+        handoff_notes = render_handoff_notes(db, str(sid)) if include_handoff_notes else ""
+    heading = "Interview review for " + ("Candidate [Redacted]" if redact_candidate else (session["candidate"] or "unnamed candidate"))
     meta = "".join(f"<dt>{label}</dt><dd>{escape(value)}</dd>" for label, value in [
         ("Role", session["role"]), ("Date", session["created_at"]), ("Finished", session["ended_at"] or "In progress"), ("Resource policy", session["policy"]),
         ("Candidate notice recorded", "Yes" if session["consent"] else "Unknown")])
-    materials = "".join(text_block("Permitted source: " + source["label"], source["text"]) for source in session["permitted_sources"])
+    materials = "".join(text_block("Permitted source: " + s["label"], s["text"]) for s in session["permitted_sources"]) if include_sources else ""
     ordinals = {a["id"]: idx for idx, a in enumerate(session["answers"], 1)}
-    answers = "".join(print_answer(i, a, origin_description(a, session["planned_questions"], ordinals))
-                      for i, a in enumerate(session["answers"], 1))
-    legacy = session.get("legacy")
-    metadata = ("<h2>Original native session record</h2><pre>" + escape(json.dumps(legacy, indent=2, ensure_ascii=False))
-                + "</pre>") if legacy else ""
+    answers = "".join(
+        print_answer(i, a, origin_description(a, session["planned_questions"], ordinals),
+                     include_sources=include_sources, include_legacy=include_legacy, redact_candidate=redact_candidate)
+        for i, a in enumerate(session["answers"], 1)
+    )
+    legacy = session.get("legacy") if (include_legacy and not redact_candidate) else None
+    metadata = ("<h2>Original native session record</h2><pre>" + escape(json.dumps(legacy, indent=2, ensure_ascii=False)) + "</pre>") if legacy else ""
     return HTMLResponse(f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>{escape(heading)}</title>
 <style>{STYLE}</style><script src="/api/exports/print.js" defer></script></head><body><nav aria-label="Report actions"><button type="button" id="print-report">Print or save PDF</button></nav>
-<main><h1>{escape(heading)}</h1><dl>{meta}</dl>{materials}<p>Shared wording requires interpretation against the interview rules.</p>
+<main><h1>{escape(heading)}</h1><dl>{meta}</dl>{materials}{scorecard}{handoff_notes}<p>Shared wording requires interpretation against the interview rules.</p>
 {answers or "<p>No answers recorded.</p>"}{metadata}</main></body></html>""")

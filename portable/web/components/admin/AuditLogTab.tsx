@@ -12,6 +12,7 @@ import {
   type AuditCategory,
 } from "@/lib/adminAudit"
 import { AdminApiError, type AuditEntry } from "@/lib/adminModels"
+import { AuditIntegrityBanner } from "./AuditIntegrityBanner"
 
 const PAGE_SIZE_OPTIONS = [20, 50, 100, 200] as const
 
@@ -211,6 +212,8 @@ export function AuditLogTab({ onAuthInvalid }: { onAuthInvalid: (msg: string) =>
         </div>
       </div>
 
+      <AuditIntegrityBanner onAuthInvalid={onAuthInvalid} />
+
       <div className="dual">
         <label className="field">
           Category
@@ -310,9 +313,9 @@ export function AuditLogTab({ onAuthInvalid }: { onAuthInvalid: (msg: string) =>
                     {entry.actorUserId ? entry.actorUserId.slice(0, 8) : "system"}
                   </td>
                   <td className="admin-mono" title={entry.targetUserId ?? ""}>
-                    {entry.targetUserId ? entry.targetUserId.slice(0, 8) : "—"}
+                    {entry.targetUserId ? entry.targetUserId.slice(0, 8) : "n/a"}
                   </td>
-                  <td className="admin-mono">{entry.details ? JSON.stringify(entry.details) : "—"}</td>
+                  <td className="admin-mono">{entry.details ? JSON.stringify(entry.details) : "n/a"}</td>
                 </tr>
               ))}
             </tbody>

@@ -63,7 +63,7 @@ def test_dr_drill_cli_end_to_end_and_zero_secret_leakage(tmp_path):
     assert payload["wal_stress"]["reads_completed"] == 18
     assert payload["sqlite_backup"]["review_integrity"] == "ok"
     assert payload["sqlite_backup"]["access_integrity"] == "ok"
-    assert payload["sqlite_backup"]["access_user_version"] == 7
+    assert payload["sqlite_backup"]["access_user_version"] == account_db.VERSION
     assert payload["sqlite_restore"]["review_fk_errors"] == 0
     assert payload["sqlite_restore"]["access_fk_errors"] == 0
     assert payload["sqlite_restore"]["review_counts"]["drafts"] == 1
@@ -161,7 +161,7 @@ def test_corrupted_db_recovery_failure_and_tampered_json_backup_rejected(tmp_pat
 
     store.initialize(live_rev)
     with account_db.connection(write=True) as adb:
-        assert adb.execute("PRAGMA user_version").fetchone()[0] == 7
+        assert adb.execute("PRAGMA user_version").fetchone()[0] == account_db.VERSION
     with store.connection(write=True) as db:
         role = store.create_role(db, RoleInput(name="Corrupt Test", questions=["Q1?"], policy="Verify evidence."))
         sess = store.create_session(db, SessionInput(candidate="C1", role=role["name"], role_id=role["id"], consent=True))

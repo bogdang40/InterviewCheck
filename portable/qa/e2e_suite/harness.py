@@ -10,7 +10,7 @@ import time
 
 import httpx
 import pytest
-from playwright.sync_api import Page
+from playwright.sync_api import Error as PlaywrightError, Page
 import uvicorn
 
 QA_ROOT = Path(__file__).resolve().parents[1]
@@ -260,7 +260,7 @@ class IsolatedWorkspace:
         deadline = time.monotonic() + 15.0
         listener = self._bind_listener(self._bound_api_port, deadline)
         self._bound_api_port = listener.getsockname()[1]
-        server = uvicorn.Server(uvicorn.Config(app, access_log=False, log_level="warning"))
+        server = uvicorn.Server(uvicorn.Config(app, access_log=False, log_level="warning", timeout_keep_alive=300))
         thread = threading.Thread(target=server.run, kwargs={"sockets": [listener]}, daemon=True)
         thread.start()
         while not server.started:
@@ -344,6 +344,12 @@ def assert_no_horizontal_overflow(page: Page) -> None:
 def capture_screenshot(page: Page, screenshot_dir: Path, name: str, viewport_label: str) -> Path:
     safe_name = "".join(ch if ch.isalnum() or ch in {"-", "_"} else "_" for ch in name)
     output = screenshot_dir / f"{safe_name}_{viewport_label}.png"
-    page.screenshot(path=str(output), full_page=True)
+    try:
+        page.evaluate(
+            "() => document.fonts ? Promise.race([document.fonts.ready, new Promise((resolve) => setTimeout(resolve, 5000))]) : undefined"
+        )
+    except PlaywrightError:
+        pass
+    page.screenshot(path=str(output), full_page=True, timeout=20000)
     assert output.is_file() and output.stat().st_size > 0
     return output

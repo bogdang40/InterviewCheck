@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import importlib.util
 from pathlib import Path
 import sys
 from uuid import UUID
@@ -8,8 +9,43 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import access, alert_rules, ats_notes, authoring, backup, bulk_operations, candidate_compare, drafts, health_probes, metrics_export, model_admin, model_circuit, model_execution, model_playground, prompt_templates, rate_limit, role_analytics, role_versions, scoring_hooks, secret_box, store, trash
+from . import (
+    access,
+    alert_history,
+    alert_rules,
+    ats_notes,
+    audit_integrity,
+    authoring,
+    backup,
+    bulk_operations,
+    calibration_queue,
+    candidate_compare,
+    cohort_analytics,
+    csp_reports,
+    diagnostics_export,
+    drafts,
+    health_probes,
+    metrics_export,
+    model_admin,
+    model_circuit,
+    model_execution,
+    model_playground,
+    model_presets,
+    prompt_templates,
+    rate_limit,
+    retention_policy,
+    role_analytics,
+    role_versions,
+    rubric_templates,
+    scoring_hooks,
+    secret_box,
+    session_assignment,
+    session_scorecard,
+    store,
+    trash,
+)
 from .access import embedded_enabled, require_entitlement
+from .answer_history_routes import mutation_actor, router as answer_history
 from .error_sanitizer import sanitize_error_text
 from .evidence import compare
 from .integrations import router as integrations
@@ -67,8 +103,8 @@ async def unhandled_error(_request, exc):
 
 @app.get("/api/health")
 def health():
-    with store.connection() as db:
-        db.execute("SELECT 1 FROM sessions LIMIT 1").fetchone()
+    from .readiness import check_local_databases
+    check_local_databases()
     return {"ok": True}
 
 
@@ -108,16 +144,16 @@ def answer_detail(sid: UUID, aid: UUID):
 
 
 @workspace.put("/sessions/{sid}/answers/{aid}")
-def revise(sid: UUID, aid: UUID, item: AnswerEdit):
+def revise(sid: UUID, aid: UUID, item: AnswerEdit, actor=Depends(mutation_actor)):
     with store.connection(write=True) as db:
-        return store.write_answer(db, str(sid), item, str(aid))
+        return store.write_answer(db, str(sid), item, str(aid), actor=actor)
 
 
 @workspace.patch("/sessions/{sid}/answers/{aid}")
-async def review(sid: UUID, aid: UUID, item: ReviewInput, request: Request):
+async def review(sid: UUID, aid: UUID, item: ReviewInput, request: Request, history_actor=Depends(mutation_actor)):
     actor = await access.optional_actor(request)
     with store.connection(write=True) as db:
-        return store.update_review(db, str(sid), str(aid), item, actor=actor)
+        return store.update_review(db, str(sid), str(aid), item, actor=actor, history_actor=history_actor)
 
 
 @workspace.get("/sessions/{sid}/report")
@@ -165,11 +201,13 @@ def preview_exported_role(document: dict):
 
 
 workspace.include_router(trash.router)
+workspace.include_router(answer_history)
 workspace.include_router(drafts.router)
 workspace.include_router(backup.router)
 workspace.include_router(bulk_operations.router)
 workspace.include_router(role_analytics.router)
 workspace.include_router(role_versions.router)
+workspace.include_router(rubric_templates.router)
 workspace.include_router(session_workflow)
 workspace.include_router(transcript_import)
 workspace.include_router(ats_notes.router)
@@ -177,15 +215,28 @@ workspace.include_router(discovery)
 workspace.include_router(interview_catalog)
 workspace.include_router(exports)
 workspace.include_router(candidate_compare.router)
+workspace.include_router(session_scorecard.router)
+workspace.include_router(session_assignment.router)
+workspace.include_router(cohort_analytics.router)
+workspace.include_router(calibration_queue.router)
 app.include_router(health_probes.router)
 app.include_router(authoring.router)
+app.include_router(model_presets.router)
 app.include_router(model_admin.router)
 app.include_router(model_circuit.router)
 app.include_router(model_playground.router)
 app.include_router(prompt_templates.router)
+app.include_router(alert_history.router)
 app.include_router(alert_rules.router)
 app.include_router(metrics_export.router)
+app.include_router(csp_reports.router)
+app.include_router(audit_integrity.router)
 app.include_router(scoring_hooks.router)
+app.include_router(retention_policy.router)
+if importlib.util.find_spec(".compliance_export", package=__package__) is not None:
+    from . import compliance_export
+    app.include_router(compliance_export.router)
+app.include_router(diagnostics_export.router)
 app.include_router(workspace)
 app.include_router(integrations)
 

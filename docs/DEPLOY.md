@@ -94,7 +94,8 @@ az vm run-command invoke -g interviewcheck-rg -n interviewcheck-vm --command-id 
 - **Logs:** `az vm run-command invoke ... --scripts "docker logs --tail 100 interviewcheck-app-1"`.
 - **Backups:** nightly at 07:30 UTC (`systemctl list-timers interviewcheck-backup.timer`) and before each deploy.
   Blobs are `backups/<UTC time>-<nightly|pre-deploy>.tar.gz`, containing `review.sqlite3` and `access.sqlite3`.
-- **Restore:** stop the app, put both files back in `/srv/interviewcheck/data` (owner uid 10001), then start it.
+- **Restore:** stop all application writers. Extract the selected backup into a new empty directory and verify both database files with SQLite integrity checks. Move the current database files and their matching `-wal` and `-shm` sidecars together into a quarantine directory. Install only the verified backup files in `/srv/interviewcheck/data` with owner uid 10001, then start the compatible application image. Old WAL files can override a restored main database even when its integrity check passes.
+- **Upgrade recovery:** an existing deployment must complete and upload both database backups before the new image starts. A failed predeployment backup stops the rollout. Automatic image rollback does not roll back database migrations. For an incompatible schema change, restore the verified pair and use the matching earlier image before resuming writes.
 - **Rollback:** Actions → **Deploy web workspace** → **Run workflow** on an older commit is not possible (main
   only). Instead, revert the commit on `main`, or start an earlier image on the VM (run `az login --identity`
   and `az acr login --name <acr>` first if it has to be pulled again):

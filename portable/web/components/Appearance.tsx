@@ -12,27 +12,43 @@ const choices = [
 
 export default function Appearance() {
   const [value, setValue] = useState<Preference>("dark")
+  const [hydrated, setHydrated] = useState(false)
   const id = useId()
   useEffect(() => {
     const sync = () => {
-      const theme = document.documentElement.dataset.theme
-      setValue(theme === "light" || theme === "system" ? theme : "dark")
+      let stored: string | null = null
+      try {
+        stored = localStorage.getItem("interviewcheck.appearance")
+      } catch {
+        stored = null
+      }
+      const raw =
+        stored === "light" || stored === "system" || stored === "dark"
+          ? stored
+          : document.documentElement.dataset.theme
+      const resolved: Preference = raw === "light" || raw === "system" ? raw : "dark"
+      document.documentElement.dataset.theme = resolved
+      setValue(resolved)
     }
     sync()
+    setHydrated(true)
     window.addEventListener("interviewcheck:appearance", sync)
     return () => window.removeEventListener("interviewcheck:appearance", sync)
   }, [])
   function select(preference: Preference) {
-    document.documentElement.dataset.theme = preference
     try {
       localStorage.setItem("interviewcheck.appearance", preference)
     } catch {
       /* Applies for the current page if storage is unavailable. */
     }
+    document.documentElement.dataset.theme = preference
     setValue(preference)
   }
   return (
-    <section className="panel data-panel appearance">
+    <section
+      className="panel data-panel appearance"
+      data-hydrated={hydrated ? "true" : "false"}
+    >
       <h2>Appearance</h2>
       <fieldset>
         <legend>Color theme for this browser</legend>

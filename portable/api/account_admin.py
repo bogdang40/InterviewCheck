@@ -4,6 +4,7 @@ import json
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from uuid import UUID
 
@@ -184,6 +185,12 @@ def audit(
         ],
         "nextBeforeId": next_before_id,
     }
+
+
+@router.get("/audit/verify", dependencies=[Depends(rate_limit.limit(rate_limit.ADMIN_READ))])
+def verify_audit(_=Depends(admin)):
+    with store.connection() as db:
+        return JSONResponse(store.verify_audit_chain(db), headers={"Cache-Control": "no-store"})
 
 
 @router.api_route("/{unknown:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"],

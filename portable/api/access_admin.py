@@ -6,7 +6,7 @@ from urllib.parse import urlencode
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
 
 from . import access, exports, rate_limit
 from .account_admin import Update
@@ -130,6 +130,12 @@ async def audit(
         token, q=q, category=category, action=action, actor=actor,
         since=since, until=until, before_id=before_id, limit=limit,
     )
+
+
+@router.get("/audit/verify", dependencies=[Depends(rate_limit.limit(rate_limit.ADMIN_READ))])
+async def verify_audit(token: str = Depends(admin_token)):
+    data = await access.upstream("admin/audit/verify", token=token)
+    return JSONResponse(data, headers={"Cache-Control": "no-store"})
 
 
 @router.get("/audit/export", dependencies=[Depends(rate_limit.limit(rate_limit.ADMIN_READ))])

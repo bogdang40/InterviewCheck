@@ -1,9 +1,11 @@
 import { useRef, useState, type FormEvent } from "react"
-import { ArrowRight, BriefcaseBusiness, History, Plus } from "lucide-react"
+import { ArrowRight, BriefcaseBusiness, Copy, History, Plus } from "lucide-react"
 import { api, message, RoleConflict, type PermittedMaterial } from "@/lib/api"
 import type { CalibratedRole, RubricCriterion } from "@/lib/roleCalibration"
+import { cloneRole } from "@/lib/roleTemplates"
 import ReloadRole from "./ReloadRole"
 import ResourcePolicy from "./ResourcePolicy"
+import RoleFileActions from "./RoleFileActions"
 import Authoring from "./Authoring"
 import RoleRubricEditor, { sanitizeRubric } from "./RoleRubricEditor"
 import RoleVersionHistory from "./RoleVersionHistory"
@@ -24,6 +26,7 @@ export default function Roles({
   onReloadAll?: () => void
 }) {
   const authoringVersion = useRef(0)
+  const savedQuestions = useRef<string[]>([])
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
   const [policy, setPolicy] = useState("")
@@ -40,15 +43,38 @@ export default function Roles({
   const [id, setId] = useState(() => crypto.randomUUID())
   const [historyRoleId, setHistoryRoleId] = useState<string | null>(null)
   const [analyticsRefreshKey, setAnalyticsRefreshKey] = useState(0)
+  const [status, setStatus] = useState("")
+  const [cloningId, setCloningId] = useState<string | null>(null)
+  const [cloneError, setCloneError] = useState("")
 
   const historyRole = roles.find((r) => r.id === historyRoleId) ?? null
 
-  function open(role?: CalibratedRole) {
+  async function handleClone(role: CalibratedRole) {
+    if (cloningId || busy || generating) return
+    setCloningId(role.id)
+    setCloneError("")
+    setStatus("")
+    try {
+      const cloned = await cloneRole(role.id)
+      onSave(cloned)
+      setAnalyticsRefreshKey((k) => k + 1)
+      setStatus(`Cloned role ${role.name} as ${cloned.name}.`)
+    } catch (err) {
+      setCloneError(message(err))
+    } finally {
+      setCloningId(null)
+    }
+  }
+
+  function open(role?: CalibratedRole, preserveStatus = false) {
     authoringVersion.current += 1
+    savedQuestions.current = role?.questions ?? []
     setAdding(true)
     setVersion(role?.version)
     setConflict(false)
     setError("")
+    setCloneError("")
+    if (!preserveStatus) setStatus("")
     setId(role?.id ?? crypto.randomUUID())
     setName(role?.name ?? "")
     setDescription(role?.description ?? "")
@@ -63,6 +89,7 @@ export default function Roles({
     e.preventDefault()
     if (generating || busy || conflict) return
     const form = new FormData(e.currentTarget)
+    const isEdit = Boolean(version)
     setBusy(true)
     setError("")
     try {
@@ -73,15 +100,15 @@ export default function Roles({
         permitted_sources: materials,
         name: form.get("name"),
         description: form.get("description"),
-        questions: String(form.get("questions"))
-          .split("\n")
-          .map((s) => s.trim())
-          .filter(Boolean),
+        questions: questions === savedQuestions.current.join("\n")
+          ? savedQuestions.current
+          : questions.split("\n").map((s) => s.trim()).filter(Boolean),
         rubric: sanitizeRubric(rubric),
         change_note: changeNote.trim(),
       })
       onSave(role)
       setAnalyticsRefreshKey((k) => k + 1)
+      setStatus(`${isEdit ? "Saved" : "Created"} role ${role.name} (v${role.version_number ?? 1}).`)
       setAdding(false)
       setName("")
       setDescription("")
@@ -109,6 +136,7 @@ export default function Roles({
           <h2>Saved roles</h2>
           <Button
             size="sm"
+            className="min-h-[44px] md:min-h-8"
             disabled={busy || generating}
             onClick={() => (adding ? setAdding(false) : open())}
             variant={adding ? "outline" : "default"}
@@ -117,6 +145,20 @@ export default function Roles({
             {adding ? "Cancel" : "Add role"}
           </Button>
         </div>
+        {status && (
+          <p
+            role="status"
+            aria-live="polite"
+            className="mx-[22px] mb-3 rounded-md border border-[var(--success-line)] bg-[var(--success-bg)] px-3 py-2 text-sm text-[var(--success-text)]"
+          >
+            {status}
+          </p>
+        )}
+        {cloneError && (
+          <p role="alert" className="mx-[22px] mb-3 error">
+            {cloneError}
+          </p>
+        )}
         {adding && (
           <form className="stack inset" onSubmit={save}>
             <label className="field">
@@ -170,14 +212,22 @@ export default function Roles({
             )}
             <div>
               {conflict ? <div className="stack">
-                <ReloadRole id={id} label="Discard edits and load saved role" onLoad={role => { onSave(role); open(role) }} />
-                <Button type="button" variant="outline" onClick={() => {
+                <ReloadRole
+                  id={id}
+                  label="Discard edits and load saved role"
+                  onLoad={role => {
+                    onSave(role)
+                    open(role, true)
+                    setStatus(`Reloaded saved role ${role.name}.`)
+                  }}
+                />
+                <Button type="button" variant="outline" className="min-h-[44px] md:min-h-9" onClick={() => {
                   setId(crypto.randomUUID())
                   setVersion(undefined)
                   setConflict(false)
                   setError("")
                 }}>Keep edits as a new role</Button>
-              </div> : <Button disabled={busy || generating}>Save role</Button>}
+              </div> : <Button className="min-h-[44px] md:min-h-9" disabled={busy || generating}>Save role</Button>}
             </div>
           </form>
         )}
@@ -192,21 +242,50 @@ export default function Roles({
                 {!!r.rubric?.length && ` | ${r.rubric.length} rubric ${r.rubric.length === 1 ? "criterion" : "criteria"}`}
                 {!!r.permitted_sources?.length && ` | ${r.permitted_sources.length} permitted ${r.permitted_sources.length === 1 ? "source" : "sources"}`}
               </small>
+              <RoleFileActions id={r.id} disabled={adding} onDuplicate={onSave} onEdit={open} />
             </div>
-            <span className="ml-auto flex flex-wrap items-center gap-2">
+            <span className="ml-auto flex flex-wrap items-center gap-2 max-sm:w-full">
               <Button
                 type="button"
                 variant={historyRoleId === r.id ? "secondary" : "outline"}
                 size="sm"
+                className="min-h-[44px] md:min-h-8"
+                aria-label={`Version history for ${r.name}`}
                 onClick={() => setHistoryRoleId((cur) => (cur === r.id ? null : r.id))}
               >
                 <History aria-hidden="true" />
                 Versions
               </Button>
-              <Button disabled={adding} variant="outline" size="sm" onClick={() => open(r)}>
+              <Button
+                type="button"
+                disabled={adding}
+                variant="outline"
+                size="sm"
+                className="min-h-[44px] md:min-h-8"
+                aria-label={`Edit role ${r.name}`}
+                onClick={() => open(r)}
+              >
                 Edit role
               </Button>
-              <Button variant="ghost" onClick={() => prepare(r)}>
+              <Button
+                type="button"
+                disabled={adding || cloningId !== null}
+                variant="outline"
+                size="sm"
+                className="min-h-[44px] md:min-h-8"
+                aria-label={`Clone role ${r.name}`}
+                onClick={() => void handleClone(r)}
+              >
+                <Copy aria-hidden="true" />
+                {cloningId === r.id ? "Cloning..." : "Clone"}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                className="min-h-[44px] md:min-h-9"
+                aria-label={`Prepare interview for ${r.name}`}
+                onClick={() => prepare(r)}
+              >
                 Prepare <ArrowRight aria-hidden="true" />
               </Button>
             </span>
@@ -217,7 +296,7 @@ export default function Roles({
             <BriefcaseBusiness aria-hidden="true" />
             <strong>No roles saved</strong>
             <p>Add a role or migrate role profiles from a native database.</p>
-            <Button variant="outline" size="sm" onClick={() => open()}>
+            <Button variant="outline" size="sm" className="min-h-[44px] md:min-h-8" onClick={() => open()}>
               Create a role
             </Button>
           </div>
@@ -229,8 +308,12 @@ export default function Roles({
           onRestored={(updated) => {
             onSave(updated)
             setAnalyticsRefreshKey((k) => k + 1)
+            setStatus(`Restored role ${updated.name} to version ${updated.version_number ?? 1}.`)
           }}
-          onConflictReload={onReloadAll}
+          onConflictReload={() => {
+            onReloadAll?.()
+            setStatus("Reloaded role library.")
+          }}
           onClose={() => setHistoryRoleId(null)}
         />
       )}

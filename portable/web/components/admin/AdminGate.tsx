@@ -6,6 +6,7 @@ import { ShieldAlert } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { submit, type ProviderStatus } from "@/lib/integrations"
+import { submitAccessAuth } from "@/lib/totpApi"
 import { notifyAccountChanged, type AccountSnapshot } from "@/lib/useAccountStatus"
 
 export function AdminGate({
@@ -27,18 +28,36 @@ export function AdminGate({
 }) {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
+  const [totpCode, setTotpCode] = useState("")
+  const [totpRequired, setTotpRequired] = useState(false)
   const [busy, setBusy] = useState(false)
 
   async function handleSignIn(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
     if (busy) return
+    const trimmedTotp = totpCode.trim()
+    if (totpRequired && !trimmedTotp) {
+      onError("Enter your 6-digit authenticator code or backup code.")
+      return
+    }
     setBusy(true)
     onError("")
     try {
-      const next = await submit<AccountSnapshot>("access/login", { email, password })
+      const res = await submitAccessAuth<AccountSnapshot>("login", {
+        email,
+        password,
+        ...(totpRequired && trimmedTotp ? { totpCode: trimmedTotp } : {}),
+      })
+      if (!res.ok) {
+        setTotpRequired(true)
+        setTotpCode("")
+        return
+      }
       setPassword("")
+      setTotpCode("")
+      setTotpRequired(false)
       notifyAccountChanged()
-      onSignedIn(next)
+      onSignedIn(res.account)
     } catch (err) {
       onError(err instanceof Error ? err.message : "Sign in failed.")
     } finally {
@@ -50,6 +69,9 @@ export function AdminGate({
     setBusy(true)
     try {
       await submit("logout")
+      setPassword("")
+      setTotpCode("")
+      setTotpRequired(false)
       notifyAccountChanged()
       onSignedOut()
     } finally {
@@ -105,7 +127,13 @@ export function AdminGate({
               required
               disabled={busy}
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => {
+                setEmail(e.target.value)
+                if (totpRequired) {
+                  setTotpRequired(false)
+                  setTotpCode("")
+                }
+              }}
             />
           </label>
           <label className="field">
@@ -120,9 +148,28 @@ export function AdminGate({
               onChange={(e) => setPassword(e.target.value)}
             />
           </label>
+          {totpRequired && (
+            <div className="panel inset stack">
+              <p role="status" className="notice">
+                Two-factor authentication is required. Enter a 6-digit authenticator code or a single-use backup code.
+              </p>
+              <label className="field">
+                Authenticator or backup code
+                <Input
+                  type="text"
+                  autoComplete="one-time-code"
+                  required
+                  disabled={busy}
+                  placeholder="123456 or XXXX-XXXX"
+                  value={totpCode}
+                  onChange={(e) => setTotpCode(e.target.value)}
+                />
+              </label>
+            </div>
+          )}
           <div className="row">
             <Button type="submit" disabled={busy}>
-              {busy ? "Signing in…" : "Sign in"}
+              {busy ? "Signing in\u2026" : totpRequired ? "Verify and sign in" : "Sign in"}
             </Button>
             <Button asChild variant="outline">
               <Link href="/account/">Open Account settings</Link>

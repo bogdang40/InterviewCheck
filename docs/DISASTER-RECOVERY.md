@@ -7,7 +7,7 @@ This runbook defines backup, restore, key rotation recovery, and readiness verif
 | Component | Path (VM / Local) | Journal / Format | Contents |
 | --- | --- | --- | --- |
 | Review database | `/srv/interviewcheck/data/review.sqlite3` | SQLite WAL | Roles, rubrics, sessions, answers, drafts, Trash, `connected_models` |
-| Access database | `/srv/interviewcheck/data/access.sqlite3` | SQLite WAL (v7) | Users, sessions, `api_tokens`, subscriptions, rate limits, `audit_log` |
+| Access database | `/srv/interviewcheck/data/access.sqlite3` | SQLite WAL (v8) | Users, sessions, `api_tokens`, subscriptions, rate limits, `audit_log`, `user_totp` |
 | Model file key (when env key unset) | `.model_secret.key` (`0600`) | URL-safe base64 (32 bytes) | Master encryption key for `connected_models` credentials |
 | Workspace JSON export | Downloadable artifact | UTF-8 JSON + `X-Backup-SHA256` | Roles, sessions, answers, drafts, Trash (excludes secrets and accounts) |
 
@@ -59,7 +59,7 @@ Use this procedure when `review.sqlite3`, `access.sqlite3`, or the host disk is 
            assert db.execute("PRAGMA integrity_check").fetchone()[0] == "ok", path
            assert db.execute("PRAGMA foreign_key_check").fetchall() == [], path
            if check_ver:
-               assert db.execute("PRAGMA user_version").fetchone()[0] == 7, path
+               assert db.execute("PRAGMA user_version").fetchone()[0] == 8, path
    print("Snapshot verification passed.")
    PY
    ```
@@ -121,13 +121,13 @@ Always check both probes after restore, migration, or key rotation:
 - `GET /api/healthz`: returns `200 {"ok": true, "service": "interviewcheck-api"}` when the API process is alive.
 - `GET /api/readyz`: returns `200 {"ok": true, "checks": {"review_db": "ok", "access_db": "ok", "secret_box": "ok", "web_bundle": "ok"}}` (or `"access_db": "skipped"` when `INTERVIEWCHECK_ACCESS_MODE` is not `embedded`). Any `503` indicates at least one failed subsystem:
   - `review_db: "error"`: missing file, non-WAL journal mode, or missing core tables (`sessions`, `roles`, `connected_models`).
-  - `access_db: "error"`: missing file, invalid schema, or `PRAGMA user_version != 7`.
+  - `access_db: "error"`: missing file, invalid schema, or `PRAGMA user_version != 8`.
   - `secret_box: "error"`: unreadable key file, permissions broader than `0600`, or invalid key bytes.
   - `web_bundle: "missing"`: `portable/web/out/index.html` is absent.
 
 ## 6. Automated End-to-End DR Drill
 
-Run `scripts/dr_drill.py` regularly in CI and before major schema or deployment changes. The drill seeds `review.sqlite3` and `access.sqlite3` (v7), executes concurrent WAL reader/writer stress while capturing online `sqlite3.Connection.backup()` snapshots and workspace JSON exports, simulates DB corruption and loss, restores both databases, rotates `v1:` and `v2:` model credentials, validates workspace JSON restore into a clean DB, and verifies `/api/healthz` and `/api/readyz`.
+Run `scripts/dr_drill.py` regularly in CI and before major schema or deployment changes. The drill seeds `review.sqlite3` and `access.sqlite3` (v8), executes concurrent WAL reader/writer stress while capturing online `sqlite3.Connection.backup()` snapshots and workspace JSON exports, simulates DB corruption and loss, restores both databases, rotates `v1:` and `v2:` model credentials, validates workspace JSON restore into a clean DB, and verifies `/api/healthz` and `/api/readyz`.
 
 ```sh
 PYTHONPATH=portable portable/.venv/bin/python scripts/dr_drill.py --json

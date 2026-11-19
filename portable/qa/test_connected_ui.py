@@ -22,8 +22,8 @@ def test_role_authoring(workspace_url, browser_page, monkeypatch):
     page.get_by_role("button", name="Draft questions", exact=True).click()
     expect(page.get_by_role("textbox", name="Planned questions, one per line")).to_have_value(question)
     page.get_by_role("button", name="Save role").click()
-    expect(page.get_by_role("button", name="Edit role", exact=True)).to_be_visible()
-    expect(page.get_by_text("Release engineer", exact=True)).to_be_visible()
+    expect(page.get_by_role("button", name="Edit role Release engineer", exact=True)).to_be_visible()
+    expect(page.locator(".role-row").get_by_text("Release engineer", exact=True)).to_be_visible()
     assert httpx.get(workspace_url + "/api/roles").json()[0]["questions"] == [question]
     generate.assert_awaited_once()
 

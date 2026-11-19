@@ -23,6 +23,7 @@ import {
   formatUptime,
   type ModelTelemetrySummary,
 } from "@/lib/adminTelemetry"
+import { ModelBatchBar } from "./ModelBatchBar"
 
 function statusVariant(status: ModelStatus) {
   if (status === "connected") return "success" as const
@@ -53,6 +54,9 @@ export function ModelList({
   onToggle,
   onDelete,
   onViewHealth,
+  onBatchUpdated,
+  onBatchError,
+  onAuthInvalid,
 }: {
   models: ConnectedModel[]
   busyId: string | null
@@ -64,12 +68,17 @@ export function ModelList({
   onToggle: (model: ConnectedModel) => void
   onDelete: (model: ConnectedModel) => void
   onViewHealth?: (model: ConnectedModel) => void
+  onBatchUpdated?: (updated: Array<ConnectedModel | null | undefined>, statusMessage: string) => void
+  onBatchError?: (message: string) => void
+  onAuthInvalid?: (message: string) => void
 }) {
   const [search, setSearch] = useState("")
   const [provider, setProvider] = useState<"" | ModelProvider>("")
   const [capability, setCapability] = useState<"" | ModelCapability>("")
   const [status, setStatus] = useState<"" | ModelStatus>("")
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [batchBusy, setBatchBusy] = useState(false)
 
   const fallbackRanks = computeFallbackRanks(models)
   const tokens = search.trim().toLowerCase().split(/\s+/).filter(Boolean)
@@ -83,6 +92,20 @@ export function ModelList({
     }
     return true
   })
+
+  const modelNamesById = Object.fromEntries(models.map((m) => [m.id, m.display_name]))
+  const activeSelectedIds = selectedIds.filter((id) => id in modelNamesById)
+  const selectedSet = new Set(activeSelectedIds)
+  const visibleIds = filtered.map((m) => m.id)
+  const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedSet.has(id))
+  const toggleCard = (id: string) =>
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]))
+  const toggleVisible = () =>
+    setSelectedIds((prev) =>
+      allVisibleSelected
+        ? prev.filter((id) => !visibleIds.includes(id))
+        : Array.from(new Set([...prev.filter((id) => id in modelNamesById), ...visibleIds])),
+    )
 
   return (
     <section className="stack" aria-label="Connected models">
@@ -130,6 +153,15 @@ export function ModelList({
         </label>
       </div>
 
+      {models.length > 0 && onBatchUpdated && onBatchError && onAuthInvalid && (
+        <ModelBatchBar
+          visibleCount={visibleIds.length} selectedIds={activeSelectedIds} allVisibleSelected={allVisibleSelected}
+          disabled={Boolean(busyId)} modelNamesById={modelNamesById} onToggleSelectVisible={toggleVisible}
+          onClearSelection={() => setSelectedIds([])} onBusyChange={setBatchBusy}
+          onBatchUpdated={onBatchUpdated} onBatchError={onBatchError} onAuthInvalid={onAuthInvalid}
+        />
+      )}
+
       {!models.length ? (
         <div className="panel empty">
           <div className="empty-icon">
@@ -149,7 +181,7 @@ export function ModelList({
       ) : (
         <div className="admin-model-list">
           {filtered.map((m) => {
-            const rowBusy = busyId === m.id
+            const rowBusy = busyId === m.id || (batchBusy && selectedSet.has(m.id))
             const rank = fallbackRanks[m.id]
             const modelTelemetry = telemetryByModel?.[m.id]
             const budgetBadge = formatModelBudgetBadge(m, usageByModel?.[m.id])
@@ -157,6 +189,9 @@ export function ModelList({
               <article className="panel admin-model-card" key={m.id} data-model-slug={m.slug}>
                 <div className="admin-model-main">
                   <div className="admin-model-title">
+                    <label className="check" style={{ gap: 4 }}>
+                      <input type="checkbox" checked={selectedSet.has(m.id)} disabled={rowBusy} aria-label={`Select ${m.display_name}`} onChange={() => toggleCard(m.id)} />
+                    </label>
                     <strong>{m.display_name}</strong>
                     <Badge variant={statusVariant(m.status)}>{m.status}</Badge>
                     {m.is_default && <Badge variant="default">Default</Badge>}

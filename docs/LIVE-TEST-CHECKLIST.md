@@ -15,7 +15,7 @@ Order suggested by how many customers each reaches and how little setup it needs
 
 | System | Needs | Check | Unconfirmed |
 |---|---|---|---|
-| Calendar on this Mac | Calendar access | An event titled "Interview with …" appears; the outside guest becomes the candidate | – |
+| Calendar on this Mac | Calendar access | An event titled "Interview with …" appears; the outside guest becomes the candidate | - |
 | Calendar feed (iCal link) | A Google "Secret address in iCal format" | Times are right in your time zone; a cancelled event disappears after the provider refreshes the feed (Google: hours) | Recurring interviews show only if their first date is in range (RRULE is not expanded) |
 | Mail (IMAP) | Gmail with 2-Step Verification and an app password | Verify shows "address · INBOX (N messages)"; an invite from another company appears; a cancellation email removes it; nothing is marked as read in Gmail; email yourself "Jane_Doe_CV.pdf", then Prepare a Jane Doe interview with no ATS résumé: it is found and named | Exchange/Outlook-originated invites inside Gmail; folders with non-ASCII names; forwarded invites (message/rfc822) are not read |
 | Calendly | A personal access token | A booking named "Phone Screen …" appears with the invitee's email; a LinkedIn answer becomes the profile link | Event types with several invitees (only the first is the candidate) |
@@ -25,7 +25,7 @@ Order suggested by how many customers each reaches and how little setup it needs
 
 | System | Check | Unconfirmed |
 |---|---|---|
-| Google Workspace | Primary and a team calendar (Other calendars); Meet transcript after a meeting you organised | – |
+| Google Workspace | Primary and a team calendar (Other calendars); Meet transcript after a meeting you organised | - |
 | Microsoft 365 | Outlook events; a named team calendar after signing in again; Teams transcript with admin consent | `Calendars.Read.Shared` on a tenant that blocks user consent |
 | Zoom | Upcoming meetings you host; the audio file of a cloud recording scores | Loopback redirect without a port in the Zoom app settings |
 | Webex | Meetings you host with invitees; a transcript (Webex Assistant on) and the recording audio, fetched days later | Exact port match `http://127.0.0.1:53871/callback`; PKCE alongside the client secret; `temporaryDirectDownloadLinks` for non-hosts |
@@ -34,10 +34,10 @@ Order suggested by how many customers each reaches and how little setup it needs
 
 | System | Check | Unconfirmed |
 |---|---|---|
-| Greenhouse (Harvest v3) | Your scheduled interviews only ("Show all" for others); job post text; résumé; Send Summary as a private note | – |
+| Greenhouse (Harvest v3) | Your scheduled interviews only ("Show all" for others); job post text; résumé; Send Summary as a private note | - |
 | Lever, Ashby, Workable | Interviews, job text, résumé, note | Workable comments need a member ID |
 | SmartRecruiters, Recruitee, Zoho Recruit | Interviews from the Interview step / your events | Zoho data-center domain (zoho.com, .eu, .in …) |
-| Teamtailor, BambooHR, JazzHR, Breezy, Personio | No interview API: a calendar invite is matched to the candidate by email | – |
+| Teamtailor, BambooHR, JazzHR, Breezy, Personio | No interview API: a calendar invite is matched to the candidate by email | - |
 | Bullhorn | Interview-type appointments; an invited colleague sees them too; résumé attachment | The appointment type is literally "Interview" in the agency's list (else name it); loopback redirect accepted by Bullhorn Support; whether PKCE is ignored |
 | JobAdder | Interviews and the scheduler's events merged; résumé | App approval; loopback redirect accepted; whether `read` alone covers /interviews and /events; whether `/candidates?Email=` filters |
 | Merge, Kombo, Unified.to, Apideck | Interviews (not Apideck), job text, résumé | Per-ATS field coverage differs; check the first few interviews against the ATS |
