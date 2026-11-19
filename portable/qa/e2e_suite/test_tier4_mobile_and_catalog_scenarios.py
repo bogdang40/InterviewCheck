@@ -171,14 +171,18 @@ def test_scenario_d_mobile_field_review_backup_restore_and_multi_route_audit(
         expect(page2.get_by_text("1 captured exchanges")).to_be_visible()
 
         page2.get_by_role("button", name="Restore new records").click()
-        expect(page2.get_by_role("status")).to_contain_text("Restored 1 interviews and 1 roles")
+        expect(page2.get_by_role("status").filter(has_text="Restored 1 interviews and 1 roles")).to_be_visible()
 
         toggle2 = page2.get_by_role("button", name="Open navigation menu")
         nav2 = page2.get_by_role("navigation", name="Workspace")
-        for label, expected_text in (("Interviews", "Mobile Candidate"), ("Role library", "Mobile Field Role")):
+        for label, url_pat, expected_text in (
+            ("Interviews", r"/interviews/?$", "Mobile Candidate"),
+            ("Role library", r"/roles/?$", "Mobile Field Role"),
+        ):
             toggle2.click()
             nav2.get_by_role("link", name=label, exact=True).click()
-            expect(page2.get_by_text(expected_text)).to_be_visible()
+            expect(page2).to_have_url(re.compile(url_pat))
+            expect(page2.get_by_text(expected_text, exact=True)).to_be_visible()
             assert_no_horizontal_overflow(page2)
         col2.assert_clean()
     finally:

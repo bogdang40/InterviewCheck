@@ -19,6 +19,7 @@ import {
   getFleetTelemetry,
   type FleetTelemetryResponse,
 } from "@/lib/adminTelemetry"
+import { mergeBatchModels } from "@/lib/adminModelPresets"
 import { type ProviderStatus } from "@/lib/integrations"
 import { type AccountSnapshot } from "@/lib/useAccountStatus"
 import { AdminGate } from "./AdminGate"
@@ -295,6 +296,14 @@ export default function AdminConsole() {
                 onToggle={(m) => void handleToggle(m)}
                 onDelete={(m) => void handleDelete(m)}
                 onViewHealth={(m) => setHealthModel(m)}
+                onBatchUpdated={(updated, msg) => {
+                  setModels((prev) => mergeBatchModels(prev, updated))
+                  void refreshTelemetry()
+                  setBannerError("")
+                  setBannerStatus(msg)
+                }}
+                onBatchError={(msg) => { if (msg) setBannerStatus(""); setBannerError(msg) }}
+                onAuthInvalid={onAuthInvalid}
               />
               <RoutingSimulatorPanel onAuthInvalid={onAuthInvalid} />
             </>
