@@ -41,14 +41,19 @@ def test_backup_requires_complete_sources_and_copies_wal_state(tmp_path):
 
 
 @pytest.mark.skipif(os.name == "nt", reason="The VM rollout executes on Linux with Bash.")
-@pytest.mark.parametrize("existing,backup_exit,expected", [(True, 1, 1), (True, 0, 0), (False, 1, 0)])
-def test_rollout_stops_before_app_replacement_if_backup_fails(tmp_path, existing, backup_exit, expected):
+@pytest.mark.parametrize("existing,backup_exit,orphan,expected", [
+    (True, 1, False, 1), (True, 0, False, 0), (False, 1, False, 0), (False, 0, True, 1),
+])
+def test_rollout_stops_before_app_replacement_if_backup_fails(tmp_path, existing, backup_exit, orphan, expected):
     work = tmp_path / "work"
     unit_dir = tmp_path / "units"
     tools = tmp_path / "bin"
     for folder in (work, unit_dir, tools):
         folder.mkdir()
     (work / "app.env").write_text("fixture")
+    if orphan:
+        (work / "data").mkdir()
+        (work / "data/review.sqlite3").write_bytes(b"existing review database")
     log = tmp_path / "docker.log"
     scripts = {
         "docker": """#!/bin/bash

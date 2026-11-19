@@ -58,6 +58,10 @@ az acr login --name "$ACR" --output none
 
 CURRENT=$(docker inspect --format '{{.Config.Image}}' interviewcheck-app-1 2>/dev/null || true)
 log "current: ${CURRENT:-none}; new: $IMAGE"
+if [ -z "$CURRENT" ] && { [ -e data/review.sqlite3 ] || [ -e data/access.sqlite3 ]; }; then
+  log "existing databases have no identified application container; recover the previous container and verify a backup before retrying"
+  exit 1
+fi
 
 log "pulling"
 IMAGE="$IMAGE" SITE_ADDRESS="$SITE_ADDRESS" docker compose pull --quiet
