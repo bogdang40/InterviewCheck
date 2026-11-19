@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic"
 import { useCallback, useEffect, useState } from "react"
-import { Cpu, FileClock, FlaskConical, Plus, RefreshCw, Stethoscope, Users } from "lucide-react"
+import { Cpu, FileClock, FlaskConical, Plus, RefreshCw, ShieldAlert, SlidersHorizontal, Stethoscope, Users } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { getAdminDiagnostics, type DiagnosticsData } from "@/lib/adminDiagnostics"
@@ -33,9 +33,11 @@ const AccountsTab = dynamic(() => import("./AccountsTab").then((m) => m.Accounts
 const AuditLogTab = dynamic(() => import("./AuditLogTab").then((m) => m.AuditLogTab), { ssr: false })
 const DiagnosticsTab = dynamic(() => import("./DiagnosticsTab").then((m) => m.DiagnosticsTab), { ssr: false })
 const PlaygroundTab = dynamic(() => import("./PlaygroundTab").then((m) => m.PlaygroundTab), { ssr: false })
+const PromptsAndSlaTab = dynamic(() => import("./PromptsAndSlaTab").then((m) => m.PromptsAndSlaTab), { ssr: false })
+const SecurityAlertsTab = dynamic(() => import("./SecurityAlertsTab").then((m) => m.SecurityAlertsTab), { ssr: false })
 const ModelFormModal = dynamic(() => import("./ModelFormModal").then((m) => m.ModelFormModal), { ssr: false })
 
-type AdminTab = "models" | "accounts" | "audit" | "diagnostics" | "playground"
+type AdminTab = "models" | "accounts" | "audit" | "diagnostics" | "playground" | "security" | "prompts"
 
 const ADMIN_TABS: readonly AdminTabItem<AdminTab>[] = [
   { id: "models", label: "Models", Icon: Cpu },
@@ -43,6 +45,8 @@ const ADMIN_TABS: readonly AdminTabItem<AdminTab>[] = [
   { id: "audit", label: "Audit log", Icon: FileClock },
   { id: "diagnostics", label: "Diagnostics", Icon: Stethoscope },
   { id: "playground", label: "Playground", Icon: FlaskConical },
+  { id: "security", label: "Security", Icon: ShieldAlert },
+  { id: "prompts", label: "Prompts & SLA", Icon: SlidersHorizontal },
 ]
 
 export default function AdminConsole() {
@@ -302,6 +306,8 @@ export default function AdminConsole() {
       {tab === "audit" && <div id="panel-audit" role="tabpanel" aria-labelledby="tab-audit"><AuditLogTab onAuthInvalid={onAuthInvalid} /></div>}
       {tab === "diagnostics" && <div id="panel-diagnostics" role="tabpanel" aria-labelledby="tab-diagnostics"><DiagnosticsTab models={models} onAuthInvalid={onAuthInvalid} /></div>}
       {tab === "playground" && <div id="panel-playground" role="tabpanel" aria-labelledby="tab-playground"><PlaygroundTab models={models} onAuthInvalid={onAuthInvalid} /></div>}
+      {tab === "security" && <div id="panel-security" role="tabpanel" aria-labelledby="tab-security"><SecurityAlertsTab onAuthInvalid={onAuthInvalid} /></div>}
+      {tab === "prompts" && <div id="panel-prompts" role="tabpanel" aria-labelledby="tab-prompts"><PromptsAndSlaTab models={models} onAuthInvalid={onAuthInvalid} /></div>}
 
       {modalOpen && (
         <ModelFormModal

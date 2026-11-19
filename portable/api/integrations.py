@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
-from . import access, access_admin, ats, audio, authoring, booking_sources, meeting_files, model_execution, model_resolver, oauth_tokens, prompt_framing, rate_limit
+from . import access, access_admin, access_security, ats, audio, authoring, booking_sources, meeting_files, model_execution, model_resolver, oauth_tokens, prompt_framing, rate_limit
 from .connection_catalog import router as catalog
 from .mailbox import SETTINGS as MAIL_SETTINGS
 from .calendar_sources import calendar_file, cloud_calendar
@@ -16,6 +16,7 @@ router.include_router(access.router)
 router.include_router(access_admin.router)
 router.include_router(audio.router)
 router.include_router(meeting_files.router)
+router.include_router(access_security.router)
 workspace = APIRouter(dependencies=[Depends(access.require_entitlement)])
 
 

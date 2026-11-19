@@ -212,7 +212,8 @@ async def change_password(form: PasswordChangeRequest, request: Request, respons
 async def sign_in(action: Literal["login", "signup"], form: Credentials, request: Request, response: Response):
     if action == "signup" and public_remote():
         raise HTTPException(403, "Create the operator account on the assigned access service first.")
-    verify_operator_email(form.email.strip())
+    if action == "signup":
+        verify_operator_email(form.email.strip())
     from .origin import workspace_client
     data = await upstream("auth/" + action, "POST", body={
         "email": form.email.strip(), "password": form.password.get_secret_value(), "deviceName": "Portable workspace",

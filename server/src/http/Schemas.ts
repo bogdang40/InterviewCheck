@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { PLANS } from "../domain/Subscription.js";
 import { USER_ROLES } from "../domain/User.js";
+import { API_TOKEN_SCOPES } from "../repositories/ApiTokenRepository.js";
 
 export const credentialsSchema = z.object({
   email: z.string().trim().email().max(254),
@@ -51,7 +52,7 @@ export const adminAuditQuerySchema = z.object({
 });
 
 export const uuidParamSchema = z.object({
-  id: z.string().uuid("Invalid user id."),
+  id: z.string().uuid("Invalid id."),
 });
 
 export const adminPatchSchema = z
@@ -62,8 +63,31 @@ export const adminPatchSchema = z
   })
   .refine((patch) => Object.keys(patch).length > 0, { message: "Provide at least one field to update." });
 
+export const createApiTokenSchema = z.object({
+  name: z.string().trim().min(1, "Token name is required.").max(80, "Token name must be at most 80 characters."),
+  scopes: z
+    .array(z.enum(API_TOKEN_SCOPES))
+    .min(1, "Select at least one scope.")
+    .max(API_TOKEN_SCOPES.length)
+    .transform((scopes) => [...new Set(scopes)]),
+  ttlDays: z.number().int().min(1).max(365).nullable().optional(),
+});
+
+export const adminRevokeSessionsSchema = z.object({
+  sessionId: z.string().uuid("Invalid session id.").optional(),
+});
+
+export const LIMITER_NAMES = ["credential", "adminRead", "adminWrite", "billing"] as const;
+
+export const adminRateLimitQuerySchema = z.object({
+  limiter: z.enum(LIMITER_NAMES).optional(),
+  keyHash: z.string().trim().regex(/^[a-f0-9]{64}$/i, "Invalid keyHash.").optional(),
+  key: z.string().trim().min(1).max(254).optional(),
+});
+
 export type CredentialsBody = z.infer<typeof credentialsSchema>;
 export type PasswordChangeBody = z.infer<typeof passwordChangeSchema>;
 export type CheckoutBody = z.infer<typeof checkoutSchema>;
 export type AdminAuditQuery = z.infer<typeof adminAuditQuerySchema>;
 export type AdminPatchBody = z.infer<typeof adminPatchSchema>;
+export type CreateApiTokenBody = z.infer<typeof createApiTokenSchema>;
