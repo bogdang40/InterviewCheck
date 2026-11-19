@@ -4,7 +4,6 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { useEffect, useId, useRef, useState } from "react"
 import { ArrowLeft, ChevronRight, LayoutGrid, Menu, UserRound } from "lucide-react"
-import { MotionConfig, motion } from "framer-motion"
 import { blankPreparation, interviewURL, PreparationContext, type Preparation } from "@/lib/workspace"
 import { useAccountStatus } from "@/lib/useAccountStatus"
 import { WorkspaceNav, workspaceMenu } from "./WorkspaceNav"
@@ -142,75 +141,67 @@ export default function WorkspaceShell({ children }: { children: React.ReactNode
 
   return (
     <PreparationContext.Provider value={{ preparation, prepare }}>
-      <MotionConfig reducedMotion="user">
-        <div className="shell">
-          <a href="#main-content" className="skip-content" inert={backgroundInert}>
-            Skip to content
-          </a>
-          {drawerOpen && isMobile && (
-            <div className="drawer-backdrop" onClick={() => closeDrawer(true)} aria-hidden="true" />
-          )}
-          <WorkspaceNav
-            path={path}
-            drawerId={drawerId}
-            drawerOpen={drawerOpen}
-            isMobile={isMobile}
-            showAdminNav={showAdminNav}
-            account={account}
-            closeRef={closeRef}
-            drawerRef={drawerRef}
-            onClose={() => closeDrawer(true)}
-            onNavigate={() => closeDrawer(false)}
-          />
-          <main className="main" id="main-content" tabIndex={-1} inert={backgroundInert}>
-            <header className="top">
-              <div className="top-left">
-                <button
-                  ref={toggleRef}
-                  type="button"
-                  className="nav-toggle"
-                  aria-label="Open navigation menu"
-                  aria-expanded={drawerOpen}
-                  aria-controls={drawerId}
-                  onClick={() => setDrawerOpen(true)}
-                >
-                  <Menu size={20} aria-hidden="true" />
-                </button>
-                <nav className="breadcrumb" aria-label="Breadcrumb">
-                  <LayoutGrid size={15} className="breadcrumb-icon" aria-hidden="true" />
-                  <Link href="/" className="breadcrumb-root">
-                    Workspace
-                  </Link>
-                  <ChevronRight size={13} className="breadcrumb-sep" aria-hidden="true" />
-                  <b>{pageTitle}</b>
-                </nav>
-              </div>
-              <div className="header-tools">
-                <WorkspaceSearch />
-                <Link className="account-link" href="/account/" aria-label="Account">
-                  <UserRound size={16} aria-hidden="true" />
-                  <span>Account</span>
+      <div className="shell">
+        <a href="#main-content" className="skip-content" inert={backgroundInert}>
+          Skip to content
+        </a>
+        {drawerOpen && isMobile && (
+          <div className="drawer-backdrop" onClick={() => closeDrawer(true)} aria-hidden="true" />
+        )}
+        <WorkspaceNav
+          path={path}
+          drawerId={drawerId}
+          drawerOpen={drawerOpen}
+          isMobile={isMobile}
+          showAdminNav={showAdminNav}
+          account={account}
+          closeRef={closeRef}
+          drawerRef={drawerRef}
+          onClose={() => closeDrawer(true)}
+          onNavigate={() => closeDrawer(false)}
+        />
+        <main className="main" id="main-content" tabIndex={-1} inert={backgroundInert}>
+          <header className="top">
+            <div className="top-left">
+              <button
+                ref={toggleRef}
+                type="button"
+                className="nav-toggle"
+                aria-label="Open navigation menu"
+                aria-expanded={drawerOpen}
+                aria-controls={drawerId}
+                onClick={() => setDrawerOpen(true)}
+              >
+                <Menu size={20} aria-hidden="true" />
+              </button>
+              <nav className="breadcrumb" aria-label="Breadcrumb">
+                <LayoutGrid size={15} className="breadcrumb-icon" aria-hidden="true" />
+                <Link href="/" className="breadcrumb-root">
+                  Workspace
                 </Link>
-              </div>
-            </header>
-            <motion.div
-              className="content"
-              key={path}
-              initial={{ opacity: 0.7, y: 4 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.18 }}
-            >
-              {path.startsWith("/interviews/") && path !== "/interviews/" && (
-                <Link className="back" href="/interviews/">
-                  <ArrowLeft size={14} aria-hidden="true" />
-                  Interviews
-                </Link>
-              )}
-              {children}
-            </motion.div>
-          </main>
-        </div>
-      </MotionConfig>
+                <ChevronRight size={13} className="breadcrumb-sep" aria-hidden="true" />
+                <b>{pageTitle}</b>
+              </nav>
+            </div>
+            <div className="header-tools">
+              <WorkspaceSearch />
+              <Link className="account-link" href="/account/" aria-label="Account">
+                <UserRound size={16} aria-hidden="true" />
+                <span>Account</span>
+              </Link>
+            </div>
+          </header>
+          <div className="content content-enter" key={path}>
+            {path.startsWith("/interviews/") && path !== "/interviews/" && (
+              <Link className="back" href="/interviews/">
+                <ArrowLeft size={14} aria-hidden="true" />
+                Interviews
+              </Link>
+            )}
+            {children}
+          </div>
+        </main>
+      </div>
     </PreparationContext.Provider>
   )
 }

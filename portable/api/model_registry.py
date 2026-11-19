@@ -68,6 +68,7 @@ CREATE TABLE IF NOT EXISTS model_audit (
  details TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_model_audit_at ON model_audit(at DESC);
+CREATE INDEX IF NOT EXISTS idx_model_audit_action_id ON model_audit(action, id DESC);
 """
 
 

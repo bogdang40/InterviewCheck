@@ -11,6 +11,17 @@ State = Literal["", "active", "finished", "archived"]
 Review = Literal["", "pending", "clear"]
 Order = Literal["newest", "oldest", "candidate", "pending"]
 
+FAST_ORDERS = {
+    "newest": "s.created_at DESC, s.id ASC",
+    "oldest": "s.created_at ASC, s.id ASC",
+    "candidate": "s.candidate COLLATE NOCASE ASC, s.id ASC",
+}
+STATUS_FILTERS = {
+    "": "",
+    "active": "AND c.ended_at IS NULL AND s.consent",
+    "finished": "AND c.ended_at IS NOT NULL",
+    "archived": "AND c.ended_at IS NULL AND NOT s.consent",
+}
 FILTER_COUNT = """SELECT count(*) FROM interview_catalog
  WHERE (:status='' OR lifecycle=:status)
  AND (:review='' OR (:review='pending')=(review_count>0))
@@ -22,6 +33,27 @@ PAGE = """SELECT id,candidate,role,created_at,consent,ended_at,answer_count,revi
           CASE WHEN :sort='candidate' THEN candidate END COLLATE NOCASE,
           CASE WHEN :sort='oldest' THEN created_at END,
           created_at DESC,id LIMIT :limit OFFSET :offset"""
+
+
+def fast_page_sql(order: str, status: str) -> str:
+    status_clause = STATUS_FILTERS[status]
+    order_clause = FAST_ORDERS[order]
+    return f"""WITH paged AS MATERIALIZED (
+ SELECT s.id, substr(s.candidate,1,180) candidate, substr(s.role,1,180) role,
+        s.created_at, s.consent, c.ended_at
+ FROM sessions s
+ LEFT JOIN session_context c ON c.session_id=s.id
+ WHERE NOT EXISTS (SELECT 1 FROM session_trash t WHERE t.session_id=s.id)
+ {status_clause}
+ ORDER BY {order_clause}
+ LIMIT :limit OFFSET :offset
+)
+SELECT p.id, p.candidate, p.role, p.created_at, p.consent, p.ended_at,
+ (SELECT count(*) FROM answers a WHERE a.session_id=p.id) answer_count,
+ (SELECT count(*) FROM answers a WHERE a.session_id=p.id AND a.status='match' AND a.disposition='pending') review_count,
+ (SELECT a.id FROM answers a WHERE a.session_id=p.id AND a.status='match' AND a.disposition='pending'
+  ORDER BY a.rowid LIMIT 1) first_pending_answer_id
+FROM paged p"""
 
 
 def filters(db, query, status, review):
@@ -36,7 +68,11 @@ def filters(db, query, status, review):
 
 
 def cards(db, params, order, limit, offset=0):
-    rows = db.execute(PAGE, {**params, "sort": order, "limit": limit, "offset": offset})
+    if not params["search"] and not params["review"] and order in FAST_ORDERS:
+        sql = fast_page_sql(order, params["status"])
+        rows = db.execute(sql, {"limit": limit, "offset": offset})
+    else:
+        rows = db.execute(PAGE, {**params, "sort": order, "limit": limit, "offset": offset})
     return [{**dict(row), "consent": bool(row["consent"])} for row in rows]
 
 
@@ -52,11 +88,15 @@ def feed(
     with store.connection() as db:
         params = filters(db, q, status, review)
         total = db.execute("SELECT count(*) FROM active_sessions").fetchone()[0]
-        filtered = (
-            total
-            if not (params["search"] or status or review)
-            else db.execute(FILTER_COUNT, params).fetchone()[0]
-        )
+        if not (params["search"] or status or review):
+            filtered = total
+        elif not params["search"] and not review:
+            status_clause = STATUS_FILTERS[status]
+            filtered = db.execute(
+                f"SELECT count(*) FROM active_sessions s LEFT JOIN session_context c ON c.session_id=s.id WHERE 1=1 {status_clause}"
+            ).fetchone()[0]
+        else:
+            filtered = db.execute(FILTER_COUNT, params).fetchone()[0]
         pages = max(1, (filtered + page_size - 1) // page_size)
         page = min(page, pages)
         items = cards(db, params, sort, page_size, (page - 1) * page_size)
@@ -73,8 +113,11 @@ def feed(
 @router.get("/interviews/overview")
 def overview():
     with store.connection() as db:
-        totals = db.execute("""SELECT count(*),count(CASE WHEN lifecycle='active' THEN 1 END)
-                               FROM interview_catalog""").fetchone()
+        totals = db.execute(
+            """SELECT count(*),
+                      count(CASE WHEN c.ended_at IS NULL AND s.consent THEN 1 END)
+               FROM active_sessions s LEFT JOIN session_context c ON c.session_id=s.id"""
+        ).fetchone()
         waiting = db.execute("""SELECT count(*),count(DISTINCT a.session_id) FROM answers a
             JOIN active_sessions s ON s.id=a.session_id WHERE a.status='match' AND a.disposition='pending'""").fetchone()
         active = cards(db, filters(db, "", "active", ""), "newest", 5)

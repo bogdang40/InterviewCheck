@@ -1,5 +1,6 @@
 "use client"
 
+import dynamic from "next/dynamic"
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react"
 import { Cpu, FileClock, Plus, RefreshCw, Users, type LucideIcon } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
@@ -19,14 +20,15 @@ import {
 } from "@/lib/adminTelemetry"
 import { type ProviderStatus } from "@/lib/integrations"
 import { type AccountSnapshot } from "@/lib/useAccountStatus"
-import { AccountsTab } from "./AccountsTab"
 import { AdminGate } from "./AdminGate"
-import { AuditLogTab } from "./AuditLogTab"
-import { ModelFormModal } from "./ModelFormModal"
 import { ModelHealthDrawer } from "./ModelHealthDrawer"
 import { ModelList } from "./ModelList"
 import { ModelSummaryCards } from "./ModelSummaryCards"
 import "./AdminConsole.css"
+
+const AccountsTab = dynamic(() => import("./AccountsTab").then((m) => m.AccountsTab), { ssr: false })
+const AuditLogTab = dynamic(() => import("./AuditLogTab").then((m) => m.AuditLogTab), { ssr: false })
+const ModelFormModal = dynamic(() => import("./ModelFormModal").then((m) => m.ModelFormModal), { ssr: false })
 
 type AdminTab = "models" | "accounts" | "audit"
 

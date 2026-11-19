@@ -187,6 +187,7 @@
 }
 .admin-table {
   width: 100%;
+  min-width: 640px;
   border-collapse: collapse;
   font-size: 13px;
   text-align: left;

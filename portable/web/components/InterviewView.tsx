@@ -1,3 +1,6 @@
+"use client"
+
+import dynamic from "next/dynamic"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { ArrowRight, CheckCheck, ClipboardList, FileText, Plus } from "lucide-react"
 import { Button } from "./ui/button"
@@ -20,9 +23,10 @@ import ReportExport from "./ReportExport"
 import Evidence from "./Evidence"
 import AnswerEditor from "./AnswerEditor"
 import QuestionLineage from "./QuestionLineage"
-import LocalRecordingPlayback from "./LocalRecordingPlayback"
-import TranscriptBatchImport from "./TranscriptBatchImport"
 import QuestionNavigator, { needsReview, nextPending } from "./QuestionNavigator"
+
+const LocalRecordingPlayback = dynamic(() => import("./LocalRecordingPlayback"), { ssr: false })
+const TranscriptBatchImport = dynamic(() => import("./TranscriptBatchImport"), { ssr: false })
 
 type Props = {
   session: Interview

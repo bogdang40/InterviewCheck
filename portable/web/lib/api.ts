@@ -77,7 +77,5 @@ export const statusText = {
   no_match: "No passage match",
   insufficient: "Limited evidence",
 }
-export const dateLabel = (iso: string) =>
-  new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(
-    new Date(iso),
-  )
+const shortDate = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" })
+export const dateLabel = (iso: string) => shortDate.format(new Date(iso))
