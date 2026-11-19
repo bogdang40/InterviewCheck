@@ -222,8 +222,8 @@ export default function WorkspaceBackup() {
                 {preview.sha256 || preview.fingerprint}
               </code>
             </div>
-            <div className="table-wrap">
-              <table>
+            <div className="table-wrap admin-table-wrap">
+              <table className="admin-table">
                 <caption className="sr-only">Backup record counts</caption>
                 <thead>
                   <tr>
@@ -236,10 +236,10 @@ export default function WorkspaceBackup() {
                 <tbody>
                   {(["roles", "sessions"] as const).map((kind) => (
                     <tr key={kind}>
-                      <th>{kind === "roles" ? "Roles" : "Interviews"}</th>
-                      <td>{preview[kind].new}</td>
-                      <td>{preview[kind].identical}</td>
-                      <td>{preview[kind].conflict}</td>
+                      <th data-label="Records">{kind === "roles" ? "Roles" : "Interviews"}</th>
+                      <td data-label="New">{preview[kind].new}</td>
+                      <td data-label="Identical">{preview[kind].identical}</td>
+                      <td data-label="Conflicts">{preview[kind].conflict}</td>
                     </tr>
                   ))}
                 </tbody>

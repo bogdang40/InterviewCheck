@@ -209,10 +209,10 @@ export default function CohortAnalyticsPanel() {
                         <tbody>
                           {data.tag_breakdown.map((row) => (
                             <tr key={row.tag}>
-                              <td><button type="button" className={styles.tagButton} onClick={() => setTag(row.tag)}>{row.tag}</button></td>
-                              <td className="tabular-nums">{row.session_count}</td>
-                              <td className="tabular-nums">{formatPct(row.pass_rate_pct)}</td>
-                              <td className="tabular-nums">{formatPct(row.avg_scorecard_pct)}</td>
+                              <td data-label="Tag"><button type="button" className={styles.tagButton} onClick={() => setTag(row.tag)}>{row.tag}</button></td>
+                              <td data-label="Sessions" className="tabular-nums">{row.session_count}</td>
+                              <td data-label="Pass rate" className="tabular-nums">{formatPct(row.pass_rate_pct)}</td>
+                              <td data-label="Avg score" className="tabular-nums">{formatPct(row.avg_scorecard_pct)}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -232,11 +232,11 @@ export default function CohortAnalyticsPanel() {
                       <tbody>
                         {data.timeline.map((pt) => (
                           <tr key={pt.date}>
-                            <td className="tabular-nums">{pt.date}</td>
-                            <td className="tabular-nums">{pt.sessions}</td>
-                            <td className="tabular-nums">{pt.finished}</td>
-                            <td className="tabular-nums">{pt.explained}</td>
-                            <td className="tabular-nums">{pt.concerns}</td>
+                            <td data-label="Date (UTC)" className="tabular-nums">{pt.date}</td>
+                            <td data-label="Sessions" className="tabular-nums">{pt.sessions}</td>
+                            <td data-label="Finished" className="tabular-nums">{pt.finished}</td>
+                            <td data-label="Explained" className="tabular-nums">{pt.explained}</td>
+                            <td data-label="Concerns" className="tabular-nums">{pt.concerns}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -259,23 +259,23 @@ export default function CohortAnalyticsPanel() {
                     <tbody>
                       {data.candidates.map((row) => (
                         <tr key={row.session_id}>
-                          <td>
+                          <td data-label="Candidate">
                             <Link className={styles.candidateLink} href={interviewURL(row.session_id)}>
                               {row.candidate || "Unnamed candidate"}
                             </Link>
                             <div className="muted text-xs">{dateLabel(row.created_at)}</div>
                           </td>
-                          <td>{row.role || "Role unspecified"}</td>
-                          <td><Badge variant={lifecycleVariant(row.lifecycle)}>{row.lifecycle}</Badge></td>
-                          <td>
+                          <td data-label="Role">{row.role || "Role unspecified"}</td>
+                          <td data-label="Lifecycle"><Badge variant={lifecycleVariant(row.lifecycle)}>{row.lifecycle}</Badge></td>
+                          <td data-label="Tags">
                             <div className={styles.tagRow}>
                               {row.tags.length ? row.tags.map((t) => <span key={t} className={styles.tagPill}>{t}</span>) : <span className="muted">None</span>}
                             </div>
                           </td>
-                          <td className="tabular-nums">{row.answer_count}</td>
-                          <td className="tabular-nums">{row.match_count}</td>
-                          <td className="tabular-nums">{row.concern_count}</td>
-                          <td className="tabular-nums">{formatPct(row.weighted_score_pct)}</td>
+                          <td data-label="Answers" className="tabular-nums">{row.answer_count}</td>
+                          <td data-label="Matches" className="tabular-nums">{row.match_count}</td>
+                          <td data-label="Concerns" className="tabular-nums">{row.concern_count}</td>
+                          <td data-label="Scorecard" className="tabular-nums">{formatPct(row.weighted_score_pct)}</td>
                         </tr>
                       ))}
                     </tbody>

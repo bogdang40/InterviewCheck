@@ -144,8 +144,8 @@ export function AccountSecurityPanel({
         {loading ? <p role="status" className="muted">Loading active sessions...</p> : !sessions.length ? (
           <p className="muted">No active sessions recorded.</p>
         ) : (
-          <div className="w-full min-w-0 overflow-x-auto">
-            <table className="w-full border-collapse text-left text-sm">
+          <div className="admin-table-wrap w-full min-w-0 overflow-x-auto">
+            <table className="admin-table w-full border-collapse text-left text-sm">
               <thead>
                 <tr className="border-b border-[var(--line)] text-xs text-[var(--secondary-ink)]">
                   <th className="py-2 pr-3 font-semibold">Device</th><th className="py-2 pr-3 font-semibold">Created</th>
@@ -156,17 +156,17 @@ export function AccountSecurityPanel({
               <tbody>
                 {sessions.map((s) => (
                   <tr key={s.id} className="border-b border-[var(--line)] align-top">
-                    <td className="py-2 pr-3">
+                    <td data-label="Device" className="py-2 pr-3">
                       <div className="flex flex-wrap items-center gap-1.5">
                         <span className="font-medium">{s.deviceName || "Browser session"}</span>
                         {s.isCurrent && <Badge variant="default">Current</Badge>}
                       </div>
                     </td>
-                    <td className="py-2 pr-3 font-mono text-xs">{fmt(s.createdAt)}</td>
-                    <td className="py-2 pr-3 font-mono text-xs">{fmt(s.lastSeenAt)}</td>
-                    <td className="py-2 pr-3 font-mono text-xs">{fmt(s.expiresAt)}</td>
-                    <td className="py-2">
-                      <Button type="button" variant="outline" size="xs" disabled={busyKey !== null} onClick={() => void handleRevokeSession(s)}>
+                    <td data-label="Created" className="py-2 pr-3 font-mono text-xs">{fmt(s.createdAt)}</td>
+                    <td data-label="Last seen" className="py-2 pr-3 font-mono text-xs">{fmt(s.lastSeenAt)}</td>
+                    <td data-label="Expires" className="py-2 pr-3 font-mono text-xs">{fmt(s.expiresAt)}</td>
+                    <td data-label="Action" className="py-2">
+                      <Button type="button" variant="outline" size="xs" className="min-h-[44px] px-3 md:min-h-6 md:px-2" disabled={busyKey !== null} onClick={() => void handleRevokeSession(s)}>
                         {busyKey === `session:${s.id}` ? "Revoking..." : "Revoke"}
                       </Button>
                     </td>
@@ -218,8 +218,8 @@ export function AccountSecurityPanel({
         {loading ? <p role="status" className="muted">Loading API tokens...</p> : !tokens.length ? (
           <p className="muted">No API tokens created yet.</p>
         ) : (
-          <div className="w-full min-w-0 overflow-x-auto">
-            <table className="w-full border-collapse text-left text-sm">
+          <div className="admin-table-wrap w-full min-w-0 overflow-x-auto">
+            <table className="admin-table w-full border-collapse text-left text-sm">
               <thead>
                 <tr className="border-b border-[var(--line)] text-xs text-[var(--secondary-ink)]">
                   <th className="py-2 pr-3 font-semibold">Name</th><th className="py-2 pr-3 font-semibold">Prefix</th>
@@ -232,13 +232,19 @@ export function AccountSecurityPanel({
                   const isRevoked = Boolean(t.revokedAt)
                   return (
                     <tr key={t.id} className="border-b border-[var(--line)] align-top">
-                      <td className="py-2 pr-3 font-medium">{t.name}</td>
-                      <td className="py-2 pr-3 font-mono text-xs">{t.tokenPrefix}...</td>
-                      <td className="py-2 pr-3"><div className="flex flex-wrap gap-1">{t.scopes.map((sc) => <Badge key={sc} variant="outline">{sc}</Badge>)}</div></td>
-                      <td className="py-2 pr-3"><Badge variant={isRevoked ? "secondary" : "success"}>{isRevoked ? "Revoked" : "Active"}</Badge></td>
-                      <td className="py-2 pr-3 font-mono text-xs">{t.expiresAt ? fmt(t.expiresAt) : "Never"}</td>
-                      <td className="py-2">
-                        {!isRevoked && <Button type="button" variant="outline" size="xs" disabled={busyKey !== null} onClick={() => void handleRevokeToken(t)}>{busyKey === `token:${t.id}` ? "Revoking..." : "Revoke"}</Button>}
+                      <td data-label="Name" className="py-2 pr-3 font-medium">{t.name}</td>
+                      <td data-label="Prefix" className="py-2 pr-3 font-mono text-xs">{t.tokenPrefix}...</td>
+                      <td data-label="Scopes" className="py-2 pr-3"><div className="flex flex-wrap gap-1">{t.scopes.map((sc) => <Badge key={sc} variant="outline">{sc}</Badge>)}</div></td>
+                      <td data-label="Status" className="py-2 pr-3"><Badge variant={isRevoked ? "secondary" : "success"}>{isRevoked ? "Revoked" : "Active"}</Badge></td>
+                      <td data-label="Expires" className="py-2 pr-3 font-mono text-xs">{t.expiresAt ? fmt(t.expiresAt) : "Never"}</td>
+                      <td data-label="Action" className="py-2">
+                        {!isRevoked ? (
+                          <Button type="button" variant="outline" size="xs" className="min-h-[44px] px-3 md:min-h-6 md:px-2" disabled={busyKey !== null} onClick={() => void handleRevokeToken(t)}>
+                            {busyKey === `token:${t.id}` ? "Revoking..." : "Revoke"}
+                          </Button>
+                        ) : (
+                          <span className="muted text-xs">None</span>
+                        )}
                       </td>
                     </tr>
                   )

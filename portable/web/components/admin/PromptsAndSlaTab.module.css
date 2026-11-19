@@ -30,6 +30,15 @@
   .summaryRow { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .policyGrid, .slotToolbar { grid-template-columns: minmax(0, 1fr); }
 }
+@media (max-width: 680px) {
+  .actionsRow [data-slot="button"],
+  .policyForm [data-slot="button"],
+  .conflictBanner [data-slot="button"],
+  .sectionHead [data-slot="button"] {
+    min-height: 44px;
+    padding-inline: 12px;
+  }
+}
 @media (max-width: 460px) {
   .summaryRow { grid-template-columns: minmax(0, 1fr); }
 }

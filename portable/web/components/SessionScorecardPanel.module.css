@@ -74,4 +74,5 @@
 .noteBody { font-size: 14px; color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; }
 @media (max-width: 600px) {
   .noteFormRow, .addCriterionRow { flex-direction: column; align-items: stretch; }
+  .ratingBtn { min-width: 44px; min-height: 44px; }
 }

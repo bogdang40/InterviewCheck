@@ -28,7 +28,7 @@
   .report-links a,
   .report-links button {
     justify-content: flex-start;
-    min-height: 40px;
+    min-height: 44px;
     width: 100%;
   }
 }
