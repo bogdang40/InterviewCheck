@@ -5,8 +5,12 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
-from . import access, account_db, model_probe, model_registry, model_resolver, model_telemetry, rate_limit, secret_box, ssrf_guard, store
+from . import (
+    access, account_db, model_budgets, model_probe, model_registry,
+    model_resolver, model_routing_sim, model_telemetry, rate_limit, secret_box, ssrf_guard, store,
+)
 from .error_sanitizer import sanitize_error_text
+from .model_routing_sim import ChainSimulateInput
 from .model_schemas import (
     ALLOWED_CAPABILITIES,
     Capability,
@@ -56,6 +60,28 @@ def list_models(
 def fleet_telemetry():
     with store.connection() as db:
         return model_telemetry.fleet_telemetry(db)
+
+
+@router.get("/diagnostics", dependencies=[Depends(require_admin), Depends(rate_limit.limit(rate_limit.ADMIN_READ))])
+def fleet_diagnostics():
+    with store.connection() as db:
+        return {
+            "usage": model_budgets.fleet_usage_summary(db),
+            "telemetry": model_telemetry.fleet_telemetry(db),
+            "transcription": model_routing_sim.transcription_diagnostics(db),
+            "generated_at": store.timestamp(),
+        }
+
+
+@router.post("/simulate-chain", dependencies=[Depends(require_admin), Depends(rate_limit.limit(rate_limit.ADMIN_READ))])
+def simulate_chain(item: ChainSimulateInput):
+    with store.connection() as db:
+        return model_routing_sim.simulate_chain(
+            db,
+            item.capability,
+            provider=item.provider,
+            allow_reference_fallback=item.allow_reference_fallback,
+        )
 
 
 @router.get("/{model_id}/health", dependencies=[Depends(require_admin), Depends(rate_limit.limit(rate_limit.ADMIN_READ))])

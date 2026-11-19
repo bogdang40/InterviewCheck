@@ -2,9 +2,10 @@
 
 import dynamic from "next/dynamic"
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react"
-import { Cpu, FileClock, Plus, RefreshCw, Users, type LucideIcon } from "lucide-react"
+import { Cpu, FileClock, Plus, RefreshCw, Stethoscope, Users, type LucideIcon } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { getAdminDiagnostics, type DiagnosticsData } from "@/lib/adminDiagnostics"
 import {
   AdminApiError,
   deleteAdminModel,
@@ -24,18 +25,21 @@ import { AdminGate } from "./AdminGate"
 import { ModelHealthDrawer } from "./ModelHealthDrawer"
 import { ModelList } from "./ModelList"
 import { ModelSummaryCards } from "./ModelSummaryCards"
+import { RoutingSimulatorPanel } from "./RoutingSimulatorPanel"
 import "./AdminConsole.css"
 
 const AccountsTab = dynamic(() => import("./AccountsTab").then((m) => m.AccountsTab), { ssr: false })
 const AuditLogTab = dynamic(() => import("./AuditLogTab").then((m) => m.AuditLogTab), { ssr: false })
+const DiagnosticsTab = dynamic(() => import("./DiagnosticsTab").then((m) => m.DiagnosticsTab), { ssr: false })
 const ModelFormModal = dynamic(() => import("./ModelFormModal").then((m) => m.ModelFormModal), { ssr: false })
 
-type AdminTab = "models" | "accounts" | "audit"
+type AdminTab = "models" | "accounts" | "audit" | "diagnostics"
 
 const ADMIN_TABS: readonly { id: AdminTab; label: string; Icon: LucideIcon }[] = [
   { id: "models", label: "Models", Icon: Cpu },
   { id: "accounts", label: "Accounts", Icon: Users },
   { id: "audit", label: "Audit log", Icon: FileClock },
+  { id: "diagnostics", label: "Diagnostics", Icon: Stethoscope },
 ]
 
 export default function AdminConsole() {
@@ -49,7 +53,8 @@ export default function AdminConsole() {
   const [models, setModels] = useState<ConnectedModel[]>([])
   const [envFallbacks, setEnvFallbacks] = useState<EnvFallback[]>([])
   const [fleetTelemetry, setFleetTelemetry] = useState<FleetTelemetryResponse | null>(null)
-  const [modelsLoading, setModelsLoading] = useState(false)
+  const [diagnostics, setDiagnostics] = useState<DiagnosticsData | null>(null)
+  const [modelsLoading, setModelsLoading] = useState(true)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [bannerError, setBannerError] = useState("")
   const [bannerStatus, setBannerStatus] = useState("")
@@ -116,22 +121,34 @@ export default function AdminConsole() {
     }
   }, [handleAuthFailure])
 
+  const refreshDiagnostics = useCallback(async () => {
+    try {
+      const next = await getAdminDiagnostics()
+      setDiagnostics(next)
+    } catch (err) {
+      if (!handleAuthFailure(err)) {
+        setDiagnostics(null)
+      }
+    }
+  }, [handleAuthFailure])
+
   const loadModels = useCallback(async () => {
     setModelsLoading(true)
     setBannerError("")
+    const ignoreNonAuth = (err: unknown) => {
+      if (err instanceof AdminApiError && (err.status === 401 || err.status === 403)) throw err
+      return null
+    }
     try {
-      const [data, telemetryData] = await Promise.all([
+      const [data, telemetryData, diagData] = await Promise.all([
         listAdminModels(),
-        getFleetTelemetry().catch((err) => {
-          if (err instanceof AdminApiError && (err.status === 401 || err.status === 403)) {
-            throw err
-          }
-          return null
-        }),
+        getFleetTelemetry().catch(ignoreNonAuth),
+        getAdminDiagnostics().catch(ignoreNonAuth),
       ])
       setModels(data.models)
       setEnvFallbacks(data.envFallbacks)
       setFleetTelemetry(telemetryData)
+      setDiagnostics(diagData)
     } catch (err) {
       if (handleAuthFailure(err)) return
       setBannerError(err instanceof Error ? err.message : "Could not load models.")
@@ -218,7 +235,9 @@ export default function AdminConsole() {
         onSignedOut={() => {
           setAccount(null)
           setModels([])
+          setModelsLoading(true)
           setFleetTelemetry(null)
+          setDiagnostics(null)
           setHealthModel(null)
           setStatus((prev) => (prev ? { ...prev, signedIn: false } : prev))
         }}
@@ -284,17 +303,21 @@ export default function AdminConsole() {
           {modelsLoading ? (
             <p role="status" className="panel inset muted">Loading connected models…</p>
           ) : (
-            <ModelList
-              models={models}
-              busyId={busyId}
-              telemetryByModel={fleetTelemetry?.models}
-              onConnect={() => { setEditing(null); setModalOpen(true) }}
-              onConfigure={(m) => { setEditing(m); setModalOpen(true) }}
-              onProbe={(m) => void handleProbe(m)}
-              onToggle={(m) => void handleToggle(m)}
-              onDelete={(m) => void handleDelete(m)}
-              onViewHealth={(m) => setHealthModel(m)}
-            />
+            <>
+              <ModelList
+                models={models}
+                busyId={busyId}
+                telemetryByModel={fleetTelemetry?.models}
+                usageByModel={diagnostics?.usageByModel}
+                onConnect={() => { setEditing(null); setModalOpen(true) }}
+                onConfigure={(m) => { setEditing(m); setModalOpen(true) }}
+                onProbe={(m) => void handleProbe(m)}
+                onToggle={(m) => void handleToggle(m)}
+                onDelete={(m) => void handleDelete(m)}
+                onViewHealth={(m) => setHealthModel(m)}
+              />
+              <RoutingSimulatorPanel onAuthInvalid={(msg) => { setGateError(msg); void bootstrap(true) }} />
+            </>
           )}
         </div>
       )}
@@ -308,6 +331,12 @@ export default function AdminConsole() {
       {tab === "audit" && (
         <div id="panel-audit" role="tabpanel" aria-labelledby="tab-audit">
           <AuditLogTab onAuthInvalid={(msg) => { setGateError(msg); void bootstrap(true) }} />
+        </div>
+      )}
+
+      {tab === "diagnostics" && (
+        <div id="panel-diagnostics" role="tabpanel" aria-labelledby="tab-diagnostics">
+          <DiagnosticsTab models={models} onAuthInvalid={(msg) => { setGateError(msg); void bootstrap(true) }} />
         </div>
       )}
 
@@ -326,6 +355,7 @@ export default function AdminConsole() {
               return created ? [saved, ...synced] : synced.map((m) => (m.id === saved.id ? saved : m))
             })
             void refreshTelemetry()
+            void refreshDiagnostics()
             setBannerStatus(created ? `Connected ${saved.display_name}.` : `Updated ${saved.display_name}.`)
           }}
         />

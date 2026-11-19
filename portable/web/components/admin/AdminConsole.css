@@ -272,3 +272,116 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+.admin-budget-fieldset {
+  border: 1px solid var(--color-input);
+  border-radius: 8px;
+  padding: 12px;
+  min-width: 0;
+}
+.admin-budget-fieldset legend {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 0 6px;
+  color: var(--secondary-ink);
+}
+.admin-budget-badge {
+  max-width: 100%;
+  white-space: normal;
+  text-align: left;
+}
+.admin-sim-heading {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.admin-sim-form {
+  display: grid;
+  grid-template-columns: minmax(170px, 1fr) minmax(190px, 1.4fr) auto;
+  gap: 12px;
+  align-items: end;
+}
+.admin-sim-submit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.admin-sim-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+.admin-sim-item {
+  padding: 12px 14px;
+  display: grid;
+  gap: 6px;
+}
+.admin-sim-item.skipped {
+  border-color: var(--warning-line);
+  background: var(--warning-soft);
+}
+.admin-sim-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.admin-sim-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+}
+.admin-sim-reason {
+  color: var(--attention);
+  font-size: 13px;
+}
+.admin-diag-list {
+  display: grid;
+  gap: 10px;
+}
+.admin-diag-card {
+  padding: 14px;
+  display: grid;
+  gap: 10px;
+}
+.admin-diag-bars {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.admin-diag-bar {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.admin-meter-track {
+  height: 10px;
+  border-radius: 999px;
+  border: 1px solid var(--color-input);
+  background: var(--subtle);
+  overflow: hidden;
+}
+.admin-meter-fill {
+  height: 100%;
+  background: var(--green-ink);
+  transition: width 0.2s ease;
+}
+.admin-meter-fill.warn {
+  background: var(--attention);
+}
+.admin-meter-fill.over {
+  background: var(--error-text);
+}
+.admin-audio-meter {
+  width: 100%;
+  height: 14px;
+}
+@media (max-width: 900px) {
+  .admin-sim-form,
+  .admin-diag-bars {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -128,14 +128,25 @@ def _clean_string_list(value: Any, limit: int) -> list[str]:
     return out
 
 
+def _safe_finite_float(value: Any) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    try:
+        fval = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return fval if math.isfinite(fval) else None
+
+
 @router.post("/judge", dependencies=[Depends(rate_limit.limit(rate_limit.AI_REQUEST))])
 async def judge_answer(body: JudgeInput):
     signals: dict[str, float] = {}
     for k, v in list(body.signals.items())[:24]:
-        if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(float(v)):
+        num = _safe_finite_float(v)
+        if num is not None:
             clean_key = prompt_framing.strip_control_chars(str(k), allow_newlines=False).strip()[:64]
             if clean_key:
-                signals[clean_key] = float(v)
+                signals[clean_key] = num
     payload = {
         "question": prompt_framing.strip_control_chars(body.question, allow_newlines=True),
         "answer": prompt_framing.strip_control_chars(body.answer, allow_newlines=True),
@@ -158,10 +169,10 @@ async def judge_answer(body: JudgeInput):
         max_tokens=600,
     )
     parsed = _extract_json_object(reply)
-    raw_likelihood = parsed.get("likelihood")
-    if isinstance(raw_likelihood, bool) or not isinstance(raw_likelihood, (int, float)) or not math.isfinite(float(raw_likelihood)):
+    raw_likelihood = _safe_finite_float(parsed.get("likelihood"))
+    if raw_likelihood is None:
         raise HTTPException(502, "AI judge returned an invalid likelihood score.")
-    likelihood = max(0, min(100, int(round(float(raw_likelihood)))))
+    likelihood = max(0, min(100, int(round(raw_likelihood))))
     confidence = parsed.get("confidence")
     if confidence not in {"low", "medium", "high"}:
         confidence = "medium"

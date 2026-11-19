@@ -1,6 +1,8 @@
 """Transcribe a selected audio stream or a recording through the same provider as the Mac app."""
 import asyncio
+from collections.abc import Callable
 import json
+import time
 from urllib.parse import urlencode
 from .origin import browser_origin
 
@@ -37,7 +39,7 @@ async def transcribe(request: Request):
     kind = request.headers.get("content-type", "").split(";")[0].lower()
     if kind not in MIME:
         raise HTTPException(415, "Select a WAV, M4A, MP3, Ogg, FLAC, WebM, MP4 or MOV file.")
-    model_resolver.resolve_or_503("transcription")
+    model_execution.resolve_candidates("transcription")
     audio = bytearray()
     async for chunk in request.stream():
         if len(audio) + len(chunk) > LIMIT:
@@ -48,12 +50,13 @@ async def transcribe(request: Request):
     return await transcribe_bytes(bytes(audio), kind)
 
 
-async def transcribe_bytes(data: bytes, kind: str):
+async def transcribe_bytes(data: bytes, kind: str, *, on_usage: Callable[[int, int], None] | None = None):
     _, segments = await model_execution.execute_transcription_chain(
         data,
         kind,
         url_builder=_deepgram_urls,
         fetch_fn=fetch_json,
+        on_usage=on_usage,
     )
     return {"segments": segments}
 
@@ -61,6 +64,30 @@ async def transcribe_bytes(data: bytes, kind: str):
 def same_local_origin(ws: WebSocket) -> bool:
     expected = browser_origin(ws.headers, ws.url.scheme)
     return expected is not None and ws.headers.get("origin") == expected
+
+
+def _live_candidates() -> list[tuple[model_resolver.ResolvedModel, str]]:
+    candidates = model_execution.resolve_candidates("transcription")
+    budget_blocked = False
+    last_exc: HTTPException | None = None
+    ready: list[tuple[model_resolver.ResolvedModel, str]] = []
+    for candidate in candidates:
+        decision = model_execution._check_target_budget(candidate)
+        if decision is not None and not decision.allowed:
+            budget_blocked = True
+            continue
+        try:
+            _, ws_base = _deepgram_urls(candidate.endpoint)
+            ready.append((candidate, ws_base))
+        except HTTPException as exc:
+            last_exc = exc
+    if ready:
+        return ready
+    if budget_blocked:
+        raise HTTPException(429, "Model budget ceiling reached.")
+    if last_exc is not None:
+        raise last_exc
+    raise HTTPException(503, "Configure an enabled transcription model before running this action.")
 
 
 async def relay_audio(browser: WebSocket, provider):
@@ -114,25 +141,62 @@ async def live(ws: WebSocket):
         return
     try:
         await require_entitlement(ws)
-        target = model_resolver.resolve_or_503("transcription")
-        _, ws_base = _deepgram_urls(target.endpoint)
+        candidates = _live_candidates()
     except HTTPException:
         await ws.close(code=1008)
         return
     await ws.accept()
+    started = time.monotonic()
+    target: model_resolver.ResolvedModel | None = None
+    provider_attempted = False
+    ready_sent = False
     try:
         if await asyncio.wait_for(ws.receive_text(), 10) != "send-audio-to-deepgram":
             await ws.close(code=1008)
             return
+        ws_base: str | None = None
+        last_quota: HTTPException | None = None
+        for cand, base in candidates:
+            rpm_limit = model_execution._rpm_limit(cand)
+            if cand.id is not None and rpm_limit is not None:
+                try:
+                    model_execution.QUOTA_LIMITER.consume(cand.id, rpm_limit)
+                except HTTPException as exc:
+                    last_quota = exc
+                    continue
+            target, ws_base = cand, base
+            break
+        if target is None or ws_base is None:
+            assert last_quota is not None
+            raise last_quota
         query = urlencode({"model": target.model_id or "nova-2", "punctuate": "true"})
         url = f"{ws_base}?{query}"
+        provider_attempted = True
+        started = time.monotonic()
         async with connect(url, additional_headers={"Authorization": f"Token {target.api_key}"}, open_timeout=10) as provider:
             await ws.send_json({"ready": True})
+            ready_sent = True
             await asyncio.wait_for(relay_audio(ws, provider), timeout=1800)
+        elapsed = int((time.monotonic() - started) * 1000)
+        model_execution._record_outcome(target, ok=True, http_status=200, latency_ms=elapsed, error=None)
         await ws.close()
     except WebSocketDisconnect:
+        if ready_sent and target is not None:
+            elapsed = int((time.monotonic() - started) * 1000)
+            model_execution._record_outcome(target, ok=True, http_status=200, latency_ms=elapsed, error=None)
         return
-    except (TimeoutError, OSError, WebSocketException, ValueError, IndexError, KeyError, TypeError):
+    except HTTPException as exc:
+        try:
+            await ws.send_json({"error": str(exc.detail)})
+            await ws.close(code=1011)
+        except (RuntimeError, WebSocketDisconnect):
+            pass
+    except (TimeoutError, OSError, WebSocketException, ValueError, IndexError, KeyError, TypeError) as exc:
+        if provider_attempted and target is not None:
+            elapsed = int((time.monotonic() - started) * 1000)
+            model_execution._record_outcome(
+                target, ok=False, http_status=502, latency_ms=elapsed, error=str(exc) or exc.__class__.__name__,
+            )
         try:
             await ws.send_json({"error": "The transcription stream stopped. Check the input and provider connection."})
             await ws.close(code=1011)
