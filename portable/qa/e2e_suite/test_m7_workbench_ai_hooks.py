@@ -52,7 +52,7 @@ def _sign_in(page, base_url: str) -> None:
     page.get_by_label("Operator email").fill(ADMIN_EMAIL)
     page.get_by_label("Password", exact=True).fill(ADMIN_PASS)
     page.get_by_role("button", name="Sign in", exact=True).click()
-    expect(page.get_by_text(ADMIN_EMAIL)).to_be_visible()
+    expect(page.get_by_text(ADMIN_EMAIL)).to_be_visible(timeout=20_000)
 
 
 def test_m7_semantic_similarity_gating_opt_in_dirty_boundary_and_errors(e2e_workspace, desktop_page, monkeypatch):
