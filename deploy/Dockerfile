@@ -2,9 +2,9 @@
 # portable/web-runtime.mjs exactly as `npm start` does. Both listen on 127.0.0.1 only;
 # Caddy (deploy/compose.yml) terminates HTTPS on the host and forwards to port 3000.
 # Build from the repository root: docker build -f deploy/Dockerfile .
-FROM node:22.23.5-bookworm-slim AS node
+FROM node:22.23.5-trixie-slim AS node
 
-FROM python:3.13-slim-bookworm
+FROM python:3.13-slim-trixie
 ENV NEXT_TELEMETRY_DISABLED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
