@@ -2,6 +2,7 @@
 
 import { Plus, Trash2 } from "lucide-react"
 import type { RubricCriterion } from "@/lib/roleCalibration"
+import RoleRubricTemplates from "./RoleRubricTemplates"
 import { Badge } from "./ui/badge"
 import { Button } from "./ui/button"
 import { Input } from "./ui/input"
@@ -79,6 +80,13 @@ export default function RoleRubricEditor({
           {rubric.length > 0 && <Badge variant="outline">Total weight {totalWeight}</Badge>}
         </div>
       </div>
+
+      <RoleRubricTemplates
+        currentCount={rubric.length}
+        disabled={disabled}
+        onReplace={(items) => onRubric(items)}
+        onAppend={(items) => onRubric([...rubric, ...items].slice(0, 25))}
+      />
 
       {rubric.map((item, index) => (
         <fieldset className="stack rounded-md border border-[var(--line)] bg-[var(--surface)] p-3" key={item.id}>

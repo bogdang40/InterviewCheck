@@ -22,6 +22,7 @@ from . import (
     candidate_compare,
     cohort_analytics,
     csp_reports,
+    diagnostics_export,
     drafts,
     health_probes,
     metrics_export,
@@ -35,8 +36,10 @@ from . import (
     retention_policy,
     role_analytics,
     role_versions,
+    rubric_templates,
     scoring_hooks,
     secret_box,
+    session_assignment,
     session_scorecard,
     store,
     trash,
@@ -202,6 +205,7 @@ workspace.include_router(backup.router)
 workspace.include_router(bulk_operations.router)
 workspace.include_router(role_analytics.router)
 workspace.include_router(role_versions.router)
+workspace.include_router(rubric_templates.router)
 workspace.include_router(session_workflow)
 workspace.include_router(transcript_import)
 workspace.include_router(ats_notes.router)
@@ -210,6 +214,7 @@ workspace.include_router(interview_catalog)
 workspace.include_router(exports)
 workspace.include_router(candidate_compare.router)
 workspace.include_router(session_scorecard.router)
+workspace.include_router(session_assignment.router)
 workspace.include_router(cohort_analytics.router)
 workspace.include_router(calibration_queue.router)
 app.include_router(health_probes.router)
@@ -229,6 +234,7 @@ app.include_router(retention_policy.router)
 if importlib.util.find_spec(".compliance_export", package=__package__) is not None:
     from . import compliance_export
     app.include_router(compliance_export.router)
+app.include_router(diagnostics_export.router)
 app.include_router(workspace)
 app.include_router(integrations)
 

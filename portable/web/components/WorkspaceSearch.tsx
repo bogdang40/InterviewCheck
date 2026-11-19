@@ -160,6 +160,7 @@ export default function WorkspaceSearch({
         type="button"
         className={compact ? "search-launch compact" : "search-launch"}
         aria-label="Search workspace"
+        aria-keyshortcuts="Meta+k Control+k"
         onMouseEnter={loadPalette}
         onFocus={loadPalette}
         onClick={show}

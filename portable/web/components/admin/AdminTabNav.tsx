@@ -38,6 +38,7 @@ export function AdminTabNav<T extends string>({
     const nextTab = tabs[nextIdx].id
     onSelect(nextTab)
     tabRefs.current[nextTab]?.focus()
+    tabRefs.current[nextTab]?.scrollIntoView({ block: "nearest", inline: "nearest" })
   }
 
   return (
