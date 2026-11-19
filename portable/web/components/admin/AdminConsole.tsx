@@ -1,7 +1,7 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
-import { Cpu, FileClock, Plus, RefreshCw, Users } from "lucide-react"
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react"
+import { Cpu, FileClock, Plus, RefreshCw, Users, type LucideIcon } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -30,6 +30,12 @@ import "./AdminConsole.css"
 
 type AdminTab = "models" | "accounts" | "audit"
 
+const ADMIN_TABS: readonly { id: AdminTab; label: string; Icon: LucideIcon }[] = [
+  { id: "models", label: "Models", Icon: Cpu },
+  { id: "accounts", label: "Accounts", Icon: Users },
+  { id: "audit", label: "Audit log", Icon: FileClock },
+]
+
 export default function AdminConsole() {
   const [status, setStatus] = useState<ProviderStatus | null>(null)
   const [account, setAccount] = useState<AccountSnapshot | null>(null)
@@ -37,6 +43,7 @@ export default function AdminConsole() {
   const [gateError, setGateError] = useState("")
 
   const [tab, setTab] = useState<AdminTab>("models")
+  const tabRefs = useRef<Partial<Record<AdminTab, HTMLButtonElement | null>>>({})
   const [models, setModels] = useState<ConnectedModel[]>([])
   const [envFallbacks, setEnvFallbacks] = useState<EnvFallback[]>([])
   const [fleetTelemetry, setFleetTelemetry] = useState<FleetTelemetryResponse | null>(null)
@@ -47,6 +54,17 @@ export default function AdminConsole() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<ConnectedModel | null>(null)
   const [healthModel, setHealthModel] = useState<ConnectedModel | null>(null)
+
+  function handleTabKeyDown(e: ReactKeyboardEvent<HTMLButtonElement>, current: AdminTab) {
+    const idx = ADMIN_TABS.findIndex((item) => item.id === current)
+    const offset = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : null
+    const nextIdx = offset !== null ? (idx + offset + ADMIN_TABS.length) % ADMIN_TABS.length : e.key === "Home" ? 0 : e.key === "End" ? ADMIN_TABS.length - 1 : -1
+    if (idx < 0 || nextIdx < 0) return
+    e.preventDefault()
+    const nextTab = ADMIN_TABS[nextIdx].id
+    setTab(nextTab)
+    tabRefs.current[nextTab]?.focus()
+  }
 
   const bootstrap = useCallback(async (preserveError = false) => {
     setGateLoading(true)
@@ -217,36 +235,45 @@ export default function AdminConsole() {
         <div className="admin-header-actions">
           <Badge variant="default">Admin: {account.email}</Badge>
           <Button type="button" variant="outline" size="sm" disabled={modelsLoading} onClick={() => void loadModels()}>
-            <RefreshCw size={14} />
+            <RefreshCw size={14} aria-hidden="true" />
             Refresh
           </Button>
           <Button type="button" size="sm" onClick={() => { setEditing(null); setModalOpen(true) }}>
-            <Plus size={14} />
+            <Plus size={14} aria-hidden="true" />
             Connect model
           </Button>
         </div>
       </header>
 
       <div className="admin-tabs" role="tablist" aria-label="Admin sections">
-        <button id="tab-models" type="button" role="tab" aria-selected={tab === "models"} className="admin-tab" onClick={() => setTab("models")}>
-          <Cpu size={15} aria-hidden="true" />
-          Models
-        </button>
-        <button id="tab-accounts" type="button" role="tab" aria-selected={tab === "accounts"} className="admin-tab" onClick={() => setTab("accounts")}>
-          <Users size={15} aria-hidden="true" />
-          Accounts
-        </button>
-        <button id="tab-audit" type="button" role="tab" aria-selected={tab === "audit"} className="admin-tab" onClick={() => setTab("audit")}>
-          <FileClock size={15} aria-hidden="true" />
-          Audit log
-        </button>
+        {ADMIN_TABS.map(({ id, label, Icon }) => {
+          const selected = tab === id
+          return (
+            <button
+              key={id}
+              ref={(el) => { tabRefs.current[id] = el }}
+              id={`tab-${id}`}
+              type="button"
+              role="tab"
+              aria-selected={selected}
+              aria-controls={`panel-${id}`}
+              tabIndex={selected ? 0 : -1}
+              className="admin-tab"
+              onClick={() => setTab(id)}
+              onKeyDown={(e) => handleTabKeyDown(e, id)}
+            >
+              <Icon size={15} aria-hidden="true" />
+              {label}
+            </button>
+          )
+        })}
       </div>
 
       {bannerError && <p role="alert" className="error">{bannerError}</p>}
       {bannerStatus && <p role="status" className="notice">{bannerStatus}</p>}
 
       {tab === "models" && (
-        <div role="tabpanel" aria-labelledby="tab-models" className="stack">
+        <div id="panel-models" role="tabpanel" aria-labelledby="tab-models" className="stack">
           <ModelSummaryCards
             models={models}
             envFallbacks={envFallbacks}
@@ -271,13 +298,13 @@ export default function AdminConsole() {
       )}
 
       {tab === "accounts" && (
-        <div role="tabpanel" aria-labelledby="tab-accounts">
+        <div id="panel-accounts" role="tabpanel" aria-labelledby="tab-accounts">
           <AccountsTab onAuthInvalid={(msg) => { setGateError(msg); void bootstrap(true) }} />
         </div>
       )}
 
       {tab === "audit" && (
-        <div role="tabpanel" aria-labelledby="tab-audit">
+        <div id="panel-audit" role="tabpanel" aria-labelledby="tab-audit">
           <AuditLogTab onAuthInvalid={(msg) => { setGateError(msg); void bootstrap(true) }} />
         </div>
       )}

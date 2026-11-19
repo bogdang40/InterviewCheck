@@ -4,6 +4,7 @@ import { api, message, RevisionConflict, statusText, type Answer, type Dispositi
 import CandidateResponse from "./CandidateResponse"
 import MarkedText from "./MarkedText"
 import ConflictReview from "./ConflictReview"
+import JudgeAssist from "./JudgeAssist"
 import { Button } from "./ui/button"
 import { Textarea } from "./ui/textarea"
 
@@ -52,15 +53,17 @@ export default function Evidence({
   onDirty,
   onFollowUp,
   canAdvance,
+  judgeAvailable,
 }: {
   item: Answer
   index: number
   sessionId: string
   onSave: (a: Answer, advance?: boolean) => void
   canAdvance?: boolean
-  onFollowUp?: () => void
+  onFollowUp?: (questionText?: string) => void
   onDirty: (id: string, value: boolean) => void
   onEdit?: () => void
+  judgeAvailable?: boolean
 }) {
   const [item, setItem] = useState(initial)
   const [conflict, setConflict] = useState(false)
@@ -119,8 +122,9 @@ export default function Evidence({
       <h2>{item.question}</h2>
       <CandidateResponse item={item}/>
       <Findings result={item.result} />
+      <JudgeAssist item={item} judgeAvailable={judgeAvailable} onFollowUp={onFollowUp} />
       {onFollowUp && (
-        <Button variant="outline" size="sm" onClick={onFollowUp}>
+        <Button variant="outline" size="sm" onClick={() => onFollowUp()}>
           Ask this follow up
         </Button>
       )}

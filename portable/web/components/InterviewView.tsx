@@ -12,6 +12,7 @@ import {
   type QuestionOrigin,
 } from "@/lib/api"
 import { useDraftGuard } from "@/lib/useDraftGuard"
+import { useScoringCapabilities } from "@/lib/scoringHooks"
 import SavedDraft from "./SavedDraft"
 import MoveToTrash from "./MoveToTrash"
 import ATSNote from "./ATSNote"
@@ -50,6 +51,7 @@ export default function InterviewView({ session, answerId, changed, onTransition
   const next = selected && nextPending(session.answers, selected.id)
   const blocked = dirty.size > 0 || busy
   const pending = session.answers.filter(needsReview).length
+  const capabilities = useScoringCapabilities()
 
   const onDirty = useCallback((id: string, value: boolean) => {
     setDirty((old) => {
@@ -228,6 +230,7 @@ export default function InterviewView({ session, answerId, changed, onTransition
                 onDirty={onDirty}
                 onSave={save}
                 onCancel={() => setEdit(null)}
+                embeddingAvailable={capabilities.embedding}
               />
             ) : selected ? (
               <Evidence
@@ -238,9 +241,11 @@ export default function InterviewView({ session, answerId, changed, onTransition
                 onDirty={onDirty}
                 canAdvance={!!next}
                 onSave={save}
+                judgeAvailable={capabilities.judge}
                 onFollowUp={
                   captureAllowed && !session.draft && !blocked
-                    ? () => begin(selected.result.follow_up, {parent_answer_id:selected.id})
+                    ? (questionText?: string) =>
+                        begin(questionText ?? selected.result.follow_up, { parent_answer_id: selected.id })
                     : undefined
                 }
                 onEdit={captureAllowed && !blocked ? () => setEdit(selected.id) : undefined}

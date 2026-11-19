@@ -95,3 +95,17 @@
 .row:empty {
   display: none;
 }
+@media (max-width: 380px) {
+  .content {
+    padding: 16px 10px 24px;
+  }
+  .form-panel,
+  .evidence,
+  .panel.stack {
+    padding: 14px;
+  }
+  .page-title h1 {
+    font-size: clamp(26px, 8vw, 34px);
+    overflow-wrap: anywhere;
+  }
+}

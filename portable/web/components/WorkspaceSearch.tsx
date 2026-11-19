@@ -9,6 +9,7 @@ export default function WorkspaceSearch({ compact = false }: { compact?: boolean
   const dialog = useRef<HTMLDialogElement>(null),
     input = useRef<HTMLInputElement>(null)
   const trigger = useRef<HTMLButtonElement>(null)
+  const navigatingRef = useRef(false)
   const [open, setOpen] = useState(false),
     [query, setQuery] = useState(""),
     [active, setActive] = useState(0)
@@ -17,6 +18,7 @@ export default function WorkspaceSearch({ compact = false }: { compact?: boolean
   const { result, error, pending } = useWorkspaceSearch(query, open)
   function show() {
     if (!dialog.current || dialog.current.open) return
+    navigatingRef.current = false
     setOpen(true)
     setActive(0)
     setQuery("")
@@ -61,7 +63,7 @@ export default function WorkspaceSearch({ compact = false }: { compact?: boolean
         aria-label="Search workspace"
         onClick={show}
       >
-        <Search size={16} />
+        <Search size={16} aria-hidden="true" />
         {!compact && (
           <span className="search-label">
             Search <kbd>Ctrl / ⌘ K</kbd>
@@ -77,6 +79,11 @@ export default function WorkspaceSearch({ compact = false }: { compact?: boolean
           setOpen(false)
           setQuery("")
           setActive(0)
+          const shouldRestore = !navigatingRef.current
+          navigatingRef.current = false
+          if (shouldRestore && trigger.current?.isConnected) {
+            trigger.current.focus()
+          }
         }}
         onClick={(e) => {
           if (e.target === dialog.current) {
@@ -90,7 +97,7 @@ export default function WorkspaceSearch({ compact = false }: { compact?: boolean
           Search workspace
         </h2>
         <div className="search-input-row">
-          <Search size={19} />
+          <Search size={19} aria-hidden="true" />
           <input
             ref={input}
             type="text"
@@ -111,7 +118,7 @@ export default function WorkspaceSearch({ compact = false }: { compact?: boolean
             onKeyDown={key}
           />
           <button type="button" aria-label="Close search" onClick={() => dialog.current?.close()}>
-            <X size={18} />
+            <X size={18} aria-hidden="true" />
           </button>
         </div>
         <div className="search-body" id={list} role="listbox" aria-label="Search results">
@@ -129,9 +136,12 @@ export default function WorkspaceSearch({ compact = false }: { compact?: boolean
                 href={resultURL(r)}
                 className="search-hit"
                 onMouseMove={() => setActive(i)}
-                onClick={() => dialog.current?.close()}
+                onClick={() => {
+                  navigatingRef.current = true
+                  dialog.current?.close()
+                }}
               >
-                <Icon size={17} />
+                <Icon size={17} aria-hidden="true" />
                 <span>
                   <b>{r.label}</b>
                   <small>{r.snippet}</small>

@@ -117,7 +117,7 @@
   display: flex;
   gap: 7px;
   align-items: center;
-  border: 1px solid var(--line);
+  border: 1px solid var(--color-input);
   border-radius: 6px;
   padding: 7px 10px;
   color: var(--muted);
@@ -126,7 +126,11 @@
 .appearance label:has(:checked) {
   background: var(--selected-bg);
   color: var(--green-ink);
-  border-color: var(--selected-line);
+  border-color: var(--green-ink);
+}
+.appearance label:has(input:focus-visible) {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
 }
 .appearance input {
   accent-color: var(--green);

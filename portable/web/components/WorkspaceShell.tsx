@@ -89,8 +89,9 @@ export default function WorkspaceShell({ children }: { children: React.ReactNode
           'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])',
         ),
       ).filter((el) => {
+        if (el.closest("[inert], [hidden]")) return false
         const cs = window.getComputedStyle(el)
-        return cs.display !== "none" && cs.visibility !== "hidden" && !el.hasAttribute("inert")
+        return cs.display !== "none" && cs.visibility !== "hidden"
       })
       if (focusable.length === 0) {
         e.preventDefault()
@@ -132,7 +133,12 @@ export default function WorkspaceShell({ children }: { children: React.ReactNode
     return () => window.removeEventListener("hashchange", restoreBookmark)
   }, [router, pathname])
 
-  const backgroundInert = drawerOpen && isMobile
+  const backgroundInert = isMobile && drawerOpen ? true : undefined
+
+  function closeDrawer(restoreFocus = true) {
+    if (restoreFocus) shouldRestoreFocusRef.current = true
+    setDrawerOpen(false)
+  }
 
   return (
     <PreparationContext.Provider value={{ preparation, prepare }}>
@@ -142,7 +148,7 @@ export default function WorkspaceShell({ children }: { children: React.ReactNode
             Skip to content
           </a>
           {drawerOpen && isMobile && (
-            <div className="drawer-backdrop" onClick={() => setDrawerOpen(false)} aria-hidden="true" />
+            <div className="drawer-backdrop" onClick={() => closeDrawer(true)} aria-hidden="true" />
           )}
           <WorkspaceNav
             path={path}
@@ -153,7 +159,8 @@ export default function WorkspaceShell({ children }: { children: React.ReactNode
             account={account}
             closeRef={closeRef}
             drawerRef={drawerRef}
-            onClose={() => setDrawerOpen(false)}
+            onClose={() => closeDrawer(true)}
+            onNavigate={() => closeDrawer(false)}
           />
           <main className="main" id="main-content" tabIndex={-1} inert={backgroundInert}>
             <header className="top">
@@ -167,21 +174,21 @@ export default function WorkspaceShell({ children }: { children: React.ReactNode
                   aria-controls={drawerId}
                   onClick={() => setDrawerOpen(true)}
                 >
-                  <Menu size={20} />
+                  <Menu size={20} aria-hidden="true" />
                 </button>
-                <div className="breadcrumb">
-                  <LayoutGrid size={15} className="breadcrumb-icon" />
+                <nav className="breadcrumb" aria-label="Breadcrumb">
+                  <LayoutGrid size={15} className="breadcrumb-icon" aria-hidden="true" />
                   <Link href="/" className="breadcrumb-root">
                     Workspace
                   </Link>
-                  <ChevronRight size={13} className="breadcrumb-sep" />
+                  <ChevronRight size={13} className="breadcrumb-sep" aria-hidden="true" />
                   <b>{pageTitle}</b>
-                </div>
+                </nav>
               </div>
               <div className="header-tools">
                 <WorkspaceSearch />
                 <Link className="account-link" href="/account/" aria-label="Account">
-                  <UserRound size={16} />
+                  <UserRound size={16} aria-hidden="true" />
                   <span>Account</span>
                 </Link>
               </div>
@@ -195,7 +202,7 @@ export default function WorkspaceShell({ children }: { children: React.ReactNode
             >
               {path.startsWith("/interviews/") && path !== "/interviews/" && (
                 <Link className="back" href="/interviews/">
-                  <ArrowLeft size={14} />
+                  <ArrowLeft size={14} aria-hidden="true" />
                   Interviews
                 </Link>
               )}

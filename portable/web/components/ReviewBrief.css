@@ -26,6 +26,7 @@
 .brief-options {
   display: grid;
   gap: 16px;
+  min-width: 0;
 }
 .brief-options p,
 .brief-choices label {
@@ -93,5 +94,11 @@
 @media (max-width: 850px) {
   .brief-body {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 380px) {
+  .brief-options,
+  .brief-preview {
+    padding: 14px;
   }
 }

@@ -88,7 +88,7 @@ export default function Roles({
             onClick={() => (adding ? setAdding(false) : open())}
             variant={adding ? "outline" : "default"}
           >
-            {!adding && <Plus />}
+            {!adding && <Plus aria-hidden="true" />}
             {adding ? "Cancel" : "Add role"}
           </Button>
         </div>
@@ -151,7 +151,7 @@ export default function Roles({
         )}
         {roles.map((r) => (
           <div className="role-row" key={r.id}>
-            <BriefcaseBusiness />
+            <BriefcaseBusiness aria-hidden="true" />
             <div>
               <strong>{r.name}</strong>
               <p>{r.description || `${r.questions.length} planned questions`}</p>
@@ -161,13 +161,13 @@ export default function Roles({
               Edit role
             </Button>
             <Button variant="ghost" onClick={() => prepare(r)}>
-              Prepare <ArrowRight />
+              Prepare <ArrowRight aria-hidden="true" />
             </Button>
           </div>
         ))}
         {!roles.length && !adding && (
           <div className="empty">
-            <BriefcaseBusiness />
+            <BriefcaseBusiness aria-hidden="true" />
             <strong>No roles saved</strong>
             <p>Add a role or migrate role profiles from a native database.</p>
             <Button variant="outline" size="sm" onClick={() => open()}>

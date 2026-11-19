@@ -146,7 +146,7 @@ export function ModelFormModal({
         <div className="admin-modal-head">
           <h2 id={titleId}>{isEdit ? `Configure ${editing?.display_name}` : "Connect model"}</h2>
           <Button type="button" variant="ghost" size="icon-sm" aria-label="Close modal" disabled={busy} onClick={onClose}>
-            <X size={16} />
+            <X size={16} aria-hidden="true" />
           </Button>
         </div>
 
