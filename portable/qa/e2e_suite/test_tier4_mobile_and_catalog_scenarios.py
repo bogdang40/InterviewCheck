@@ -159,10 +159,14 @@ def test_scenario_d_mobile_field_review_backup_restore_and_multi_route_audit(
     ws2.start()
     ctx2, page2, col2 = _open_mobile_context(e2e_browser)
     try:
-        page2.goto(ws2.base_url + "/data/", wait_until="domcontentloaded")
+        page2.goto(ws2.base_url + "/data/", wait_until="networkidle")
         assert_no_horizontal_overflow(page2)
-        page2.get_by_label("Workspace backup file").set_input_files(str(backup_path))
-        page2.get_by_role("button", name="Preview restore").click()
+        backup_input = page2.get_by_label("Workspace backup file")
+        expect(backup_input).to_have_attribute("data-hydrated", "true")
+        backup_input.set_input_files(str(backup_path))
+        preview_btn = page2.get_by_role("button", name="Preview restore")
+        expect(preview_btn).to_be_enabled()
+        preview_btn.click()
         expect(page2.get_by_role("heading", name="Restore preview")).to_be_visible()
         expect(page2.get_by_text("1 captured exchanges")).to_be_visible()
 
