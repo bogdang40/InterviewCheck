@@ -92,7 +92,7 @@ select,
   :is(input, textarea, select, [data-slot="button"][data-variant="outline"]):not(:focus-visible):not([aria-invalid="true"]) {
   border-color: var(--icon);
 }
-.notice a {
+.notice a:not([data-slot="button"]) {
   text-decoration: underline;
   font-weight: 600;
   color: var(--green-ink);

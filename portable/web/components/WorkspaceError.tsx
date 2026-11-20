@@ -1,7 +1,8 @@
 "use client"
 
 import Link from "next/link"
-import { AlertTriangle, RotateCcw } from "lucide-react"
+import { AlertTriangle, LogIn, RotateCcw } from "lucide-react"
+import { needsSignIn } from "@/lib/api"
 import { Button } from "./ui/button"
 
 type WorkspaceErrorProps = {
@@ -17,6 +18,20 @@ export default function WorkspaceError({
   retryLabel = "Retry",
   showAccount = true,
 }: WorkspaceErrorProps) {
+  if (needsSignIn(text)) {
+    // Not an error: a signed-out visitor needs a way in, not an alarm and a Retry button.
+    return (
+      <div className="notice flex flex-wrap items-center justify-between gap-3" role="status">
+        <p className="min-w-0 flex-1 text-sm leading-5">Sign in to open your interviews, roles and reports.</p>
+        <Button asChild size="sm" className="min-h-11 sm:min-h-8">
+          <Link href="/account/">
+            <LogIn className="size-3.5" aria-hidden="true" />
+            Sign in
+          </Link>
+        </Button>
+      </div>
+    )
+  }
   return (
     <div
       className="error flex flex-wrap items-center justify-between gap-3"

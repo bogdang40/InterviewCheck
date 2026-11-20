@@ -106,7 +106,7 @@ export default function InterviewArchive({
   const first = data ? (data.page - 1) * data.page_size + 1 : 0
   const last = data ? first + data.items.length - 1 : 0
   const count = !data
-    ? "Loading interviews…"
+    ? (resource.error ? "" : "Loading interviews…")
     : data.pages === 1
       ? `${data.filtered} of ${data.total} shown`
       : `${first} to ${last} of ${data.filtered} matching interviews`
