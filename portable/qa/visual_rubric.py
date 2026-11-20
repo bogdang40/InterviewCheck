@@ -16,6 +16,8 @@ AUDIT_JS = """() => {
   const isVisible = (el) => {
     const cs = getComputedStyle(el);
     if (cs.display === "none" || cs.visibility === "hidden" || el.closest(".sr-only, [hidden]")) return false;
+    // A collapsed <details> keeps a layout box for its content, but it cannot be seen or tapped.
+    if (el.closest("details:not([open])") && !el.closest("summary")) return false;
     const r = el.getBoundingClientRect();
     return r.width > 0 && r.height > 0;
   };
