@@ -43,6 +43,12 @@
 .cellQuestion { font-size: 13px; font-weight: 560; color: var(--ink); }
 .cellLink { font-size: 13px; font-weight: 600; color: var(--green-ink); justify-self: start; }
 .cellLink:hover { text-decoration: underline; }
+.cardTitle:focus-visible,
+.cellLink:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
 .excerpt {
   margin: 0; padding: 8px 10px; border-left: 2px solid var(--selected-line);
   background: var(--subtle); border-radius: 4px; font-size: 13px; color: var(--ink);
@@ -51,6 +57,81 @@
 .rubricGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 12px; }
 .rubricCard { padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--subtle); display: grid; gap: 6px; }
 .rubricCard ul { margin: 4px 0 0 18px; padding: 0; font-size: 13px; }
+@media (max-width: 680px) {
+  .headerActions [data-slot="button"],
+  .pickerControls [data-slot="button"],
+  .optionsBar [data-slot="button"] {
+    min-height: 44px;
+    padding-inline: 12px;
+  }
+  .matrixWrap {
+    overflow-x: visible;
+    border: 0;
+    border-radius: 0;
+  }
+  .matrixTable {
+    position: relative;
+    display: block;
+    width: 100%;
+    min-width: 0;
+    background: transparent;
+  }
+  .matrixTable thead {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .matrixTable tbody {
+    display: grid;
+    gap: 12px;
+    width: 100%;
+    min-width: 0;
+  }
+  .matrixTable tbody tr {
+    display: grid;
+    width: 100%;
+    min-width: 0;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--surface);
+    overflow: hidden;
+  }
+  .matrixTable th,
+  .matrixTable td {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    padding: 10px 12px;
+  }
+  .matrixTable tr:last-child th,
+  .matrixTable tr:last-child td {
+    border-bottom: 1px solid var(--line);
+  }
+  .matrixTable tbody tr > *:last-child {
+    border-bottom: 0;
+  }
+  .slotCellHead {
+    min-width: 0;
+    max-width: none;
+  }
+  .cellStack {
+    min-width: 0;
+    width: 100%;
+  }
+  .cellLink {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+}
 @media (max-width: 640px) {
   .pickerPanel, .section, .optionsBar { padding: 14px; }
 }

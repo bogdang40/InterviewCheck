@@ -34,8 +34,8 @@ function RateBar({ label, pct, detail, tone }: { label: string; pct: number; det
 function ReviewerTable({ rows, caption }: { rows: ReviewerSummary[]; caption: string }) {
   if (!rows.length) return <p className="muted text-sm">No reviewer dispositions recorded yet.</p>
   return (
-    <div className="w-full overflow-x-auto rounded-lg border border-[var(--line)]">
-      <table className="w-full border-collapse text-left text-xs sm:text-sm">
+    <div className="admin-table-wrap w-full overflow-x-auto rounded-lg border border-[var(--line)]">
+      <table className="admin-table w-full border-collapse text-left text-xs sm:text-sm">
         <caption className="sr-only">{caption}</caption>
         <thead className="bg-[var(--subtle)] text-[var(--muted)]">
           <tr>
@@ -49,11 +49,11 @@ function ReviewerTable({ rows, caption }: { rows: ReviewerSummary[]; caption: st
         <tbody>
           {rows.map((rev) => (
             <tr key={rev.reviewer_id} className="border-t border-[var(--line)]">
-              <td className="px-3 py-2 font-medium break-all">{rev.reviewer_email}</td>
-              <td className="px-3 py-2 tabular-nums">{rev.total_reviews}</td>
-              <td className="px-3 py-2 tabular-nums">{rev.pass_rate_pct.toFixed(1)}%</td>
-              <td className="px-3 py-2 tabular-nums">{rev.concern_rate_pct.toFixed(1)}%</td>
-              <td className="px-3 py-2 font-mono tabular-nums">
+              <td data-label="Reviewer" className="px-3 py-2 font-medium break-words">{rev.reviewer_email}</td>
+              <td data-label="Reviews" className="px-3 py-2 tabular-nums">{rev.total_reviews}</td>
+              <td data-label="Pass" className="px-3 py-2 tabular-nums">{rev.pass_rate_pct.toFixed(1)}%</td>
+              <td data-label="Concern" className="px-3 py-2 tabular-nums">{rev.concern_rate_pct.toFixed(1)}%</td>
+              <td data-label="Delta vs baseline" className="px-3 py-2 font-mono tabular-nums">
                 <Badge variant={Math.abs(rev.delta_vs_baseline_pp) >= 20 ? "warning" : "secondary"}>
                   {formatDeltaPp(rev.delta_vs_baseline_pp)}
                 </Badge>
