@@ -16,6 +16,9 @@ export function interviewURL(id: string, answerId?: string | null) {
   return "/interviews/review/?" + params.toString()
 }
 
+/** True while WorkspaceShell shows the public sign-in screen around /account/ (signed out, hosted). */
+export const SignInScreenContext = createContext(false)
+
 export function useResource<T>(path: string | null) {
   const [resource, setResource] = useState<{ path: string; value: T } | null>(null)
   const [failure, setFailure] = useState<{ path: string; text: string } | null>(null)

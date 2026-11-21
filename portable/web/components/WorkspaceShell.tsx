@@ -5,13 +5,14 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { useEffect, useId, useRef, useState } from "react"
 import { ArrowLeft, ChevronRight, LayoutGrid, Menu, UserRound } from "lucide-react"
-import { blankPreparation, interviewURL, PreparationContext, type Preparation } from "@/lib/workspace"
+import { blankPreparation, interviewURL, PreparationContext, SignInScreenContext, type Preparation } from "@/lib/workspace"
 import { useAccountStatus } from "@/lib/useAccountStatus"
 import { WorkspaceNav, workspaceMenu } from "./WorkspaceNav"
 import WorkspaceSearch from "./WorkspaceSearch"
 
 // Loaded only when a signed-out visitor opens "/" on a hosted deployment, so workspace pages stay light.
 const PublicHome = dynamic(() => import("./home/PublicHome"), { ssr: false, loading: () => <HomeUndecided /> })
+const SignInFrame = dynamic(() => import("./home/SignInFrame"), { ssr: false, loading: () => <HomeUndecided /> })
 
 function HomeUndecided() {
   return <div aria-busy="true" style={{ minHeight: "100vh", background: "#121416" }} />
@@ -145,9 +146,13 @@ export default function WorkspaceShell({ children }: { children: React.ReactNode
   // A hosted deployment (accounts on) shows its public home page at "/" to anyone not signed in.
   // Signed-in operators and the local workstation edition keep the workspace Overview there.
   const atRoot = path === "/"
+  const atAccount = path === "/account/"
+  const signedOutHosted = status?.access === true && status.signedIn !== true
   // Until the first status reply; if it fails, the workspace shows as it did before.
-  const homeUndecided = atRoot && status === null && loading
-  const publicHome = atRoot && status?.access === true && status.signedIn !== true
+  const homeUndecided = (atRoot || atAccount) && status === null && loading
+  const publicHome = atRoot && signedOutHosted
+  // Signed-out visitors sign in on a focused screen, not inside the workspace they cannot open yet.
+  const signInScreen = atAccount && signedOutHosted
 
   function closeDrawer(restoreFocus = true) {
     if (restoreFocus) shouldRestoreFocusRef.current = true
@@ -156,6 +161,12 @@ export default function WorkspaceShell({ children }: { children: React.ReactNode
 
   if (homeUndecided) return <HomeUndecided />
   if (publicHome) return <PublicHome />
+  if (signInScreen)
+    return (
+      <SignInScreenContext.Provider value={true}>
+        <SignInFrame>{children}</SignInFrame>
+      </SignInScreenContext.Provider>
+    )
 
   return (
     <PreparationContext.Provider value={{ preparation, prepare }}>

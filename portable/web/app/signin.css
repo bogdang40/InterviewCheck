@@ -1,0 +1,82 @@
+/* The public sign-in screen (components/home/SignInFrame) around the unchanged account form. */
+.signin {
+  display: flex;
+  flex-direction: column;
+}
+.signin > .home-bar {
+  width: 100%;
+}
+.signin-back {
+  display: inline-block;
+  vertical-align: -2px;
+  margin-right: 6px;
+}
+.signin-main {
+  flex: 1;
+  display: grid;
+  place-items: start center;
+  padding: clamp(24px, 8vh, 96px) var(--h-gutter) 64px;
+  outline: none;
+}
+.signin-card {
+  width: 100%;
+  max-width: 440px;
+}
+.signin-card h1 {
+  margin: 0 0 10px;
+  font: italic 400 clamp(2.6rem, 6vw, 3.4rem) / 1 var(--h-serif);
+  letter-spacing: -0.02em;
+}
+.signin-card > p {
+  margin: 0 0 28px;
+  color: var(--h-soft);
+}
+.signin-card .panel {
+  padding: 26px;
+  border: 1px solid var(--h-line);
+  border-radius: 14px;
+  background: var(--h-panel);
+  box-shadow: 0 30px 80px -30px rgba(0, 0, 0, 0.7), 0 2px 6px rgba(0, 0, 0, 0.35);
+  color: var(--h-ink);
+}
+.signin-card .panel .panel {
+  padding: 16px;
+  box-shadow: none;
+  background: var(--h-ground);
+}
+.signin-card .field {
+  color: var(--h-ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+.signin-card input {
+  min-height: 46px;
+  background: var(--h-ground);
+  border-color: var(--h-line-strong);
+  color: var(--h-ink);
+  font-size: 16px;
+}
+.signin-card form .row {
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 6px;
+}
+.signin-card form .row > [data-slot="button"]:first-child {
+  min-height: 46px;
+  padding: 0 22px;
+  font-size: 15px;
+}
+.signin-card summary {
+  color: var(--h-muted);
+  font-size: 14px;
+}
+.signin-card > p.signin-foot {
+  margin: 22px 0 0;
+  color: var(--h-muted);
+  font-size: 14px;
+}
+.signin-foot a {
+  color: var(--h-peach-ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}

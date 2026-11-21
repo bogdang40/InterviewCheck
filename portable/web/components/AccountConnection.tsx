@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -16,16 +17,30 @@ import { notifyAccountChanged } from "@/lib/useAccountStatus";
 
 type Account = { email: string; active: boolean; admin?: boolean };
 
+/** Where to go after signing in from the public sign-in screen: a same-site path from ?next=, or stay. */
+function nextPath(): string | null {
+  if (typeof window === "undefined") return null;
+  const next = new URLSearchParams(window.location.search).get("next");
+  return next && next.startsWith("/") && !next.startsWith("//") ? next : null;
+}
+
 export function AccountConnection({
   enabled,
   inviteRequired,
   signedIn,
+  variant = "settings",
 }: {
   enabled: boolean;
   inviteRequired?: boolean;
   signedIn?: boolean;
+  /** "signin": the public sign-in screen (no section heading; follows ?next= after sign-in). */
+  variant?: "settings" | "signin";
 }) {
+  const router = useRouter();
   const [account, setAccount] = useState<Account | null>(null);
+  // Set while the shell swaps between the public sign-in screen and the workspace, so the form or the
+  // account controls are not shown (and typed into) just before they are replaced.
+  const [leaving, setLeaving] = useState<"in" | "out" | null>(null);
   const [initializing, setInitializing] = useState(Boolean(enabled && signedIn !== false));
   const [initError, setInitError] = useState("");
   const [initSeq, setInitSeq] = useState(0);
@@ -71,6 +86,16 @@ export function AccountConnection({
     return () => { active = false; };
   }, [account, plansSeq]);
 
+  useEffect(() => {
+    if (!leaving) return;
+    // Normally the shell replaces this screen within a moment. If it does not, reload to settle.
+    const timer = window.setTimeout(() => {
+      const next = leaving === "in" ? nextPath() : null;
+      window.location.assign(next ?? window.location.pathname);
+    }, 5000);
+    return () => window.clearTimeout(timer);
+  }, [leaving]);
+
   async function act(work: () => Promise<void>) {
     setBusy(true);
     setError("");
@@ -81,7 +106,9 @@ export function AccountConnection({
     const result = await submit<{ url: string }>("billing/" + action, action === "checkout" ? { plan } : {});
     window.location.assign(result.url);
   }
-  return <section className="panel stack"><h2>Account and billing</h2>
+  if (leaving) return <section className="panel stack"><p role="status">
+    {leaving === "in" ? "Signed in. Opening your workspace…" : "Signed out."}</p></section>;
+  return <section className="panel stack">{variant === "settings" && <h2>Account and billing</h2>}
     {!enabled ? <p className="muted">Local workspace. Enable embedded accounts or configure a remote access service to sign in.</p> :
       initializing ? <p className="panel inset muted" role="status">Loading account status…</p> :
       initError ? <WorkspaceError text={initError} retry={() => setInitSeq(n => n + 1)} /> :
@@ -95,12 +122,13 @@ export function AccountConnection({
         </div> : <p className="muted">Billing plans are unavailable.</p>}
         <div className="row">
           <Button variant="outline" disabled={busy} onClick={() => act(refresh)}>Refresh access</Button>
-          <Button variant="ghost" disabled={busy} onClick={() => act(async () => { await submit("logout"); setAccount(null); notifyAccountChanged(); })}>Sign out</Button>
+          <Button variant="ghost" disabled={busy} onClick={() => act(async () => { await submit("logout"); setLeaving("out"); setAccount(null); notifyAccountChanged(); })}>Sign out</Button>
         </div>
         <PasswordChangeForm onRotated={next => setAccount(next)} />
         <AccountSecurityPanel
           isAdmin={Boolean(account.admin)}
           onCurrentSessionRevoked={() => {
+            setLeaving("out");
             setAccount(null);
             notifyAccountChanged();
           }}
@@ -131,8 +159,17 @@ export function AccountConnection({
           setTotpCode("");
           return;
         }
-        setAccount(res.account);
         setPassword(""); setTotpCode(""); setTotpRequired(false); setInvite(""); setAdminSecret("");
+        if (variant === "signin") {
+          // The shell swaps this screen for the workspace once its status refreshes; until then
+          // show a status, not account controls that are about to be replaced.
+          setLeaving("in");
+          notifyAccountChanged();
+          const next = nextPath();
+          if (next) router.push(next);
+          return;
+        }
+        setAccount(res.account);
         notifyAccountChanged();
       }); }}>
         <label className="field">Operator email<Input type="email" autoComplete="username" required value={email} onChange={e => {

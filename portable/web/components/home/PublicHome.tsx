@@ -73,7 +73,7 @@ export default function PublicHome() {
         <nav className="home-nav" aria-label="Site">
           <a href="#policy">How it works</a>
           <Link href="/sample/">Sample review</Link>
-          <Link href="/account/" className="home-signin">
+          <Link href="/account/?next=/" className="home-signin">
             Sign in
           </Link>
         </nav>
@@ -91,7 +91,7 @@ export default function PublicHome() {
               you.
             </p>
             <div className="home-actions">
-              <Link href="/account/" className="home-btn primary">
+              <Link href="/account/?next=/" className="home-btn primary">
                 Sign in
               </Link>
               <Link href="/sample/" className="home-btn">
@@ -291,7 +291,7 @@ export default function PublicHome() {
               Try the sample review
               <ArrowRight size={16} aria-hidden="true" />
             </Link>
-            <Link href="/account/" className="home-btn">
+            <Link href="/account/?next=/" className="home-btn">
               Sign in
             </Link>
           </div>
@@ -308,7 +308,7 @@ export default function PublicHome() {
         <span>Interview review workspace</span>
         <nav aria-label="Footer">
           <Link href="/sample/">Sample review</Link>
-          <Link href="/account/">Sign in</Link>
+          <Link href="/account/?next=/">Sign in</Link>
         </nav>
       </footer>
     </div>
