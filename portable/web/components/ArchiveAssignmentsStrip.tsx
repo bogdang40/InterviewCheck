@@ -59,6 +59,7 @@ export default function ArchiveAssignmentsStrip() {
   const error = current?.error
   const loading = current === null
   const statusRef = useRef<HTMLParagraphElement>(null)
+  const selectVisibleRef = useRef<HTMLButtonElement>(null)
   const focusRange = useRef(false)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [bulkEmail, setBulkEmail] = useState("")
@@ -136,6 +137,7 @@ export default function ArchiveAssignmentsStrip() {
           ? `Assigned ${res.updated} ${noun} to ${trimmedEmail}.`
           : `Cleared assignments for ${res.updated} ${noun}.`,
       )
+      focusRange.current = true
       setSelectedIds([])
       setRefreshSeq((n) => n + 1)
     } catch (err) {
@@ -211,33 +213,36 @@ export default function ArchiveAssignmentsStrip() {
         <p className="muted text-sm" role="status" aria-live="polite">Loading assignment queues...</p>
       ) : !data || data.items.length === 0 ? (
         <div className="stack">
-          <p className="muted text-sm">No sessions in this assignment queue.</p>
+          <p ref={statusRef} tabIndex={-1} className="muted text-sm">No sessions in this assignment queue.</p>
           {bulkStatus && <p role="status" aria-live="polite" className="notice">{bulkStatus}</p>}
           {bulkError && <p role="alert" className="error">{bulkError}</p>}
         </div>
       ) : (
         <div className="stack">
-          <div className="panel inset stack" role="region" aria-label="Bulk session assignment">
+          <div className={selectedIds.length ? "panel inset stack" : "stack"} role="region" aria-label="Bulk session assignment">
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant={selectedIds.length > 0 ? "default" : "outline"}>{selectedIds.length} selected</Badge>
               <Button
-                type="button" variant="outline" size="sm" className="min-h-[44px] md:min-h-8"
-                disabled={bulkBusy !== null || visibleIds.length === 0 || allVisibleSelected}
-                onClick={() => setSelectedIds(visibleIds)}
+                ref={selectVisibleRef} type="button" variant="outline" size="sm" className="min-h-[44px] md:min-h-8"
+                disabled={bulkBusy !== null}
+                onClick={() => setSelectedIds(allVisibleSelected ? [] : visibleIds)}
               >
-                Select visible
+                {allVisibleSelected ? "Clear selection" : "Select visible"}
               </Button>
-              {selectedIds.length > 0 && (
+              {selectedIds.length > 0 && !allVisibleSelected && (
                 <Button
                   type="button" variant="ghost" size="sm" className="min-h-[44px] md:min-h-8"
-                  disabled={bulkBusy !== null} onClick={() => setSelectedIds([])}
+                  disabled={bulkBusy !== null} onClick={() => {
+                    setSelectedIds([])
+                    selectVisibleRef.current?.focus()
+                  }}
                 >
                   Clear selection
                 </Button>
               )}
             </div>
 
-            <form
+            {selectedIds.length > 0 && <form
               className="grid gap-3 md:grid-cols-[minmax(0,1.4fr)_minmax(130px,0.8fr)_minmax(145px,0.9fr)_auto] md:items-end"
               noValidate onSubmit={(e) => void runBulk("assign", e)}
             >
@@ -261,18 +266,18 @@ export default function ArchiveAssignmentsStrip() {
                 <Input type="date" value={bulkDueDate} disabled={bulkBusy !== null} onChange={(e) => setBulkDueDate(e.target.value)} />
               </label>
               <div className="flex flex-wrap items-center gap-2">
-                <Button type="submit" size="sm" className="min-h-[44px] md:min-h-8" disabled={bulkBusy !== null || selectedIds.length === 0}>
+                <Button type="submit" size="sm" className="min-h-[44px] md:min-h-8" disabled={bulkBusy !== null}>
                   {bulkBusy === "assign" ? "Assigning..." : "Assign selected"}
                 </Button>
                 <Button
                   type="button" variant="outline" size="sm" className="min-h-[44px] md:min-h-8"
-                  disabled={bulkBusy !== null || selectedIds.length === 0} onClick={() => void runBulk("clear")}
+                  disabled={bulkBusy !== null} onClick={() => void runBulk("clear")}
                 >
                   <Trash2 className="size-3.5" aria-hidden="true" />
                   {bulkBusy === "clear" ? "Clearing..." : "Clear selected assignments"}
                 </Button>
               </div>
-            </form>
+            </form>}
 
             {bulkStatus && <p role="status" aria-live="polite" className="notice">{bulkStatus}</p>}
             {bulkError && <p role="alert" className="error">{bulkError}</p>}
@@ -292,12 +297,12 @@ export default function ArchiveAssignmentsStrip() {
                   </label>
                   <Link
                     href={`/interviews/review/?id=${encodeURIComponent(item.session_id)}`}
-                    className="flex flex-1 min-w-0 flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2.5 transition-colors hover:bg-[var(--subtle)] min-h-[44px]"
+                    className="flex flex-1 min-w-0 flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2.5 transition-colors hover:bg-[var(--subtle)] min-h-[44px]"
                   >
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <strong className="text-sm break-words">{item.candidate || "Untitled interview"}</strong>
-                        {item.role && <Badge variant="outline">{item.role}</Badge>}
+                        <strong className="max-w-full text-sm [overflow-wrap:anywhere]">{item.candidate || "Untitled interview"}</strong>
+                        {item.role && <Badge variant="outline" className="max-w-full whitespace-normal [overflow-wrap:anywhere]">{item.role}</Badge>}
                         {item.priority === "high" && <Badge variant="warning">High priority</Badge>}
                         {overdue && <Badge variant="warning">Overdue</Badge>}
                         {item.review_count > 0 && <Badge variant="secondary">{item.review_count} pending</Badge>}

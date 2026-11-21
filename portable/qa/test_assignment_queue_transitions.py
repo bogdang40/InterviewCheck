@@ -33,6 +33,7 @@ def test_obsolete_queue_reply_cannot_restore_rows_or_selections(workspace_url, b
           if (url.pathname !== "/api/interviews/assignments" || url.searchParams.get("priority") !== "high")
             return realFetch(input, init)
           const response = await realFetch(input, { ...init, signal: undefined })
+          await response.clone().text()
           await new Promise(resolve => {
             document.addEventListener("release-high-response", resolve, { once: true })
             document.documentElement.dataset.highResponse = "held"
@@ -42,15 +43,16 @@ def test_obsolete_queue_reply_cannot_restore_rows_or_selections(workspace_url, b
     """)
     page.goto(workspace_url + "/interviews/?queue=unassigned")
     region = page.get_by_role("region", name="Assignment queues")
+    assign = region.get_by_role("button", name="Assign selected")
     region.get_by_role("checkbox", name="Select Unassigned fixture for bulk assignment").check()
-    expect(region.get_by_role("button", name="Assign selected")).to_be_enabled()
+    expect(assign).to_be_enabled()
     region.get_by_role("button", name=re.compile("^High priority")).click()
     expect(page.locator("html")).to_have_attribute("data-high-response", "held")
-    expect(region.get_by_role("button", name="Assign selected")).to_have_count(0)
+    expect(assign).to_have_count(0)
     region.get_by_role("button", name=re.compile("^Due soon")).click()
     due_row = region.get_by_role("link", name=re.compile("Due fixture"))
     expect(due_row).to_be_visible()
-    expect(region.get_by_role("button", name="Assign selected")).to_be_disabled()
+    expect(assign).to_have_count(0)
     page.evaluate("""async () => {
         document.dispatchEvent(new Event("release-high-response"))
         await new Promise(requestAnimationFrame)
@@ -58,4 +60,15 @@ def test_obsolete_queue_reply_cannot_restore_rows_or_selections(workspace_url, b
     expect(due_row).to_be_visible()
     expect(region.get_by_text("High fixture", exact=True)).to_have_count(0)
     expect(region.get_by_text("Trashed fixture", exact=True)).to_have_count(0)
-    expect(region.get_by_role("button", name="Assign selected")).to_be_disabled()
+    expect(assign).to_have_count(0)
+
+    region.get_by_role("checkbox", name="Select Due fixture for bulk assignment").check()
+    assignee = "new-reviewer@example.test"
+    region.get_by_label("Bulk assignee email").fill(assignee)
+    assign.click()
+    expect(region.get_by_text(f"Assigned 1 session to {assignee}.")).to_be_visible()
+    with httpx.Client(base_url=workspace_url, headers={"X-InterviewCheck": "1"}) as client:
+        for name, expected in (("Unassigned fixture", None), ("Due fixture", assignee)):
+            result = client.get(f"/api/sessions/{sessions[name]}/assignment").raise_for_status().json()
+            email = (result["assignment"] or {}).get("assignee_email")
+            assert email == expected
