@@ -153,6 +153,10 @@ Quick search sends a literal query to the authenticated service by POST. It matc
 
 The interview archive loads 25 summaries per page. Its URL preserves the candidate or role filter, capture state, evidence status, sort and page. The home page returns full counts alongside up to ten sessions awaiting review and five active sessions. Each queued link opens the first pending match in capture order. Existing clients can still read the original session list endpoint.
 
+## Assignment queues
+
+Open **Interviews** to find reviews by assignee, priority or deadline. **Due soon** covers the next 48 hours, including the upper bound. Each page shows its position in the filtered queue. Moving to another page or filter clears the current selection; bulk changes apply only to the selected interviews on the displayed page. Interviews in Trash are excluded.
+
 ## Question origins
 
 A new exchange can have one explicit origin. Choose a **Planned question** to link its one based slot in this interview's frozen plan, or select **Parent exchange** to link a follow up. The **Ask this follow up** action fills the suggested question and selects its parent. Editing the question wording preserves the link. Select a different origin to replace it, or clear the current selection to remove it. An imported, manual or older exchange has no recorded lineage until an operator explicitly assigns one.

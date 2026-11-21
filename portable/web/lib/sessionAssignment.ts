@@ -21,6 +21,10 @@ export type DueFilter = "" | "overdue" | "soon"
 export type AssignmentQueueCounts = { assigned_to_me: number; high_priority: number; unassigned: number }
 export type AssignmentDueCounts = { overdue: number; due_soon: number }
 export type AssignmentQueueResponse = {
+  page: number
+  pages: number
+  filtered: number
+  limit: number
   viewer_email: string
   counts: AssignmentQueueCounts
   due_counts: AssignmentDueCounts
@@ -31,6 +35,7 @@ export type AssignmentQueueFilters = {
   priority?: "" | AssignmentPriority
   due?: DueFilter
   limit?: number
+  page?: number
 }
 
 export type BulkSessionAssignmentInput = {
@@ -111,12 +116,19 @@ export async function fetchAssignmentQueue(
   if (typeof filters.limit === "number" && Number.isFinite(filters.limit) && filters.limit >= 1) {
     params.set("limit", String(Math.trunc(filters.limit)))
   }
+  if (typeof filters.page === "number" && Number.isFinite(filters.page) && filters.page >= 1) {
+    params.set("page", String(Math.trunc(filters.page)))
+  }
   const qs = params.toString()
   const data = await requestAssignmentApi<Partial<AssignmentQueueResponse>>(
     `/api/interviews/assignments${qs ? `?${qs}` : ""}`,
     { method: "GET", signal },
   )
   return {
+    page: data?.page ?? 1,
+    pages: data?.pages ?? 1,
+    filtered: data?.filtered ?? data?.items?.length ?? 0,
+    limit: data?.limit ?? filters.limit ?? 50,
     viewer_email: typeof data?.viewer_email === "string" ? data.viewer_email : "",
     counts: {
       assigned_to_me: data?.counts?.assigned_to_me ?? 0,

@@ -1,5 +1,5 @@
 """Session interviewer assignment and review queue API."""
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 import re
 import sqlite3
 from typing import Annotated, Any, Literal
@@ -8,7 +8,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BeforeValidator, Field, field_validator, model_validator
 
-from . import access, store
+from . import access, assignment_queue, store
 from .models import Input, RequestID
 
 router = APIRouter()
@@ -17,10 +17,9 @@ AssignmentPriority = Literal["low", "normal", "high"]
 PriorityFilter = Literal["", "low", "normal", "high"]
 DueFilter = Literal["", "overdue", "soon"]
 BulkAction = Literal["assign", "clear"]
-SOON_WINDOW_HOURS = 48
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
-SCHEMA = """
+CREATE_TABLE = """
 CREATE TABLE IF NOT EXISTS session_assignments (
   session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
   assignee_email TEXT NOT NULL,
@@ -28,14 +27,17 @@ CREATE TABLE IF NOT EXISTS session_assignments (
   priority TEXT NOT NULL DEFAULT 'normal' CHECK(priority IN ('low','normal','high')),
   due_at TEXT,
   updated_at TEXT NOT NULL
-);
+)
+"""
+CREATE_INDEX = """
 CREATE INDEX IF NOT EXISTS idx_session_assignments_assignee
   ON session_assignments(assignee_email, priority, session_id);
 """
 
 
 def migrate(db: sqlite3.Connection) -> None:
-    db.executescript(SCHEMA)
+    db.execute(CREATE_TABLE)
+    db.execute(CREATE_INDEX)
 
 
 def _has_table(db: sqlite3.Connection, name: str) -> bool:
@@ -60,24 +62,6 @@ def _parse_due_at(value: Any) -> Any:
         return datetime.fromisoformat(value.strip())
     except ValueError as exc:
         raise ValueError("due_at must be a valid ISO-8601 datetime.") from exc
-
-
-def _due_state(raw: str | None, *, now_utc: datetime, soon_cutoff: datetime) -> str:
-    if not raw or not isinstance(raw, str):
-        return ""
-    try:
-        dt = datetime.fromisoformat(raw.strip())
-    except ValueError:
-        return ""
-    if dt.tzinfo is None or dt.utcoffset() is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    else:
-        dt = dt.astimezone(timezone.utc)
-    if dt < now_utc:
-        return "overdue"
-    if dt <= soon_cutoff:
-        return "soon"
-    return "scheduled"
 
 
 class SessionAssignmentInput(Input):
@@ -271,87 +255,11 @@ async def list_assignments(
     priority: PriorityFilter = "",
     due: DueFilter = "",
     limit: int = Query(default=50, ge=1, le=200),
+    page: int = Query(default=1, ge=1),
 ):
     _, viewer_email = await access.optional_actor(request)
-    now_utc = datetime.now(timezone.utc)
-    soon_cutoff = now_utc + timedelta(hours=SOON_WINDOW_HOURS)
-    raw_assignee = assignee.strip()
-    clauses: list[str] = []
-    params: list[Any] = []
-    if raw_assignee:
-        lowered = raw_assignee.lower()
-        if lowered == "me":
-            clauses.append("LOWER(sa.assignee_email) = LOWER(?)")
-            params.append(viewer_email)
-        elif lowered == "unassigned":
-            clauses.append("sa.session_id IS NULL")
-        else:
-            clauses.append("LOWER(sa.assignee_email) = LOWER(?)")
-            params.append(raw_assignee)
-    if priority:
-        clauses.append("sa.priority = ?")
-        params.append(priority)
-    if due:
-        clauses.append("sa.due_at IS NOT NULL")
-    where_sql = ("WHERE " + " AND ".join(clauses)) if clauses else ""
-    due_counts = {"overdue": 0, "due_soon": 0}
-
     with store.connection() as db:
-        if not _has_table(db, "session_assignments"):
-            total = db.execute("SELECT COUNT(*) FROM active_sessions").fetchone()[0]
-            counts = {"assigned_to_me": 0, "high_priority": 0, "unassigned": total}
-            if (raw_assignee and raw_assignee.lower() != "unassigned") or priority or due:
-                return {"viewer_email": viewer_email, "counts": counts, "due_counts": due_counts, "items": []}
-            rows = db.execute(
-                """SELECT s.id AS session_id, substr(s.candidate,1,180) AS candidate, substr(s.role,1,180) AS role,
-                          CASE WHEN c.ended_at IS NOT NULL THEN 'finished' WHEN s.consent THEN 'active' ELSE 'archived' END AS lifecycle,
-                          (SELECT COUNT(*) FROM answers a WHERE a.session_id=s.id AND a.status='match' AND a.disposition='pending') AS review_count,
-                          NULL AS assignee_email, NULL AS assigned_by, NULL AS priority, NULL AS due_at, NULL AS updated_at
-                   FROM active_sessions s LEFT JOIN session_context c ON c.session_id=s.id
-                   ORDER BY s.created_at DESC, s.id ASC LIMIT ?""",
-                (limit,),
-            ).fetchall()
-            items = [dict(row) for row in rows]
-        else:
-            cnt = db.execute(
-                """SELECT COUNT(CASE WHEN LOWER(sa.assignee_email) = LOWER(?) THEN 1 END) AS assigned_to_me,
-                          COUNT(CASE WHEN sa.priority = 'high' THEN 1 END) AS high_priority,
-                          COUNT(CASE WHEN sa.session_id IS NULL THEN 1 END) AS unassigned
-                   FROM active_sessions s LEFT JOIN session_assignments sa ON sa.session_id = s.id""",
-                (viewer_email,),
-            ).fetchone()
-            counts = {k: int(cnt[k]) for k in ("assigned_to_me", "high_priority", "unassigned")}
-            for drow in db.execute(
-                """SELECT sa.due_at FROM active_sessions s
-                   INNER JOIN session_assignments sa ON sa.session_id = s.id
-                   WHERE sa.due_at IS NOT NULL"""
-            ):
-                state = _due_state(drow["due_at"], now_utc=now_utc, soon_cutoff=soon_cutoff)
-                if state == "overdue":
-                    due_counts["overdue"] += 1
-                elif state == "soon":
-                    due_counts["due_soon"] += 1
-            limit_sql = "" if due else "LIMIT ?"
-            query_params = tuple(params) if due else (*params, limit)
-            rows = db.execute(
-                f"""SELECT s.id AS session_id, substr(s.candidate,1,180) AS candidate, substr(s.role,1,180) AS role,
-                           CASE WHEN c.ended_at IS NOT NULL THEN 'finished' WHEN s.consent THEN 'active' ELSE 'archived' END AS lifecycle,
-                           (SELECT COUNT(*) FROM answers a WHERE a.session_id=s.id AND a.status='match' AND a.disposition='pending') AS review_count,
-                           sa.assignee_email, sa.assigned_by, sa.priority, sa.due_at, sa.updated_at
-                    FROM active_sessions s
-                    LEFT JOIN session_context c ON c.session_id = s.id
-                    LEFT JOIN session_assignments sa ON sa.session_id = s.id
-                    {where_sql}
-                    ORDER BY CASE sa.priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 WHEN 'low' THEN 2 ELSE 3 END ASC,
-                             CASE WHEN sa.due_at IS NULL THEN 1 ELSE 0 END ASC,
-                             sa.due_at ASC, COALESCE(sa.updated_at, s.created_at) DESC, s.id ASC
-                    {limit_sql}""",
-                query_params,
-            ).fetchall()
-            items = [dict(row) for row in rows]
-            if due:
-                items = [
-                    item for item in items
-                    if _due_state(item["due_at"], now_utc=now_utc, soon_cutoff=soon_cutoff) == due
-                ][:limit]
-    return {"viewer_email": viewer_email, "counts": counts, "due_counts": due_counts, "items": items}
+        return assignment_queue.read_page(
+            db, viewer=viewer_email, assignee=assignee, priority=priority, due=due, limit=limit, page=page,
+            has_assignments=_has_table(db, "session_assignments"), now=datetime.now(timezone.utc),
+        )
