@@ -38,7 +38,9 @@ export function AccountConnection({
 }) {
   const router = useRouter();
   const [account, setAccount] = useState<Account | null>(null);
-  const [opening, setOpening] = useState(false);
+  // Set while the shell swaps between the public sign-in screen and the workspace, so the form or the
+  // account controls are not shown (and typed into) just before they are replaced.
+  const [leaving, setLeaving] = useState<"in" | "out" | null>(null);
   const [initializing, setInitializing] = useState(Boolean(enabled && signedIn !== false));
   const [initError, setInitError] = useState("");
   const [initSeq, setInitSeq] = useState(0);
@@ -84,6 +86,16 @@ export function AccountConnection({
     return () => { active = false; };
   }, [account, plansSeq]);
 
+  useEffect(() => {
+    if (!leaving) return;
+    // Normally the shell replaces this screen within a moment. If it does not, reload to settle.
+    const timer = window.setTimeout(() => {
+      const next = leaving === "in" ? nextPath() : null;
+      window.location.assign(next ?? window.location.pathname);
+    }, 5000);
+    return () => window.clearTimeout(timer);
+  }, [leaving]);
+
   async function act(work: () => Promise<void>) {
     setBusy(true);
     setError("");
@@ -94,7 +106,8 @@ export function AccountConnection({
     const result = await submit<{ url: string }>("billing/" + action, action === "checkout" ? { plan } : {});
     window.location.assign(result.url);
   }
-  if (opening) return <section className="panel stack"><p role="status">Signed in. Opening your workspace…</p></section>;
+  if (leaving) return <section className="panel stack"><p role="status">
+    {leaving === "in" ? "Signed in. Opening your workspace…" : "Signed out."}</p></section>;
   return <section className="panel stack">{variant === "settings" && <h2>Account and billing</h2>}
     {!enabled ? <p className="muted">Local workspace. Enable embedded accounts or configure a remote access service to sign in.</p> :
       initializing ? <p className="panel inset muted" role="status">Loading account status…</p> :
@@ -109,12 +122,13 @@ export function AccountConnection({
         </div> : <p className="muted">Billing plans are unavailable.</p>}
         <div className="row">
           <Button variant="outline" disabled={busy} onClick={() => act(refresh)}>Refresh access</Button>
-          <Button variant="ghost" disabled={busy} onClick={() => act(async () => { await submit("logout"); setAccount(null); notifyAccountChanged(); })}>Sign out</Button>
+          <Button variant="ghost" disabled={busy} onClick={() => act(async () => { await submit("logout"); setLeaving("out"); setAccount(null); notifyAccountChanged(); })}>Sign out</Button>
         </div>
         <PasswordChangeForm onRotated={next => setAccount(next)} />
         <AccountSecurityPanel
           isAdmin={Boolean(account.admin)}
           onCurrentSessionRevoked={() => {
+            setLeaving("out");
             setAccount(null);
             notifyAccountChanged();
           }}
@@ -149,7 +163,7 @@ export function AccountConnection({
         if (variant === "signin") {
           // The shell swaps this screen for the workspace once its status refreshes; until then
           // show a status, not account controls that are about to be replaced.
-          setOpening(true);
+          setLeaving("in");
           notifyAccountChanged();
           const next = nextPath();
           if (next) router.push(next);
