@@ -89,5 +89,6 @@ def test_fictional_session_uses_real_preview_without_saving(workspace_url, brows
     page.get_by_role("button", name="Reset sample").click()
     expect(page.get_by_text("Passage match", exact=True)).to_be_visible()
     expect(page.get_by_label("Practice note")).to_have_value("")
-    assert mutations and set(mutations) == {"/api/preview"}
+    # The sample compares its fixed fictional cases through the public sample endpoint (works signed out).
+    assert mutations and set(mutations) == {"/api/sample/preview"}
     assert httpx.get(workspace_url + "/api/sessions").json() == []

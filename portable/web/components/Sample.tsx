@@ -30,7 +30,7 @@ export default function Sample({create}:{create:()=>void}) {
       const signature=JSON.stringify([c.id,references.map(r=>r.permitted)])
       const saved=cache.current.get(signature)
       if(saved) return saved
-      const result=await api<Answer["result"]>("preview","POST",{question:c.question,answer:c.answer,references},controller.signal)
+      const result=await api<Answer["result"]>("sample/preview","POST",{case_id:c.id,permitted:references.map(r=>r.permitted)},controller.signal)
       if(!controller.signal.aborted) cache.current.set(signature,result)
       return result
     })).then(items=>{if(!controller.signal.aborted)setResults(items)}).catch(e=>{if(!controller.signal.aborted)setError(message(e))})

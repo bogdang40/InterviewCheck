@@ -55,6 +55,7 @@ AI_REQUEST = FixedWindowRateLimiter(20, 60)
 INTEGRATION_REMOTE = FixedWindowRateLimiter(30, 60)
 BILLING_ACTION = FixedWindowRateLimiter(20, 60)
 CSP_REPORT = FixedWindowRateLimiter(60, 60)
+SAMPLE_PREVIEW = FixedWindowRateLimiter(60, 60)
 TOTP_ACTION = FixedWindowRateLimiter(10, 60)
 
 
