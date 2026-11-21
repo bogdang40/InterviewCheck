@@ -38,6 +38,7 @@ export function AccountConnection({
 }) {
   const router = useRouter();
   const [account, setAccount] = useState<Account | null>(null);
+  const [opening, setOpening] = useState(false);
   const [initializing, setInitializing] = useState(Boolean(enabled && signedIn !== false));
   const [initError, setInitError] = useState("");
   const [initSeq, setInitSeq] = useState(0);
@@ -93,6 +94,7 @@ export function AccountConnection({
     const result = await submit<{ url: string }>("billing/" + action, action === "checkout" ? { plan } : {});
     window.location.assign(result.url);
   }
+  if (opening) return <section className="panel stack"><p role="status">Signed in. Opening your workspace…</p></section>;
   return <section className="panel stack">{variant === "settings" && <h2>Account and billing</h2>}
     {!enabled ? <p className="muted">Local workspace. Enable embedded accounts or configure a remote access service to sign in.</p> :
       initializing ? <p className="panel inset muted" role="status">Loading account status…</p> :
@@ -143,11 +145,18 @@ export function AccountConnection({
           setTotpCode("");
           return;
         }
-        setAccount(res.account);
         setPassword(""); setTotpCode(""); setTotpRequired(false); setInvite(""); setAdminSecret("");
+        if (variant === "signin") {
+          // The shell swaps this screen for the workspace once its status refreshes; until then
+          // show a status, not account controls that are about to be replaced.
+          setOpening(true);
+          notifyAccountChanged();
+          const next = nextPath();
+          if (next) router.push(next);
+          return;
+        }
+        setAccount(res.account);
         notifyAccountChanged();
-        const next = variant === "signin" ? nextPath() : null;
-        if (next) router.push(next);
       }); }}>
         <label className="field">Operator email<Input type="email" autoComplete="username" required value={email} onChange={e => {
           setEmail(e.target.value);

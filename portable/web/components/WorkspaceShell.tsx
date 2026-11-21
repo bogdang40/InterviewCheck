@@ -5,7 +5,7 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { useEffect, useId, useRef, useState } from "react"
 import { ArrowLeft, ChevronRight, LayoutGrid, Menu, UserRound } from "lucide-react"
-import { blankPreparation, interviewURL, PreparationContext, type Preparation } from "@/lib/workspace"
+import { blankPreparation, interviewURL, PreparationContext, SignInScreenContext, type Preparation } from "@/lib/workspace"
 import { useAccountStatus } from "@/lib/useAccountStatus"
 import { WorkspaceNav, workspaceMenu } from "./WorkspaceNav"
 import WorkspaceSearch from "./WorkspaceSearch"
@@ -161,7 +161,12 @@ export default function WorkspaceShell({ children }: { children: React.ReactNode
 
   if (homeUndecided) return <HomeUndecided />
   if (publicHome) return <PublicHome />
-  if (signInScreen) return <SignInFrame>{children}</SignInFrame>
+  if (signInScreen)
+    return (
+      <SignInScreenContext.Provider value={true}>
+        <SignInFrame>{children}</SignInFrame>
+      </SignInScreenContext.Provider>
+    )
 
   return (
     <PreparationContext.Provider value={{ preparation, prepare }}>
