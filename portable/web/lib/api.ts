@@ -69,6 +69,13 @@ export async function api<T>(path: string, method = "GET", body?: unknown, signa
   return response.status === 204 ? (undefined as T) : response.json()
 }
 
+/** The API's reply when no one is signed in (portable/api/access.py, local_boundary.py). */
+export const SIGN_IN_REQUIRED = "Sign in under Account."
+
+export function needsSignIn(text: string) {
+  return text.trim() === SIGN_IN_REQUIRED
+}
+
 export function message(error: unknown) {
   return error instanceof Error ? error.message : "The operation failed."
 }

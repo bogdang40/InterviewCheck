@@ -145,13 +145,13 @@ export default function WorkspaceSearch({
       ? "Searching records..."
       : query.trim().length < 2
         ? commands.length
-          ? `${commands.length} commands. Type 2+ characters to search records.`
+          ? `${commands.length} ${commands.length === 1 ? "command" : "commands"}. Type 2+ characters to search records.`
           : "Type 2+ characters to search records."
         : !totalCount
           ? "No matching commands or records."
           : result?.has_more
             ? "Showing commands and first 20 records. Refine your search."
-            : `${totalCount} results. Use arrow keys and Enter.`)
+            : `${totalCount} ${totalCount === 1 ? "result" : "results"}. Use arrow keys and Enter.`)
 
   return (
     <>
