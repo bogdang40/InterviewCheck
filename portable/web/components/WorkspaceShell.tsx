@@ -1,5 +1,6 @@
 "use client"
 
+import dynamic from "next/dynamic"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { useEffect, useId, useRef, useState } from "react"
@@ -8,6 +9,13 @@ import { blankPreparation, interviewURL, PreparationContext, type Preparation } 
 import { useAccountStatus } from "@/lib/useAccountStatus"
 import { WorkspaceNav, workspaceMenu } from "./WorkspaceNav"
 import WorkspaceSearch from "./WorkspaceSearch"
+
+// Loaded only when a signed-out visitor opens "/" on a hosted deployment, so workspace pages stay light.
+const PublicHome = dynamic(() => import("./home/PublicHome"), { ssr: false, loading: () => <HomeUndecided /> })
+
+function HomeUndecided() {
+  return <div aria-busy="true" style={{ minHeight: "100vh", background: "#121416" }} />
+}
 
 const pages: Record<string, string> = Object.fromEntries(workspaceMenu.map((item) => [item.path, item.label]))
 Object.assign(pages, {
@@ -41,7 +49,7 @@ export default function WorkspaceShell({ children }: { children: React.ReactNode
   const closeRef = useRef<HTMLButtonElement>(null)
   const drawerRef = useRef<HTMLElement>(null)
   const shouldRestoreFocusRef = useRef(false)
-  const { account, isAdmin } = useAccountStatus(path)
+  const { account, isAdmin, status, loading } = useAccountStatus(path)
   const showAdminNav = isAdmin || path.startsWith("/admin/")
   const pageTitle = pages[path] ?? (path.startsWith("/admin/") ? "Model admin" : "Page")
 
@@ -134,11 +142,20 @@ export default function WorkspaceShell({ children }: { children: React.ReactNode
   }, [router, pathname])
 
   const backgroundInert = isMobile && drawerOpen ? true : undefined
+  // A hosted deployment (accounts on) shows its public home page at "/" to anyone not signed in.
+  // Signed-in operators and the local workstation edition keep the workspace Overview there.
+  const atRoot = path === "/"
+  // Until the first status reply; if it fails, the workspace shows as it did before.
+  const homeUndecided = atRoot && status === null && loading
+  const publicHome = atRoot && status?.access === true && status.signedIn !== true
 
   function closeDrawer(restoreFocus = true) {
     if (restoreFocus) shouldRestoreFocusRef.current = true
     setDrawerOpen(false)
   }
+
+  if (homeUndecided) return <HomeUndecided />
+  if (publicHome) return <PublicHome />
 
   return (
     <PreparationContext.Provider value={{ preparation, prepare }}>

@@ -1,0 +1,44 @@
+{
+  "_note": "Fictional sample review cases. Read by api/sample.py and web/lib/sample.ts.",
+  "samplePassage": "We give checkout a separate pool of workers so a slow inventory lookup cannot consume every available connection.",
+  "cases": [
+    {
+      "id": "checkout",
+      "topic": "System design",
+      "question": "How would you keep a slow dependency from taking down the checkout service?",
+      "answer": "I would start by isolating inventory. We give checkout a separate pool of workers so a slow inventory lookup cannot consume every available connection. Then I would measure how long customers wait during recovery.",
+      "sources": [
+        {
+          "label": "Practice answer",
+          "text": "Start by limiting the blast radius. We give checkout a separate pool of workers so a slow inventory lookup cannot consume every available connection. A timeout places a bound on the wait.",
+          "permitted": false
+        }
+      ]
+    },
+    {
+      "id": "manual",
+      "topic": "Permitted reference",
+      "question": "How would you verify that the enclosure is safe to open?",
+      "answer": "Technicians isolate the battery before opening the enclosure and test both terminals with an independent meter. I would document the reading and the isolation point.",
+      "sources": [
+        {
+          "label": "Practice answer",
+          "text": "Technicians isolate the battery before opening the enclosure and test both terminals with an independent meter. Keep a written record.",
+          "permitted": false
+        },
+        {
+          "label": "Permitted service manual",
+          "text": "Technicians isolate the battery before opening the enclosure and test both terminals with an independent meter.",
+          "permitted": true
+        }
+      ]
+    },
+    {
+      "id": "migration",
+      "topic": "Missing comparison source",
+      "question": "Which measurement changed your rollout plan?",
+      "answer": "At our staging site I compared the oldest pending message before and after restarting the slow consumer. The queue recovered faster when we limited concurrent retries.",
+      "sources": []
+    }
+  ]
+}

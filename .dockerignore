@@ -13,3 +13,4 @@ portable/web/.next
 portable/web/.next-server
 portable/web/out
 portable/**/.env
+portable/**/.impeccable

@@ -44,6 +44,7 @@ from . import (
     session_scorecard,
     store,
     trash,
+    sample,
 )
 from .access import embedded_enabled, require_entitlement
 from .answer_history_routes import mutation_actor, router as answer_history
@@ -221,6 +222,7 @@ workspace.include_router(session_assignment.router)
 workspace.include_router(cohort_analytics.router)
 workspace.include_router(calibration_queue.router)
 app.include_router(health_probes.router)
+app.include_router(sample.router)  # public: fixed fictional cases only
 app.include_router(authoring.router)
 app.include_router(model_presets.router)
 app.include_router(model_health_timeline.router)
