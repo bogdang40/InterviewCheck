@@ -88,7 +88,9 @@ def test_embedded_account_browser_session(workspace_url, browser_page, monkeypat
     expect(page.get_by_label("Operator email")).to_be_visible()
     assert page.request.get(workspace_url + "/api/sessions").status == 401
     page.go_back()
-    expect(page.get_by_role("alert").filter(has_text="Sign in")).to_be_visible()
+    prompt = page.get_by_role("status").filter(has_text="Sign in to open your interviews")
+    expect(prompt).to_be_visible()
+    expect(prompt.get_by_role("link", name="Sign in")).to_have_attribute("href", "/account/")
     expect(page.get_by_role("heading", name="Account fixture")).to_have_count(0)
 
 
