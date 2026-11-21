@@ -63,7 +63,9 @@ jobs:
           file: deploy/Dockerfile
           push: true
           provenance: false
-          build-args: GIT_SHA=${{ env.SHA }}
+          build-args: |
+            GIT_SHA=${{ env.SHA }}
+            PUBLIC_ORIGIN=https://${{ vars.SITE_ADDRESS }}
           tags: ${{ vars.ACR_NAME }}.azurecr.io/interviewcheck-web:${{ env.SHA }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

@@ -33,7 +33,10 @@ ENV INTERVIEWCHECK_WEB_PORT=3000 \
     INTERVIEWCHECK_API_PORT=8000 \
     INTERVIEWCHECK_DB=/data/review.sqlite3 \
     INTERVIEWCHECK_ACCESS_DB=/data/access.sqlite3
-RUN node portable/web-runtime.mjs build
+# The public origin goes into the home page's link-preview tags (portable/web/app/page.tsx).
+ARG PUBLIC_ORIGIN=""
+RUN if [ -n "$PUBLIC_ORIGIN" ]; then printf '{ "origin": "%s" }\n' "$PUBLIC_ORIGIN" > portable/web/lib/site.json; fi \
+ && node portable/web-runtime.mjs build
 
 ARG GIT_SHA=unknown
 ENV INTERVIEWCHECK_VERSION=$GIT_SHA

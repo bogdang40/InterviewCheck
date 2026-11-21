@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -16,15 +17,26 @@ import { notifyAccountChanged } from "@/lib/useAccountStatus";
 
 type Account = { email: string; active: boolean; admin?: boolean };
 
+/** Where to go after signing in from the public sign-in screen: a same-site path from ?next=, or stay. */
+function nextPath(): string | null {
+  if (typeof window === "undefined") return null;
+  const next = new URLSearchParams(window.location.search).get("next");
+  return next && next.startsWith("/") && !next.startsWith("//") ? next : null;
+}
+
 export function AccountConnection({
   enabled,
   inviteRequired,
   signedIn,
+  variant = "settings",
 }: {
   enabled: boolean;
   inviteRequired?: boolean;
   signedIn?: boolean;
+  /** "signin": the public sign-in screen (no section heading; follows ?next= after sign-in). */
+  variant?: "settings" | "signin";
 }) {
+  const router = useRouter();
   const [account, setAccount] = useState<Account | null>(null);
   const [initializing, setInitializing] = useState(Boolean(enabled && signedIn !== false));
   const [initError, setInitError] = useState("");
@@ -81,7 +93,7 @@ export function AccountConnection({
     const result = await submit<{ url: string }>("billing/" + action, action === "checkout" ? { plan } : {});
     window.location.assign(result.url);
   }
-  return <section className="panel stack"><h2>Account and billing</h2>
+  return <section className="panel stack">{variant === "settings" && <h2>Account and billing</h2>}
     {!enabled ? <p className="muted">Local workspace. Enable embedded accounts or configure a remote access service to sign in.</p> :
       initializing ? <p className="panel inset muted" role="status">Loading account status…</p> :
       initError ? <WorkspaceError text={initError} retry={() => setInitSeq(n => n + 1)} /> :
@@ -134,6 +146,8 @@ export function AccountConnection({
         setAccount(res.account);
         setPassword(""); setTotpCode(""); setTotpRequired(false); setInvite(""); setAdminSecret("");
         notifyAccountChanged();
+        const next = variant === "signin" ? nextPath() : null;
+        if (next) router.push(next);
       }); }}>
         <label className="field">Operator email<Input type="email" autoComplete="username" required value={email} onChange={e => {
           setEmail(e.target.value);
