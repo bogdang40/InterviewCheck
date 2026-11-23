@@ -100,10 +100,7 @@ final class DualStreamDeepgramService: ObservableObject {
     }
 
     func setupURLSession() {
-        let config = TestRuntime.isRunningUnitTests ? URLSessionConfiguration.ephemeral : .default
-        config.timeoutIntervalForRequest = 30
-        config.timeoutIntervalForResource = 300
-        urlSession = URLSession(configuration: config)
+        urlSession = URLSession(configuration: DeepgramSessionConfiguration.make())
     }
 
     // MARK: - Public Interface

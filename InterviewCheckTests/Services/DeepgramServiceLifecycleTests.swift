@@ -18,6 +18,17 @@ final class DeepgramServiceLifecycleTests: XCTestCase {
         XCTAssertNil(service.currentSpeaker)
     }
 
+    func testStreamingSessionsOutliveALongInterview() {
+        let config = DeepgramSessionConfiguration.make()
+        XCTAssertEqual(config.timeoutIntervalForRequest, 30)
+        XCTAssertGreaterThanOrEqual(config.timeoutIntervalForResource, 12 * 3600)
+        let dual = DualStreamDeepgramService(socketFactory: { _ in nil })
+        XCTAssertGreaterThanOrEqual(dual.urlSession?.configuration.timeoutIntervalForResource ?? 0, 12 * 3600)
+        let legacy = DeepgramService()
+        XCTAssertGreaterThanOrEqual(legacy.urlSession?.configuration.timeoutIntervalForResource ?? 0, 12 * 3600)
+        legacy.disconnect(notify: false)
+    }
+
     func testStaleSocketFailureCannotDisconnectReplacement() {
         let session = URLSession(configuration: .ephemeral)
         defer { session.invalidateAndCancel() }
