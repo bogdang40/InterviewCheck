@@ -77,6 +77,16 @@ export class SessionRepository {
     return Number(result.changes);
   }
 
+  revokeAllForUserExcept(userId: string, keepSessionId: string, now: Date = new Date()): number {
+    const result = this.db.run(
+      "UPDATE sessions SET revoked_at = ? WHERE user_id = ? AND id != ? AND revoked_at IS NULL",
+      now.getTime(),
+      userId,
+      keepSessionId,
+    );
+    return Number(result.changes);
+  }
+
   deleteExpired(now: Date = new Date()): number {
     const result = this.db.run("DELETE FROM sessions WHERE expires_at < ? OR revoked_at IS NOT NULL", now.getTime());
     return Number(result.changes);

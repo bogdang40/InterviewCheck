@@ -97,7 +97,7 @@ describe("M21-W3 CORS preflight rejection, security headers, and compliance summ
       (await patch(harness.app, `/v1/admin/users/${disabledUser.user.id}`, { disabled: true }, adminToken)).status,
     ).toBe(200);
 
-    const setup = await json<TotpSetupView>(await post(harness.app, "/v1/auth/totp/setup", {}, memberToken));
+    const setup = await json<TotpSetupView>(await post(harness.app, "/v1/auth/totp/setup", { currentPassword: "a-long-password" }, memberToken));
     const totpCode = TotpService.generateTotpCode(setup.secret, harness.clock.now.getTime());
     expect((await post(harness.app, "/v1/auth/totp/verify", { code: totpCode }, memberToken)).status).toBe(200);
 

@@ -1,8 +1,10 @@
 import { TotpDecryptionError, type OpenedTotpSecret, type TotpSecretCipher } from "../crypto/TotpSecretCipher.js";
 import type { Database } from "../db/Database.js";
+import type { AuthSession } from "../domain/Session.js";
 import type { User } from "../domain/User.js";
 import { HttpError } from "../http/HttpError.js";
 import type { AuditLogRepository } from "../repositories/AuditLogRepository.js";
+import type { SessionRepository } from "../repositories/SessionRepository.js";
 import type { TotpRecord, TotpRepository } from "../repositories/TotpRepository.js";
 import type { UserRepository } from "../repositories/UserRepository.js";
 import { BackupCodeVerifier } from "./BackupCodeVerifier.js";
@@ -20,7 +22,7 @@ export class TotpService {
 
   constructor(
     private readonly database: Database, private readonly users: UserRepository, private readonly totp: TotpRepository,
-    private readonly audit: AuditLogRepository, private readonly hasher: PasswordHasher, private readonly cipher: TotpSecretCipher,
+    private readonly sessions: SessionRepository, private readonly audit: AuditLogRepository, private readonly hasher: PasswordHasher, private readonly cipher: TotpSecretCipher,
     private readonly clock: () => Date = () => new Date(),
   ) {
     this.backupCodes = new BackupCodeVerifier(totp);
@@ -32,7 +34,9 @@ export class TotpService {
     return { enabled: true, verifiedAt: record.verifiedAt?.toISOString() ?? null, remainingBackupCodes: this.totp.countUnusedBackupCodes(user.id) };
   }
 
-  setup(user: User): TotpSetupView {
+  /** Requires the password so a stolen session alone cannot bind an attacker's authenticator to the account. */
+  async setup(user: User, currentPassword: string): Promise<TotpSetupView> {
+    await this.requirePassword(user, currentPassword);
     const now = this.clock();
     const secret = TotpAlgorithm.randomSecret();
     const secretEnc = this.cipher.encrypt(secret, user.id);
@@ -45,7 +49,8 @@ export class TotpService {
     return { secret, otpauthUri, issuer: ISSUER };
   }
 
-  verify(user: User, code: string): TotpVerifyView {
+  /** Enabling TOTP signs out every other session, so one opened before enrolment cannot outlive it. */
+  verify(user: User, currentSession: AuthSession, code: string): TotpVerifyView {
     const now = this.clock();
     const { codes, hashes } = BackupCodeVerifier.createBatch();
     return this.database.transaction(() => {
@@ -62,16 +67,14 @@ export class TotpService {
       }
       this.reencryptIfStale(record, opened!);
       this.totp.replaceBackupCodes(user.id, hashes, now);
-      this.audit.record({ actorUserId: user.id, action: "auth.totp_enabled", targetUserId: user.id }, now);
+      const revokedSessions = this.sessions.revokeAllForUserExcept(user.id, currentSession.id, now);
+      this.audit.record({ actorUserId: user.id, action: "auth.totp_enabled", targetUserId: user.id, details: { revokedSessions } }, now);
       return { enabled: true, verifiedAt: now.toISOString(), backupCodes: codes };
     });
   }
 
   async disable(user: User, currentPassword: string, code: string): Promise<{ enabled: false }> {
-    const storedHash = this.users.passwordHash(user.id);
-    if (!(await this.hasher.verify(currentPassword, storedHash ?? (await this.hasher.decoyHash())))) {
-      throw new HttpError(401, "invalid_credentials", "Current password is incorrect.");
-    }
+    await this.requirePassword(user, currentPassword);
     const now = this.clock();
     return this.database.transaction(() => {
       if (!this.totp.findByUserId(user.id)?.enabled) throw new HttpError(400, "totp_not_enabled", "Two-factor authentication is not enabled.");
@@ -119,6 +122,13 @@ export class TotpService {
       return "totp";
     }
     return this.backupCodes.redeem(userId, code, now) ? "backup_code" : null;
+  }
+
+  private async requirePassword(user: User, currentPassword: string): Promise<void> {
+    const storedHash = this.users.passwordHash(user.id);
+    if (!(await this.hasher.verify(currentPassword, storedHash ?? (await this.hasher.decoyHash())))) {
+      throw new HttpError(401, "invalid_credentials", "Current password is incorrect.");
+    }
   }
 
   private openSecret(record: TotpRecord): OpenedTotpSecret | null {

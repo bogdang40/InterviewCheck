@@ -87,7 +87,7 @@ export class Container {
     this.totpKeys = TotpKeyRing.fromConfig(config);
     const totpCipher = new TotpSecretCipher(this.totpKeys);
     this.totpMigrator = new TotpSecretMigrator(this.totpKeys, totpCipher, this.totpCodes);
-    this.totp = new TotpService(this.database, this.users, this.totpCodes, this.audit, hasher, totpCipher, clock);
+    this.totp = new TotpService(this.database, this.users, this.totpCodes, this.sessions, this.audit, hasher, totpCipher, clock);
 
     this.auth = new AuthService(
       this.database,

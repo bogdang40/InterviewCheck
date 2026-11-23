@@ -162,6 +162,9 @@ All JSON, all under `/v1`. Authenticated routes take `Authorization: Bearer <tok
 | POST | `/auth/login` | none | same body and response as signup |
 | POST | `/auth/logout` | user | revokes the token |
 | GET | `/me` | user | current `{user, entitlement, subscription, serverTime}` |
+| POST | `/auth/totp/setup` | user | `{currentPassword}` returns `{secret, otpauthUri, issuer}` |
+| POST | `/auth/totp/verify` | user | `{code}` enables two factor, returns backup codes, and signs out the user's other sessions |
+| POST | `/auth/totp/disable` | user | `{currentPassword, code}` |
 | GET | `/billing/plans` | none | `{configured, plans}` |
 | POST | `/billing/checkout` | user | `{plan}` returns `{url}` to open in the browser |
 | POST | `/billing/portal` | user | returns `{url}` for the Stripe Customer Portal |

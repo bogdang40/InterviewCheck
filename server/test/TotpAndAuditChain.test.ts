@@ -76,7 +76,7 @@ describe("M18 TOTP 2FA and audit hash chain", () => {
     expect(initialStatus).toEqual({ enabled: false, verifiedAt: null, remainingBackupCodes: 0 });
     expect((await post(harness.app, "/v1/auth/totp/verify", { code: "123456" }, memberToken)).status).toBe(400);
 
-    const setup = await json<TotpSetupView>(await post(harness.app, "/v1/auth/totp/setup", {}, memberToken));
+    const setup = await json<TotpSetupView>(await post(harness.app, "/v1/auth/totp/setup", { currentPassword: "a-long-password" }, memberToken));
     expect(setup.issuer).toBe("InterviewCheck");
     expect(setup.secret).toMatch(/^[A-Z2-7]{32}$/);
     expect(setup.otpauthUri).toContain("otpauth://totp/InterviewCheck:member%40example.com");
@@ -109,7 +109,7 @@ describe("M18 TOTP 2FA and audit hash chain", () => {
       expect(dbCode).toBeDefined();
     }
 
-    expect((await post(harness.app, "/v1/auth/totp/setup", {}, memberToken)).status).toBe(409);
+    expect((await post(harness.app, "/v1/auth/totp/setup", { currentPassword: "a-long-password" }, memberToken)).status).toBe(409);
 
     const statusAfter = await json<TotpStatusView>(await get(harness.app, "/v1/auth/totp/status", memberToken));
     expect(statusAfter).toEqual({ enabled: true, verifiedAt: harness.clock.now.toISOString(), remainingBackupCodes: 8 });
@@ -157,7 +157,7 @@ describe("M18 TOTP 2FA and audit hash chain", () => {
   });
 
   it("requires TOTP on login, redeems single-use backup codes transactionally, and locks out repeated failures", async () => {
-    const setup = await json<TotpSetupView>(await post(harness.app, "/v1/auth/totp/setup", {}, memberToken));
+    const setup = await json<TotpSetupView>(await post(harness.app, "/v1/auth/totp/setup", { currentPassword: "a-long-password" }, memberToken));
     const code = TotpService.generateTotpCode(setup.secret, harness.clock.now.getTime());
     const verified = await json<TotpVerifyView>(await post(harness.app, "/v1/auth/totp/verify", { code }, memberToken));
 
@@ -232,7 +232,7 @@ describe("M18 TOTP 2FA and audit hash chain", () => {
   });
 
   it("rejects same-step TOTP replays across verify, login, regenerate, and disable", async () => {
-    const setup = await json<TotpSetupView>(await post(harness.app, "/v1/auth/totp/setup", {}, memberToken));
+    const setup = await json<TotpSetupView>(await post(harness.app, "/v1/auth/totp/setup", { currentPassword: "a-long-password" }, memberToken));
     const step0Code = TotpService.generateTotpCode(setup.secret, harness.clock.now.getTime());
     expect((await post(harness.app, "/v1/auth/totp/verify", { code: step0Code }, memberToken)).status).toBe(200);
 
@@ -265,7 +265,7 @@ describe("M18 TOTP 2FA and audit hash chain", () => {
     expect(() => TotpService.generateTotpCode(rfcSecret, 0, -1)).toThrow(RangeError);
 
     harness.clock.now = new Date(10_000);
-    const setup = await json<TotpSetupView>(await post(harness.app, "/v1/auth/totp/setup", {}, memberToken));
+    const setup = await json<TotpSetupView>(await post(harness.app, "/v1/auth/totp/setup", { currentPassword: "a-long-password" }, memberToken));
     const step0Code = TotpService.generateTotpCode(setup.secret, 10_000);
     expect((await post(harness.app, "/v1/auth/totp/verify", { code: step0Code }, memberToken)).status).toBe(200);
     expect(harness.container.database.get<{ last_used_step: number }>("SELECT last_used_step FROM user_totp WHERE user_id = ?", memberId)?.last_used_step).toBe(0);
@@ -280,8 +280,9 @@ describe("M18 TOTP 2FA and audit hash chain", () => {
   });
 
   it("rate limits authenticated TOTP endpoints at 10 requests per user and registers totp limiter", async () => {
-    await post(harness.app, "/v1/auth/totp/setup", {}, memberToken);
-    for (let i = 0; i < 10; i += 1) {
+    // Setup checks the password, so it spends one hit from the same per user bucket.
+    await post(harness.app, "/v1/auth/totp/setup", { currentPassword: "a-long-password" }, memberToken);
+    for (let i = 0; i < 9; i += 1) {
       const res = await post(harness.app, "/v1/auth/totp/verify", { code: "000000" }, memberToken);
       expect(res.status).toBe(400);
     }

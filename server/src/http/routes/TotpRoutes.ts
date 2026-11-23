@@ -4,7 +4,7 @@ import type { TotpService } from "../../services/TotpService.js";
 import { authenticate, type AuthEnv } from "../middleware/Authenticate.js";
 import { rateLimitUser, type FixedWindowRateLimiter } from "../middleware/RateLimit.js";
 import { parseJsonBody } from "../RequestParsing.js";
-import { totpCodeSchema, totpDisableSchema } from "../Schemas.js";
+import { totpCodeSchema, totpDisableSchema, totpSetupSchema } from "../Schemas.js";
 
 export interface TotpRouteDeps {
   auth: AuthService;
@@ -22,13 +22,14 @@ export class TotpRoutes {
       c.json(deps.totp.status(c.get("user"))),
     );
 
-    router.post("/auth/totp/setup", requireSession, (c) =>
-      c.json(deps.totp.setup(c.get("user"))),
-    );
+    router.post("/auth/totp/setup", requireSession, totpGuard, async (c) => {
+      const body = await parseJsonBody(c, totpSetupSchema);
+      return c.json(await deps.totp.setup(c.get("user"), body.currentPassword));
+    });
 
     router.post("/auth/totp/verify", requireSession, totpGuard, async (c) => {
       const body = await parseJsonBody(c, totpCodeSchema);
-      return c.json(deps.totp.verify(c.get("user"), body.code));
+      return c.json(deps.totp.verify(c.get("user"), c.get("session"), body.code));
     });
 
     router.post("/auth/totp/disable", requireSession, totpGuard, async (c) => {

@@ -20,6 +20,10 @@ export const totpCodeSchema = z.object({
   code: z.string().trim().regex(/^\d{6}$/, "Verification code must be 6 digits."),
 });
 
+export const totpSetupSchema = z.object({
+  currentPassword: z.string().min(10, "Password must be at least 10 characters.").max(200),
+});
+
 export const totpDisableSchema = z.object({
   currentPassword: z.string().min(10, "Password must be at least 10 characters.").max(200),
   code: z.string().trim().min(6, "Verification code is required.").max(32),
