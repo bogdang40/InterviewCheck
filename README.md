@@ -25,7 +25,7 @@ See the [web runtime guide](portable/WEB.md), [connection guide](portable/CONNEC
 
 Open the review queue to go directly to an exchange with a pending passage match. During capture, a saved draft survives a restart. Import a WebVTT conversation in one transaction, or play a corresponding local recording at its source interval. The role policy and permitted materials are frozen when the interview starts.
 
-Open **Compare candidates** to select two to six interviews from the archive. The comparison shows the saved questions for each interview. You can include saved ratings and choose whether to include reviewer rationales before printing or downloading the comparison. Interviews in Trash are excluded.
+Open **Compare candidates** at `/interviews/compare/` to select two to six interviews from the archive. The comparison shows the saved questions for each interview. You can include saved ratings and choose whether to include reviewer rationales before printing or downloading the comparison. Interviews in Trash are excluded.
 
 Use the `/admin/` console (8-tab model administration, accounts, audit log, diagnostics, playground, security alerts, prompts and SLA, and compliance) to configure encrypted provider connections, budgets, alert rules, TOTP enforcement, and retention policies.
 
