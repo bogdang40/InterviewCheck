@@ -113,6 +113,8 @@ Each saved answer has one revision for the transcript, sources, disposition and 
 
 The scorecard editor sends the version it opened. If someone else saves first, the editor combines edits to different criteria and asks which score to keep for each criterion that both reviewers changed. Check the result and select **Save scorecard**. Unchanged criteria keep their original reviewer and update time. A rationale needs a rating before it can be saved.
 
+To correct a grade entered by mistake, mark that saved rating for removal. The preview excludes the marked rating. Its rationale stays available for **Undo** until you save. After saving, a criterion in the current role appears ungraded. A criterion added only to this interview disappears. If another reviewer changed a marked rating, compare their edit with the proposed removal before saving again.
+
 Local answer edits follow the saved draft or published exchange they belong to. Reverting all edits clears that editor's recovery copy. If an older app saved edits without recording the draft ID, open **Unlinked local draft** to inspect and copy or download the text. Moving an interview to Trash clears its local copies in this browser. Signing out clears local copies for the workspace.
 
 ## Import a WebVTT conversation
@@ -165,6 +167,8 @@ Open **Interviews** to find reviews by assignee, priority or deadline. **Due soo
 
 When editing one assignment, leaving the displayed UTC date unchanged preserves the original time and precision. Changing the date sets the deadline to 23:59:59 UTC. A blank date clears the deadline. Bulk assignment replaces the deadline on every selected interview.
 
+Assignment changes in the browser use the version displayed for each interview. When another reviewer changes an assignment first, compare the current assignment with your proposed change before saving. For a bulk change, a conflict leaves every selected interview unchanged. Review the refreshed page and select the intended interviews again. The form keeps the entered assignee, priority and date.
+
 ## Question origins
 
 A new exchange can have one explicit origin. Choose a **Planned question** to link its one based slot in this interview's frozen plan, or select **Parent exchange** to link a follow up. The **Ask this follow up** action fills the suggested question and selects its parent. Editing the question wording preserves the link. Select a different origin to replace it, or clear the current selection to remove it. An imported, manual or older exchange has no recorded lineage until an operator explicitly assigns one.
@@ -175,6 +179,8 @@ Clients can supply `parent_answer_id` or `planned_slot` when creating or updatin
 
 
 Candidate comparisons use the saved question plan for each interview. If plans differ, each candidate's cell shows the prompt that applied at the time. Additional answers retain their slot and exchange link. Excerpts and reviewer notes require a new selection when the comparison moves to a different set or order of interviews.
+
+Use **Change interviews** to select up to six interviews across archive pages or searches. Select **Include saved scorecards** to compare the recorded criteria, weights and ratings in selection order. **Include reviewer rationales** also shares the rationale text in the comparison, printout and Markdown download. Each interview's weighted percentage uses only criteria with a saved rating. Percentages round to one decimal place, with exact ties rounded to the even tenth. An interview with no ratings is ungraded.
 
 ## Workspace recovery
 

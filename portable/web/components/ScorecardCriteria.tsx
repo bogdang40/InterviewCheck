@@ -12,11 +12,14 @@ function ScoreValue({ row }: { row?: ScorecardItem }) {
   </div>
 }
 
-export default function ScorecardCriteria({ rows, added, invalid, conflicts, prefix, update, remove, choose }: {
+export default function ScorecardCriteria({ rows, added, invalid, conflicts, savedRatings, removals, markRemoval, prefix, update, remove, choose }: {
   rows: ScorecardItem[]
   added: Set<string>
   invalid: Set<string>
   conflicts: ScoreConflict[]
+  savedRatings: Set<string>
+  removals: ReadonlyMap<string, ScorecardItem>
+  markRemoval: (id: string, remove: boolean) => void
   prefix: string
   update: (id: string, patch: Partial<ScorecardItem>) => void
   remove: (id: string) => void
@@ -30,12 +33,14 @@ export default function ScorecardCriteria({ rows, added, invalid, conflicts, pre
         <legend>Resolve changes to {label}</legend>
         <div className={styles.comparison}>
           <div><strong>Current saved score</strong><ScoreValue row={conflict.saved} /></div>
-          <div><strong>Your draft</strong><ScoreValue row={conflict.local} /></div>
+          <div><strong>Your draft</strong>{conflict.removeLocal ? <p>Remove the rating and rationale.</p> : <ScoreValue row={conflict.local} />}</div>
         </div>
         <div className={styles.ratingGroup}>
           <Button id={index === 0 ? `${prefix}-resolve` : undefined} type="button" size="sm" variant="outline"
             onClick={() => choose(conflict, "saved")}>Use saved score</Button>
-          <Button type="button" size="sm" variant="outline" onClick={() => choose(conflict, "local")}>Keep my draft</Button>
+          <Button type="button" size="sm" variant="outline" onClick={() => choose(conflict, "local")}>
+            {conflict.removeLocal ? "Keep removal" : "Keep my draft"}
+          </Button>
         </div>
       </fieldset>
     })}
@@ -45,6 +50,12 @@ export default function ScorecardCriteria({ rows, added, invalid, conflicts, pre
         const id = row.criterion_id
         const unrated = invalid.has(id)
         const hint = `${prefix}-error-${id}`
+        if (removals.has(id)) return <li key={id} className={styles.criterionCard}>
+          <strong>{row.criterion_label}</strong>
+          <p>Saving will remove this rating and its rationale.</p>
+          <div><Button id={`${prefix}-undo-${id}`} type="button" size="sm" variant="outline" disabled={blocked.has(id)}
+            aria-label={`Undo removal of ${row.criterion_label}`} onClick={() => markRemoval(id, false)}>Undo removal</Button></div>
+        </li>
         return <li key={id} className={styles.criterionCard}>
           <div className={styles.criterionTop}>
             <div><strong>{row.criterion_label}</strong> <span className={styles.weightLabel}>Weight {row.weight}</span></div>
@@ -62,6 +73,8 @@ export default function ScorecardCriteria({ rows, added, invalid, conflicts, pre
           {unrated && <p className="error" id={hint}>Choose a rating to save this criterion.</p>}
           {added.has(id) && !blocked.has(id) && <div><Button type="button" variant="ghost" size="sm"
             aria-label={`Discard new criterion ${row.criterion_label}`} onClick={() => remove(id)}>Discard new criterion</Button></div>}
+          {savedRatings.has(id) && !blocked.has(id) && <div><Button id={`${prefix}-remove-${id}`} type="button" variant="ghost" size="sm"
+            aria-label={`Remove saved rating for ${row.criterion_label}`} onClick={() => markRemoval(id, true)}>Remove saved rating</Button></div>}
         </li>
       })}
     </ul>
