@@ -34,6 +34,12 @@ describe("AppConfigLoader", () => {
     expect(() => AppConfigLoader.fromEnvironment(partial)).toThrow(/STRIPE_WEBHOOK_SECRET, STRIPE_PRICE_ANNUAL/);
   });
 
+  it("parses TOTP_SETUP_REQUIRES_PASSWORD as a strict boolean defaulting to false", () => {
+    expect(AppConfigLoader.fromEnvironment({ DATABASE_PATH: ":memory:" }).TOTP_SETUP_REQUIRES_PASSWORD).toBe(false);
+    expect(AppConfigLoader.fromEnvironment({ DATABASE_PATH: ":memory:", TOTP_SETUP_REQUIRES_PASSWORD: "true" }).TOTP_SETUP_REQUIRES_PASSWORD).toBe(true);
+    expect(() => AppConfigLoader.fromEnvironment({ DATABASE_PATH: ":memory:", TOTP_SETUP_REQUIRES_PASSWORD: "yes" })).toThrow(/TOTP_SETUP_REQUIRES_PASSWORD/);
+  });
+
   it("keeps development permissive", () => {
     expect(() => AppConfigLoader.fromEnvironment({ DATABASE_PATH: ":memory:", STRIPE_SECRET_KEY: "sk_test_x" })).not.toThrow();
   });

@@ -102,6 +102,10 @@ value, so keys can rotate:
 3. Once the startup log no longer reports re-encrypted seeds, remove the
    retired key.
 
+`TOTP_SETUP_REQUIRES_PASSWORD` (default `false`) makes `currentPassword`
+mandatory on `POST /v1/auth/totp/setup`. Turn it on once every client sends
+the password; until then a password is verified only when one is sent.
+
 Upgrading a deployment that predates the key: set `TOTP_ENCRYPTION_KEY` and
 restart while `ADMIN_BOOTSTRAP_SECRET` (and the Stripe keys) are unchanged.
 Startup moves the old seeds onto the new key; only after that is it safe to
@@ -162,7 +166,7 @@ All JSON, all under `/v1`. Authenticated routes take `Authorization: Bearer <tok
 | POST | `/auth/login` | none | same body and response as signup |
 | POST | `/auth/logout` | user | revokes the token |
 | GET | `/me` | user | current `{user, entitlement, subscription, serverTime}` |
-| POST | `/auth/totp/setup` | user | `{currentPassword}` returns `{secret, otpauthUri, issuer}` |
+| POST | `/auth/totp/setup` | user | `{currentPassword?}` returns `{secret, otpauthUri, issuer}`; a supplied password is verified, and `TOTP_SETUP_REQUIRES_PASSWORD=true` makes it mandatory |
 | POST | `/auth/totp/verify` | user | `{code}` enables two factor, returns backup codes, and signs out the user's other sessions |
 | POST | `/auth/totp/disable` | user | `{currentPassword, code}` |
 | GET | `/billing/plans` | none | `{configured, plans}` |

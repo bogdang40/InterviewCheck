@@ -5,7 +5,7 @@ import { buildHarness, get, json, post, type TestHarness } from "./support/TestC
 
 const PASSWORD = "a-long-password";
 
-describe("TOTP enrolment requires the password and signs out other devices", () => {
+describe("TOTP enrolment checks the password when given (or always, behind a flag) and signs out other devices", () => {
   let harness: TestHarness;
   let token: string;
   let userId: string;
@@ -21,17 +21,33 @@ describe("TOTP enrolment requires the password and signs out other devices", () 
     harness.container.close();
   });
 
-  it("refuses to begin setup without the current password", async () => {
-    const missing = await post(harness.app, "/v1/auth/totp/setup", {}, token);
-    expect(missing.status).toBe(400);
-    expect(await json(missing)).toMatchObject({ error: { code: "validation_failed" } });
+  it("with TOTP_SETUP_REQUIRES_PASSWORD off, begins setup without a password but rejects a wrong one", async () => {
+    expect(harness.config.TOTP_SETUP_REQUIRES_PASSWORD).toBe(false);
+    expect((await post(harness.app, "/v1/auth/totp/setup", {}, token)).status).toBe(200);
+    const emptyBody = await harness.app.request("/v1/auth/totp/setup", { method: "POST", headers: { authorization: `Bearer ${token}` } });
+    expect(emptyBody.status).toBe(200);
 
+    harness.container.database.run("DELETE FROM user_totp WHERE user_id = ?", userId);
     const wrong = await post(harness.app, "/v1/auth/totp/setup", { currentPassword: "wrong-long-password" }, token);
     expect(wrong.status).toBe(401);
     expect(await json(wrong)).toMatchObject({ error: { code: "invalid_credentials" } });
     expect(harness.container.database.get("SELECT 1 FROM user_totp WHERE user_id = ?", userId)).toBeUndefined();
 
     expect((await post(harness.app, "/v1/auth/totp/setup", { currentPassword: PASSWORD }, token)).status).toBe(200);
+  });
+
+  it("with TOTP_SETUP_REQUIRES_PASSWORD on, refuses to begin setup without the password", async () => {
+    harness.container.close();
+    harness = buildHarness({ TOTP_SETUP_REQUIRES_PASSWORD: true });
+    const member = await json<SignedInResponse>(await post(harness.app, "/v1/auth/signup", { email: "member@example.com", password: PASSWORD }));
+
+    const missing = await post(harness.app, "/v1/auth/totp/setup", {}, member.token);
+    expect(missing.status).toBe(400);
+    expect(await json(missing)).toMatchObject({ error: { code: "validation_failed" } });
+    expect(harness.container.database.get("SELECT 1 FROM user_totp WHERE user_id = ?", member.user.id)).toBeUndefined();
+
+    expect((await post(harness.app, "/v1/auth/totp/setup", { currentPassword: "wrong-long-password" }, member.token)).status).toBe(401);
+    expect((await post(harness.app, "/v1/auth/totp/setup", { currentPassword: PASSWORD }, member.token)).status).toBe(200);
   });
 
   it("revokes every other session when TOTP becomes enabled and keeps the current one", async () => {

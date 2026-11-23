@@ -3,7 +3,7 @@ import type { AuthService } from "../../services/AuthService.js";
 import type { TotpService } from "../../services/TotpService.js";
 import { authenticate, type AuthEnv } from "../middleware/Authenticate.js";
 import { rateLimitUser, type FixedWindowRateLimiter } from "../middleware/RateLimit.js";
-import { parseJsonBody } from "../RequestParsing.js";
+import { parseJsonBody, parseOptionalJsonBody } from "../RequestParsing.js";
 import { totpCodeSchema, totpDisableSchema, totpSetupSchema } from "../Schemas.js";
 
 export interface TotpRouteDeps {
@@ -23,7 +23,7 @@ export class TotpRoutes {
     );
 
     router.post("/auth/totp/setup", requireSession, totpGuard, async (c) => {
-      const body = await parseJsonBody(c, totpSetupSchema);
+      const body = await parseOptionalJsonBody(c, totpSetupSchema);
       return c.json(await deps.totp.setup(c.get("user"), body.currentPassword));
     });
 

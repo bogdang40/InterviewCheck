@@ -54,6 +54,11 @@ const schema = z.object({
     .enum(["true", "false"])
     .default("false")
     .transform((value) => value === "true"),
+  // Off by default because existing clients start TOTP setup with an empty body.
+  TOTP_SETUP_REQUIRES_PASSWORD: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
   // Fly sets Fly-Client-IP and overwrites any client copy; nginx style proxies append to X-Forwarded-For.
   TRUSTED_PROXY_HEADER: z.enum(TRUSTED_PROXY_HEADERS).default("fly-client-ip"),
   STRIPE_SECRET_KEY: optionalSecret,

@@ -24,6 +24,7 @@ export class TotpService {
     private readonly database: Database, private readonly users: UserRepository, private readonly totp: TotpRepository,
     private readonly sessions: SessionRepository, private readonly audit: AuditLogRepository, private readonly hasher: PasswordHasher, private readonly cipher: TotpSecretCipher,
     private readonly clock: () => Date = () => new Date(),
+    private readonly setupRequiresPassword: boolean = false,
   ) {
     this.backupCodes = new BackupCodeVerifier(totp);
   }
@@ -34,9 +35,16 @@ export class TotpService {
     return { enabled: true, verifiedAt: record.verifiedAt?.toISOString() ?? null, remainingBackupCodes: this.totp.countUnusedBackupCodes(user.id) };
   }
 
-  /** Requires the password so a stolen session alone cannot bind an attacker's authenticator to the account. */
-  async setup(user: User, currentPassword: string): Promise<TotpSetupView> {
-    await this.requirePassword(user, currentPassword);
+  /**
+   * A supplied password is always verified. Requiring it (TOTP_SETUP_REQUIRES_PASSWORD) stops a stolen session alone
+   * from binding an attacker's authenticator; it is optional until every client sends it.
+   */
+  async setup(user: User, currentPassword?: string): Promise<TotpSetupView> {
+    if (currentPassword !== undefined) {
+      await this.requirePassword(user, currentPassword);
+    } else if (this.setupRequiresPassword) {
+      throw new HttpError(400, "validation_failed", "currentPassword: Current password is required.");
+    }
     const now = this.clock();
     const secret = TotpAlgorithm.randomSecret();
     const secretEnc = this.cipher.encrypt(secret, user.id);

@@ -21,7 +21,7 @@ export const totpCodeSchema = z.object({
 });
 
 export const totpSetupSchema = z.object({
-  currentPassword: z.string().min(10, "Password must be at least 10 characters.").max(200),
+  currentPassword: z.string().min(10, "Password must be at least 10 characters.").max(200).optional(),
 });
 
 export const totpDisableSchema = z.object({
