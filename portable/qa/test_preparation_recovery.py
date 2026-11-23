@@ -38,6 +38,13 @@ def test_permission_snapshot_and_browser_restore(workspace_url, browser_page, mo
         expect(page.get_by_role("heading", name="Oak restore", exact=True)).to_be_visible()
         sid = c.get("/api/sessions").json()[0]["id"]
         route = "/api/sessions/" + sid
+        panel = page.get_by_role("region", name="Session scorecard panel")
+        note_text = "Ask the next interviewer to repeat the cold calibration check."
+        panel.get_by_role("combobox", name="Category").select_option("follow_up")
+        panel.get_by_role("textbox", name="Handoff note").fill(note_text)
+        panel.get_by_role("button", name="Add handoff note").click()
+        expect(panel.get_by_text(note_text, exact=True)).to_be_visible()
+        note, = c.get(route + "/scorecard").raise_for_status().json()["handoff_notes"]
         capture = {
             "question": "Which readings?",
             "answer": REFERENCE,
@@ -92,6 +99,7 @@ def test_permission_snapshot_and_browser_restore(workspace_url, browser_page, mo
         original = c.get(route).json()
         page.goto(workspace_url + "/data/")
         expect(page.get_by_text("the file includes the assignee email", exact=False)).to_be_visible()
+        expect(page.get_by_text("Each panel handoff note includes its text, category, author and creation time", exact=False)).to_be_visible()
         page.get_by_label("Backup contents").select_option(sid)
         with page.expect_download() as download:
             page.get_by_role("link", name="Download backup").click()
@@ -103,6 +111,9 @@ def test_permission_snapshot_and_browser_restore(workspace_url, browser_page, mo
         assert backup["sessions"][0]["assignment"] == {
             field: assignment[field] for field in ("assignee_email", "assigned_by", "priority", "due_at", "updated_at")
         }
+        assert backup["sessions"][0]["handoff_notes"] == [
+            {field: note[field] for field in ("id", "author_email", "category", "body", "created_at")}
+        ]
         target = tmp_path / "restored.sqlite"
         store.initialize(target)
         monkeypatch.setenv("INTERVIEWCHECK_DB", str(target))
@@ -111,7 +122,8 @@ def test_permission_snapshot_and_browser_restore(workspace_url, browser_page, mo
         assert c.get("/api/sessions").json() == []
         page.get_by_role("button", name="Preview restore").click()
         expect(page.get_by_role("heading", name="Restore preview")).to_be_visible()
-        expect(page.get_by_text("1 review assignment in this file", exact=False)).to_be_visible()
+        expect(page.get_by_text("1 review assignment and 1 panel handoff note", exact=False)).to_be_visible()
+        expect(page.get_by_text(note_text, exact=False)).to_have_count(0)
         assert c.get("/api/roles").json() == []
         page.get_by_role("button", name="Restore new records").click()
         expect(page.get_by_role("status").filter(has_text="Restored 1")).to_be_visible()
@@ -128,6 +140,11 @@ def test_permission_snapshot_and_browser_restore(workspace_url, browser_page, mo
         restored_link = queue.get_by_role("link", name="Oak restore", exact=False)
         expect(restored_link).to_contain_text(reviewer)
         expect(restored_link).to_have_attribute("href", f"/interviews/review/?id={sid}")
+        restored_link.click()
+        restored_note = panel.get_by_role("listitem").filter(has_text=note_text)
+        expect(restored_note.get_by_text("Follow-up", exact=True)).to_be_visible()
+        expect(restored_note).to_contain_text(note["author_email"])
+        assert c.get(route + "/scorecard").raise_for_status().json()["handoff_notes"] == [note]
 
 
 def test_backup_size_through_real_ingress(workspace_url):

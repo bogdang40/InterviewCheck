@@ -4,27 +4,9 @@ from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
-from fastapi.testclient import TestClient
 
 from api import access, store
-from api.main import app
-
-
-@pytest.fixture
-def client(tmp_path, monkeypatch):
-    monkeypatch.setenv("INTERVIEWCHECK_DB", str(tmp_path / "source.sqlite"))
-    monkeypatch.setenv("INTERVIEWCHECK_ACCESS_DB", str(tmp_path / "accounts.sqlite"))
-    for name in ("INTERVIEWCHECK_ACCESS_MODE", "INTERVIEWCHECK_ACCESS_URL", "INTERVIEWCHECK_PRODUCTION",
-                 "INTERVIEWCHECK_OPERATOR_EMAIL", "INTERVIEWCHECK_OPERATOR_ID", "INTERVIEWCHECK_PUBLIC_ORIGIN"):
-        monkeypatch.delenv(name, raising=False)
-    with TestClient(app, base_url="http://127.0.0.1", headers={"X-InterviewCheck": "1"}) as client:
-        yield client
-
-
-def create_session(client):
-    response = client.post("/api/sessions", json={"candidate": "Sample", "role": "Engineer", "policy": "Manual", "consent": True})
-    response.raise_for_status()
-    return response.json()["id"]
+from backup_requests import client, create_session, preview, restore
 
 
 def assign(client, sid):
@@ -33,16 +15,6 @@ def assign(client, sid):
     })
     response.raise_for_status()
     return response.json()["assignment"]
-
-
-def preview(client, raw):
-    response = client.post("/api/backups/preview", content=raw)
-    response.raise_for_status()
-    return response.json()
-
-
-def restore(client, raw, plan):
-    return client.post("/api/backups/restore", content=raw, headers={"X-Backup-Preview": plan["fingerprint"]})
 
 
 def test_individual_and_workspace_assignment_recovery(client, tmp_path, monkeypatch):
@@ -56,7 +28,7 @@ def test_individual_and_workspace_assignment_recovery(client, tmp_path, monkeypa
     single = client.get("/api/backups/workspace", params={"session_id": archived}).content
     raw = client.get("/api/backups/workspace").content
     document = json.loads(raw)
-    assert document["version"] == json.loads(single)["version"] == 3
+    assert document["version"] == json.loads(single)["version"] == 4
     archived_export, = json.loads(single)["sessions"]
     assert archived_export["id"] == archived and archived_export["trashed_at"]
     for record in document["sessions"]:
@@ -91,6 +63,7 @@ def test_legacy_unknown_assignment_preserves_existing_owner(client, version):
     assignment = assign(client, sid)
     doc = client.get("/api/backups/workspace").json()
     doc["version"] = version
+    del doc["sessions"][0]["handoff_notes"]
     del doc["sessions"][0]["assignment"]
     new = {**doc["sessions"][0], "id": str(uuid4())}
     doc["sessions"].append(new)
@@ -164,10 +137,10 @@ def test_missing_assignment_storage_fails_before_restore(client, tmp_path, monke
     assert client.get("/api/sessions").json() == []
     new_id = create_session(client)
     doc = client.get("/api/backups/workspace", params={"session_id": new_id}).json()
-    assert doc["version"] == 3 and doc["sessions"][0]["assignment"] is None
+    assert doc["version"] == 4 and doc["sessions"][0]["assignment"] is None
 
 
-def test_invalid_stored_actor_blocks_export_and_conflicts_only_with_v3(client):
+def test_invalid_stored_actor_blocks_export_and_conflicts_with_assignment_aware_backup(client):
     sid = create_session(client)
     assign(client, sid)
     doc = client.get("/api/backups/workspace").json()
@@ -189,6 +162,7 @@ def test_invalid_stored_actor_blocks_export_and_conflicts_only_with_v3(client):
     assert client.get(f"/api/sessions/{second['id']}").status_code == 404
     doc["version"] = 2
     for record in doc["sessions"]:
+        del record["handoff_notes"]
         del record["assignment"]
     legacy = json.dumps(doc).encode()
     plan = preview(client, legacy)
