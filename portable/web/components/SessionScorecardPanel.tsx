@@ -113,7 +113,7 @@ export default function SessionScorecardPanel({ sessionId, onDirtyChange }: { se
                     <label className="field" style={{ flex: "1 1 240px" }}>
                       Handoff note
                       <Textarea
-                        rows={2} maxLength={2000} value={noteBody} disabled={savingNote}
+                        aria-label="Handoff note" rows={2} maxLength={2000} value={noteBody} disabled={savingNote}
                         placeholder="Share handoff context for subsequent interviewers..."
                         onChange={(e) => setNoteBody(e.target.value)}
                       />
