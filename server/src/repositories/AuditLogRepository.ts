@@ -33,6 +33,17 @@ export interface AuditChainVerification {
   readonly headHash: string | null;
 }
 
+export interface AuditChainRow {
+  readonly id: number;
+  readonly at: number;
+  readonly actorUserId: string | null;
+  readonly action: string;
+  readonly targetUserId: string | null;
+  readonly detailsJson: string | null;
+  readonly prevHash: string | null;
+  readonly entryHash: string | null;
+}
+
 interface AuditRow {
   id: number;
   at: number;
@@ -85,47 +96,24 @@ export class AuditLogRepository {
     }
   }
 
-  verifyChain(): AuditChainVerification {
-    const rows = this.db.all<AuditVerifyRow>(
-      "SELECT id, at, actor_user_id, action, target_user_id, details, prev_hash, entry_hash FROM audit_log ORDER BY id ASC",
-    );
-    let verifiedCount = 0;
-    let legacyUnchainedCount = 0;
-    let expectedPrevHash: string | null = null;
-    let seenChained = false;
-
-    for (const row of rows) {
-      const id = Number(row.id);
-      if (row.entry_hash === null) {
-        if (seenChained || row.prev_hash !== null) {
-          return { ok: false, verifiedCount, legacyUnchainedCount, firstBrokenId: id, headHash: expectedPrevHash };
-        }
-        legacyUnchainedCount += 1;
-        continue;
-      }
-
-      seenChained = true;
-      if ((row.prev_hash ?? null) !== expectedPrevHash) {
-        return { ok: false, verifiedCount, legacyUnchainedCount, firstBrokenId: id, headHash: expectedPrevHash };
-      }
-
-      const expectedEntryHash = AuditLogRepository.computeEntryHash({
-        prevHash: expectedPrevHash,
+  /** Chain columns for rows after `afterId`, in id order, at most `limit` rows. */
+  chainRowsAfter(afterId: number, limit: number): AuditChainRow[] {
+    return this.db
+      .all<AuditVerifyRow>(
+        "SELECT id, at, actor_user_id, action, target_user_id, details, prev_hash, entry_hash FROM audit_log WHERE id > ? ORDER BY id ASC LIMIT ?",
+        afterId,
+        limit,
+      )
+      .map((row) => ({
+        id: Number(row.id),
         at: Number(row.at),
         actorUserId: row.actor_user_id,
         action: row.action,
         targetUserId: row.target_user_id,
         detailsJson: row.details,
-      });
-      if (expectedEntryHash !== row.entry_hash) {
-        return { ok: false, verifiedCount, legacyUnchainedCount, firstBrokenId: id, headHash: expectedPrevHash };
-      }
-
-      expectedPrevHash = row.entry_hash;
-      verifiedCount += 1;
-    }
-
-    return { ok: true, verifiedCount, legacyUnchainedCount, firstBrokenId: null, headHash: expectedPrevHash };
+        prevHash: row.prev_hash,
+        entryHash: row.entry_hash,
+      }));
   }
 
   recent(limit = 100): AuditEntry[] {
@@ -191,7 +179,7 @@ export class AuditLogRepository {
     };
   }
 
-  private static computeEntryHash(input: {
+  static computeEntryHash(input: {
     prevHash: string | null;
     at: number;
     actorUserId: string | null;

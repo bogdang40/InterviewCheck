@@ -3,11 +3,13 @@ import type { Database } from "../db/Database.js";
 import { AuthSessionRules, type AuthSession } from "../domain/Session.js";
 import { EmailNormalizer, type User } from "../domain/User.js";
 import { HttpError } from "../http/HttpError.js";
+import type { ApiTokenRepository } from "../repositories/ApiTokenRepository.js";
 import type { AuditLogRepository } from "../repositories/AuditLogRepository.js";
 import type { SessionRepository } from "../repositories/SessionRepository.js";
 import type { UserRepository } from "../repositories/UserRepository.js";
 import type { AdminBootstrap } from "./AdminBootstrap.js";
 import type { AccessSnapshot, EntitlementService } from "./EntitlementService.js";
+import type { LoginThrottle } from "./LoginThrottle.js";
 import type { PasswordHasher } from "./PasswordHasher.js";
 import type { TokenService } from "./TokenService.js";
 import type { TotpService } from "./TotpService.js";
@@ -21,8 +23,6 @@ export interface Credentials {
 }
 
 const SQLITE_CONSTRAINT_UNIQUE = 2067;
-const LOGIN_EMAIL_WINDOW_MS = 15 * 60_000;
-const LOGIN_EMAIL_MAX = 10;
 
 export interface SignedInResponse extends AccessSnapshot {
   readonly token: string;
@@ -38,6 +38,7 @@ export class AuthService {
     private readonly database: Database,
     private readonly users: UserRepository,
     private readonly sessions: SessionRepository,
+    private readonly apiTokens: ApiTokenRepository,
     private readonly audit: AuditLogRepository,
     private readonly hasher: PasswordHasher,
     private readonly tokens: TokenService,
@@ -45,6 +46,7 @@ export class AuthService {
     private readonly bootstrap: AdminBootstrap,
     private readonly policy: AccessPolicy,
     private readonly totp: TotpService,
+    private readonly throttle: LoginThrottle,
     private readonly clock: () => Date = () => new Date(),
   ) {}
 
@@ -73,34 +75,40 @@ export class AuthService {
     });
   }
 
+  /**
+   * The per account lockout is checked before any account lookup or hashing,
+   * and failures are counted for unknown emails too, so neither the 429 nor
+   * its timing tells an attacker whether the account exists.
+   */
   async login(credentials: Credentials): Promise<SignedInResponse> {
     const email = EmailNormalizer.normalize(credentials.email);
+    if (this.throttle.isLockedOut(email, this.clock())) throw AuthService.tooManyAttempts();
     const user = this.users.findByEmail(email);
     const storedHash = user ? this.users.passwordHash(user.id) : null;
     const verified = await this.hasher.verify(credentials.password, storedHash ?? (await this.hasher.decoyHash()));
+    const now = this.clock();
     if (!user || !verified) {
+      this.database.transaction(() => this.throttle.recordFailure(email, now));
       throw new HttpError(401, "invalid_credentials", "Email or password is incorrect.");
     }
-    const now = this.clock();
     const outcome = this.database.transaction(() => {
       const current = this.users.findById(user.id);
       if (!current || current.disabled) throw new HttpError(403, "account_disabled", "This account has been disabled.");
       let twoFactorMethod: "totp" | "backup_code" | null = null;
       if (this.totp.isEnabled(current.id)) {
-        if (this.isEmailLockedOut(email, now)) {
-          throw new HttpError(429, "rate_limited", "Too many attempts. Try again in a minute.");
-        }
+        // Re-checked here because other attempts may have landed while the password hash ran.
+        if (this.throttle.isLockedOut(email, now)) throw AuthService.tooManyAttempts();
         const code = credentials.totpCode?.trim();
         if (!code) {
           throw new HttpError(401, "totp_required", "Two-factor authentication code is required.");
         }
         twoFactorMethod = this.totp.verifyLoginFactor(current.id, code, now);
         if (!twoFactorMethod) {
-          this.recordFailedEmailAttempt(email, now);
+          this.throttle.recordFailure(email, now);
           return null;
         }
-        this.database.run("DELETE FROM login_email_windows WHERE email = ?", email);
       }
+      this.throttle.reset(email);
       const updated = this.users.update(current.id, { lastLoginAt: now }, now);
       this.audit.record(
         {
@@ -119,22 +127,8 @@ export class AuthService {
     return outcome;
   }
 
-  private isEmailLockedOut(email: string, now: Date): boolean {
-    const cutoff = now.getTime() - LOGIN_EMAIL_WINDOW_MS;
-    this.database.run("DELETE FROM login_email_windows WHERE start <= ?", cutoff);
-    const row = this.database.get<{ hits: number }>("SELECT hits FROM login_email_windows WHERE email = ?", email);
-    return Number(row?.hits ?? 0) >= LOGIN_EMAIL_MAX;
-  }
-
-  private recordFailedEmailAttempt(email: string, now: Date): void {
-    const nowMs = now.getTime();
-    this.database.run("DELETE FROM login_email_windows WHERE start <= ?", nowMs - LOGIN_EMAIL_WINDOW_MS);
-    this.database.run(
-      `INSERT INTO login_email_windows (email, start, hits) VALUES (?, ?, 1)
-       ON CONFLICT(email) DO UPDATE SET hits = hits + 1`,
-      email,
-      nowMs,
-    );
+  private static tooManyAttempts(): HttpError {
+    return new HttpError(429, "rate_limited", "Too many attempts. Try again in a minute.");
   }
 
   async authenticate(token: string): Promise<AuthenticatedRequest | null> {
@@ -167,7 +161,8 @@ export class AuthService {
       if (!current || current.disabled) throw new HttpError(403, "account_disabled", "This account has been disabled.");
       const updated = this.users.update(current.id, { passwordHash }, now);
       this.sessions.revokeAllForUser(current.id, now);
-      this.audit.record({ actorUserId: current.id, action: "auth.password_change", targetUserId: current.id }, now);
+      const revokedApiTokens = this.apiTokens.revokeAllForUser(current.id, now);
+      this.audit.record({ actorUserId: current.id, action: "auth.password_change", targetUserId: current.id, details: { revokedApiTokens } }, now);
       return this.issueSession(updated, request.session.deviceName, now);
     });
   }

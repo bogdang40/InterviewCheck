@@ -20,6 +20,10 @@ export const totpCodeSchema = z.object({
   code: z.string().trim().regex(/^\d{6}$/, "Verification code must be 6 digits."),
 });
 
+export const totpSetupSchema = z.object({
+  currentPassword: z.string().min(10, "Password must be at least 10 characters.").max(200).optional(),
+});
+
 export const totpDisableSchema = z.object({
   currentPassword: z.string().min(10, "Password must be at least 10 characters.").max(200),
   code: z.string().trim().min(6, "Verification code is required.").max(32),
@@ -61,6 +65,11 @@ export const adminAuditQuerySchema = z.object({
   limit: strictLimitSchema.optional(),
 });
 
+export const adminAuditVerifyQuerySchema = z.object({
+  full: z.enum(["true", "false", "1", "0"], { message: "full must be true or false." }).optional()
+    .transform((value) => value === "true" || value === "1"),
+});
+
 export const uuidParamSchema = z.object({
   id: z.string().uuid("Invalid id."),
 });
@@ -87,7 +96,7 @@ export const adminRevokeSessionsSchema = z.object({
   sessionId: z.string().uuid("Invalid session id.").optional(),
 });
 
-export const LIMITER_NAMES = ["credential", "adminRead", "adminWrite", "billing", "totp"] as const;
+export const LIMITER_NAMES = ["credential", "adminRead", "adminWrite", "billing", "totp", "apiToken"] as const;
 
 export const adminRateLimitQuerySchema = z.object({
   limiter: z.enum(LIMITER_NAMES).optional(),

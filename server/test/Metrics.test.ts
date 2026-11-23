@@ -77,7 +77,7 @@ describe("M16-W1 Node /v1/admin/metrics observability", () => {
       body: JSON.stringify({ email: "locked-pii@example.com", password: "wrong-password-123" }),
     });
     harness.container.database.run(
-      "INSERT INTO login_email_windows (email, start, hits) VALUES (?, ?, ?)",
+      "INSERT OR REPLACE INTO login_email_windows (email, start, hits) VALUES (?, ?, ?)",
       "locked-pii@example.com",
       harness.clock.now.getTime(),
       4,

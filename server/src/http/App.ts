@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { secureHeaders } from "hono/secure-headers";
 import type { Container } from "../Container.js";
+import { StripeErrorTranslator } from "../stripe/StripeErrorTranslator.js";
 import { HttpError } from "./HttpError.js";
 import type { AuthEnv } from "./middleware/Authenticate.js";
 import { AdminRoutes } from "./routes/AdminRoutes.js";
@@ -72,7 +73,7 @@ export class AppFactory {
         auth: container.auth,
         entitlements: container.entitlements,
         credentialLimiter: container.credentialLimiter,
-        trustProxy: container.config.TRUST_PROXY,
+        clientAddress: container.clientAddress,
       }),
     );
     api.route(
@@ -87,7 +88,9 @@ export class AppFactory {
       "/",
       SecurityRoutes.build({
         auth: container.auth,
-        security: container.security,
+        sessionManagement: container.sessionManagement,
+        apiTokens: container.apiTokenService,
+        apiTokenLimiter: container.apiTokenLimiter,
       }),
     );
     api.route(
@@ -98,7 +101,7 @@ export class AppFactory {
         webhook: container.billingWebhook,
         appUrlScheme: container.config.APP_URL_SCHEME,
         billingLimiter: container.billingLimiter,
-        trustProxy: container.config.TRUST_PROXY,
+        clientAddress: container.clientAddress,
       }),
     );
     api.route(
@@ -106,22 +109,23 @@ export class AppFactory {
       AdminRoutes.build({
         auth: container.auth,
         admin: container.admin,
-        audit: container.audit,
-        security: container.security,
-        database: container.database,
+        auditVerifier: container.auditVerifier,
+        sessionManagement: container.sessionManagement,
+        rateLimitAdmin: container.rateLimitAdmin,
+        stats: container.stats,
         adminReadLimiter: container.adminReadLimiter,
         adminWriteLimiter: container.adminWriteLimiter,
-        trustProxy: container.config.TRUST_PROXY,
+        clientAddress: container.clientAddress,
       }),
     );
     api.route(
       "/admin/metrics",
       MetricsRoutes.build({
         auth: container.auth,
-        database: container.database,
-        security: container.security,
+        stats: container.stats,
+        rateLimitAdmin: container.rateLimitAdmin,
         adminReadLimiter: container.adminReadLimiter,
-        trustProxy: container.config.TRUST_PROXY,
+        clientAddress: container.clientAddress,
       }),
     );
     app.route(`/${API_VERSION}`, api);
@@ -133,6 +137,11 @@ export class AppFactory {
           c.header("X-InterviewCheck-TOTP", "required");
         }
         return c.json(error.toBody(), error.status as 400);
+      }
+      const billing = StripeErrorTranslator.toHttpError(error);
+      if (billing) {
+        console.warn(`[server] ${c.req.method} billing provider unavailable (${error.constructor.name})`);
+        return c.json(billing.toBody(), billing.status as 502);
       }
       const code = (error as { code?: unknown }).code;
       const safeCode = typeof code === "string" && /^[A-Z0-9_]{1,40}$/.test(code) ? ` (${code})` : "";

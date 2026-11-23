@@ -13,6 +13,23 @@ export async function parseJsonBody<Schema extends ZodTypeAny>(c: Context, schem
   return validate(schema, raw);
 }
 
+/** Like parseJsonBody, but an empty body is validated as `{}`. */
+export async function parseOptionalJsonBody<Schema extends ZodTypeAny>(c: Context, schema: Schema): Promise<z.infer<Schema>> {
+  const rawText = await c.req.text();
+  if (!rawText.trim()) {
+    const empty = schema.safeParse({});
+    if (empty.success) return empty.data;
+    throw new HttpError(400, "invalid_json", "Request body must be valid JSON.");
+  }
+  let raw: unknown;
+  try {
+    raw = JSON.parse(rawText);
+  } catch {
+    throw new HttpError(400, "invalid_json", "Request body must be valid JSON.");
+  }
+  return validate(schema, raw);
+}
+
 export function parseQuery<Schema extends ZodTypeAny>(c: Context, schema: Schema): z.infer<Schema> {
   return validate(schema, c.req.query());
 }

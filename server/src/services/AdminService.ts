@@ -3,10 +3,13 @@ import type { Database } from "../db/Database.js";
 import type { PublicUser, User, UserRole } from "../domain/User.js";
 import type { Entitlement } from "../domain/Entitlement.js";
 import { HttpError } from "../http/HttpError.js";
+import type { ApiTokenRepository } from "../repositories/ApiTokenRepository.js";
 import type { AuditEntry, AuditFilter, AuditLogRepository, AuditPage } from "../repositories/AuditLogRepository.js";
 import type { SessionRepository } from "../repositories/SessionRepository.js";
 import type { SubscriptionRepository } from "../repositories/SubscriptionRepository.js";
+import type { TotpRepository } from "../repositories/TotpRepository.js";
 import type { UserRepository } from "../repositories/UserRepository.js";
+import type { AdminActorGuard } from "./AdminActorGuard.js";
 import type { EntitlementService } from "./EntitlementService.js";
 
 export interface AdminUserView {
@@ -20,6 +23,12 @@ export interface AdminUserPatch {
   role?: UserRole | undefined;
   disabled?: boolean | undefined;
   complimentaryUntil?: Date | null | undefined;
+}
+
+export interface AdminTotpResetView {
+  readonly userId: string;
+  readonly totpRemoved: boolean;
+  readonly revokedSessions: number;
 }
 
 export interface AdminStats {
@@ -36,6 +45,9 @@ export class AdminService {
     private readonly subscriptions: SubscriptionRepository,
     private readonly audit: AuditLogRepository,
     private readonly entitlements: EntitlementService,
+    private readonly totp: TotpRepository,
+    private readonly apiTokens: ApiTokenRepository,
+    private readonly adminGuard: AdminActorGuard,
     private readonly clock: () => Date = () => new Date(),
   ) {}
 
@@ -52,10 +64,7 @@ export class AdminService {
 
   updateUser(actor: User, targetId: string, patch: AdminUserPatch): AdminUserView {
     return this.database.transaction(() => {
-      const currentActor = this.users.findById(actor.id);
-      if (!currentActor || currentActor.disabled || currentActor.role !== "admin") {
-        throw new HttpError(403, "forbidden", "Admin access required.");
-      }
+      const currentActor = this.adminGuard.requireActiveAdmin(actor.id);
       const target = this.users.findById(targetId);
       if (!target) throw new HttpError(404, "user_not_found", "No user with that id.");
       this.guardLastAdmin(currentActor, target, patch);
@@ -63,6 +72,7 @@ export class AdminService {
       const updated = this.users.update(target.id, patch, now);
       const roleChanged = patch.role !== undefined && patch.role !== target.role;
       if (patch.disabled === true || roleChanged) this.sessions.revokeAllForUser(target.id, now);
+      if (patch.disabled === true) this.apiTokens.revokeAllForUser(target.id, now);
       this.audit.record({
         actorUserId: currentActor.id,
         action: "admin.update_user",
@@ -74,6 +84,25 @@ export class AdminService {
         },
       }, now);
       return this.view(updated);
+    });
+  }
+
+  /** Recovery for a user who lost their authenticator and backup codes, or whose seed can no longer be decrypted. */
+  resetTwoFactor(actor: User, targetId: string): AdminTotpResetView {
+    return this.database.transaction(() => {
+      const currentActor = this.adminGuard.requireActiveAdmin(actor.id);
+      const target = this.users.findById(targetId);
+      if (!target) throw new HttpError(404, "user_not_found", "No user with that id.");
+      const now = this.clock();
+      const totpRemoved = this.totp.deleteForUser(target.id);
+      const revokedSessions = this.sessions.revokeAllForUser(target.id, now);
+      this.audit.record({
+        actorUserId: currentActor.id,
+        action: "admin.totp_reset",
+        targetUserId: target.id,
+        details: { totpRemoved, revokedSessions },
+      }, now);
+      return { userId: target.id, totpRemoved, revokedSessions };
     });
   }
 

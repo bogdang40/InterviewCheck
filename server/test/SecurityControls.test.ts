@@ -2,7 +2,9 @@ import { createHash } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ClientAddressResolver, FixedWindowRateLimiter } from "../src/http/middleware/RateLimit.js";
 import type { SignedInResponse } from "../src/services/AuthService.js";
-import type { CreatedApiTokenView, RateLimitEntryView, SessionView } from "../src/services/SecurityService.js";
+import type { CreatedApiTokenView } from "../src/services/ApiTokenService.js";
+import type { RateLimitEntryView } from "../src/services/RateLimitAdminService.js";
+import type { SessionView } from "../src/services/SessionManagementService.js";
 import { buildHarness, get, json, post, type TestHarness } from "./support/TestContainer.js";
 
 function del(app: TestHarness["app"], path: string, token?: string): Promise<Response> {
@@ -116,17 +118,17 @@ describe("M15 security controls: sessions, scoped API tokens, and rate-limit con
     expect((await get(harness.app, "/v1/auth/sessions", created.token)).status).toBe(401);
     expect((await get(harness.app, "/v1/auth/tokens", created.token)).status).toBe(401);
 
-    const verified = harness.container.security.verifyApiToken(created.token, "export:reports");
+    const verified = harness.container.apiTokenService.verifyApiToken(created.token, "export:reports");
     expect(verified?.user.id).toBe(memberId);
-    expect(harness.container.security.verifyApiToken(created.token, "write:interviews")).toBeNull();
+    expect(harness.container.apiTokenService.verifyApiToken(created.token, "write:interviews")).toBeNull();
 
     harness.clock.now = new Date(harness.clock.now.getTime() + 31 * 86_400_000);
-    expect(harness.container.security.verifyApiToken(created.token, "read:interviews")).toBeNull();
+    expect(harness.container.apiTokenService.verifyApiToken(created.token, "read:interviews")).toBeNull();
 
     harness.clock.now = new Date("2026-09-02T12:00:00Z");
     expect((await del(harness.app, `/v1/auth/tokens/${created.apiToken.id}`, adminToken)).status).toBe(404);
     expect((await del(harness.app, `/v1/auth/tokens/${created.apiToken.id}`, memberToken)).status).toBe(200);
-    expect(harness.container.security.verifyApiToken(created.token, "read:interviews")).toBeNull();
+    expect(harness.container.apiTokenService.verifyApiToken(created.token, "read:interviews")).toBeNull();
     expect((await del(harness.app, `/v1/auth/tokens/${created.apiToken.id}`, memberToken)).status).toBe(404);
 
     const afterList = await json<{ tokens: unknown[] }>(await get(harness.app, "/v1/auth/tokens", memberToken));
@@ -150,7 +152,7 @@ describe("M15 security controls: sessions, scoped API tokens, and rate-limit con
     );
     expect(adminCreated.status).toBe(201);
     const adminBody = await json<CreatedApiTokenView>(adminCreated);
-    expect(harness.container.security.verifyApiToken(adminBody.token, "admin:models")?.user.id).toBe(adminId);
+    expect(harness.container.apiTokenService.verifyApiToken(adminBody.token, "admin:models")?.user.id).toBe(adminId);
 
     for (const invalid of [
       { name: "Bad Scope", scopes: ["delete:everything"] },
@@ -228,7 +230,7 @@ describe("M15 security controls: sessions, scoped API tokens, and rate-limit con
       const res = await harness.app.request("/v1/auth/login", {
         method: "POST",
         headers: { "content-type": "application/json", "fly-client-ip": `2001:db8:abcd:0001::${i + 1}` },
-        body: JSON.stringify({ email: "nobody@example.com", password: "a-long-password" }),
+        body: JSON.stringify({ email: `nobody-${i}@example.com`, password: "a-long-password" }),
       });
       expect(res.status).toBe(401);
     }
@@ -236,14 +238,14 @@ describe("M15 security controls: sessions, scoped API tokens, and rate-limit con
     const blocked = await harness.app.request("/v1/auth/login", {
       method: "POST",
       headers: { "content-type": "application/json", "fly-client-ip": "2001:db8:abcd:1:9999::1" },
-      body: JSON.stringify({ email: "nobody@example.com", password: "a-long-password" }),
+      body: JSON.stringify({ email: "nobody-10@example.com", password: "a-long-password" }),
     });
     expect(blocked.status).toBe(429);
 
     const otherSubnet = await harness.app.request("/v1/auth/login", {
       method: "POST",
       headers: { "content-type": "application/json", "fly-client-ip": "2001:db8:abcd:2::1" },
-      body: JSON.stringify({ email: "nobody@example.com", password: "a-long-password" }),
+      body: JSON.stringify({ email: "nobody-11@example.com", password: "a-long-password" }),
     });
     expect(otherSubnet.status).toBe(401);
 
@@ -277,7 +279,7 @@ describe("M15 security controls: sessions, scoped API tokens, and rate-limit con
     const unblocked = await harness.app.request("/v1/auth/login", {
       method: "POST",
       headers: { "content-type": "application/json", "fly-client-ip": "2001:db8:abcd:1::55" },
-      body: JSON.stringify({ email: "nobody@example.com", password: "a-long-password" }),
+      body: JSON.stringify({ email: "nobody-12@example.com", password: "a-long-password" }),
     });
     expect(unblocked.status).toBe(401);
 
@@ -320,6 +322,40 @@ describe("M15 security controls: sessions, scoped API tokens, and rate-limit con
     const noExpiry = await json<CreatedApiTokenView>(noExpiryRes);
     expect(noExpiry.apiToken.expiresAt).toBeNull();
     harness.container.users.update(memberId, { disabled: true });
-    expect(harness.container.security.verifyApiToken(noExpiry.token, "read:interviews")).toBeNull();
+    expect(harness.container.apiTokenService.verifyApiToken(noExpiry.token, "read:interviews")).toBeNull();
+  });
+
+  it("ignores a spoofed Fly-Client-IP behind an x-forwarded-for proxy so random values cannot escape the limit", async () => {
+    harness.container.close();
+    harness = buildHarness({ TRUST_PROXY: true, TRUSTED_PROXY_HEADER: "x-forwarded-for" });
+    const statuses: number[] = [];
+    for (let i = 0; i < 11; i += 1) {
+      const res = await harness.app.request("/v1/auth/login", {
+        method: "POST",
+        headers: { "content-type": "application/json", "fly-client-ip": `198.18.${i}.${i + 1}`, "x-forwarded-for": "203.0.113.50" },
+        body: JSON.stringify({ email: `spoof-${i}@example.com`, password: "a-long-password" }),
+      });
+      statuses.push(res.status);
+    }
+    expect(statuses.slice(0, 10).every((status) => status === 401)).toBe(true);
+    expect(statuses[10]).toBe(429);
+  });
+
+  it("fails closed on bucket overflow: live buckets keep their counts and new keys share one limited bucket", () => {
+    let now = 0;
+    const limiter = new FixedWindowRateLimiter({ windowMs: 1_000, max: 2, maxBuckets: 3 }, () => now);
+    limiter.hit("attacker");
+    limiter.hit("attacker");
+    limiter.hit("b");
+    limiter.hit("c");
+    expect(limiter.hit("flood-1")).toBe(1);
+    expect(limiter.hit("flood-2")).toBe(0);
+    expect(limiter.hit("flood-3")).toBe(-1);
+    expect(limiter.hit("attacker")).toBe(-1);
+    expect(limiter.snapshot().map((bucket) => bucket.key)).toEqual(["attacker", "b", "c", "overflow"]);
+
+    now = 1_000;
+    expect(limiter.hit("fresh")).toBe(1);
+    expect(limiter.snapshot().map((bucket) => bucket.key)).toEqual(["fresh"]);
   });
 });

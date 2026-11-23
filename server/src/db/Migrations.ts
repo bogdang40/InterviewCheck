@@ -8,6 +8,11 @@ export interface MigrationStep {
 /**
  * Append only ladder, mirrored on PRAGMA user_version exactly like the macOS
  * app's SessionDatabase. Never edit a shipped step; add a new one.
+ *
+ * The schema is shared with the Python account service
+ * (portable/api/account_db.py, VERSION), which refuses a newer user_version
+ * and uses tables this server does not (login_windows). A new step needs the
+ * same version and tables on both sides; derived state stays out of it.
  */
 export const MIGRATION_STEPS: readonly MigrationStep[] = [
   {
@@ -162,6 +167,8 @@ export const MIGRATION_STEPS: readonly MigrationStep[] = [
     },
   },
 ];
+
+export const LATEST_SCHEMA_VERSION = Math.max(...MIGRATION_STEPS.map((step) => step.version));
 
 export class MigrationRunner {
   constructor(private readonly steps: readonly MigrationStep[] = MIGRATION_STEPS) {}

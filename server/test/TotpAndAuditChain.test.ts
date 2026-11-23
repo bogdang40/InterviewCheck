@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuditChainVerification } from "../src/repositories/AuditLogRepository.js";
 import type { SignedInResponse } from "../src/services/AuthService.js";
-import type { CreatedApiTokenView } from "../src/services/SecurityService.js";
+import type { CreatedApiTokenView } from "../src/services/ApiTokenService.js";
 import { TotpService, type TotpSetupView, type TotpStatusView, type TotpVerifyView } from "../src/services/TotpService.js";
 import { buildHarness, get, json, post, type TestHarness } from "./support/TestContainer.js";
 
@@ -76,7 +76,7 @@ describe("M18 TOTP 2FA and audit hash chain", () => {
     expect(initialStatus).toEqual({ enabled: false, verifiedAt: null, remainingBackupCodes: 0 });
     expect((await post(harness.app, "/v1/auth/totp/verify", { code: "123456" }, memberToken)).status).toBe(400);
 
-    const setup = await json<TotpSetupView>(await post(harness.app, "/v1/auth/totp/setup", {}, memberToken));
+    const setup = await json<TotpSetupView>(await post(harness.app, "/v1/auth/totp/setup", { currentPassword: "a-long-password" }, memberToken));
     expect(setup.issuer).toBe("InterviewCheck");
     expect(setup.secret).toMatch(/^[A-Z2-7]{32}$/);
     expect(setup.otpauthUri).toContain("otpauth://totp/InterviewCheck:member%40example.com");
@@ -109,7 +109,7 @@ describe("M18 TOTP 2FA and audit hash chain", () => {
       expect(dbCode).toBeDefined();
     }
 
-    expect((await post(harness.app, "/v1/auth/totp/setup", {}, memberToken)).status).toBe(409);
+    expect((await post(harness.app, "/v1/auth/totp/setup", { currentPassword: "a-long-password" }, memberToken)).status).toBe(409);
 
     const statusAfter = await json<TotpStatusView>(await get(harness.app, "/v1/auth/totp/status", memberToken));
     expect(statusAfter).toEqual({ enabled: true, verifiedAt: harness.clock.now.toISOString(), remainingBackupCodes: 8 });
@@ -127,7 +127,10 @@ describe("M18 TOTP 2FA and audit hash chain", () => {
       harness.clock.now.getTime(),
       harness.clock.now.getTime(),
     );
-    expect(() => harness.container.totp.verifyLoginFactor(adminId, validCode, harness.clock.now)).toThrow();
+    const decryptErrors = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(harness.container.totp.verifyLoginFactor(adminId, validCode, harness.clock.now)).toBeNull();
+    expect(decryptErrors).toHaveBeenCalledWith(expect.stringContaining("TOTP seed could not be decrypted (authentication_failed)"));
+    decryptErrors.mockRestore();
     harness.container.database.run("DELETE FROM user_totp WHERE user_id = ?", adminId);
 
     // Regenerate backup codes requires valid next-step TOTP
@@ -154,7 +157,7 @@ describe("M18 TOTP 2FA and audit hash chain", () => {
   });
 
   it("requires TOTP on login, redeems single-use backup codes transactionally, and locks out repeated failures", async () => {
-    const setup = await json<TotpSetupView>(await post(harness.app, "/v1/auth/totp/setup", {}, memberToken));
+    const setup = await json<TotpSetupView>(await post(harness.app, "/v1/auth/totp/setup", { currentPassword: "a-long-password" }, memberToken));
     const code = TotpService.generateTotpCode(setup.secret, harness.clock.now.getTime());
     const verified = await json<TotpVerifyView>(await post(harness.app, "/v1/auth/totp/verify", { code }, memberToken));
 
@@ -229,7 +232,7 @@ describe("M18 TOTP 2FA and audit hash chain", () => {
   });
 
   it("rejects same-step TOTP replays across verify, login, regenerate, and disable", async () => {
-    const setup = await json<TotpSetupView>(await post(harness.app, "/v1/auth/totp/setup", {}, memberToken));
+    const setup = await json<TotpSetupView>(await post(harness.app, "/v1/auth/totp/setup", { currentPassword: "a-long-password" }, memberToken));
     const step0Code = TotpService.generateTotpCode(setup.secret, harness.clock.now.getTime());
     expect((await post(harness.app, "/v1/auth/totp/verify", { code: step0Code }, memberToken)).status).toBe(200);
 
@@ -262,7 +265,7 @@ describe("M18 TOTP 2FA and audit hash chain", () => {
     expect(() => TotpService.generateTotpCode(rfcSecret, 0, -1)).toThrow(RangeError);
 
     harness.clock.now = new Date(10_000);
-    const setup = await json<TotpSetupView>(await post(harness.app, "/v1/auth/totp/setup", {}, memberToken));
+    const setup = await json<TotpSetupView>(await post(harness.app, "/v1/auth/totp/setup", { currentPassword: "a-long-password" }, memberToken));
     const step0Code = TotpService.generateTotpCode(setup.secret, 10_000);
     expect((await post(harness.app, "/v1/auth/totp/verify", { code: step0Code }, memberToken)).status).toBe(200);
     expect(harness.container.database.get<{ last_used_step: number }>("SELECT last_used_step FROM user_totp WHERE user_id = ?", memberId)?.last_used_step).toBe(0);
@@ -277,8 +280,9 @@ describe("M18 TOTP 2FA and audit hash chain", () => {
   });
 
   it("rate limits authenticated TOTP endpoints at 10 requests per user and registers totp limiter", async () => {
-    await post(harness.app, "/v1/auth/totp/setup", {}, memberToken);
-    for (let i = 0; i < 10; i += 1) {
+    // Setup checks the password, so it spends one hit from the same per user bucket.
+    await post(harness.app, "/v1/auth/totp/setup", { currentPassword: "a-long-password" }, memberToken);
+    for (let i = 0; i < 9; i += 1) {
       const res = await post(harness.app, "/v1/auth/totp/verify", { code: "000000" }, memberToken);
       expect(res.status).toBe(400);
     }
@@ -306,7 +310,7 @@ describe("M18 TOTP 2FA and audit hash chain", () => {
     expect((await get(harness.app, "/v1/admin/audit/verify")).status).toBe(401);
     expect((await get(harness.app, "/v1/admin/audit/verify", memberToken)).status).toBe(403);
 
-    const verifyRes = await get(harness.app, "/v1/admin/audit/verify", adminToken);
+    const verifyRes = await get(harness.app, "/v1/admin/audit/verify?full=true", adminToken);
     expect(verifyRes.status).toBe(200);
     expect(verifyRes.headers.get("cache-control")).toBe("no-store");
     const initial = await json<AuditChainVerification>(verifyRes);
@@ -331,8 +335,8 @@ describe("M18 TOTP 2FA and audit hash chain", () => {
 
     // Tamper with details on row 1 -> detects break at row 1
     harness.container.database.run("UPDATE audit_log SET details = ? WHERE id = ?", '{"role":"tampered"}', first.id);
-    const brokenDetails = await json<AuditChainVerification>(await get(harness.app, "/v1/admin/audit/verify", adminToken));
-    expect(brokenDetails).toEqual({
+    const brokenDetails = await json<AuditChainVerification>(await get(harness.app, "/v1/admin/audit/verify?full=true", adminToken));
+    expect(brokenDetails).toMatchObject({
       ok: false,
       verifiedCount: 0,
       legacyUnchainedCount: 0,
@@ -348,7 +352,7 @@ describe("M18 TOTP 2FA and audit hash chain", () => {
     harness.container.audit.record({ actorUserId: memberId, action: "post_v8.one", targetUserId: memberId }, harness.clock.now);
     harness.container.audit.record({ actorUserId: memberId, action: "post_v8.two", targetUserId: memberId }, harness.clock.now);
 
-    const withLegacy = await json<AuditChainVerification>(await get(harness.app, "/v1/admin/audit/verify", adminToken));
+    const withLegacy = await json<AuditChainVerification>(await get(harness.app, "/v1/admin/audit/verify?full=true", adminToken));
     expect(withLegacy.ok).toBe(true);
     expect(withLegacy.legacyUnchainedCount).toBe(1);
     expect(withLegacy.verifiedCount).toBe(2);
@@ -357,8 +361,8 @@ describe("M18 TOTP 2FA and audit hash chain", () => {
     // Deleting middle chained row breaks the chain at the subsequent row
     const chainedIds = harness.container.database.all<{ id: number }>("SELECT id FROM audit_log WHERE entry_hash IS NOT NULL ORDER BY id ASC");
     harness.container.database.run("DELETE FROM audit_log WHERE id = ?", chainedIds[0]!.id);
-    const deletedRowCheck = await json<AuditChainVerification>(await get(harness.app, "/v1/admin/audit/verify", adminToken));
-    expect(deletedRowCheck).toEqual({
+    const deletedRowCheck = await json<AuditChainVerification>(await get(harness.app, "/v1/admin/audit/verify?full=true", adminToken));
+    expect(deletedRowCheck).toMatchObject({
       ok: false,
       verifiedCount: 0,
       legacyUnchainedCount: 1,
@@ -373,7 +377,7 @@ describe("M18 TOTP 2FA and audit hash chain", () => {
       "INSERT INTO audit_log (at, actor_user_id, action, target_user_id, details, prev_hash, entry_hash) VALUES (2000, 'u1', 'injected.unchained', 'u1', NULL, NULL, NULL)",
     );
     const injected = harness.container.database.get<{ id: number }>("SELECT id FROM audit_log WHERE action = 'injected.unchained'")!;
-    const injectedCheck = await json<AuditChainVerification>(await get(harness.app, "/v1/admin/audit/verify", adminToken));
+    const injectedCheck = await json<AuditChainVerification>(await get(harness.app, "/v1/admin/audit/verify?full=true", adminToken));
     expect(injectedCheck).toMatchObject({ ok: false, verifiedCount: 1, firstBrokenId: injected.id });
   });
 });

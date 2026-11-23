@@ -88,6 +88,20 @@ export class ApiTokenRepository {
     return rows.map(ApiTokenRepository.toRecord);
   }
 
+  countActiveForUser(userId: string, now: Date): number {
+    const row = this.db.get<{ n: number }>(
+      "SELECT COUNT(*) AS n FROM api_tokens WHERE user_id = ? AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > ?)",
+      userId,
+      now.getTime(),
+    );
+    return Number(row?.n ?? 0);
+  }
+
+  revokeAllForUser(userId: string, now: Date): number {
+    const result = this.db.run("UPDATE api_tokens SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL", now.getTime(), userId);
+    return Number(result.changes);
+  }
+
   touchLastUsed(id: string, now: Date = new Date()): void {
     this.db.run("UPDATE api_tokens SET last_used_at = ? WHERE id = ?", now.getTime(), id);
   }

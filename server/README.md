@@ -73,8 +73,12 @@ macOS sign in form exposes that field under Advanced when creating an
 account. Signup has no email verification, so the allow list alone is not
 trusted; without the secret anyone could claim an admin address first.
 
-Once your account exists you can clear the secret. Any admin can promote or
-demote anyone through the API or the in app Admin tab. To promote an
+Once your account exists you can clear or rotate the secret, provided
+`TOTP_ENCRYPTION_KEY` is set (see below). Without that key, two factor seeds
+are encrypted with a key derived from `ADMIN_BOOTSTRAP_SECRET` (or, when it is
+empty, `STRIPE_SECRET_KEY`, then `STRIPE_WEBHOOK_SECRET`, then a key file next
+to the database), and changing any of those makes existing seeds unreadable.
+Any admin can promote or demote anyone through the API or the in app Admin tab. To promote an
 existing account without the secret:
 
 ```bash
@@ -83,12 +87,57 @@ sqlite3 data/access.sqlite "UPDATE users SET role = 'admin' WHERE email = 'you@e
 
 Admins always have access, regardless of subscription state.
 
+## Two factor seed encryption
+
+TOTP seeds are stored with AES-256-GCM. Set `TOTP_ENCRYPTION_KEY` to 32 random
+bytes in base64 (`openssl rand -base64 32`) and keep it with your other
+secrets. `TOTP_ENCRYPTION_KEY_ID` (default `k1`) names it inside each stored
+value, so keys can rotate:
+
+1. Generate a new key. Set it as `TOTP_ENCRYPTION_KEY` with a new
+   `TOTP_ENCRYPTION_KEY_ID`, and move the old one into
+   `TOTP_ENCRYPTION_RETIRED_KEYS` as `oldkid:oldbase64` (comma separated).
+2. Restart. Startup re-encrypts every seed it can open under the new key, and
+   each successful verification does the same.
+3. Once the startup log no longer reports re-encrypted seeds, remove the
+   retired key.
+
+`TOTP_SETUP_REQUIRES_PASSWORD` (default `false`) makes `currentPassword`
+mandatory on `POST /v1/auth/totp/setup`. Turn it on once every client sends
+the password; until then a password is verified only when one is sent.
+
+Upgrading a deployment that predates the key: set `TOTP_ENCRYPTION_KEY` and
+restart while `ADMIN_BOOTSTRAP_SECRET` (and the Stripe keys) are unchanged.
+Startup moves the old seeds onto the new key; only after that is it safe to
+clear or rotate the bootstrap secret. Without the key the server keeps the old
+behaviour and logs a warning at startup.
+
+A seed that cannot be decrypted never causes a 500: the server logs a
+sanitized error, still accepts the user's backup codes, and otherwise answers
+`401 invalid_totp_code`. An admin can clear a user's two factor setup with
+`POST /v1/admin/users/:id/reset-totp`, which also signs that user out
+everywhere and is recorded in the audit log.
+
 ## Behind a proxy
 
 Set `TRUST_PROXY=true` only when a trusted reverse proxy (Fly, nginx) sits
-in front of the server. The credential rate limiter then keys on the proxy
-supplied client address (`fly-client-ip`, else the last `x-forwarded-for`
-hop). With it off, forwarded headers are ignored entirely.
+in front of the server, and set `TRUSTED_PROXY_HEADER` to the one header that
+proxy writes:
+
+* `fly-client-ip` (default): Fly sets it and replaces any copy the client sent.
+* `x-forwarded-for`: for nginx and similar proxies that append the client
+  address; only the last hop is used.
+
+The rate limiters then key on that header alone. Any other forwarded header
+is ignored, because the client controls it (behind nginx a client could send
+a fresh `Fly-Client-IP` on every request). With `TRUST_PROXY` off, forwarded
+headers are ignored entirely. Chains of several proxies that each append to
+`X-Forwarded-For` are not supported; terminate at one proxy.
+
+Each limiter tracks at most 5000 distinct addresses. When all of them are
+live, new addresses share one overflow bucket with the same limit, so a flood
+of fresh addresses makes new clients wait (429) rather than resetting anyone's
+count.
 
 ## Entitlement rules
 
@@ -117,6 +166,9 @@ All JSON, all under `/v1`. Authenticated routes take `Authorization: Bearer <tok
 | POST | `/auth/login` | none | same body and response as signup |
 | POST | `/auth/logout` | user | revokes the token |
 | GET | `/me` | user | current `{user, entitlement, subscription, serverTime}` |
+| POST | `/auth/totp/setup` | user | `{currentPassword?}` returns `{secret, otpauthUri, issuer}`; a supplied password is verified, and `TOTP_SETUP_REQUIRES_PASSWORD=true` makes it mandatory |
+| POST | `/auth/totp/verify` | user | `{code}` enables two factor, returns backup codes, and signs out the user's other sessions |
+| POST | `/auth/totp/disable` | user | `{currentPassword, code}` |
 | GET | `/billing/plans` | none | `{configured, plans}` |
 | POST | `/billing/checkout` | user | `{plan}` returns `{url}` to open in the browser |
 | POST | `/billing/portal` | user | returns `{url}` for the Stripe Customer Portal |
@@ -126,10 +178,23 @@ All JSON, all under `/v1`. Authenticated routes take `Authorization: Bearer <tok
 | GET | `/admin/users?q=&limit=&cursor=` | admin | paginated users with entitlement |
 | GET | `/admin/users/:id` | admin | one user |
 | PATCH | `/admin/users/:id` | admin | `{role?, disabled?, complimentaryUntil?}` |
+| GET | `/auth/tokens` | user | the user's API tokens (metadata only) |
+| POST | `/auth/tokens` | user | `{name, scopes, ttlDays?}` mints a token; 10 per minute per user, at most 25 active (`409 token_limit_reached`) |
+| DELETE | `/auth/tokens/:id` | user | revokes one token |
+| POST | `/admin/users/:id/reset-totp` | admin | removes the user's two factor setup and revokes their sessions |
 | GET | `/admin/audit?limit=` | admin | recent audit entries |
+| GET | `/admin/audit/verify?full=` | admin | checks the audit hash chain from the last checkpoint; `full=true` rechecks every row |
+| GET | `/admin/compliance/summary` | admin | counts plus the last audit verification (`auditChainOk`, `auditChainVerifiedAt`, both null until the first run) |
+
+API tokens (`ic_tok_...`) can be minted and revoked, but no route accepts
+them for authentication yet. They are revoked when the user changes their
+password and when an admin disables the account.
 
 Errors are `{"error": {"code", "message"}}` with a meaningful status.
 Credential endpoints are rate limited to 10 attempts per minute per address,
+sign in additionally to 10 failed attempts (password or second factor) per
+email per 15 minutes from any address, which also answers `429 rate_limited`
+for emails that have no account,
 request bodies are capped at 256 KB, and webhook deliveries are applied
 from Stripe's current subscription state so out of order events cannot
 revive a cancelled plan.
@@ -149,6 +214,12 @@ end without network access.
 `Dockerfile` and `fly.toml` are included. Any host that runs a Node 22
 container with a persistent volume for `DATABASE_PATH` works. Set
 `PUBLIC_BASE_URL` to the public origin so Stripe return pages resolve.
+
+The image sets `NODE_ENV=production`, and then the server refuses to start
+unless `PUBLIC_BASE_URL` is an `https` origin and the four Stripe values
+(`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_MONTHLY`,
+`STRIPE_PRICE_ANNUAL`) are either all set or all empty. The `fly secrets set`
+line in `fly.toml` satisfies both.
 
 Run one account service writer per database. Before upgrading an existing paid
 service, pause checkout and take a consistent SQLite backup. Let existing

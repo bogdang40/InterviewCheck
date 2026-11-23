@@ -1,19 +1,19 @@
 import { Hono } from "hono";
-import type { Database } from "../../db/Database.js";
+import type { AccessStatsQuery } from "../../repositories/AccessStatsQuery.js";
 import type { AuthService } from "../../services/AuthService.js";
-import type { SecurityService } from "../../services/SecurityService.js";
+import type { RateLimitAdminService } from "../../services/RateLimitAdminService.js";
 import { HttpError } from "../HttpError.js";
 import { authenticate, requireAdmin, type AuthEnv } from "../middleware/Authenticate.js";
-import { rateLimit, type FixedWindowRateLimiter } from "../middleware/RateLimit.js";
+import { rateLimit, type ClientAddressResolver, type FixedWindowRateLimiter } from "../middleware/RateLimit.js";
 
 const PROMETHEUS_MEDIA_TYPE = "text/plain; version=0.0.4; charset=utf-8";
 
 export interface MetricsRouteDeps {
   auth: AuthService;
-  database: Database;
-  security: SecurityService;
+  stats: AccessStatsQuery;
+  rateLimitAdmin: RateLimitAdminService;
   adminReadLimiter: FixedWindowRateLimiter;
-  trustProxy: boolean;
+  clientAddress: ClientAddressResolver;
 }
 
 export interface AccessMetricsSnapshot {
@@ -25,18 +25,12 @@ export interface AccessMetricsSnapshot {
   readonly rate_limit_buckets: Record<string, number>;
 }
 
-function countQuery(db: Database, sql: string, ...params: Array<string | number>): number {
-  return Number(db.get<{ n: number }>(sql, ...params)?.n ?? 0);
-}
-
 function collectAccessMetrics(deps: MetricsRouteDeps, sessionId?: string): {
   snapshot: AccessMetricsSnapshot;
   bucketSeries: Array<{ source: string; limiter: string; count: number }>;
 } {
-  const clockRow = sessionId ? deps.database.get<{ last_seen_at: number }>("SELECT last_seen_at FROM sessions WHERE id = ?", sessionId) : undefined;
-  const nowMs = clockRow?.last_seen_at ?? Date.now();
-  const hasApiTokens = Boolean(deps.database.get<{ ok: number }>("SELECT 1 AS ok FROM sqlite_master WHERE type='table' AND name='api_tokens'"));
-  const entries = deps.security.listRateLimits().entries;
+  const nowMs = deps.stats.referenceTimeMs(sessionId);
+  const entries = deps.rateLimitAdmin.listRateLimits().entries;
   const grouped = new Map<string, { source: string; limiter: string; count: number }>();
   for (const entry of entries) {
     const key = `${entry.source}:${entry.limiter}`;
@@ -50,12 +44,10 @@ function collectAccessMetrics(deps: MetricsRouteDeps, sessionId?: string): {
 
   return {
     snapshot: {
-      users_total: countQuery(deps.database, "SELECT COUNT(*) AS n FROM users"),
-      active_sessions_total: countQuery(deps.database, "SELECT COUNT(*) AS n FROM sessions WHERE revoked_at IS NULL AND expires_at > ?", nowMs),
-      active_api_tokens_total: hasApiTokens
-        ? countQuery(deps.database, "SELECT COUNT(*) AS n FROM api_tokens WHERE revoked_at IS NULL AND (expires_at IS NULL OR expires_at > ?)", nowMs)
-        : 0,
-      audit_log_total: countQuery(deps.database, "SELECT COUNT(*) AS n FROM audit_log"),
+      users_total: deps.stats.usersTotal(),
+      active_sessions_total: deps.stats.activeSessionsTotal(nowMs),
+      active_api_tokens_total: deps.stats.activeApiTokensTotal(nowMs),
+      audit_log_total: deps.stats.auditLogTotal(),
       rate_limit_buckets_total: entries.length,
       rate_limit_buckets: rateLimitBuckets,
     },
@@ -90,7 +82,7 @@ function renderPrometheus(s: AccessMetricsSnapshot, buckets: Array<{ source: str
 export class MetricsRoutes {
   static build(deps: MetricsRouteDeps): Hono<AuthEnv> {
     const router = new Hono<AuthEnv>();
-    const readGuard = rateLimit(deps.adminReadLimiter, deps.trustProxy);
+    const readGuard = rateLimit(deps.adminReadLimiter, deps.clientAddress);
     router.get("/", authenticate(deps.auth), requireAdmin(), readGuard, (c) => {
       const format = c.req.query("format") ?? "prometheus";
       if (format !== "json" && format !== "prometheus") {
