@@ -95,11 +95,11 @@ final class ConnectorManager: ObservableObject {
         guard let provider = ConnectorOAuth.provider(kind, ConnectorCredentials(fields: fields)) else { return }
         let client = OAuthClient(provider: provider, clientID: clientID, clientSecret: fields["clientSecret"], transport: transport)
         // Webex, Bullhorn and JobAdder match the redirect exactly, port included.
-        let receiver = try LoopbackReceiver(port: ConnectorOAuth.redirectPort(kind))
+        let state = UUID().uuidString
+        let receiver = try LoopbackReceiver(port: ConnectorOAuth.redirectPort(kind), expectedState: state)
         defer { receiver.stop() }
         let redirect = try await receiver.start(host: kind == .microsoft365 ? "localhost" : "127.0.0.1")
         let verifier = PKCE.verifier()
-        let state = UUID().uuidString
         openURL(client.authorizationURL(redirectURI: redirect, state: state, codeChallenge: PKCE.challenge(for: verifier)))
         let callback = try await receiver.waitForCallback()
         let code = try LoopbackReceiver.code(from: callback, expectedState: state)

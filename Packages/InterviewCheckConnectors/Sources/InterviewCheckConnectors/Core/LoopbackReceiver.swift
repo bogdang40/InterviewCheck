@@ -11,8 +11,12 @@ public final class LoopbackReceiver: @unchecked Sendable {
     /// A result that arrived before anyone was waiting for it.
     private var early: Result<URL, Error>?
     private var finished = false
+    /// The `state` this sign-in sent; a callback without it is ignored, so a
+    /// stray local request cannot end the sign-in.
+    private let expectedState: String?
 
-    public init(port: UInt16 = 0) throws {
+    public init(port: UInt16 = 0, expectedState: String? = nil) throws {
+        self.expectedState = expectedState
         let parameters = NWParameters.tcp
         parameters.requiredLocalEndpoint = NWEndpoint.hostPort(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port) ?? .any)
         listener = try NWListener(using: parameters)
@@ -90,10 +94,20 @@ public final class LoopbackReceiver: @unchecked Sendable {
             let response = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: \(page.utf8.count)\r\n" +
                 "Connection: close\r\n\r\n\(page)"
             connection.send(content: Data(response.utf8), completion: .contentProcessed { _ in connection.cancel() })
-            if let target, target.hasPrefix("/callback"), let url = URL(string: "http://127.0.0.1\(target)") {
+            if let target, target.hasPrefix("/callback"), let url = URL(string: "http://127.0.0.1\(target)"),
+               self.isForThisSignIn(url) {
                 self.finish(.success(url))
             }
         }
+    }
+
+    private func isForThisSignIn(_ callback: URL) -> Bool {
+        guard let expectedState else { return true }
+        return Self.value("state", in: callback) == expectedState
+    }
+
+    private static func value(_ name: String, in callback: URL) -> String? {
+        URLComponents(url: callback, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == name }?.value
     }
 
     /// "/callback?code=..." from "GET /callback?code=... HTTP/1.1".
@@ -118,14 +132,14 @@ public final class LoopbackReceiver: @unchecked Sendable {
         }
     }
 
-    /// The code from a callback URL, after checking `state`.
+    /// The code from a callback URL. `state` is checked first: an error from
+    /// a request that is not this sign-in's own is never believed.
     public static func code(from callback: URL, expectedState: String) throws -> String {
-        let items = URLComponents(url: callback, resolvingAgainstBaseURL: false)?.queryItems ?? []
-        let value = { (name: String) in items.first { $0.name == name }?.value }
+        let value = { (name: String) in Self.value(name, in: callback) }
+        guard value("state") == expectedState else { throw ConnectorError.unsupported("Sign-in state did not match.") }
         if let error = value("error") {
             throw ConnectorError.unsupported("Sign-in was cancelled or refused (\(value("error_description") ?? error)).")
         }
-        guard value("state") == expectedState else { throw ConnectorError.unsupported("Sign-in state did not match.") }
         guard let code = value("code") else { throw ConnectorError.invalidResponse("no code in the redirect") }
         return code
     }

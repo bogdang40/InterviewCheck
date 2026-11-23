@@ -83,6 +83,20 @@ final class StaffingTests: XCTestCase {
             _ = try await ConnectorOAuth.prepareSignIn(.bullhorn, fields: ["username": "x"], transport: spoofed)
             XCTFail("a sign-in host outside bullhornstaffing.com is refused")
         } catch {}
+
+        // A look-alike domain that merely ends in the same letters is not Bullhorn.
+        for host in ["evilbullhornstaffing.com", "bullhornstaffing.com.evil.io"] {
+            let lookalike = StubTransport()
+            lookalike.on("GET", "loginInfo", json: #"{"oauthUrl":"https://\#(host)/oauth","restUrl":"https://\#(host)/rest"}"#)
+            do {
+                _ = try await ConnectorOAuth.prepareSignIn(.bullhorn, fields: ["username": "x"], transport: lookalike)
+                XCTFail("\(host) is refused")
+            } catch {}
+        }
+        let apex = StubTransport()
+        apex.on("GET", "loginInfo", json: #"{"oauthUrl":"https://bullhornstaffing.com/oauth","restUrl":"https://rest9.bullhornstaffing.com/rest"}"#)
+        let fields2 = try await ConnectorOAuth.prepareSignIn(.bullhorn, fields: ["username": "x"], transport: apex)
+        XCTAssertEqual(fields2["oauthURL"], "https://bullhornstaffing.com/oauth")
     }
 
     func testJobAdderMergesInterviewsAndSchedulerEvents() async throws {

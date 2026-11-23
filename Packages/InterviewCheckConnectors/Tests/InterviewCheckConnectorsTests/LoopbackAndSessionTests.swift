@@ -11,6 +11,25 @@ final class LoopbackAndSessionTests: XCTestCase {
         XCTAssertEqual(try LoopbackReceiver.code(from: callback, expectedState: "s"), "abc")
     }
 
+    func testRequestsWithoutTheRightStateAreIgnored() async throws {
+        let receiver = try LoopbackReceiver(expectedState: "s")
+        let redirect = try await receiver.start()
+        // Any local page can request these; none of them may end the sign-in.
+        for stray in ["?error=access_denied", "?error=access_denied&state=other", "?code=evil", "?code=evil&state=other"] {
+            _ = try await URLSession.shared.data(from: URL(string: redirect.absoluteString + stray)!)
+        }
+        _ = try await URLSession.shared.data(from: URL(string: redirect.absoluteString + "?code=abc&state=s")!)
+        let callback = try await receiver.waitForCallback(timeout: 5)
+        XCTAssertEqual(try LoopbackReceiver.code(from: callback, expectedState: "s"), "abc")
+    }
+
+    func testStateIsCheckedBeforeAnError() {
+        let forged = URL(string: "http://127.0.0.1:5555/callback?error=access_denied&state=other")!
+        XCTAssertThrowsError(try LoopbackReceiver.code(from: forged, expectedState: "s")) { error in
+            XCTAssertEqual(error as? ConnectorError, .unsupported("Sign-in state did not match."))
+        }
+    }
+
     func testCancellingTheWaitEndsItAtOnce() async throws {
         let receiver = try LoopbackReceiver()
         _ = try await receiver.start()
