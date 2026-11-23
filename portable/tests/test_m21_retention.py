@@ -231,12 +231,10 @@ def test_dry_run_vs_live_anonymization_and_fts_search_scrub(env):
             arow = db.execute("SELECT answer, note, legacy, import_origin, result FROM answers WHERE session_id=?", (sid,)).fetchone()
             assert arow["answer"] == retention_policy.REDACTED_TEXT
             assert arow["note"] == "" and arow["legacy"] is None and arow["import_origin"] is None
+            # The finding is recomputed from the redacted text, so it no longer quotes the answer.
             parsed = json.loads(arow["result"])
-            assert parsed["status"] == "match"
-            assert parsed["passages"][0]["label"] == "Manual"
-            assert parsed["passages"][0]["words"] >= 6
-            assert parsed["passages"][0]["answer_excerpt"] == retention_policy.REDACTED_TEXT
-            assert "four hundred kilopascals" not in parsed.get("follow_up", "")
+            assert parsed["status"] == "insufficient" and parsed["passages"] == []
+            assert "four hundred kilopascals" not in arow["result"]
             assert db.execute("SELECT count(*) FROM session_drafts WHERE session_id=?", (sid,)).fetchone()[0] == 0
             assert db.execute("SELECT count(*) FROM transcript_imports WHERE session_id=?", (sid,)).fetchone()[0] == 0
             assert db.execute("SELECT anonymized_by FROM session_anonymizations WHERE session_id=?", (sid,)).fetchone()[0] == "compliance@example.test"
