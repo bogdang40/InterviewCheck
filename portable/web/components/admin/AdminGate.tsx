@@ -6,6 +6,7 @@ import { ShieldAlert } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { submit, type ProviderStatus } from "@/lib/integrations"
+import { sweepLocalDrafts } from "@/lib/localDraftSweep"
 import { submitAccessAuth } from "@/lib/totpApi"
 import { notifyAccountChanged, type AccountSnapshot } from "@/lib/useAccountStatus"
 
@@ -69,6 +70,7 @@ export function AdminGate({
     setBusy(true)
     try {
       await submit("logout")
+      sweepLocalDrafts()
       setPassword("")
       setTotpCode("")
       setTotpRequired(false)

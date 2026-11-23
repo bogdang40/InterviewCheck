@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { AlertTriangle, LogIn, RotateCcw } from "lucide-react"
 import { needsSignIn } from "@/lib/api"
+import { signInHrefForCurrentPage } from "@/lib/signInHref"
 import { Button } from "./ui/button"
 
 type WorkspaceErrorProps = {
@@ -19,12 +20,14 @@ export default function WorkspaceError({
   showAccount = true,
 }: WorkspaceErrorProps) {
   if (needsSignIn(text)) {
+    // Read at render: this branch only appears after a client request fails, never in a prerendered page.
+    const signInHref = signInHrefForCurrentPage()
     // Not an error: a signed-out visitor needs a way in, not an alarm and a Retry button.
     return (
       <div className="notice flex flex-wrap items-center justify-between gap-3" role="status">
         <p className="min-w-0 flex-1 text-sm leading-5">Sign in to open your interviews, roles and reports.</p>
         <Button asChild size="sm" className="min-h-11 sm:min-h-8">
-          <Link href="/account/">
+          <Link href={signInHref}>
             <LogIn className="size-3.5" aria-hidden="true" />
             Sign in
           </Link>
