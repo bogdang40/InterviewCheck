@@ -198,12 +198,16 @@ async def update_alert(rule_id: UUID, item: AlertRuleUpdateInput, actor: dict = 
     vals = (item.name if item.name is not None else ex["name"], trig, thresh, cap, webhook_url, enc, hint,
             1 if (item.enabled if item.enabled is not None else bool(ex["enabled"])) else 0,
             item.cooldown_minutes if item.cooldown_minutes is not None else ex["cooldown_minutes"], store.timestamp(), rid)
-    return await run_in_threadpool(_save_rule_update, rid, vals, actor)
+    return await run_in_threadpool(_save_rule_update, rid, vals, ex["updated_at"], actor)
 
-def _save_rule_update(rid: str, vals: tuple, actor: dict) -> dict[str, Any]:
+def _save_rule_update(rid: str, vals: tuple, expected_updated_at: str, actor: dict) -> dict[str, Any]:
     post_commit: list = []
     with store.connection(write=True) as db:
-        db.execute("UPDATE alert_rules SET name=?,trigger_type=?,threshold_value=?,capability_filter=?,webhook_url=?,encrypted_signing_secret=?,secret_hint=?,enabled=?,cooldown_minutes=?,updated_at=? WHERE id=?", vals)
+        # The values merge the row read before the webhook DNS check; refuse to overwrite a newer save.
+        cur = db.execute("UPDATE alert_rules SET name=?,trigger_type=?,threshold_value=?,capability_filter=?,webhook_url=?,encrypted_signing_secret=?,secret_hint=?,enabled=?,cooldown_minutes=?,updated_at=? WHERE id=? AND updated_at=?", (*vals, expected_updated_at))
+        if cur.rowcount == 0:
+            _get_rule(db, rid)
+            raise HTTPException(409, "Alert rule was modified concurrently; reload it and retry the update.")
         updated = public_rule(_get_rule(db, rid))
         model_admin._record_audit(db, actor=actor, action="admin.alert.update", model_uuid=rid, details={"name": updated["name"], "enabled": updated["enabled"]}, post_commit=post_commit)
     model_admin._flush_account_audits(post_commit)
