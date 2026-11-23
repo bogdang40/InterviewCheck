@@ -5,8 +5,9 @@ import { useSearchParams } from "next/navigation"
 import { type FormEvent, useEffect, useId, useMemo, useRef, useState } from "react"
 import { ArrowRight, RefreshCw, Trash2, UserCheck } from "lucide-react"
 import { message } from "@/lib/api"
+import { ApiError } from "@/lib/http"
 import {
-  bulkAssignSessions, deadlineLabel, fetchAssignmentQueue, isDueOverdue, toDueAtIso,
+  AssignmentConflict, bulkAssignSessions, deadlineLabel, fetchAssignmentQueue, isDueOverdue, toDueAtIso, validAssignmentVersion,
   type AssignmentPriority, type AssignmentQueueFilters, type AssignmentQueueResponse,
 } from "@/lib/sessionAssignment"
 import WorkspaceError from "./WorkspaceError"
@@ -62,7 +63,7 @@ export default function ArchiveAssignmentsStrip() {
   const statusRef = useRef<HTMLParagraphElement>(null)
   const selectVisibleRef = useRef<HTMLButtonElement>(null)
   const focusRange = useRef(false)
-  const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [selection, setSelection] = useState<{ key: string; versions: Record<string, string> } | null>(null)
   const [bulkEmail, setBulkEmail] = useState("")
   const [bulkPriority, setBulkPriority] = useState<AssignmentPriority>("normal")
   const [bulkDueDate, setBulkDueDate] = useState("")
@@ -99,19 +100,34 @@ export default function ArchiveAssignmentsStrip() {
   function changeView(nextMode: QueueMode, page: number) {
     if (nextMode === mode && page === requestedPage) return
     focusRange.current = nextMode === mode
-    setSelectedIds([])
+    setSelection(null)
     setBulkError("")
     setBulkStatus("")
     navigate(nextMode, page)
   }
 
-  const visibleIds = useMemo(() => (data?.items ?? []).map((item) => item.session_id), [data])
-  useEffect(() => { setSelectedIds((prev) => prev.filter((id) => visibleIds.includes(id))) }, [visibleIds])
-
-  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds])
-  const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedSet.has(id))
-  const toggleRow = (id: string) =>
-    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
+  useEffect(() => { setSelection(null) }, [requestKey])
+  const visibleVersions = useMemo(() => {
+    const versions: Record<string, string> = {}
+    for (const item of data?.items ?? []) {
+      if (validAssignmentVersion(item.assignment_version)) versions[item.session_id] = item.assignment_version
+    }
+    return versions
+  }, [data])
+  const selectedVersions: Record<string, string> = data && selection?.key === requestKey ? selection.versions : {}
+  const selectedIds = Object.keys(selectedVersions)
+  const unversioned = Object.keys(visibleVersions).length !== (data?.items.length ?? 0)
+  const allVisibleSelected = !!data?.items.length && data.items.every(item => Boolean(selectedVersions[item.session_id]))
+  function toggleRow(id: string) {
+    const token = visibleVersions[id]
+    if (!token) return
+    setSelection(current => {
+      const versions: Record<string, string> = current?.key === requestKey ? { ...current.versions } : {}
+      if (versions[id]) delete versions[id]
+      else versions[id] = token
+      return { key: requestKey, versions }
+    })
+  }
 
   async function runBulk(action: "assign" | "clear", e?: FormEvent) {
     e?.preventDefault()
@@ -129,8 +145,8 @@ export default function ArchiveAssignmentsStrip() {
     try {
       const res = await bulkAssignSessions(
         action === "assign"
-          ? { session_ids: selectedIds, action, assignee_email: trimmedEmail, priority: bulkPriority, due_at: toDueAtIso(bulkDueDate) }
-          : { session_ids: selectedIds, action },
+          ? { session_ids: selectedIds, expected_versions: selectedVersions, action, assignee_email: trimmedEmail, priority: bulkPriority, due_at: toDueAtIso(bulkDueDate) }
+          : { session_ids: selectedIds, expected_versions: selectedVersions, action },
       )
       const noun = res.updated === 1 ? "session" : "sessions"
       setBulkStatus(
@@ -139,10 +155,18 @@ export default function ArchiveAssignmentsStrip() {
           : `Cleared assignments for ${res.updated} ${noun}.`,
       )
       focusRange.current = true
-      setSelectedIds([])
+      setSelection(null)
       setRefreshSeq((n) => n + 1)
     } catch (err) {
-      setBulkError(message(err))
+      const unavailable = err instanceof ApiError && err.status === 404
+      if (err instanceof AssignmentConflict || unavailable) {
+        setSelection(null)
+        setBulkError(unavailable
+          ? "A selected interview is unavailable. No assignments were changed. Select the interviews again from the refreshed queue."
+          : "No assignments were changed. Review the refreshed queue and select the interviews again.")
+        focusRange.current = true
+        setRefreshSeq(n => n + 1)
+      } else setBulkError(message(err))
     } finally {
       setBulkBusy(null)
     }
@@ -208,6 +232,7 @@ export default function ArchiveAssignmentsStrip() {
         </nav>
       )}
 
+      {!data && bulkError && <p role="alert" className="error">{bulkError}</p>}
       {error ? (
         <WorkspaceError text={error} retry={() => setRefreshSeq((n) => n + 1)} showAccount={false} />
       ) : loading && !data ? (
@@ -225,8 +250,8 @@ export default function ArchiveAssignmentsStrip() {
               <Badge variant={selectedIds.length > 0 ? "default" : "outline"}>{selectedIds.length} selected</Badge>
               <Button
                 ref={selectVisibleRef} type="button" variant="outline" size="sm" className="min-h-[44px] md:min-h-8"
-                disabled={bulkBusy !== null}
-                onClick={() => setSelectedIds(allVisibleSelected ? [] : visibleIds)}
+                disabled={bulkBusy !== null || unversioned}
+                onClick={() => setSelection(allVisibleSelected ? null : { key: requestKey, versions: visibleVersions })}
               >
                 {allVisibleSelected ? "Clear selection" : "Select visible"}
               </Button>
@@ -234,7 +259,7 @@ export default function ArchiveAssignmentsStrip() {
                 <Button
                   type="button" variant="ghost" size="sm" className="min-h-[44px] md:min-h-8"
                   disabled={bulkBusy !== null} onClick={() => {
-                    setSelectedIds([])
+                    setSelection(null)
                     selectVisibleRef.current?.focus()
                   }}
                 >
@@ -242,6 +267,7 @@ export default function ArchiveAssignmentsStrip() {
                 </Button>
               )}
             </div>
+            {unversioned && <p className="muted" role="status">Refresh the queue to select interviews missing an assignment version.</p>}
 
             {selectedIds.length > 0 && <form
               className="grid gap-3 md:grid-cols-[minmax(0,1.4fr)_minmax(130px,0.8fr)_minmax(145px,0.9fr)_auto] md:items-end"
@@ -292,7 +318,7 @@ export default function ArchiveAssignmentsStrip() {
                 <li key={item.session_id} className="flex items-stretch gap-2 min-w-0">
                   <label className="flex items-center justify-center rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 min-h-[44px] min-w-[44px] md:min-h-10 md:min-w-10 cursor-pointer shrink-0">
                     <input
-                      type="checkbox" checked={selectedSet.has(item.session_id)} disabled={bulkBusy !== null}
+                      type="checkbox" checked={Boolean(selectedVersions[item.session_id])} disabled={bulkBusy !== null || !visibleVersions[item.session_id]}
                       aria-label={`Select ${item.candidate || "session"} for bulk assignment`}
                       onChange={() => toggleRow(item.session_id)}
                     />
