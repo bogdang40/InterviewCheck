@@ -11,6 +11,7 @@ import { DraftConflictView } from "./SavedDraft"
 import TranscriptImport from "./TranscriptImport"
 import { noQuestionOrigin, originOf, OriginPicker } from "./QuestionLineage"
 import { editorDraftKey, formatDraftTimestamp, useLocalDraftRecovery } from "@/lib/localDraftBuffer"
+import UnlinkedDraftCopy from "./UnlinkedDraftCopy"
 
 const Capture = dynamic(() => import("./Capture"), { ssr: false })
 const ConflictReview = dynamic(() => import("./ConflictReview"), { ssr: false })
@@ -38,6 +39,7 @@ export default function AnswerEditor({
   const [id,setId] = useState(() => initial?.id || resumed?.id || crypto.randomUUID())
   const [origin, setOrigin] = useState<QuestionOrigin>(originOf(initial || resumed || firstOrigin))
   const authoringVersion = useRef(0)
+  const answerField = useRef<HTMLTextAreaElement>(null)
   const [question, writeQuestion] = useState(initial?.question || resumed?.question || firstQuestion)
   const [answer, setAnswer] = useState(initial?.answer || resumed?.answer || "")
   const [sources, setSources] = useState<Source[]>(initial?.references || resumed?.references || [])
@@ -61,10 +63,10 @@ export default function AnswerEditor({
   }, [onDirty, dirty])
   const snapshot = JSON.stringify([question, answer, sources, origin.parent_answer_id ?? null, origin.planned_slot ?? null])
   const { recovered, clear: clearLocalBuffer, markRestored } = useLocalDraftRecovery(
-    editorDraftKey(session.id, initial?.id), contentDirty, snapshot,
-    () => ({ text: answer, question, sources, origin, answerId: initial?.id, baseRevision: serverRevision }),
+    editorDraftKey(session.id, initial?.id, baseline?.id), contentDirty, snapshot,
+    () => ({ text: answer, question, sources, origin, answerId: initial?.id, draftId: baseline?.id, baseRevision: serverRevision }),
     (b) => {
-      if ((b.answerId ?? null) !== (initial?.id ?? null)) return true
+      if ((b.answerId && b.answerId !== initial?.id) || (b.draftId && b.draftId !== baseline?.id)) return true
       const sQ = initial?.question ?? baseline?.question ?? "", sA = initial?.answer ?? baseline?.answer ?? ""
       const sS = initial?.references ?? baseline?.references ?? [], bo = b.origin ?? savedOrigin
       return b.text === sA && (b.question ?? sQ) === sQ &&
@@ -74,13 +76,13 @@ export default function AnswerEditor({
     },
   )
   const restoreLocalDraft = () => {
-    if (!recovered) return
+    answerField.current?.focus()
+    if (!recovered || !markRestored()) return
     authoringVersion.current += 1
     if (recovered.question !== undefined) writeQuestion(recovered.question)
     setAnswer(recovered.text)
     if (recovered.sources !== undefined) setSources(recovered.sources)
     if (recovered.origin !== undefined) setOrigin(recovered.origin)
-    markRestored()
   }
   const setQuestion = (value: string) => { authoringVersion.current += 1; writeQuestion(value) }
   const change = (index: number, update: Partial<Source>) => setSources((s) => s.map((r, i) => (i === index ? { ...r, ...update } : r)))
@@ -114,6 +116,7 @@ export default function AnswerEditor({
         <span className="eyebrow">CAPTURE</span>
         <h2>{initial ? "Edit exchange" : "Add an exchange"}</h2>
       </div>
+      <UnlinkedDraftCopy sessionId={session.id} afterDiscard={() => answerField.current?.focus()} />
       {recovered && (
         <section className="notice stack" role="region" aria-label="Local draft recovery" style={{ marginBottom: "14px" }}>
           <div className="spread">
@@ -123,7 +126,7 @@ export default function AnswerEditor({
           {stale && <p className="error" role="status">Server revision changed ({serverRevision ?? "none"}) since base revision {recovered.baseRevision}.</p>}
           <div className="row">
             <Button type="button" size="sm" variant="outline" onClick={restoreLocalDraft}>Restore local edits</Button>
-            <Button type="button" size="sm" variant="ghost" onClick={clearLocalBuffer}>Discard local copy</Button>
+            <Button type="button" size="sm" variant="ghost" onClick={() => { clearLocalBuffer(); answerField.current?.focus() }}>Discard local copy</Button>
           </div>
         </section>
       )}
@@ -154,6 +157,7 @@ export default function AnswerEditor({
         <label className="field">
           Candidate answer
           <Textarea
+            ref={answerField}
             value={answer}
             onChange={(e) => setAnswer(e.target.value)}
             required

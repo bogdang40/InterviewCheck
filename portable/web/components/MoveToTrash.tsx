@@ -5,6 +5,7 @@ import { useState } from "react"
 import { Trash2 } from "lucide-react"
 import { api, message } from "@/lib/api"
 import { rememberMove, type TrashedInterview } from "@/lib/trash"
+import { sweepLocalDrafts } from "@/lib/localDraftSweep"
 import { Button } from "./ui/button"
 
 export default function MoveToTrash({
@@ -26,6 +27,7 @@ export default function MoveToTrash({
     setError("")
     try {
       const entry = await api<TrashedInterview>(`sessions/${sessionId}/trash`, "POST")
+      sweepLocalDrafts([sessionId])
       rememberMove(entry)
       router.replace("/trash/")
     } catch (e) {
@@ -43,7 +45,7 @@ export default function MoveToTrash({
       ) : (
         <div className="notice stack">
           <strong>Move this interview for {candidate || "unnamed candidate"} to Trash?</strong>
-          <p>You can restore the interview and its saved work from Trash.</p>
+          <p>You can restore the interview and its saved work from Trash. Moving it clears unsaved local copies for this interview in this browser.</p>
           <div className="row">
             <Button type="button" variant="outline" size="sm" disabled={disabled || busy} onClick={move}>
               {busy ? "Moving…" : "Confirm move to Trash"}
