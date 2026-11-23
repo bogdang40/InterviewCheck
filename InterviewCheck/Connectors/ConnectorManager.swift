@@ -160,11 +160,9 @@ final class ConnectorManager: ObservableObject {
                 let client = OAuthClient(provider: provider, clientID: credentials["clientID"] ?? "",
                                          clientSecret: credentials["clientSecret"], transport: transport)
                 let store = self.store
+                let lineage = RefreshTokenLineage(tokens)
                 let session = OAuthSession(tokens: tokens, client: client) { updated in
-                    // Not after a disconnect: the account is gone for good.
-                    guard var saved = store.load(kind.rawValue) else { return }
-                    saved.tokens = updated
-                    try? store.save(saved, for: kind.rawValue)
+                    lineage.save(updated, kind: kind, in: store)
                 }
                 sessions[kind] = session
                 return session
