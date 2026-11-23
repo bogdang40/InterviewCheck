@@ -19,6 +19,7 @@ type Preview = {
   drafts: number
   assignments: number
   handoff_notes: number
+  scorecard_items: number
   trashed: number
   fingerprint: string
   sha256?: string
@@ -124,8 +125,9 @@ export default function WorkspaceBackup() {
         <p>
           The file contains private interview text. Each panel handoff note includes its text, category,
           author and creation time. The author can be an email address, an external account ID or the local operator.
-          For each review assignment, the file includes the assignee email, who assigned the review,
-          its priority, due date and last update.
+          Each rubric score includes the criterion, weight, rating, reviewer rationale, who last updated it
+          and the update time. For each review assignment, the file includes the assignee email, who assigned
+          the review, its priority, due date and last update.
         </p>
         {(sessions.data?.total ?? 0) > 20 && (
           <label className="field">
@@ -183,6 +185,7 @@ export default function WorkspaceBackup() {
           data, the restore stops. Each newly restored answer starts its history at the revision saved in the file.
           When you restore a version 1 or 2 backup, new interviews start unassigned and existing assignments stay in place.
           Backups from versions 1 through 3 leave existing panel handoff notes in place.
+          Backups from versions 1 through 4 leave existing rubric scorecards in place.
         </p>
         <label className="field">
           Workspace backup file
@@ -259,8 +262,9 @@ export default function WorkspaceBackup() {
             <p>
               This file contains {preview.answers} captured {preview.answers === 1 ? "exchange" : "exchanges"},{" "}
               {preview.drafts} saved {preview.drafts === 1 ? "draft" : "drafts"},{" "}
-              {preview.assignments} review {preview.assignments === 1 ? "assignment" : "assignments"} and{" "}
-              {preview.handoff_notes} panel handoff {preview.handoff_notes === 1 ? "note" : "notes"}.{" "}
+              {preview.assignments} review {preview.assignments === 1 ? "assignment" : "assignments"},{" "}
+              {preview.handoff_notes} panel handoff {preview.handoff_notes === 1 ? "note" : "notes"} and{" "}
+              {preview.scorecard_items} rubric {preview.scorecard_items === 1 ? "score" : "scores"}.{" "}
               {preview.trashed} interviews will remain in Trash.
             </p>
             {!!preview.conflicts.length && (

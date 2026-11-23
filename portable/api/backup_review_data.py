@@ -1,4 +1,4 @@
-"""Read and restore the assignment and panel notes belonging to an interview backup."""
+"""Read and restore the assignment, panel notes, and rubric scorecard belonging to an interview backup."""
 import json
 
 from fastapi import HTTPException
@@ -45,6 +45,35 @@ def handoff_data(db, key):
     return notes
 
 
+def scorecard_data(db, key):
+    rows = db.execute(
+        """SELECT criterion_id,criterion_label,weight,rating,rationale,updated_by,updated_at
+           FROM session_scorecards WHERE session_id=? ORDER BY rowid""", (key,),
+    )
+    items = []
+    seen = set()
+    size = 0
+    error = (
+        f"Interview {key} contains a rubric scorecard entry that this file cannot preserve. "
+        "Use a SQLite backup to preserve the original record."
+    )
+    for row in rows:
+        if len(items) >= 25:
+            raise UnrepresentableReviewData(409, error)
+        try:
+            item = schema.ScorecardItem.model_validate(dict(row))
+        except ValidationError as exc:
+            raise UnrepresentableReviewData(409, error) from exc
+        if item.criterion_id in seen:
+            raise UnrepresentableReviewData(409, error)
+        seen.add(item.criterion_id)
+        size += len(item.model_dump_json().encode("utf-8")) + 1
+        if size > schema.LIMIT:
+            raise UnrepresentableReviewData(413, f"Interview {key} exceeds the JSON backup limit. Use a SQLite backup.")
+        items.append(item.model_dump())
+    return items
+
+
 def has_handoff_collision(db, notes):
     if not notes:
         return False
@@ -68,4 +97,14 @@ def restore_review_data(db, session):
             """INSERT INTO session_handoff_notes(id,session_id,author_email,category,body,created_at)
                VALUES(?,?,?,?,?,?)""",
             ((n.id, session.id, n.author_email, n.category, n.body, n.created_at) for n in session.handoff_notes),
+        )
+    if session.scorecard_items:
+        db.executemany(
+            """INSERT INTO session_scorecards(
+                   session_id,criterion_id,criterion_label,weight,rating,rationale,updated_by,updated_at
+               ) VALUES(?,?,?,?,?,?,?,?)""",
+            (
+                (session.id, i.criterion_id, i.criterion_label, i.weight, i.rating, i.rationale, i.updated_by, i.updated_at)
+                for i in session.scorecard_items
+            ),
         )
