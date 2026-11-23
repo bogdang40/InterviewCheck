@@ -7,7 +7,7 @@ import type { AuthService } from "../../services/AuthService.js";
 import type { SecurityService } from "../../services/SecurityService.js";
 import { HttpError } from "../HttpError.js";
 import { authenticate, requireAdmin, type AuthEnv } from "../middleware/Authenticate.js";
-import { rateLimit, type FixedWindowRateLimiter } from "../middleware/RateLimit.js";
+import { rateLimit, type ClientAddressResolver, type FixedWindowRateLimiter } from "../middleware/RateLimit.js";
 import { parseJsonBody, parseParams, parseQuery } from "../RequestParsing.js";
 import {
   adminAuditQuerySchema,
@@ -26,7 +26,7 @@ export interface AdminRouteDeps {
   database: Database;
   adminReadLimiter: FixedWindowRateLimiter;
   adminWriteLimiter: FixedWindowRateLimiter;
-  trustProxy: boolean;
+  clientAddress: ClientAddressResolver;
 }
 
 /** Absent leaves the grant untouched, null clears it, a timestamp sets it. */
@@ -61,8 +61,8 @@ async function parseOptionalJsonBody<Schema extends ZodTypeAny>(c: Context, sche
 export class AdminRoutes {
   static build(deps: AdminRouteDeps): Hono<AuthEnv> {
     const router = new Hono<AuthEnv>();
-    const readGuard = rateLimit(deps.adminReadLimiter, deps.trustProxy);
-    const writeGuard = rateLimit(deps.adminWriteLimiter, deps.trustProxy);
+    const readGuard = rateLimit(deps.adminReadLimiter, deps.clientAddress);
+    const writeGuard = rateLimit(deps.adminWriteLimiter, deps.clientAddress);
     router.use("/admin/*", authenticate(deps.auth), requireAdmin());
 
     router.get("/admin/stats", readGuard, (c) => c.json(deps.admin.stats()));

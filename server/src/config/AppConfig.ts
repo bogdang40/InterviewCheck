@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { KeyMaterial } from "../crypto/KeyMaterial.js";
+import { TRUSTED_PROXY_HEADERS } from "../http/middleware/ClientAddressResolver.js";
 
 /**
  * Typed, validated process configuration. Everything the server needs from
@@ -51,6 +52,8 @@ const schema = z.object({
     .enum(["true", "false"])
     .default("false")
     .transform((value) => value === "true"),
+  // Fly sets Fly-Client-IP and overwrites any client copy; nginx style proxies append to X-Forwarded-For.
+  TRUSTED_PROXY_HEADER: z.enum(TRUSTED_PROXY_HEADERS).default("fly-client-ip"),
   STRIPE_SECRET_KEY: optionalSecret,
   STRIPE_WEBHOOK_SECRET: optionalSecret,
   STRIPE_PRICE_MONTHLY: optionalSecret,

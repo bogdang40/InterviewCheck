@@ -3,7 +3,7 @@ import type { AuthService } from "../../services/AuthService.js";
 import type { BillingService } from "../../services/BillingService.js";
 import type { BillingWebhookService } from "../../services/BillingWebhookService.js";
 import { authenticate, type AuthEnv } from "../middleware/Authenticate.js";
-import { rateLimit, type FixedWindowRateLimiter } from "../middleware/RateLimit.js";
+import { rateLimit, type ClientAddressResolver, type FixedWindowRateLimiter } from "../middleware/RateLimit.js";
 import { parseJsonBody } from "../RequestParsing.js";
 import { checkoutSchema } from "../Schemas.js";
 import { BillingReturnPage } from "./BillingReturnPage.js";
@@ -14,14 +14,14 @@ export interface BillingRouteDeps {
   webhook: BillingWebhookService;
   appUrlScheme: string;
   billingLimiter: FixedWindowRateLimiter;
-  trustProxy: boolean;
+  clientAddress: ClientAddressResolver;
 }
 
 export class BillingRoutes {
   static build(deps: BillingRouteDeps): Hono<AuthEnv> {
     const router = new Hono<AuthEnv>();
     const page = new BillingReturnPage(deps.appUrlScheme);
-    const guard = rateLimit(deps.billingLimiter, deps.trustProxy);
+    const guard = rateLimit(deps.billingLimiter, deps.clientAddress);
 
     router.get("/billing/plans", (c) =>
       c.json({ configured: deps.billing.isConfigured, plans: deps.billing.availablePlans() }),

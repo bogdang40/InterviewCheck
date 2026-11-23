@@ -5,7 +5,7 @@ import { Database } from "./db/Database.js";
 import { MigrationRunner } from "./db/Migrations.js";
 import { EntitlementResolver } from "./domain/Entitlement.js";
 import { PlanCatalog } from "./domain/Subscription.js";
-import { FixedWindowRateLimiter } from "./http/middleware/RateLimit.js";
+import { ClientAddressResolver, FixedWindowRateLimiter } from "./http/middleware/RateLimit.js";
 import { ApiTokenRepository } from "./repositories/ApiTokenRepository.js";
 import { AuditLogRepository } from "./repositories/AuditLogRepository.js";
 import { CheckoutRepository } from "./repositories/CheckoutRepository.js";
@@ -54,6 +54,7 @@ export class Container {
   readonly billingWebhook: BillingWebhookService;
   readonly admin: AdminService;
   readonly security: SecurityService;
+  readonly clientAddress: ClientAddressResolver;
   readonly credentialLimiter: FixedWindowRateLimiter;
   readonly adminReadLimiter: FixedWindowRateLimiter;
   readonly adminWriteLimiter: FixedWindowRateLimiter;
@@ -125,6 +126,7 @@ export class Container {
     );
 
     this.admin = new AdminService(this.database, this.users, this.sessions, this.subscriptions, this.audit, this.entitlements, this.totpCodes, clock);
+    this.clientAddress = ClientAddressResolver.fromConfig(config);
     this.credentialLimiter = new FixedWindowRateLimiter({ windowMs: 60_000, max: 10 });
     this.adminReadLimiter = new FixedWindowRateLimiter({ windowMs: 60_000, max: 120 });
     this.adminWriteLimiter = new FixedWindowRateLimiter({ windowMs: 60_000, max: 40 });

@@ -72,7 +72,7 @@ export class AppFactory {
         auth: container.auth,
         entitlements: container.entitlements,
         credentialLimiter: container.credentialLimiter,
-        trustProxy: container.config.TRUST_PROXY,
+        clientAddress: container.clientAddress,
       }),
     );
     api.route(
@@ -98,7 +98,7 @@ export class AppFactory {
         webhook: container.billingWebhook,
         appUrlScheme: container.config.APP_URL_SCHEME,
         billingLimiter: container.billingLimiter,
-        trustProxy: container.config.TRUST_PROXY,
+        clientAddress: container.clientAddress,
       }),
     );
     api.route(
@@ -111,7 +111,7 @@ export class AppFactory {
         database: container.database,
         adminReadLimiter: container.adminReadLimiter,
         adminWriteLimiter: container.adminWriteLimiter,
-        trustProxy: container.config.TRUST_PROXY,
+        clientAddress: container.clientAddress,
       }),
     );
     api.route(
@@ -121,7 +121,7 @@ export class AppFactory {
         database: container.database,
         security: container.security,
         adminReadLimiter: container.adminReadLimiter,
-        trustProxy: container.config.TRUST_PROXY,
+        clientAddress: container.clientAddress,
       }),
     );
     app.route(`/${API_VERSION}`, api);

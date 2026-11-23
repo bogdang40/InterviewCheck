@@ -117,9 +117,23 @@ everywhere and is recorded in the audit log.
 ## Behind a proxy
 
 Set `TRUST_PROXY=true` only when a trusted reverse proxy (Fly, nginx) sits
-in front of the server. The credential rate limiter then keys on the proxy
-supplied client address (`fly-client-ip`, else the last `x-forwarded-for`
-hop). With it off, forwarded headers are ignored entirely.
+in front of the server, and set `TRUSTED_PROXY_HEADER` to the one header that
+proxy writes:
+
+* `fly-client-ip` (default): Fly sets it and replaces any copy the client sent.
+* `x-forwarded-for`: for nginx and similar proxies that append the client
+  address; only the last hop is used.
+
+The rate limiters then key on that header alone. Any other forwarded header
+is ignored, because the client controls it (behind nginx a client could send
+a fresh `Fly-Client-IP` on every request). With `TRUST_PROXY` off, forwarded
+headers are ignored entirely. Chains of several proxies that each append to
+`X-Forwarded-For` are not supported; terminate at one proxy.
+
+Each limiter tracks at most 5000 distinct addresses. When all of them are
+live, new addresses share one overflow bucket with the same limit, so a flood
+of fresh addresses makes new clients wait (429) rather than resetting anyone's
+count.
 
 ## Entitlement rules
 

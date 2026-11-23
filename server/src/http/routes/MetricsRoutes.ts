@@ -4,7 +4,7 @@ import type { AuthService } from "../../services/AuthService.js";
 import type { SecurityService } from "../../services/SecurityService.js";
 import { HttpError } from "../HttpError.js";
 import { authenticate, requireAdmin, type AuthEnv } from "../middleware/Authenticate.js";
-import { rateLimit, type FixedWindowRateLimiter } from "../middleware/RateLimit.js";
+import { rateLimit, type ClientAddressResolver, type FixedWindowRateLimiter } from "../middleware/RateLimit.js";
 
 const PROMETHEUS_MEDIA_TYPE = "text/plain; version=0.0.4; charset=utf-8";
 
@@ -13,7 +13,7 @@ export interface MetricsRouteDeps {
   database: Database;
   security: SecurityService;
   adminReadLimiter: FixedWindowRateLimiter;
-  trustProxy: boolean;
+  clientAddress: ClientAddressResolver;
 }
 
 export interface AccessMetricsSnapshot {
@@ -90,7 +90,7 @@ function renderPrometheus(s: AccessMetricsSnapshot, buckets: Array<{ source: str
 export class MetricsRoutes {
   static build(deps: MetricsRouteDeps): Hono<AuthEnv> {
     const router = new Hono<AuthEnv>();
-    const readGuard = rateLimit(deps.adminReadLimiter, deps.trustProxy);
+    const readGuard = rateLimit(deps.adminReadLimiter, deps.clientAddress);
     router.get("/", authenticate(deps.auth), requireAdmin(), readGuard, (c) => {
       const format = c.req.query("format") ?? "prometheus";
       if (format !== "json" && format !== "prometheus") {

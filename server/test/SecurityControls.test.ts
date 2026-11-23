@@ -322,4 +322,38 @@ describe("M15 security controls: sessions, scoped API tokens, and rate-limit con
     harness.container.users.update(memberId, { disabled: true });
     expect(harness.container.security.verifyApiToken(noExpiry.token, "read:interviews")).toBeNull();
   });
+
+  it("ignores a spoofed Fly-Client-IP behind an x-forwarded-for proxy so random values cannot escape the limit", async () => {
+    harness.container.close();
+    harness = buildHarness({ TRUST_PROXY: true, TRUSTED_PROXY_HEADER: "x-forwarded-for" });
+    const statuses: number[] = [];
+    for (let i = 0; i < 11; i += 1) {
+      const res = await harness.app.request("/v1/auth/login", {
+        method: "POST",
+        headers: { "content-type": "application/json", "fly-client-ip": `198.18.${i}.${i + 1}`, "x-forwarded-for": "203.0.113.50" },
+        body: JSON.stringify({ email: `spoof-${i}@example.com`, password: "a-long-password" }),
+      });
+      statuses.push(res.status);
+    }
+    expect(statuses.slice(0, 10).every((status) => status === 401)).toBe(true);
+    expect(statuses[10]).toBe(429);
+  });
+
+  it("fails closed on bucket overflow: live buckets keep their counts and new keys share one limited bucket", () => {
+    let now = 0;
+    const limiter = new FixedWindowRateLimiter({ windowMs: 1_000, max: 2, maxBuckets: 3 }, () => now);
+    limiter.hit("attacker");
+    limiter.hit("attacker");
+    limiter.hit("b");
+    limiter.hit("c");
+    expect(limiter.hit("flood-1")).toBe(1);
+    expect(limiter.hit("flood-2")).toBe(0);
+    expect(limiter.hit("flood-3")).toBe(-1);
+    expect(limiter.hit("attacker")).toBe(-1);
+    expect(limiter.snapshot().map((bucket) => bucket.key)).toEqual(["attacker", "b", "c", "overflow"]);
+
+    now = 1_000;
+    expect(limiter.hit("fresh")).toBe(1);
+    expect(limiter.snapshot().map((bucket) => bucket.key)).toEqual(["fresh"]);
+  });
 });

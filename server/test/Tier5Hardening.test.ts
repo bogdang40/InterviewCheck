@@ -75,30 +75,39 @@ describe("T5-09: RateLimit proxy resolution and sweep capacity", () => {
     harness?.container.close();
   });
 
-  function loginWithHeaders(headers: Record<string, string>): Promise<Response> {
+  function loginWithHeaders(headers: Record<string, string>, attempt: number): Promise<Response> {
     return harness.app.request("/v1/auth/login", {
       method: "POST",
       headers: { "content-type": "application/json", ...headers },
-      body: JSON.stringify({ email: "nobody@example.com", password: "a-long-password" }),
+      body: JSON.stringify({ email: `nobody-${attempt}@example.com`, password: "a-long-password" }),
     });
   }
 
-  it("uses fly-client-ip precedence and rightmost x-forwarded-for hop when TRUST_PROXY=true", async () => {
+  it("reads only fly-client-ip by default when TRUST_PROXY=true and ignores x-forwarded-for", async () => {
     harness = buildHarness({ TRUST_PROXY: true });
     for (let i = 0; i < 10; i += 1) {
-      expect((await loginWithHeaders({ "fly-client-ip": "203.0.113.10", "x-forwarded-for": `10.0.0.${i}, 198.51.100.${i}` })).status).toBe(401);
+      expect((await loginWithHeaders({ "fly-client-ip": "203.0.113.10", "x-forwarded-for": `10.0.0.${i}, 198.51.100.${i}` }, i)).status).toBe(401);
     }
-    expect((await loginWithHeaders({ "fly-client-ip": "203.0.113.10", "x-forwarded-for": "10.0.0.99, 198.51.100.99" })).status).toBe(429);
-    expect((await loginWithHeaders({ "fly-client-ip": "203.0.113.11" })).status).toBe(401);
+    expect((await loginWithHeaders({ "fly-client-ip": "203.0.113.10", "x-forwarded-for": "10.0.0.99, 198.51.100.99" }, 10)).status).toBe(429);
+    expect((await loginWithHeaders({ "fly-client-ip": "203.0.113.11" }, 11)).status).toBe(401);
 
+    // Without the trusted header every request falls back to the socket address, whatever x-forwarded-for says.
     for (let i = 0; i < 10; i += 1) {
-      expect((await loginWithHeaders({ "x-forwarded-for": `10.0.0.${i}, 198.51.100.77` })).status).toBe(401);
+      expect((await loginWithHeaders({ "x-forwarded-for": `10.0.0.${i}, 198.51.100.${i}` }, 20 + i)).status).toBe(401);
     }
-    expect((await loginWithHeaders({ "x-forwarded-for": "10.0.0.250, 198.51.100.77" })).status).toBe(429);
-    expect((await loginWithHeaders({ "x-forwarded-for": "10.0.0.250, 198.51.100.78" })).status).toBe(401);
+    expect((await loginWithHeaders({ "x-forwarded-for": "10.0.0.250, 198.51.100.250" }, 30)).status).toBe(429);
   });
 
-  it("sweeps expired buckets and evicts oldest active buckets to keep size <= 5000", () => {
+  it("reads only the rightmost x-forwarded-for hop when TRUSTED_PROXY_HEADER=x-forwarded-for", async () => {
+    harness = buildHarness({ TRUST_PROXY: true, TRUSTED_PROXY_HEADER: "x-forwarded-for" });
+    for (let i = 0; i < 10; i += 1) {
+      expect((await loginWithHeaders({ "x-forwarded-for": `10.0.0.${i}, 198.51.100.77` }, i)).status).toBe(401);
+    }
+    expect((await loginWithHeaders({ "x-forwarded-for": "10.0.0.250, 198.51.100.77" }, 10)).status).toBe(429);
+    expect((await loginWithHeaders({ "x-forwarded-for": "10.0.0.250, 198.51.100.78" }, 11)).status).toBe(401);
+  });
+
+  it("sweeps expired buckets and never evicts live buckets when the table is full", () => {
     let now = 1_000;
     const limiter = new FixedWindowRateLimiter({ windowMs: 60_000, max: 2 }, () => now);
     const buckets = (): Map<string, unknown> => (limiter as unknown as { buckets: Map<string, unknown> }).buckets;
@@ -108,12 +117,13 @@ describe("T5-09: RateLimit proxy resolution and sweep capacity", () => {
 
     now = 61_001;
     limiter.hit("trigger-sweep");
-    expect(buckets().size).toBe(1);
-
+    limiter.hit("trigger-sweep");
     for (let i = 0; i < 5_050; i += 1) limiter.hit(`active-${i}`);
-    expect(buckets().size).toBeLessThanOrEqual(5_000);
-    expect(buckets().has("active-0")).toBe(false);
-    expect(buckets().has("active-5049")).toBe(true);
+    expect(buckets().size).toBe(5_000);
+    expect(buckets().has("trigger-sweep")).toBe(true);
+    expect(limiter.hit("trigger-sweep")).toBe(-1);
+    expect(buckets().has("active-0")).toBe(true);
+    expect(buckets().has("active-5049")).toBe(false);
   });
 });
 

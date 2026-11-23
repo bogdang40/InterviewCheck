@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { AuthService } from "../../services/AuthService.js";
 import type { EntitlementService } from "../../services/EntitlementService.js";
 import { authenticate, type AuthEnv } from "../middleware/Authenticate.js";
-import { rateLimit, type FixedWindowRateLimiter } from "../middleware/RateLimit.js";
+import { rateLimit, type ClientAddressResolver, type FixedWindowRateLimiter } from "../middleware/RateLimit.js";
 import { parseJsonBody } from "../RequestParsing.js";
 import { credentialsSchema, passwordChangeSchema } from "../Schemas.js";
 
@@ -10,13 +10,13 @@ export interface AuthRouteDeps {
   auth: AuthService;
   entitlements: EntitlementService;
   credentialLimiter: FixedWindowRateLimiter;
-  trustProxy: boolean;
+  clientAddress: ClientAddressResolver;
 }
 
 export class AuthRoutes {
   static build(deps: AuthRouteDeps): Hono<AuthEnv> {
     const router = new Hono<AuthEnv>();
-    const guard = rateLimit(deps.credentialLimiter, deps.trustProxy);
+    const guard = rateLimit(deps.credentialLimiter, deps.clientAddress);
 
     router.post("/auth/signup", guard, async (c) => {
       const body = await parseJsonBody(c, credentialsSchema);
