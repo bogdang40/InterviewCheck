@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FixedWindowRateLimiter } from "../src/http/middleware/RateLimit.js";
 import type { AdminUserView } from "../src/services/AdminService.js";
 import type { SignedInResponse } from "../src/services/AuthService.js";
+import { SessionPruneScheduler } from "../src/services/SessionPruneScheduler.js";
 import type { GatewaySubscription } from "../src/stripe/StripeGateway.js";
 import { buildHarness, get, json, patch, post, type TestHarness } from "./support/TestContainer.js";
 
@@ -270,5 +271,48 @@ describe("T5-10: AdminService guards, CSRF/500 sanitization, and BillingWebhookS
       service.apply({ id: "evt_cross_owner", type: "subscription.changed", subscription: crossUserSub }),
     ).rejects.toMatchObject({ status: 422, code: "unknown_customer" });
     expect(harness.container.stripeEvents.isApplied("evt_cross_owner")).toBe(false);
+  });
+});
+
+describe("session pruning schedule", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it("prunes on an unref'd interval and stops when cleared", () => {
+    vi.useFakeTimers();
+    const deleteExpired = vi.fn(() => 0);
+    const scheduler = new SessionPruneScheduler({ deleteExpired }, 60_000, () => new Date(5_000));
+    scheduler.start();
+    scheduler.start();
+    expect(scheduler.isRunning).toBe(true);
+    vi.advanceTimersByTime(60_000 * 3);
+    expect(deleteExpired).toHaveBeenCalledTimes(3);
+    expect(deleteExpired).toHaveBeenLastCalledWith(new Date(5_000));
+
+    scheduler.stop();
+    expect(scheduler.isRunning).toBe(false);
+    vi.advanceTimersByTime(60_000 * 3);
+    expect(deleteExpired).toHaveBeenCalledTimes(3);
+  });
+
+  it("keeps running when one prune fails, and the container stops it on close", () => {
+    vi.useFakeTimers();
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const deleteExpired = vi.fn(() => { throw new Error("database is locked /var/lib/secret.db"); });
+    const scheduler = new SessionPruneScheduler({ deleteExpired }, 1_000);
+    scheduler.start();
+    vi.advanceTimersByTime(2_000);
+    expect(deleteExpired).toHaveBeenCalledTimes(2);
+    expect(errors.mock.calls.flat().join(" ")).not.toContain("/var/lib/secret.db");
+    scheduler.stop();
+
+    const harness = buildHarness();
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    harness.container.prepare();
+    expect(harness.container.sessionPruner.isRunning).toBe(true);
+    harness.container.close();
+    expect(harness.container.sessionPruner.isRunning).toBe(false);
   });
 });

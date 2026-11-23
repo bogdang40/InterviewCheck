@@ -25,6 +25,7 @@ import { EntitlementService } from "./services/EntitlementService.js";
 import { LoginThrottle } from "./services/LoginThrottle.js";
 import { PasswordHasher } from "./services/PasswordHasher.js";
 import { SecurityService } from "./services/SecurityService.js";
+import { SessionPruneScheduler } from "./services/SessionPruneScheduler.js";
 import { TokenService } from "./services/TokenService.js";
 import { TotpSecretMigrator } from "./services/TotpSecretMigrator.js";
 import { TotpService } from "./services/TotpService.js";
@@ -60,6 +61,7 @@ export class Container {
   readonly admin: AdminService;
   readonly security: SecurityService;
   readonly clientAddress: ClientAddressResolver;
+  readonly sessionPruner: SessionPruneScheduler;
   readonly credentialLimiter: FixedWindowRateLimiter;
   readonly adminReadLimiter: FixedWindowRateLimiter;
   readonly adminWriteLimiter: FixedWindowRateLimiter;
@@ -80,6 +82,7 @@ export class Container {
 
     this.users = new UserRepository(this.database);
     this.sessions = new SessionRepository(this.database);
+    this.sessionPruner = new SessionPruneScheduler(this.sessions, undefined, clock);
     this.apiTokens = new ApiTokenRepository(this.database);
     this.totpCodes = new TotpRepository(this.database);
     this.subscriptions = new SubscriptionRepository(this.database);
@@ -161,10 +164,10 @@ export class Container {
     );
   }
 
-  /** Startup work that touches data: prune dead sessions and move TOTP seeds onto the primary key. */
+  /** Startup work that touches data: prune dead sessions (then hourly) and move TOTP seeds onto the primary key. */
   prepare(): void {
-    const pruned = this.sessions.deleteExpired();
-    if (pruned > 0) console.log(`[server] pruned ${pruned} expired session(s)`);
+    this.sessionPruner.pruneNow();
+    this.sessionPruner.start();
     const totp = this.totpMigrator.run();
     if (totp.reencrypted > 0) console.log(`[server] re-encrypted ${totp.reencrypted} TOTP seed(s) under the primary key`);
     if (totp.unreadable > 0) console.warn(`[server] ${totp.unreadable} TOTP seed(s) could not be decrypted; those users need a backup code or an admin TOTP reset`);
@@ -176,6 +179,7 @@ export class Container {
   }
 
   close(): void {
+    this.sessionPruner.stop();
     this.database.close();
   }
 
