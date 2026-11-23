@@ -2,7 +2,7 @@ import { errorMessage } from "./http"
 
 type Counts = { new: number; identical: number; conflict: number }
 type Kind = "roles" | "sessions"
-type Conflict = { kind: Kind; id: string; label: string }
+type Conflict = { kind: Kind; id: string; label: string; descriptions: string[] }
 export type BackupPreview = {
   roles: Counts; sessions: Counts; answers: number; drafts: number; trashed: number
   assignments?: number; handoff_notes?: number; scorecard_items?: number
@@ -15,6 +15,25 @@ const uncertain = "The restore may have completed. Preview the same file again t
 const hex = /^[a-f\d]{64}$/i
 const uuid = /^[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/
 const reviewCounts = ["assignments", "handoff_notes", "scorecard_items"] as const
+const reasonLabels: Record<Kind, Record<string, string>> = {
+  roles: { role_template: "Role template", rubric: "Rubric criteria", role_history: "Role history" },
+  sessions: {
+    interview_details: "Interview details", assignment: "Review assignment", handoff_notes: "Panel handoff notes",
+    scorecard_items: "Saved scorecard", exchanges: "Recorded exchanges", draft: "Saved draft",
+  },
+}
+
+function conflictDescriptions(kind: Kind, reasons: unknown): string[] {
+  if (!Array.isArray(reasons)) return []
+  const labels = { ...reasonLabels[kind], other_changes: "Other record differences" }
+  const details = Object.entries(labels).filter(([code]) => reasons.includes(code)).map(([, label]) => label)
+  const linked = reasons.includes("linked_id_in_use")
+  const unavailable = reasons.includes("cannot_compare")
+  if (!linked && !unavailable) return details
+  // These are standalone reasons. Omit contradictory explanations while keeping the conflict itself.
+  if (details.length || (linked && unavailable)) return []
+  return [linked ? "A linked record ID is already in use" : "Stored data could not be compared"]
+}
 
 function object(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -53,7 +72,7 @@ function parseReply(value: unknown, digest: string, header: string | null): Back
     if (seen.has(key)) throw new Error(invalid)
     seen.add(key)
     sampled[entry.kind]++
-    return { kind: entry.kind, id: entry.id, label: entry.label }
+    return { kind: entry.kind, id: entry.id, label: entry.label, descriptions: conflictDescriptions(entry.kind, entry.reasons) }
   })
   if (sampled.roles > roles.conflict || sampled.sessions > sessions.conflict) throw new Error(invalid)
   const reply: BackupPreview = {
@@ -112,7 +131,8 @@ export async function submitBackup(file: File, expected: string, operation: Back
 
   let response: Response
   try {
-    response = await fetch("/api/backups/" + operation.action, { method: "POST", headers, body: file, signal, cache: "no-store", redirect: "error" })
+    const url = operation.action === "preview" ? "/api/backups/preview?include_conflict_reasons=true" : "/api/backups/restore"
+    response = await fetch(url, { method: "POST", headers, body: file, signal, cache: "no-store", redirect: "error" })
   } catch {
     throw new Error(operation.action === "restore" ? uncertain : "The preview could not reach the workspace. Preview the file again.")
   }

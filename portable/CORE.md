@@ -208,4 +208,6 @@ Select a local backup and choose **Preview restore**. The server checks the form
 
 If the connection drops while restoring, the server may already have saved the records. The selected file stays in the form. Choose **Preview restore** again to see which records are present. An identical record is skipped if you restore again.
 
+For up to 20 conflicting records, the preview lists the parts that differ, such as the assignment or saved scorecard. A scorecard difference can include reviewer attribution or its update time. Clients can request these categories with `include_conflict_reasons=true` on the preview endpoint.
+
 JSON restore has a 20 MiB file limit. Export smaller sets as individual interviews where appropriate. For a complete large deployment, use SQLite's consistent backup procedure and retain any separate account database under the operator's storage policy. The service does not automatically delete backup files when an interview is purged.

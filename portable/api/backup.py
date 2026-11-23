@@ -9,7 +9,7 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, Header, HTTPException, Request, Response
 from starlette.concurrency import run_in_threadpool
 
-from . import backup_schema as schema, bulk_operations, drafts, store
+from . import backup_conflicts, backup_schema as schema, bulk_operations, drafts, store
 from . import backup_review_data as review_data
 
 router = APIRouter(prefix="/backups")
@@ -137,17 +137,17 @@ def download(session_id: UUID | None = None):
     )
 
 
-def same_session(db, record, *, has_assignments, has_notes, has_scorecards):
+def stored_session(db, key, *, has_assignments, has_notes, has_scorecards):
     try:
         data = session_data(
-            db, record.id, has_assignments=has_assignments, has_notes=has_notes, has_scorecards=has_scorecards,
+            db, key, has_assignments=has_assignments, has_notes=has_notes, has_scorecards=has_scorecards,
         )
     except review_data.UnrepresentableReviewData:
-        return False
-    return schema.Session.model_validate(data) == record
+        return None
+    return schema.Session.model_validate(data)
 
 
-def classify(db, backup):
+def classify(db, backup, *, include_conflict_reasons=False):
     actions = {"roles": [], "sessions": []}
     totals = {kind: {"new": 0, "identical": 0, "conflict": 0} for kind in actions}
     conflicts = []
@@ -167,29 +167,39 @@ def classify(db, backup):
     for group, records in (("roles", backup.roles), ("sessions", backup.sessions)):
         for record in records:
             key = record.id
+            stored = None
+            linked_collision = False
             if group == "roles":
                 row = db.execute("SELECT * FROM roles WHERE id=?", (key,)).fetchone()
-                same = row is not None and schema.Role.model_validate(role_data(row, db)) == record
                 exists = row is not None
-                if not exists and record.versions and _has_table(db, "role_versions"):
-                    exists = any(db.execute("SELECT 1 FROM role_versions WHERE id=?", (v.id,)).fetchone() for v in record.versions)
+                if exists:
+                    stored = schema.Role.model_validate(role_data(row, db))
+                elif record.versions and _has_table(db, "role_versions"):
+                    linked_collision = any(db.execute("SELECT 1 FROM role_versions WHERE id=?", (v.id,)).fetchone() for v in record.versions)
             else:
                 exists = db.execute("SELECT 1 FROM sessions WHERE id=?", (key,)).fetchone() is not None
-                same = exists and same_session(
-                    db, record, has_assignments=has_assignments, has_notes=has_notes, has_scorecards=has_scorecards,
-                )
-                if not exists:
+                if exists:
+                    stored = stored_session(db, key, has_assignments=has_assignments, has_notes=has_notes, has_scorecards=has_scorecards)
+                else:
                     ids = [a.id for a in record.answers] + ([record.draft.id] if record.draft else [])
-                    exists = review_data.has_handoff_collision(db, record.handoff_notes) or any(
+                    linked_collision = review_data.has_handoff_collision(db, record.handoff_notes) or any(
                         db.execute("SELECT 1 FROM answers WHERE id=? UNION ALL SELECT 1 FROM session_drafts WHERE id=?", (aid, aid)).fetchone()
                         for aid in ids
                     )
-            state = "identical" if same else "conflict" if exists else "new"
+            state = "identical" if stored == record else "conflict" if exists or linked_collision else "new"
             totals[group][state] += 1
             if state == "new":
                 actions[group].append(record)
             elif state == "conflict" and len(conflicts) < 20:
-                conflicts.append({"kind": group, "id": key, "label": record.name if group == "roles" else record.candidate})
+                sample = {"kind": group, "id": key, "label": record.name if group == "roles" else record.candidate}
+                if include_conflict_reasons:
+                    if linked_collision:
+                        sample["reasons"] = ["linked_id_in_use"]
+                    elif stored is None:
+                        sample["reasons"] = ["cannot_compare"]
+                    else:
+                        sample["reasons"] = backup_conflicts.changed_sections(group, stored, record)
+                conflicts.append(sample)
     return actions, {
         **totals,
         "answers": sum(len(s.answers) for s in backup.sessions),
@@ -274,7 +284,7 @@ def restore_records(db, actions):
                 )
 
 
-def process(raw, fingerprint=None, expected_sha256=None):
+def process(raw, fingerprint=None, expected_sha256=None, *, include_conflict_reasons=False):
     digest = hashlib.sha256(raw).hexdigest()
     if expected_sha256 is not None:
         if not _HEX_64_ANY.fullmatch(expected_sha256):
@@ -289,7 +299,7 @@ def process(raw, fingerprint=None, expected_sha256=None):
     backup = schema.parse(raw)
     apply = fingerprint is not None
     with store.connection(write=apply) as db:
-        actions, summary = classify(db, backup)
+        actions, summary = classify(db, backup, include_conflict_reasons=include_conflict_reasons and not apply)
         if apply:
             if summary["conflicts"]:
                 raise HTTPException(409, "Existing records conflict with the file. Preview the backup again.")
@@ -303,8 +313,10 @@ def process(raw, fingerprint=None, expected_sha256=None):
 async def preview(
     request: Request,
     x_backup_sha256: str | None = Header(default=None, pattern=r"^[a-fA-F0-9]{64}$"),
+    include_conflict_reasons: bool = False,
 ):
-    return await run_in_threadpool(process, await request.body(), None, x_backup_sha256)
+    return await run_in_threadpool(process, await request.body(), None, x_backup_sha256,
+                                   include_conflict_reasons=include_conflict_reasons)
 
 
 @router.post("/restore")

@@ -12,6 +12,8 @@ import pytest
 
 PREVIEW = "/api/backups/preview"
 RESTORE = "/api/backups/restore"
+PREVIEW_QUERY = "include_conflict_reasons=true"
+PREVIEW_ROUTE = re.compile(re.escape(PREVIEW + "?" + PREVIEW_QUERY) + "$")
 HEADERS = {"X-InterviewCheck": "1", "Content-Type": "application/json"}
 
 
@@ -79,13 +81,13 @@ def test_invalid_preview_replies_remove_a_previously_valid_plan(workspace_url, b
     for mime, body, headers in invalid:
         preview.click()
         expect(apply(page)).to_be_enabled()
-        page.route("**" + PREVIEW, lambda route: route.fulfill(status=200, content_type=mime, body=body, headers=headers))
+        page.route(PREVIEW_ROUTE, lambda route: route.fulfill(status=200, content_type=mime, body=body, headers=headers))
         preview.click()
         expect(restore_alert(page)).to_contain_text(re.compile(r"preview|checksum|match|verif|digest", re.I))
         no_apply(page)
         assert picker.evaluate("(el) => el.files[0]?.name") == path.name
         expect(preview).to_be_enabled()
-        page.unroute("**" + PREVIEW)
+        page.unroute(PREVIEW_ROUTE)
     assert writes == []
 
 
@@ -155,7 +157,11 @@ def test_older_server_reply_without_download_header_or_review_counts(workspace_u
             del record[field]
     path.write_bytes(json.dumps(doc).encode())
 
+    restored_urls = []
+
     def old_reply(route):
+        if urlsplit(route.request.url).path == RESTORE:
+            restored_urls.append(route.request.url)
         upstream = route.fetch()
         try:
             assert upstream.status == 200
@@ -167,7 +173,7 @@ def test_older_server_reply_without_download_header_or_review_counts(workspace_u
             upstream.dispose()
 
     open_file(page, workspace_url, path)
-    page.route("**" + PREVIEW, old_reply)
+    page.route(PREVIEW_ROUTE, old_reply)
     page.route("**" + RESTORE, old_reply)
     page.get_by_role("button", name="Preview restore", exact=True).click()
     expect(apply(page)).to_be_enabled()
@@ -180,6 +186,7 @@ def test_older_server_reply_without_download_header_or_review_counts(workspace_u
         assert prior.raise_for_status().json()["sessions"]["new"] == 1
     apply(page).click()
     expect(page.get_by_role("status").filter(has_text=re.compile(r"Skipped 1 identical"))).to_be_visible()
+    assert len(restored_urls) == 1 and not urlsplit(restored_urls[0]).query
     with httpx.Client(base_url=workspace_url, headers=HEADERS) as client:
         assert client.get(f"/api/sessions/{sid}").raise_for_status().json()["candidate"] == "Restore fixture"
 
@@ -228,6 +235,7 @@ def test_lost_or_invalid_reply_after_commit_requires_read_only_repreview(workspa
     expect(page.get_by_text("All records are already present.", exact=True)).to_be_visible()
     no_apply(page)
     assert [urlsplit(req.url).path for req in calls] == [PREVIEW, RESTORE, PREVIEW]
+    assert [urlsplit(req.url).query for req in calls] == [PREVIEW_QUERY, "", PREVIEW_QUERY]
     assert calls[1].headers["x-backup-preview"] == plan["fingerprint"]
     assert all("x-backup-preview" not in req.headers for req in (calls[0], calls[2]))
     assert all(req.headers["x-backup-sha256"].lower() == plan["fingerprint"] for req in calls)

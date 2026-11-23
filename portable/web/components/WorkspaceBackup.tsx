@@ -214,6 +214,9 @@ export default function WorkspaceBackup() {
                   {preview.conflicts.map((c) => (
                     <li key={c.kind + c.id} className="[overflow-wrap:anywhere]">
                       {conflictLabel(c.label, c.kind)} · {c.id}
+                      {c.descriptions.length > 0 && <p className="text-sm">
+                        <span className="sr-only">Conflict details. </span>{c.descriptions.join(" · ")}
+                      </p>}
                     </li>
                   ))}
                 </ul>
