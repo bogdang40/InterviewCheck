@@ -18,6 +18,54 @@ final class DeepgramServiceLifecycleTests: XCTestCase {
         XCTAssertNil(service.currentSpeaker)
     }
 
+    @MainActor
+    func testFinalizeWaitsForTheLastWordsThenCompletes() async throws {
+        let session = URLSession(configuration: .ephemeral)
+        defer { session.invalidateAndCancel() }
+        let service = DualStreamDeepgramService(socketFactory: { _ in nil })
+        var controls: [String] = []
+        service.transmit = { _, message, _ in
+            if case .string(let text) = message { controls.append(text) }
+        }
+        service.stateLock.withLock { service.micWebSocket = session.webSocketTask(with: URL(string: "wss://localhost/x")!) }
+        service.micClock.recordSent(byteCount: 96_000 * 5, capturedAt: 1000)
+        var events: [String] = []
+        service.onFinalTimedWords = { batch in events.append(batch.words.map(\.word.word).joined(separator: " ")) }
+        service.finalize(timeout: 2) { events.append("done") }
+        XCTAssertEqual(controls, [DualStreamDeepgramService.finalizeMessage])
+        XCTAssertEqual(DualStreamDeepgramService.finalizeMessage, #"{"type":"Finalize"}"#)
+        await drainMainQueue()
+        XCTAssertEqual(events, [], "still waiting for Deepgram")
+
+        service.testInjectReceivedFrame("""
+        {"type":"Results","channel":{"alternatives":[{"transcript":"last words","words":\
+        [{"word":"last","start":1.0,"end":1.3},{"word":"words","start":1.3,"end":1.6}]}]},\
+        "is_final":true,"from_finalize":true,"start":1.0,"duration":0.6}
+        """, source: .microphone)
+        await drainMainQueue()
+        XCTAssertEqual(events, ["last words", "done"], "the last words reach the timeline before the stream closes")
+        service.disconnect()
+    }
+
+    @MainActor
+    func testFinalizeGivesUpAfterTheTimeoutAndWithoutStreamsAtOnce() async throws {
+        let session = URLSession(configuration: .ephemeral)
+        defer { session.invalidateAndCancel() }
+        let service = DualStreamDeepgramService(socketFactory: { _ in nil })
+        var immediate = false
+        service.finalize(timeout: 2) { immediate = true }
+        XCTAssertTrue(immediate, "nothing to wait for")
+
+        service.transmit = { _, _, _ in }
+        service.stateLock.withLock { service.systemWebSocket = session.webSocketTask(with: URL(string: "wss://localhost/x")!) }
+        let done = expectation(description: "timed out")
+        let started = Date()
+        service.finalize(timeout: 0.2) { done.fulfill() }
+        await fulfillment(of: [done], timeout: 2)
+        XCTAssertGreaterThanOrEqual(Date().timeIntervalSince(started), 0.19)
+        service.disconnect()
+    }
+
     func testStreamingSessionsOutliveALongInterview() {
         let config = DeepgramSessionConfiguration.make()
         XCTAssertEqual(config.timeoutIntervalForRequest, 30)
@@ -27,6 +75,12 @@ final class DeepgramServiceLifecycleTests: XCTestCase {
         let legacy = DeepgramService()
         XCTAssertGreaterThanOrEqual(legacy.urlSession?.configuration.timeoutIntervalForResource ?? 0, 12 * 3600)
         legacy.disconnect(notify: false)
+    }
+
+    private func drainMainQueue() async {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.async { continuation.resume() }
+        }
     }
 
     func testStaleSocketFailureCannotDisconnectReplacement() {

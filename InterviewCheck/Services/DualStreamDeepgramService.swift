@@ -79,6 +79,8 @@ final class DualStreamDeepgramService: ObservableObject {
     var transmit: (URLSessionWebSocketTask, URLSessionWebSocketTask.Message, @escaping (Error?) -> Void) -> Void = {
         socket, message, completion in socket.send(message, completionHandler: completion)
     }
+    /// The pending wait of `finalize`, touched on the main queue only.
+    var finalizeWaiter: FinalizeWaiter?
     var micMetrics = DualStreamMetrics()
     var systemMetrics = DualStreamMetrics()
 

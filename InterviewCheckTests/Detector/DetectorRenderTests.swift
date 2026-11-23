@@ -27,6 +27,7 @@ final class DetectorRenderTests: XCTestCase {
                                              settings: settings)
         controller.startAudio = {}
         controller.stopAudio = {}
+        controller.finishTranscription = { $0() }
         controller.questionSettleDelay = 0
         controller.answerSettleDelay = 0
         controller.roleProvider = { nil }

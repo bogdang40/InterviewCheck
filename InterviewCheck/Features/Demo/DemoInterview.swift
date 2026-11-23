@@ -34,6 +34,7 @@ final class DemoInterview: ObservableObject {
                                              settings: settings)
         controller.startAudio = {}
         controller.stopAudio = {}
+        controller.finishTranscription = { $0() }
         controller.questionSettleDelay = 300_000_000
         // One card per prompt style: Full answer, Talking points, STAR story.
         controller.maxReferenceRuns = 3

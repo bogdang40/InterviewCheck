@@ -203,6 +203,8 @@ extension DualStreamDeepgramService {
         guard let (timer, socket) = detached else { return }
         timer?.invalidate()
         socket?.cancel(with: .normalClosure, reason: nil)
+        // A stream that ended has nothing more to finalize.
+        DispatchQueue.main.async { [weak self] in self?.resolveFinalize(source) }
         switch source {
         case .microphone: updateMicState(.error(message))
         case .systemAudio: updateSystemState(.error(message))

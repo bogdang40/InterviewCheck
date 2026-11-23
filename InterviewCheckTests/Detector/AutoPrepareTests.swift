@@ -261,6 +261,7 @@ final class AutoPrepareTests: XCTestCase {
     func testAFinishedInterviewLetsTheNextOneIn() async throws {
         controller.startAudio = {}
         controller.stopAudio = {}
+        controller.finishTranscription = { $0() }
         controller.roleProvider = { nil }
         await auto.tick()
         controller.consentConfirmed = true
@@ -322,6 +323,7 @@ final class AutoPrepareTests: XCTestCase {
     func testTheInterviewJustRunIsNotPreparedAgain() async throws {
         controller.startAudio = {}
         controller.stopAudio = {}
+        controller.finishTranscription = { $0() }
         controller.roleProvider = { nil }
         let a = manager.upcoming[0]
         _ = await manager.prepare(a, controller: controller, roles: roles, navigate: false)   // by hand
@@ -337,6 +339,7 @@ final class AutoPrepareTests: XCTestCase {
     func testABackToBackNextInterviewIsPreparedAfterTheLastOneRan() async throws {
         controller.startAudio = {}
         controller.stopAudio = {}
+        controller.finishTranscription = { $0() }
         controller.roleProvider = { nil }
         source.gap = 15 * 60                                  // A at T+8, B (Max Roe) at T+23
         await manager.sync(.calendly)

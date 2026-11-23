@@ -37,6 +37,13 @@ final class InterviewController: ObservableObject {
     /// the call's audio). The interview drives capture directly.
     var startAudio: () -> Void = { AudioCaptureService.shared.requestStart(reason: .newSession) }
     var stopAudio: () -> Void = { AudioCaptureService.shared.requestStop(clearTranscript: true) }
+    /// Before capture stops on End: lets the last words become final, then
+    /// calls back on the main queue (within about two seconds).
+    var finishTranscription: (@escaping () -> Void) -> Void = {
+        AudioCaptureService.shared.finishTranscription(completion: $0)
+    }
+    /// End was pressed and the last words are still arriving.
+    @Published private(set) var isEnding = false
     /// The role the interview is for (the one selected in Roles).
     var roleProvider: () -> RoleProfile? = { RoleStore.shared.selectedRole }
 
@@ -114,9 +121,21 @@ final class InterviewController: ObservableObject {
     }
 
     func end() {
-        guard phase == .live, var record = interview else { return }
-        closeActiveQuestion(at: timeline.now)
+        guard phase == .live, interview != nil, !isEnding else { return }
+        isEnding = true
+        let endedAt = timeline.now
         stopTicking()
+        // The answer ends now; words spoken before now that are still being
+        // finalized land inside it once they arrive.
+        finishTranscription { [weak self] in
+            MainActor.assumeIsolated { self?.completeEnd(at: endedAt) }
+        }
+    }
+
+    private func completeEnd(at endedAt: TimeInterval) {
+        isEnding = false
+        guard phase == .live, var record = interview else { return }
+        closeActiveQuestion(at: endedAt)
         stopAudio()
         flushWords()
         record.endedAt = Date()
@@ -152,7 +171,7 @@ final class InterviewController: ObservableObject {
 
     /// `at` marks a time in the past (an automatic mark at the question's end).
     func markQuestion(planned: PlannedQuestion? = nil, at time: TimeInterval?, automatically: Bool) {
-        guard phase == .live, let interview else { return }
+        guard phase == .live, !isEnding, let interview else { return }
         let now = time ?? timeline.now
         // Pressed twice in a row with no answer yet: the same question, marked again.
         if planned == nil, let active = activeQuestion, let index = questions.firstIndex(where: { $0.id == active.id }),

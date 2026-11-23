@@ -23,6 +23,7 @@ final class InterviewFlowTests: XCTestCase {
         controller = InterviewController(timeline: timeline, database: database, settings: settings)
         controller.startAudio = {}
         controller.stopAudio = {}
+        controller.finishTranscription = { $0() }
         controller.questionSettleDelay = 0
         controller.answerSettleDelay = 0
         controller.roleProvider = { nil }
@@ -212,6 +213,45 @@ final class InterviewFlowTests: XCTestCase {
         XCTAssertEqual(loaded?.jobDescription, "Senior Go engineer")
         XCTAssertEqual(loaded?.plannedQuestions.first?.text, "Why Go?")
         XCTAssertEqual(loaded?.cheaterPrompts.count, 3)
+    }
+
+    func testEndWaitsForTheLastWordsBeforeClosingTheAnswer() async throws {
+        controller.consentConfirmed = true
+        controller.start()
+        let question = F.words(F.question, side: .interviewer, start: now + 1)
+        timeline.append(question)
+        now = question.last!.end + 0.3
+        controller.markQuestion()
+        try await waitUntil { self.controller.questions.first?.text.isEmpty == false }
+        let early = F.words("I would use a token bucket per key", side: .candidate, start: now + 0.5)
+        timeline.append(early)
+        // End is pressed two seconds later; the last words are still interim.
+        now = early.last!.end + 2
+
+        var finish: (() -> Void)?
+        controller.finishTranscription = { finish = $0 }
+        var stopped = false
+        controller.stopAudio = { stopped = true }
+        controller.end()
+        XCTAssertTrue(controller.isEnding)
+        XCTAssertFalse(stopped, "capture keeps running until the last words are final")
+        controller.markQuestion()
+        XCTAssertEqual(controller.questions.count, 1, "no new question while ending")
+
+        // Deepgram finalizes the words spoken just before End.
+        let last = F.words("stored in Redis", side: .candidate, start: early.last!.end + 0.1)
+        timeline.append(last)
+        now += 1
+        try XCTUnwrap(finish)()
+        XCTAssertTrue(stopped)
+        XCTAssertFalse(controller.isEnding)
+        XCTAssertEqual(controller.phase, .ended)
+        let saved = try XCTUnwrap(database.loadInterviewReport(id: controller.interview!.id))
+        XCTAssertTrue(saved.questions[0].answerText.hasSuffix("stored in Redis"), saved.questions[0].answerText)
+        XCTAssertEqual(database.loadInterviewWords(interviewID: saved.interview.id).count,
+                       question.count + early.count + last.count)
+        controller.end()
+        XCTAssertEqual(controller.phase, .ended, "a second End changes nothing")
     }
 
     private func waitUntil(timeout: TimeInterval = 3, _ condition: @escaping () -> Bool) async throws {
