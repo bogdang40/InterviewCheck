@@ -141,3 +141,13 @@ def test_unindexed_unicode_paging_and_trashed_anchor(client):
     second = lookup(client, **{**args, "query": "ss", "limit": 2}, cursor=run["next_cursor"])
     assert [h["id"] for h in second["items"]] == [uid(2), uid(3)]
     assert not second["has_more"] and second["next_cursor"] is None
+
+
+def test_corrupt_cursor_boundary_returns_a_private_actionable_error(client):
+    marker = "!legacy-private-identifier"
+    with store.connection(write=True) as db:
+        db.executemany("INSERT INTO roles(id,name,description,questions) VALUES(?,?,?,?)",
+                       [(marker, "Older role", "", "[]"), (uid(17), "Older role", "", "[]")])
+    response = client.post("/api/search", json={"query": "Older role", "kinds": ["role"], "limit": 1, "cursor": ""})
+    assert response.status_code == 409 and marker not in response.text
+    assert "unsupported ID" in response.json()["detail"]

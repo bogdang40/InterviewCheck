@@ -28,7 +28,13 @@ def _binding(needle, kinds, boundary):
 
 
 def encode(needle, kinds, position):
-    boundary = bytes([VERSION, position.rank, position.priority]) + position.id.encode("ascii")
+    try:
+        key = position.id
+        if not isinstance(key, str) or len(key) != 36 or str(UUID(key)) != key.lower():
+            raise ValueError
+        boundary = bytes([VERSION, position.rank, position.priority]) + key.encode("ascii")
+    except (ValueError, UnicodeError) as exc:
+        raise HTTPException(409, "A saved record has an unsupported ID. Refine the search to continue.") from exc
     return base64.urlsafe_b64encode(boundary + _binding(needle, kinds, boundary)).decode("ascii").rstrip("=")
 
 
