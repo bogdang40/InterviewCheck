@@ -1,5 +1,5 @@
-import { extractApiError } from "@/lib/adminModels"
-import { sanitizeDownloadFilename } from "@/lib/bulkArchive"
+import { downloadResponse } from "@/lib/download"
+import { request, send } from "@/lib/http"
 
 export type CompareCounts = {
   match: number; no_match: number; insufficient: number
@@ -74,44 +74,13 @@ export function buildComparePrintUrl(
   return "/api/interviews/compare/print?" + parts.join("&")
 }
 
-async function postCompare(path: string, body: unknown, signal?: AbortSignal): Promise<Response> {
-  const response = await fetch("/api/" + path, {
-    method: "POST",
-    credentials: "include",
-    cache: "no-store",
-    signal,
-    headers: { "Content-Type": "application/json", "X-InterviewCheck": "1" },
-    body: JSON.stringify(body),
-  })
-  if (!response.ok) {
-    const data = await response.json().catch(() => null)
-    throw new Error(extractApiError(data, response.status))
-  }
-  return response
-}
-
-export async function compareInterviews(input: CompareInput, signal?: AbortSignal): Promise<CompareResponse> {
-  const response = await postCompare("interviews/compare", input, signal)
-  return (await response.json()) as CompareResponse
+export function compareInterviews(input: CompareInput, signal?: AbortSignal): Promise<CompareResponse> {
+  return request<CompareResponse>("/api/interviews/compare", { method: "POST", json: input, signal })
 }
 
 export async function downloadCompareDossier(input: CompareInput): Promise<string> {
-  const response = await postCompare("interviews/compare/dossier", { ...input, format: "markdown" })
-  const rawName = sanitizeDownloadFilename(response.headers.get("Content-Disposition"), "csv")
-  const filename = rawName === "interviews-bulk.csv" ? "candidate-comparison.md" : rawName.replace(/\.csv$/i, ".md")
-  const objectUrl = URL.createObjectURL(await response.blob())
-  try {
-    const anchor = document.createElement("a")
-    anchor.href = objectUrl
-    anchor.download = filename
-    anchor.style.display = "none"
-    document.body.appendChild(anchor)
-    anchor.click()
-    anchor.remove()
-  } finally {
-    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
-  }
-  return filename
+  const response = await send("/api/interviews/compare/dossier", { method: "POST", json: { ...input, format: "markdown" } })
+  return downloadResponse(response, "candidate-comparison.md")
 }
 
 export function getSlotCell(row: CompareSlotRow, sessionId: string): CompareSlotCell | null {

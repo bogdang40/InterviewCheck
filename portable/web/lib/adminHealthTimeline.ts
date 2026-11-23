@@ -1,4 +1,6 @@
-import { AdminApiError, extractApiError } from "./adminModels"
+import { AdminApiError, adminRequest } from "./adminModels"
+import { downloadResponse } from "./download"
+import { send } from "./http"
 
 export type HealthTimelineSourceFilter = "" | "probe" | "live"
 export type HealthTimelineFilters = {
@@ -82,38 +84,14 @@ function normalizeTimeline(raw: unknown): HealthTimelineResponse {
   }
 }
 
-async function throwApiError(res: Response): Promise<never> {
-  const data = await res.json().catch(() => null)
-  const code = data && typeof data === "object" && "error" in data ? (data as { error?: { code?: string } }).error?.code : undefined
-  throw new AdminApiError(res.status, extractApiError(data, res.status), code)
-}
-
 export async function fetchHealthTimeline(filters: HealthTimelineFilters = {}, signal?: AbortSignal): Promise<HealthTimelineResponse> {
   const qs = buildHealthTimelineParams(filters).toString()
-  const res = await fetch("/api/admin/models/health-timeline" + (qs ? `?${qs}` : ""), {
-    method: "GET", credentials: "include", cache: "no-store", signal, headers: { "X-InterviewCheck": "1" },
-  })
-  if (!res.ok) await throwApiError(res)
-  return normalizeTimeline(await res.json().catch(() => null))
+  return normalizeTimeline(await adminRequest<unknown>("/api/admin/models/health-timeline" + (qs ? `?${qs}` : ""), { signal }))
 }
 
 export async function downloadHealthTimelineExport(filters: HealthTimelineFilters = {}, format: "csv" | "json"): Promise<string> {
   const params = buildHealthTimelineParams(filters)
   params.set("format", format)
-  const res = await fetch(`/api/admin/models/health-timeline/export?${params.toString()}`, {
-    method: "GET", credentials: "include", cache: "no-store", headers: { "X-InterviewCheck": "1" },
-  })
-  if (!res.ok) await throwApiError(res)
-  const fallback = format === "csv" ? "model-health-timeline.csv" : "model-health-timeline.json"
-  const match = res.headers.get("Content-Disposition") ? /filename="?([^";]+)"?/i.exec(res.headers.get("Content-Disposition") || "") : null
-  const filename = match?.[1]?.split(/[\\/]/).pop()?.trim().replace(/[^a-zA-Z0-9._-]/g, "") || fallback
-  const objectUrl = URL.createObjectURL(await res.blob())
-  try {
-    const anchor = document.createElement("a")
-    anchor.href = objectUrl; anchor.download = filename; anchor.style.display = "none"
-    document.body.appendChild(anchor); anchor.click(); anchor.remove()
-  } finally {
-    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
-  }
-  return filename
+  const res = await send(`/api/admin/models/health-timeline/export?${params.toString()}`, { errorType: AdminApiError })
+  return downloadResponse(res, `model-health-timeline.${format}`)
 }

@@ -1,4 +1,4 @@
-import { AdminApiError, extractApiError } from "./adminModels"
+import { AdminApiError, adminRequest } from "./adminModels"
 
 export type CircuitState = "closed" | "open" | "half_open"
 export type ModelCircuitInfo = {
@@ -48,17 +48,12 @@ export type PromptUpdatePayload = {
 export type PromptRollbackPayload = { target_version: number; expected_version: number; change_note?: string }
 
 async function requestJson<T>(url: string, options: RequestInit = {}): Promise<{ notMounted: boolean; data: T | null }> {
-  const headers = new Headers(options.headers)
-  headers.set("X-InterviewCheck", "1")
-  if (options.body !== undefined && !headers.has("Content-Type")) headers.set("Content-Type", "application/json")
-  const res = await fetch(url, { ...options, headers, cache: "no-store" })
-  const data = await res.json().catch(() => null)
-  if (res.status === 404 || res.status === 501) return { notMounted: true, data: null }
-  if (!res.ok) {
-    const code = data && typeof data === "object" && "error" in data ? (data as { error?: { code?: string } }).error?.code : undefined
-    throw new AdminApiError(res.status, extractApiError(data, res.status), code)
+  try {
+    return { notMounted: false, data: await adminRequest<T>(url, options) }
+  } catch (err) {
+    if (err instanceof AdminApiError && (err.status === 404 || err.status === 501)) return { notMounted: true, data: null }
+    throw err
   }
-  return { notMounted: false, data: data as T }
 }
 
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null)

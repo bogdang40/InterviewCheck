@@ -1,4 +1,6 @@
-import { AdminApiError, extractApiError, type AuditEntry } from "@/lib/adminModels"
+import { AdminApiError, adminRequest, type AuditEntry } from "@/lib/adminModels"
+import { downloadResponse } from "@/lib/download"
+import { errorMessage, send } from "@/lib/http"
 
 export type AuditCategory = "all" | "models" | "accounts"
 
@@ -57,12 +59,12 @@ export function buildAuditParams(
   return params
 }
 
-function readErrorCode(data: unknown): string | undefined {
-  if (data && typeof data === "object" && "error" in data) {
-    const err = (data as { error?: { code?: unknown } }).error
-    if (typeof err?.code === "string") return err.code
+/** A 429 without its own explanation gets a hint about the audit rate limit. */
+function rateLimitAware(hint: string) {
+  return (data: unknown, status: number) => {
+    const extracted = errorMessage(data, status)
+    return status === 429 && extracted.startsWith("Request failed") ? hint : extracted
   }
-  return undefined
 }
 
 export async function listAdminAuditEntries(
@@ -70,24 +72,10 @@ export async function listAdminAuditEntries(
   signal?: AbortSignal,
 ): Promise<AdminAuditPage> {
   const qs = buildAuditParams(filters, true).toString()
-  const response = await fetch("/api/integrations/admin/audit" + (qs ? "?" + qs : ""), {
-    method: "GET",
-    credentials: "include",
-    cache: "no-store",
-    signal,
-    headers: { "X-InterviewCheck": "1" },
-  })
-  const data = (await response.json().catch(() => null)) as {
-    entries?: AuditEntry[]
-    nextBeforeId?: unknown
-  } | null
-  if (!response.ok) {
-    const msg =
-      response.status === 429 && extractApiError(data, response.status).startsWith("Request failed")
-        ? "Audit log rate limit exceeded. Wait a moment and try again."
-        : extractApiError(data, response.status)
-    throw new AdminApiError(response.status, msg, readErrorCode(data))
-  }
+  const data = await adminRequest<{ entries?: AuditEntry[]; nextBeforeId?: unknown } | null>(
+    "/api/integrations/admin/audit" + (qs ? "?" + qs : ""),
+    { signal, describe: rateLimitAware("Audit log rate limit exceeded. Wait a moment and try again.") },
+  )
   return {
     entries: Array.isArray(data?.entries) ? data.entries : [],
     nextBeforeId:
@@ -97,48 +85,15 @@ export async function listAdminAuditEntries(
   }
 }
 
-function resolveDownloadName(header: string | null, format: "csv" | "json"): string {
-  const fallback = format === "csv" ? "audit-log.csv" : "audit-log.json"
-  if (!header) return fallback
-  const match = /filename="?([^";]+)"?/i.exec(header)
-  const sanitized = match?.[1]?.trim().replace(/[^a-zA-Z0-9._-]/g, "")
-  return sanitized || fallback
-}
-
 export async function exportAdminAudit(
   format: "csv" | "json",
   filters: AdminAuditFilters = {},
 ): Promise<string> {
   const params = buildAuditParams(filters, false)
   params.set("format", format)
-  const response = await fetch("/api/integrations/admin/audit/export?" + params.toString(), {
-    method: "GET",
-    credentials: "include",
-    cache: "no-store",
-    headers: { "X-InterviewCheck": "1" },
+  const response = await send("/api/integrations/admin/audit/export?" + params.toString(), {
+    errorType: AdminApiError,
+    describe: rateLimitAware("Audit export rate limit exceeded. Wait a moment and try again."),
   })
-  if (!response.ok) {
-    const data = await response.json().catch(() => null)
-    const extracted = extractApiError(data, response.status)
-    const msg =
-      response.status === 429 && extracted.startsWith("Request failed")
-        ? "Audit export rate limit exceeded. Wait a moment and try again."
-        : extracted
-    throw new AdminApiError(response.status, msg, readErrorCode(data))
-  }
-  const filename = resolveDownloadName(response.headers.get("Content-Disposition"), format)
-  const blob = await response.blob()
-  const objectUrl = URL.createObjectURL(blob)
-  try {
-    const anchor = document.createElement("a")
-    anchor.href = objectUrl
-    anchor.download = filename
-    anchor.style.display = "none"
-    document.body.appendChild(anchor)
-    anchor.click()
-    anchor.remove()
-  } finally {
-    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
-  }
-  return filename
+  return downloadResponse(response, `audit-log.${format}`)
 }

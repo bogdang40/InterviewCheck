@@ -1,4 +1,4 @@
-import { extractApiError } from "./roleCalibration"
+import { request } from "./http"
 
 export type AssignmentPriority = "low" | "normal" | "high"
 
@@ -53,16 +53,6 @@ export type BulkSessionAssignmentResult = {
   cleared_ids?: string[]
 }
 
-async function requestAssignmentApi<T>(url: string, options: RequestInit = {}): Promise<T> {
-  const headers = new Headers(options.headers)
-  headers.set("X-InterviewCheck", "1")
-  if (options.body !== undefined && !headers.has("Content-Type")) headers.set("Content-Type", "application/json")
-  const response = await fetch(url, { ...options, credentials: "include", cache: "no-store", headers })
-  const data = await response.json().catch(() => null)
-  if (!response.ok) throw new Error(extractApiError(data, response.status))
-  return data as T
-}
-
 export function toDueAtIso(dateValue: string): string | null {
   const trimmed = dateValue.trim()
   if (!trimmed) return null
@@ -80,7 +70,7 @@ export function isDueOverdue(dueAt: string | null | undefined, nowMs = Date.now(
 }
 
 export async function fetchSessionAssignment(sessionId: string, signal?: AbortSignal): Promise<SessionAssignmentResponse> {
-  const data = await requestAssignmentApi<Partial<SessionAssignmentResponse>>(
+  const data = await request<Partial<SessionAssignmentResponse>>(
     `/api/sessions/${encodeURIComponent(sessionId)}/assignment`,
     { method: "GET", signal },
   )
@@ -91,7 +81,7 @@ export async function fetchSessionAssignment(sessionId: string, signal?: AbortSi
 }
 
 export async function saveSessionAssignment(sessionId: string, payload: SessionAssignmentInput): Promise<SessionAssignment> {
-  const data = await requestAssignmentApi<{ assignment: SessionAssignment }>(
+  const data = await request<{ assignment: SessionAssignment }>(
     `/api/sessions/${encodeURIComponent(sessionId)}/assignment`,
     { method: "PUT", body: JSON.stringify(payload) },
   )
@@ -99,7 +89,7 @@ export async function saveSessionAssignment(sessionId: string, payload: SessionA
 }
 
 export function clearSessionAssignment(sessionId: string): Promise<{ cleared: boolean; session_id: string }> {
-  return requestAssignmentApi<{ cleared: boolean; session_id: string }>(
+  return request<{ cleared: boolean; session_id: string }>(
     `/api/sessions/${encodeURIComponent(sessionId)}/assignment`,
     { method: "DELETE" },
   )
@@ -120,7 +110,7 @@ export async function fetchAssignmentQueue(
     params.set("page", String(Math.trunc(filters.page)))
   }
   const qs = params.toString()
-  const data = await requestAssignmentApi<Partial<AssignmentQueueResponse>>(
+  const data = await request<Partial<AssignmentQueueResponse>>(
     `/api/interviews/assignments${qs ? `?${qs}` : ""}`,
     { method: "GET", signal },
   )
@@ -146,7 +136,7 @@ export async function fetchAssignmentQueue(
 export async function bulkAssignSessions(
   payload: BulkSessionAssignmentInput,
 ): Promise<BulkSessionAssignmentResult> {
-  const data = await requestAssignmentApi<Partial<BulkSessionAssignmentResult>>(
+  const data = await request<Partial<BulkSessionAssignmentResult>>(
     "/api/interviews/assignments/bulk",
     { method: "POST", body: JSON.stringify(payload) },
   )

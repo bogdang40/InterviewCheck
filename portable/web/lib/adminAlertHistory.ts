@@ -1,4 +1,6 @@
-import { AdminApiError, adminRequest, extractApiError } from "./adminModels"
+import { AdminApiError, adminRequest } from "./adminModels"
+import { downloadResponse } from "./download"
+import { send } from "./http"
 
 export type AlertDeliveryStatusFilter = "" | "ok" | "failed"
 export type AlertDeliverySummary = {
@@ -55,13 +57,9 @@ function normDeliveryItem(raw: Record<string, unknown>): AlertDeliveryItem {
 
 export async function listAlertDeliveries(filters: AlertDeliveryFilters = {}, signal?: AbortSignal): Promise<AlertDeliveryPage> {
   const qs = buildAlertDeliveryParams(filters, true).toString()
-  const res = await fetch("/api/admin/alerts/deliveries" + (qs ? `?${qs}` : ""), {
-    method: "GET", credentials: "include", cache: "no-store", signal, headers: { "X-InterviewCheck": "1" },
-  })
-  const data = (await res.json().catch(() => null)) as {
-    summary?: Partial<AlertDeliverySummary>; items?: Record<string, unknown>[]; next_before_id?: unknown; error?: { code?: string }
-  } | null
-  if (!res.ok) throw new AdminApiError(res.status, extractApiError(data, res.status), data?.error?.code)
+  const data = await adminRequest<{
+    summary?: Partial<AlertDeliverySummary>; items?: Record<string, unknown>[]; next_before_id?: unknown
+  } | null>("/api/admin/alerts/deliveries" + (qs ? `?${qs}` : ""), { signal })
   const s = data?.summary
   return {
     summary: s ? {
@@ -84,31 +82,9 @@ export async function retryAlertDelivery(deliveryId: number): Promise<AlertDeliv
   }
 }
 
-function resolveExportName(header: string | null, format: "csv" | "json"): string {
-  const fallback = format === "csv" ? "alert-deliveries.csv" : "alert-deliveries.json"
-  const match = header ? /filename="?([^";]+)"?/i.exec(header) : null
-  return match?.[1]?.trim().replace(/[^a-zA-Z0-9._-]/g, "") || fallback
-}
-
 export async function exportAlertDeliveries(format: "csv" | "json", filters: AlertDeliveryFilters = {}): Promise<string> {
   const params = buildAlertDeliveryParams(filters, false)
   params.set("format", format)
-  const res = await fetch(`/api/admin/alerts/deliveries/export?${params.toString()}`, {
-    method: "GET", credentials: "include", cache: "no-store", headers: { "X-InterviewCheck": "1" },
-  })
-  if (!res.ok) {
-    const data = await res.json().catch(() => null)
-    const code = data && typeof data === "object" && "error" in data ? (data as { error?: { code?: string } }).error?.code : undefined
-    throw new AdminApiError(res.status, extractApiError(data, res.status), code)
-  }
-  const filename = resolveExportName(res.headers.get("Content-Disposition"), format)
-  const objectUrl = URL.createObjectURL(await res.blob())
-  try {
-    const anchor = document.createElement("a")
-    anchor.href = objectUrl; anchor.download = filename; anchor.style.display = "none"
-    document.body.appendChild(anchor); anchor.click(); anchor.remove()
-  } finally {
-    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
-  }
-  return filename
+  const res = await send(`/api/admin/alerts/deliveries/export?${params.toString()}`, { errorType: AdminApiError })
+  return downloadResponse(res, `alert-deliveries.${format}`)
 }

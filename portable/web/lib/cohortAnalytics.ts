@@ -1,5 +1,5 @@
-import { extractApiError } from "@/lib/adminModels"
-import { sanitizeDownloadFilename } from "@/lib/bulkArchive"
+import { downloadResponse } from "@/lib/download"
+import { request, send } from "@/lib/http"
 
 export type CohortLifecycle = "" | "active" | "finished" | "archived"
 export type CohortExportFormat = "csv" | "json"
@@ -50,23 +50,8 @@ export function buildCohortQuery(filters: CohortFilters, format?: CohortExportFo
   return qs ? `?${qs}` : ""
 }
 
-async function fetchCohortApi(path: string, signal?: AbortSignal): Promise<Response> {
-  const response = await fetch(`/api/${path}`, {
-    method: "GET",
-    credentials: "include",
-    cache: "no-store",
-    signal,
-    headers: { "X-InterviewCheck": "1" },
-  })
-  if (!response.ok) {
-    const data = await response.json().catch(() => null)
-    throw new Error(extractApiError(data, response.status))
-  }
-  return response
-}
-
 export async function fetchCohortRoles(signal?: AbortSignal): Promise<CohortRoleOption[]> {
-  const data = await (await fetchCohortApi("roles", signal)).json().catch(() => null)
+  const data = await request<unknown>("/api/roles", { signal })
   if (!Array.isArray(data)) return []
   return data
     .filter((item): item is CohortRoleOption => Boolean(item && typeof item.id === "string" && typeof item.name === "string"))
@@ -77,25 +62,10 @@ export async function fetchCohortAnalytics(
   filters: CohortFilters,
   signal?: AbortSignal,
 ): Promise<CohortAnalyticsResponse> {
-  return (await (await fetchCohortApi(`analytics/cohorts${buildCohortQuery(filters)}`, signal)).json()) as CohortAnalyticsResponse
+  return request<CohortAnalyticsResponse>(`/api/analytics/cohorts${buildCohortQuery(filters)}`, { signal })
 }
 
 export async function downloadCohortExport(filters: CohortFilters, format: CohortExportFormat): Promise<string> {
-  const response = await fetchCohortApi(`analytics/cohorts/export${buildCohortQuery(filters, format)}`)
-  const disposition = response.headers.get("Content-Disposition")
-  const filename = disposition ? sanitizeDownloadFilename(disposition, format) : `cohort-analytics.${format}`
-  const blob = await response.blob()
-  const objectUrl = URL.createObjectURL(blob)
-  try {
-    const anchor = document.createElement("a")
-    anchor.href = objectUrl
-    anchor.download = filename
-    anchor.style.display = "none"
-    document.body.appendChild(anchor)
-    anchor.click()
-    anchor.remove()
-  } finally {
-    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
-  }
-  return filename
+  const response = await send(`/api/analytics/cohorts/export${buildCohortQuery(filters, format)}`)
+  return downloadResponse(response, `cohort-analytics.${format}`)
 }

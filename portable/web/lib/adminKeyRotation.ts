@@ -1,4 +1,4 @@
-import { AdminApiError, extractApiError } from "./adminModels"
+import { adminRequest } from "./adminModels"
 
 export type KeySource = "env" | "file"
 
@@ -29,24 +29,6 @@ const asInt = (val: unknown): number =>
   typeof val === "number" && Number.isFinite(val) ? Math.max(0, Math.trunc(val)) : 0
 
 const asStr = (val: unknown): string => (typeof val === "string" ? val : "")
-
-async function keyRotationRequest<T>(url: string, method: "GET" | "POST"): Promise<T> {
-  const response = await fetch(url, {
-    method,
-    credentials: "include",
-    cache: "no-store",
-    headers: { "X-InterviewCheck": "1" },
-  })
-  const data = await response.json().catch(() => null)
-  if (!response.ok) {
-    const code =
-      data && typeof data === "object" && "error" in data
-        ? (data as { error?: { code?: string } }).error?.code
-        : undefined
-    throw new AdminApiError(response.status, extractApiError(data, response.status), code)
-  }
-  return data as T
-}
 
 function normalizeKeyStatus(raw: UnknownRecord): KeyStatusResponse {
   return {
@@ -79,11 +61,11 @@ function normalizeRotateResponse(raw: UnknownRecord): RotateKeysResponse {
 }
 
 export async function getModelKeyStatus(): Promise<KeyStatusResponse> {
-  const raw = await keyRotationRequest<UnknownRecord>("/api/admin/models/key-status", "GET")
+  const raw = await adminRequest<UnknownRecord>("/api/admin/models/key-status")
   return normalizeKeyStatus(asRecord(raw))
 }
 
 export async function rotateModelKeys(): Promise<RotateKeysResponse> {
-  const raw = await keyRotationRequest<UnknownRecord>("/api/admin/models/rotate-keys", "POST")
+  const raw = await adminRequest<UnknownRecord>("/api/admin/models/rotate-keys", { method: "POST" })
   return normalizeRotateResponse(asRecord(raw))
 }

@@ -1,5 +1,7 @@
 "use client"
 
+import { ApiError, request } from "./http"
+
 export type HandoffNoteCategory = "observation" | "follow_up" | "decision" | "concern"
 export type ScorecardItem = {
   criterion_id: string
@@ -32,13 +34,7 @@ export type ScorecardState = {
   handoff_notes: HandoffNote[]
 }
 
-export class ScorecardApiError extends Error {
-  status: number
-  constructor(status: number, message: string) {
-    super(message)
-    this.status = status
-  }
-}
+export class ScorecardApiError extends ApiError {}
 
 function extractError(data: unknown, status: number): string {
   if (data && typeof data === "object") {
@@ -53,15 +49,8 @@ function extractError(data: unknown, status: number): string {
   return `Request failed (HTTP ${status}).`
 }
 
-export async function requestJson<T>(url: string, options: RequestInit = {}): Promise<T> {
-  const headers = new Headers(options.headers)
-  headers.set("X-InterviewCheck", "1")
-  if (options.body !== undefined && !headers.has("Content-Type")) headers.set("Content-Type", "application/json")
-  const response = await fetch(url, { ...options, headers, cache: "no-store" })
-  if (response.status === 204) return undefined as T
-  const data = await response.json().catch(() => null)
-  if (!response.ok) throw new ScorecardApiError(response.status, extractError(data, response.status))
-  return data as T
+export function requestJson<T>(url: string, options: RequestInit = {}): Promise<T> {
+  return request<T>(url, { ...options, errorType: ScorecardApiError, describe: extractError })
 }
 
 export function computeWeightedScorePct(items: ReadonlyArray<{ weight: number; rating: number | null }>): number | null {

@@ -1,3 +1,5 @@
+import { ApiError, errorMessage, readJson, request, type HttpOptions } from "./http"
+
 export type ModelProvider =
   | "openai"
   | "anthropic"
@@ -159,51 +161,13 @@ export const KEY_REQUIRED_PROVIDERS: readonly ModelProvider[] = [
   "deepgram",
 ]
 
-export class AdminApiError extends Error {
-  status: number
-  code?: string
+/** Thrown by admin requests; components check it for 401 and 403 to send the operator back to sign in. */
+export class AdminApiError extends ApiError {}
 
-  constructor(status: number, message: string, code?: string) {
-    super(message)
-    this.status = status
-    this.code = code
-  }
-}
+export const extractApiError = errorMessage
 
-export function extractApiError(data: unknown, status: number): string {
-  if (data && typeof data === "object") {
-    const obj = data as { detail?: unknown; error?: { message?: unknown; code?: unknown } }
-    if (typeof obj.detail === "string" && obj.detail.trim()) return obj.detail
-    if (Array.isArray(obj.detail) && obj.detail.length > 0) {
-      const first = obj.detail[0] as { msg?: unknown; loc?: unknown }
-      if (typeof first?.msg === "string") {
-        const loc = Array.isArray(first.loc) ? first.loc.slice(1).join(".") : ""
-        return loc ? `${loc}: ${first.msg}` : first.msg
-      }
-    }
-    if (obj.error && typeof obj.error.message === "string" && obj.error.message.trim()) {
-      return obj.error.message
-    }
-  }
-  return `Request failed (HTTP ${status}).`
-}
-
-export async function adminRequest<T>(url: string, options: RequestInit = {}): Promise<T> {
-  const headers = new Headers(options.headers)
-  headers.set("X-InterviewCheck", "1")
-  if (options.body !== undefined && !headers.has("Content-Type")) {
-    headers.set("Content-Type", "application/json")
-  }
-  const response = await fetch(url, { ...options, headers, cache: "no-store" })
-  const data = await response.json().catch(() => null)
-  if (!response.ok) {
-    const code =
-      data && typeof data === "object" && "error" in data
-        ? (data as { error?: { code?: string } }).error?.code
-        : undefined
-    throw new AdminApiError(response.status, extractApiError(data, response.status), code)
-  }
-  return data as T
+export function adminRequest<T>(url: string, options: HttpOptions = {}): Promise<T> {
+  return request<T>(url, { ...options, errorType: AdminApiError })
 }
 
 export function listAdminModels(filters?: {
@@ -250,7 +214,7 @@ export async function probeAdminModel(id: string): Promise<ProbeResult> {
     headers: { "X-InterviewCheck": "1", "Content-Type": "application/json" },
     cache: "no-store",
   })
-  const data = (await response.json().catch(() => null)) as {
+  const data = (await readJson(response)) as {
     ok?: boolean
     model?: ConnectedModel
     detail?: string

@@ -1,5 +1,5 @@
 import type { RubricCriterion, CalibratedRole } from "./roleCalibration"
-import { RoleApiError, extractApiError } from "./roleCalibration"
+import { requestRoleApi } from "./roleCalibration"
 
 export type RubricTemplateCriterion = {
   id?: string
@@ -24,26 +24,8 @@ export type CloneRolePayload = {
   change_note?: string
 }
 
-async function roleTemplateRequest<T>(url: string, options: RequestInit = {}): Promise<T> {
-  const headers = new Headers(options.headers)
-  headers.set("X-InterviewCheck", "1")
-  if (options.body !== undefined && !headers.has("Content-Type")) {
-    headers.set("Content-Type", "application/json")
-  }
-  const response = await fetch(url, { ...options, credentials: "include", cache: "no-store", headers })
-  const data = await response.json().catch(() => null)
-  if (!response.ok) {
-    throw new RoleApiError(
-      response.status,
-      extractApiError(data, response.status),
-      response.headers.get("X-InterviewCheck-Conflict"),
-    )
-  }
-  return data as T
-}
-
 export async function fetchRubricTemplates(signal?: AbortSignal): Promise<RubricTemplate[]> {
-  const data = await roleTemplateRequest<{ templates?: RubricTemplate[] }>("/api/roles/rubric-templates", {
+  const data = await requestRoleApi<{ templates?: RubricTemplate[] }>("/api/roles/rubric-templates", {
     method: "GET",
     signal,
   })
@@ -51,7 +33,7 @@ export async function fetchRubricTemplates(signal?: AbortSignal): Promise<Rubric
 }
 
 export function cloneRole(roleId: string, payload: CloneRolePayload = {}): Promise<CalibratedRole> {
-  return roleTemplateRequest<CalibratedRole>(`/api/roles/${encodeURIComponent(roleId)}/clone`, {
+  return requestRoleApi<CalibratedRole>(`/api/roles/${encodeURIComponent(roleId)}/clone`, {
     method: "POST",
     body: JSON.stringify(payload),
   })
