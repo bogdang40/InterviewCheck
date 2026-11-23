@@ -5,7 +5,7 @@ import { ArchiveRestore, FileInput } from "lucide-react"
 import { api, message } from "@/lib/api"
 import { Button } from "./ui/button"
 
-type Preview = { id: string; name: string; question_count: number; duplicate: boolean; conflict?: boolean }
+type Preview = { id: string; name: string; question_count: number; rubric_count?: number; duplicate: boolean; conflict?: boolean }
 
 export function Migration({ onImported }: { onImported?: () => void } ) {
   const [preview, setPreview] = useState<Preview | null>(null)
@@ -65,6 +65,7 @@ export function Migration({ onImported }: { onImported?: () => void } ) {
         </label>
         {preview && <div className="notice"><strong>{preview.name}</strong>
           <p>{preview.question_count} planned {preview.question_count === 1 ? "question" : "questions"}.</p>
+          {preview.rubric_count !== undefined && <p>{preview.rubric_count} rubric {preview.rubric_count === 1 ? "criterion" : "criteria"}.</p>}
           {preview.conflict ? <p role="alert">A saved role with this ID has different content.</p> :
             preview.duplicate ? <p role="status">This role is already in the library.</p> :
             <Button type="button" size="sm" disabled={busy} onClick={importRole}><FileInput/>Import role</Button>}

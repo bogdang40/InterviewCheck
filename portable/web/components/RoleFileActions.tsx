@@ -43,7 +43,7 @@ export default function RoleFileActions({ id, disabled, onDuplicate, onEdit }: {
   return <details className="import">
     <summary>Role file and copy</summary>
     <div className="stack">
-      <p>Export the saved questions, description, policy and permitted materials for another portable workspace.</p>
+      <p>Export the saved questions, grading rubric, description, policy and permitted materials for another portable workspace.</p>
       <div><Button type="button" size="sm" variant="outline" disabled={busy || disabled}
         onClick={() => perform("export")}>Export role file</Button></div>
       <div><Button type="button" size="sm" variant="outline" disabled={busy || disabled}

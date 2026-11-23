@@ -202,7 +202,7 @@ async def import_exported_role(document: dict, request: Request):
 def save_imported_role(document: dict, actor_email: str):
     with store.connection(write=True) as db:
         try:
-            added, role = import_role(db, document)
+            added, role = import_role(db, document, created_by=actor_email)
         except ValueError as error:
             raise HTTPException(422, str(error)) from error
         if added:

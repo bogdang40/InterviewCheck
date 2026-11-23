@@ -65,9 +65,9 @@ def preview_role(target, document):
     return {"id": key, "name": title, "question_count": len(json.loads(questions)), "duplicate": bool(found)}
 
 
-def import_role(target, document):
+def import_role(target, document, *, created_by="local-operator"):
     if isinstance(document, dict) and document.get("format") == role_files.FORMAT:
-        return role_files.import_file(target, document)
+        return role_files.import_file(target, document, created_by=created_by)
     role = exported_profile(document)
     key = role.get("workspaceID")
     added = save_role(target, role, key)

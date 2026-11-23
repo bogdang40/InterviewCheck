@@ -50,7 +50,9 @@ A new session can select a saved role using its UUID in `role_id`. Its planned q
 
 ## Native migration
 
-In the role library, expand **Role file and copy** and choose **Export role file** to move one template between portable workspaces. Choose **Import a role file** in the destination library. A version 1 `interviewcheck.role-kit` file carries the UUID, name, description, ordered questions, policy and permitted materials, including all text entered in those fields. The file limit is 4 MiB. Import keeps the UUID, skips identical content and reports a conflict if the saved content differs. **Duplicate latest saved role** creates a separate editable template in the current library.
+In the role library, expand **Role file and copy** and choose **Export role file** to move one template between portable workspaces. Version 2 of `interviewcheck.role-kit` carries the role UUID, name, description, ordered questions, policy, permitted materials and ordered grading rubric. Each criterion includes its ID, weight, expected signals and red flags. The file includes the full text in these fields and has a 4 MiB limit.
+
+Choose **Import a role file** in the destination library. Preview shows the question count and, for version 2, the criterion count. Import keeps the UUID, skips identical templates and reports a conflict when a field recorded in the file differs. Version 1 files have no rubric field. They create new roles with an empty rubric and preserve the rubric on an otherwise identical saved role. **Duplicate latest saved role** creates an independent template with a new ID and its own initial revision.
 
 Quit the native app before copying its SQLite database, or use SQLite's backup command to create a consistent snapshot. If a database uses WAL, a copy of the database file alone can omit recent commits. Run the importer against the snapshot on Windows, Linux or macOS. The optional destination is a dedicated portable review database.
 
