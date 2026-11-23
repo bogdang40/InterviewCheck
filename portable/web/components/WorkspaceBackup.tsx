@@ -4,59 +4,50 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { ArchiveRestore, Download, FileCheck2 } from "lucide-react"
 import Link from "next/link"
 import { message } from "@/lib/api"
-import { extractApiError } from "@/lib/adminModels"
+import { canRestore, submitBackup, type BackupOperation, type BackupPreview } from "@/lib/backupRestore"
 import { Button } from "./ui/button"
 import { Input } from "./ui/input"
 import BackupInterviewPicker from "./BackupInterviewPicker"
 
-type Counts = { new: number; identical: number; conflict: number }
-type Preview = {
-  roles: Counts
-  sessions: Counts
-  answers: number
-  drafts: number
-  assignments: number
-  handoff_notes: number
-  scorecard_items: number
-  trashed: number
-  fingerprint: string
-  sha256?: string
-  conflicts: { kind: string; id: string; label: string }[]
+function joinList(items: string[]) {
+  return items.length > 1 ? items.slice(0, -1).join(", ") + " and " + items[items.length - 1] : items[0]
 }
 
-async function submitFile(
-  action: "preview" | "restore",
-  file: File,
-  token?: string,
-  expectedSha256?: string,
-): Promise<Preview> {
-  const headers: Record<string, string> = { "Content-Type": "application/json", "X-InterviewCheck": "1" }
-  if (token) headers["X-Backup-Preview"] = token
-  const checksum = expectedSha256?.trim()
-  if (checksum) headers["X-Backup-SHA256"] = checksum
-  const response = await fetch("/api/backups/" + action, {
-    method: "POST",
-    headers,
-    body: file,
-    cache: "no-store",
-  })
-  const result = await response.json().catch(() => ({}))
-  if (!response.ok) throw new Error(extractApiError(result, response.status))
-  const headerDigest = response.headers.get("X-Backup-SHA256")?.trim()
-  return { ...(result as Preview), sha256: headerDigest || (result as Preview).fingerprint }
+function FileContents({ preview }: { preview: BackupPreview }) {
+  const fields: [number | undefined, string, string][] = [
+    [preview.answers, "captured exchange", "captured exchanges"], [preview.drafts, "saved draft", "saved drafts"],
+    [preview.assignments, "review assignment", "review assignments"], [preview.handoff_notes, "panel handoff note", "panel handoff notes"],
+    [preview.scorecard_items, "rubric score", "rubric scores"],
+  ]
+  const known = fields.flatMap(([n, one, many]) => n === undefined ? [] : [`${n} ${n === 1 ? one : many}`])
+  const missing = fields.filter(([n]) => n === undefined).map(([, , many]) => many)
+  return <p>
+    This file contains {joinList(known)}.{" "}
+    {preview.trashed} {preview.trashed === 1 ? "interview" : "interviews"} will remain in Trash.
+    {missing.length > 0 && <> Counts for {joinList(missing)} were not reported.</>}
+  </p>
+}
+
+function conflictLabel(label: string, kind: "roles" | "sessions") {
+  if (!label) return kind === "roles" ? "Unnamed role" : "Unnamed interview"
+  return label.length <= 180 ? label : label.slice(0, 179).replace(/[\uD800-\uDBFF]$/, "") + "…"
 }
 
 export default function WorkspaceBackup() {
   const [listRevision, setListRevision] = useState(0)
   const fileInput = useRef<HTMLInputElement>(null)
+  const active = useRef<AbortController | null>(null)
   const [hydrated, setHydrated] = useState(false)
   const [file, setFile] = useState<File>()
   const [expectedSha256, setExpectedSha256] = useState("")
-  const [preview, setPreview] = useState<Preview>()
+  const [preview, setPreview] = useState<BackupPreview>()
   const [busy, setBusy] = useState<"preview" | "restore" | null>(null)
   const [error, setError] = useState("")
   const [success, setSuccess] = useState("")
   const selectFile = useCallback((f?: File) => {
+    active.current?.abort()
+    active.current = null
+    setBusy(null)
     setPreview(undefined)
     setError("")
     setSuccess("")
@@ -71,15 +62,21 @@ export default function WorkspaceBackup() {
     setHydrated(true)
     const preselected = fileInput.current?.files?.[0]
     if (preselected) selectFile(preselected)
+    return () => { active.current?.abort(); active.current = null }
   }, [selectFile])
-  const applyAllowed = preview && !preview.conflicts.length && preview.roles.new + preview.sessions.new > 0
+  const applyAllowed = !!preview && canRestore(preview)
   async function submit(action: "preview" | "restore") {
-    if (busy || !file || (action === "restore" && !applyAllowed)) return
+    const operation: BackupOperation | null = action === "preview" ? { action } :
+      preview && applyAllowed ? { action, preview } : null
+    if (active.current || !file || !operation) return
+    const controller = new AbortController()
+    active.current = controller
     setBusy(action)
     setError("")
     setSuccess("")
     try {
-      const result = await submitFile(action, file, preview?.fingerprint, expectedSha256)
+      const result = await submitBackup(file, expectedSha256, operation, controller.signal)
+      if (active.current !== controller) return
       if (action === "preview") setPreview(result)
       else {
         setSuccess(
@@ -92,10 +89,11 @@ export default function WorkspaceBackup() {
         setListRevision(n => n + 1)
       }
     } catch (e) {
+      if (active.current !== controller) return
       setError(message(e))
       setPreview(undefined)
     } finally {
-      setBusy(null)
+      if (active.current === controller) { active.current = null; setBusy(null) }
     }
   }
   return (
@@ -152,7 +150,9 @@ export default function WorkspaceBackup() {
             spellCheck={false}
             autoComplete="off"
             onChange={(e) => {
-              setExpectedSha256(e.target.value)
+              const next = e.target.value
+              if (next.trim().toLowerCase() !== expectedSha256.trim().toLowerCase()) setPreview(undefined)
+              setExpectedSha256(next)
               setError("")
             }}
           />
@@ -177,7 +177,7 @@ export default function WorkspaceBackup() {
             <div className="field">
               <span>Backup SHA-256 fingerprint</span>
               <code className="code-block" data-testid="backup-sha256">
-                {preview.sha256 || preview.fingerprint}
+                {preview.fingerprint}
               </code>
             </div>
             <div className="table-wrap admin-table-wrap">
@@ -203,21 +203,17 @@ export default function WorkspaceBackup() {
                 </tbody>
               </table>
             </div>
-            <p>
-              This file contains {preview.answers} captured {preview.answers === 1 ? "exchange" : "exchanges"},{" "}
-              {preview.drafts} saved {preview.drafts === 1 ? "draft" : "drafts"},{" "}
-              {preview.assignments} review {preview.assignments === 1 ? "assignment" : "assignments"},{" "}
-              {preview.handoff_notes} panel handoff {preview.handoff_notes === 1 ? "note" : "notes"} and{" "}
-              {preview.scorecard_items} rubric {preview.scorecard_items === 1 ? "score" : "scores"}.{" "}
-              {preview.trashed} interviews will remain in Trash.
-            </p>
+            <FileContents preview={preview} />
             {!!preview.conflicts.length && (
               <div className="error" role="alert">
                 Restore blocked by conflicting records.
+                {preview.roles.conflict + preview.sessions.conflict > preview.conflicts.length && <p>
+                  Showing {preview.conflicts.length} of {preview.roles.conflict + preview.sessions.conflict} conflicting records.
+                </p>}
                 <ul>
                   {preview.conflicts.map((c) => (
-                    <li key={c.kind + c.id}>
-                      {c.label} · {c.id.slice(0, 8)}
+                    <li key={c.kind + c.id} className="[overflow-wrap:anywhere]">
+                      {conflictLabel(c.label, c.kind)} · {c.id}
                     </li>
                   ))}
                 </ul>
@@ -228,7 +224,8 @@ export default function WorkspaceBackup() {
                 {busy === "restore" ? "Restoring…" : "Restore new records"}
               </Button>
             ) : (
-              !preview.conflicts.length && <p role="status">All records are already present.</p>
+              !preview.conflicts.length && <p role="status">{preview.roles.identical + preview.sessions.identical > 0
+                ? "All records are already present." : "This backup contains no interviews or roles."}</p>
             )}
           </div>
         )}
