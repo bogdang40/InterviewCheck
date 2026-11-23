@@ -12,8 +12,10 @@ import { Button } from "./ui/button"
 import { Input } from "./ui/input"
 import styles from "./SessionScorecardPanel.module.css"
 
+export type ScorePreview = { pct: number | null; unsaved: boolean }
+
 export default function ScorecardEditor({ sessionId, initial, onDirty, onScore }: {
-  sessionId: string; initial: ScorecardState; onDirty: DirtyReporter; onScore: (score: number | null) => void
+  sessionId: string; initial: ScorecardState; onDirty: DirtyReporter; onScore: (score: ScorePreview) => void
 }) {
   const prefix = useId()
   const [baseline, setBaseline] = useState<Pick<ScorecardState, "items" | "version">>(initial)
@@ -34,8 +36,10 @@ export default function ScorecardEditor({ sessionId, initial, onDirty, onScore }
   const added = new Set(rows.filter((row) => !existing.has(row.criterion_id)).map((row) => row.criterion_id))
   const incomplete = retained.filter((r) => r.rating === null && (added.has(r.criterion_id) || r.rationale !== ""))
   const pendingName = name !== "" || weight !== "1"
-  useReportDirty(busy || pendingName || conflicts.length > 0 || removals.size > 0 || !sameScores(rows, baseline.items), onDirty)
-  useEffect(() => { onScore(computeWeightedScorePct(retained)) }, [retained, onScore])
+  const unsaved = pendingName || conflicts.length > 0 || removals.size > 0 || !sameScores(rows, baseline.items)
+  const pct = computeWeightedScorePct(retained)
+  useReportDirty(busy || unsaved, onDirty)
+  useEffect(() => { onScore({ pct, unsaved }) }, [pct, unsaved, onScore])
   useEffect(() => {
     if (!busy && focusId) { document.getElementById(focusId)?.focus(); setFocusId("") }
   }, [busy, focusId])

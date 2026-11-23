@@ -18,7 +18,7 @@ const review: CountField[] = [
 ]
 const groups = [{ label: "Evidence", fields: evidence }, { label: "Review outcome", fields: review }]
 
-export default function ComparisonCandidateCard({ session }: { session: CompareSessionSummary }) {
+export default function ComparisonCandidateCard({ session, showPolicy }: { session: CompareSessionSummary; showPolicy: boolean }) {
   const { counts } = session
   const nonzero = groups.flatMap(group => group.fields
     .filter(([key]) => counts[key] > 0)
@@ -38,7 +38,11 @@ export default function ComparisonCandidateCard({ session }: { session: CompareS
       {dateLabel(session.created_at)} · {session.consent ? "Consent recorded" : "No consent"} ·{" "}
       {session.answer_count} {session.answer_count === 1 ? "answer" : "answers"}
     </p>
-    {session.policy && <p className={styles.policyText}>Policy: {session.policy}</p>}
+    {showPolicy && <div>
+      <strong className={styles.cardMeta}>Assistance policy</strong>
+      {session.policy?.trim() ? <p className={styles.policyText}>{session.policy}</p>
+        : <p className={styles.cardMeta}>No policy recorded.</p>}
+    </div>}
     {nonzero.length > 0 && <p className={styles.countSummary}>{nonzero.join(" · ")}</p>}
     <details className={styles.allCounts}>
       <summary aria-label={`All counts for ${session.candidate || "unnamed candidate"}`}>All counts</summary>

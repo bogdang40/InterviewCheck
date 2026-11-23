@@ -38,14 +38,14 @@ def test_removal_is_reversible_and_last_grade_can_be_cleared(workspace_url, brow
         remove.click()
         undo = panel.get_by_role("button", name="Undo removal of Earlier wording")
         expect(undo).to_be_focused()
-        expect(page.get_by_test_id("scorecard-weighted-badge")).to_have_text("Score: 100.0%")
+        expect(page.get_by_test_id("scorecard-weighted-badge")).to_have_text("Score: 100.0% · Unsaved")
         undo.press("Enter")
         expect(remove).to_be_focused()
         expect(rationale).to_have_value("Locally edited rationale\nwith evidence")
         expect(panel.get_by_role("button", name="Rate Earlier wording 4 of 5")).to_have_attribute("aria-pressed", "true")
         remove.click()
         panel.get_by_role("button", name="Remove saved rating for Custom criterion").click()
-        expect(page.get_by_test_id("scorecard-weighted-badge")).to_have_text("Score: Ungraded")
+        expect(page.get_by_test_id("scorecard-weighted-badge")).to_have_text("Score: Ungraded · Unsaved")
         assert [r["rationale"] for r in client.get(path).json()["items"]] == ["Saved rationale", "Custom rationale"]
         with page.expect_response(lambda r: r.request.method == "PUT" and urlsplit(r.url).path == path) as complete:
             panel.get_by_role("button", name="Save scorecard", exact=True).click()
@@ -133,7 +133,7 @@ def test_removing_last_visible_score_keeps_a_concurrent_new_rating(workspace_url
         expect(panel.get_by_text("Saved scores refreshed. Review the combined scorecard before saving.")).to_be_visible()
         expect(panel.get_by_role("button", name="Undo removal of Design")).to_be_visible()
         expect(panel.get_by_role("button", name="Keep removal")).to_have_count(0)
-        expect(page.get_by_test_id("scorecard-weighted-badge")).to_have_text("Score: 80.0%")
+        expect(page.get_by_test_id("scorecard-weighted-badge")).to_have_text("Score: 80.0% · Unsaved")
         assert client.get(path).json()["version"] == latest["version"]
         save.click()
         expect(panel.get_by_text("Scorecard saved.", exact=True)).to_be_visible()
@@ -172,7 +172,71 @@ def test_undo_after_keep_removal_cannot_reintroduce_stale_rationale(workspace_ur
         expected = (4, "My pending edit.") if choice == "Keep my draft" else (5, "Second reviewer.")
         expect(reason).to_have_value(expected[1])
         expect(panel.get_by_role("button", name=f"Rate Design {expected[0]} of 5")).to_have_attribute("aria-pressed", "true")
+        badge = page.get_by_test_id("scorecard-weighted-badge")
+        expect(badge).to_have_text("Score: 80.0% · Unsaved" if choice == "Keep my draft" else "Score: 100.0%")
         save.click()
         expect(panel.get_by_text("Scorecard saved.", exact=True)).to_be_visible()
+        expect(badge).to_have_text(f"Score: {expected[0] * 20:.1f}%")
         row, = client.get(path).json()["items"]
         assert (row["rating"], row["rationale"]) == expected
+
+
+def test_phone_score_badge_tracks_edits_independently_of_notes_and_busy_state(workspace_url, browser_page, tmp_path):
+    page = browser_page
+    with httpx.Client(base_url=workspace_url, headers={"X-InterviewCheck": "1"}) as client:
+        sid, path = new_session(client)
+        save_remote(client, path, [grade("system", "Design", 2, 4, "Saved rationale.")])
+    page.add_init_script("""
+      const original = window.fetch.bind(window);
+      window.fetch = async (input, init) => {
+        const url = new URL(input instanceof Request ? input.url : input, location.href);
+        if (init?.method !== "PUT" || !url.pathname.endsWith("/scorecard")) return original(input, init);
+        if (window.rejectNextScore) {
+          window.rejectNextScore = false;
+          return new Response(JSON.stringify({detail:"Score fixture unavailable."}), {status:503});
+        }
+        const response = await original(input, init);
+        if (window.holdNextScore) {
+          window.holdNextScore = false;
+          await response.clone().text();
+          await new Promise(resolve => {
+            document.documentElement.dataset.scoreHeld = "true";
+            document.addEventListener("release-score", resolve, { once:true });
+          });
+        }
+        return response;
+      };
+    """)
+    page.set_viewport_size({"width": 320, "height": 800})
+    page.goto(f"{workspace_url}/interviews/review/?id={sid}")
+    panel = page.get_by_role("region", name="Session scorecard panel")
+    badge = panel.get_by_test_id("scorecard-weighted-badge")
+    save = panel.get_by_role("button", name="Save scorecard", exact=True)
+    reason = panel.get_by_label("Rationale for Design")
+    expect(badge).to_have_text("Score: 80.0%")
+    panel.get_by_role("textbox", name="Handoff note").fill("Keep this note as a draft.")
+    page.evaluate("window.holdNextScore = true")
+    save.click()
+    expect(page.locator("html")).to_have_attribute("data-score-held", "true")
+    expect(badge).to_have_text("Score: 80.0%")
+    page.evaluate("document.dispatchEvent(new Event('release-score'))")
+    expect(panel.get_by_text("Scorecard saved.", exact=True)).to_be_visible()
+
+    reason.fill("Local rationale only.")
+    expect(badge).to_have_text("Score: 80.0% · Unsaved")
+    panel.get_by_role("button", name="Collapse").click()
+    expect(badge).to_have_text("Score: 80.0% · Unsaved")
+    assert panel.evaluate("(el) => el.scrollWidth <= el.clientWidth")
+    panel.screenshot(path=tmp_path / "unsaved-score-phone.png")
+    panel.get_by_role("button", name="Expand").click()
+    page.evaluate("window.rejectNextScore = true")
+    save.click()
+    expect(panel.get_by_role("alert")).to_contain_text("Score fixture unavailable.")
+    expect(badge).to_have_text("Score: 80.0% · Unsaved")
+    reason.fill("Saved rationale.")
+    expect(badge).to_have_text("Score: 80.0%")
+    panel.get_by_role("button", name="Remove saved rating for Design").click()
+    expect(badge).to_have_text("Score: Ungraded · Unsaved")
+    panel.get_by_role("button", name="Undo removal of Design").click()
+    expect(badge).to_have_text("Score: 80.0%")
+    expect(panel.get_by_role("textbox", name="Handoff note")).to_have_value("Keep this note as a draft.")

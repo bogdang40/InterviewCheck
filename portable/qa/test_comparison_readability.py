@@ -5,6 +5,47 @@ import httpx
 from playwright.sync_api import expect
 
 
+def test_policy_shared_only_for_exact_nonblank_interview_text(workspace_url, browser_page, tmp_path):
+    from api import store
+
+    page = browser_page
+    shared = "Use the paper manual.\nRecord  each command."
+    with httpx.Client(base_url=workspace_url, headers={"X-InterviewCheck": "1"}) as client:
+        ids = [client.post("/api/sessions", json={
+            "candidate": f"Policy candidate {n}", "role": "Engineer", "policy": shared, "consent": True,
+        }).raise_for_status().json()["id"] for n in range(6)]
+    page.set_viewport_size({"width": 320, "height": 800})
+    compare = workspace_url + "/interviews/compare/?ids="
+    page.goto(compare + ",".join(ids))
+    block = page.get_by_role("region", name="Shared assistance policy")
+    expect(block).to_be_visible()
+    assert block.locator("p").text_content() == shared
+    expect(block.locator("p")).to_have_css("white-space", "pre-wrap")
+    cards = page.get_by_role("region", name="Candidates (6)").get_by_role("article")
+    expect(cards).to_have_count(6)
+    assert all(shared not in text for text in cards.all_text_contents())
+    assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+    block.screenshot(path=tmp_path / "shared-policy-phone.png")
+
+    # Historical snapshots can contain missing text, surrounding spaces and exact line breaks.
+    policies = [shared, shared.lower(), shared.replace("  ", " "), " " + shared + " ", "", "   "]
+    with store.connection(write=True) as db:
+        db.executemany("UPDATE sessions SET policy=? WHERE id=?", zip(policies, ids))
+    for left, right in ((0, 1), (0, 2), (0, 3), (0, 4), (5, 4)):
+        page.goto(compare + ids[left] + "," + ids[right])
+        group = page.get_by_role("region", name="Candidates (2)")
+        expect(group).to_be_visible()
+        expect(block).to_have_count(0)
+        for n in (left, right):
+            card = group.get_by_role("article", name=f"Policy candidate {n}")
+            expect(card.get_by_text("Assistance policy", exact=True)).to_be_visible()
+            if policies[n].strip():
+                assert policies[n] in card.locator("p").all_text_contents()
+            else:
+                expect(card.get_by_text("No policy recorded.", exact=True)).to_be_visible()
+                assert not any(text and not text.strip() for text in card.locator("p").all_text_contents())
+
+
 def test_compact_counts_and_keyboard_jumps_keep_question_context(workspace_url, browser_page, tmp_path):
     page = browser_page
     planned = "What protects the last confirmed write?"

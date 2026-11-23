@@ -88,7 +88,7 @@ def test_m19_scorecard_grading_handoff_notes_and_security_gates(e2e_workspace, d
     sys_rationale.fill("jkneuf Clear isolation and failover plan")
     page.get_by_role("button", name="Rate Communication 2 of 5").click()
     page.get_by_label("Rationale for Communication").fill("Brief tradeoffs")
-    expect(badge).to_have_text("Score: 70.0%")
+    expect(badge).to_have_text("Score: 70.0% · Unsaved")
 
     # Add an ad-hoc criterion and verify weighted recalculation: (4*3 + 2*1 + 5*2) / (6*5) = 80.0%.
     page.get_by_label("Add criterion").fill("Debugging depth")
@@ -96,7 +96,7 @@ def test_m19_scorecard_grading_handoff_notes_and_security_gates(e2e_workspace, d
     page.get_by_role("button", name="Add criterion").click()
     page.get_by_role("button", name="Rate Debugging depth 5 of 5").click()
     page.get_by_label("Rationale for Debugging depth").fill("Methodical root cause analysis")
-    expect(badge).to_have_text("Score: 80.0%")
+    expect(badge).to_have_text("Score: 80.0% · Unsaved")
 
     page.get_by_role("button", name="Save scorecard").click()
     expect(panel.get_by_text("Scorecard saved.", exact=True)).to_be_visible()

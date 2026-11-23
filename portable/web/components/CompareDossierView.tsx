@@ -96,6 +96,10 @@ function CandidateComparison({ parsed }: { parsed: ReturnType<typeof parseCompar
   }, [requestKey, comparison])
 
   const data = result?.key === requestKey ? result.data : null
+  const firstPolicy = data?.sessions[0]?.policy
+  const sharedPolicy = data && data.sessions.length >= 2 && data.sessions.length <= 6 &&
+    typeof firstPolicy === "string" && firstPolicy.trim() && data.sessions.every(session => session.policy === firstPolicy)
+    ? firstPolicy : null
   const loading = Boolean(requestKey) && !data && !error
   const printUrl = buildComparePrintUrl(selectedIds, { includeExcerpts, includeNotes, includeScorecards, includeRationales })
 
@@ -194,8 +198,11 @@ function CandidateComparison({ parsed }: { parsed: ReturnType<typeof parseCompar
         <>
           <section className={styles.section} aria-labelledby="compare-cards-heading">
             <h2 id="compare-cards-heading" tabIndex={-1}>Candidates ({data.sessions.length})</h2>
+            {sharedPolicy !== null && <section className={styles.sharedPolicy} aria-label="Shared assistance policy">
+              <h3>Shared assistance policy</h3><p className={styles.policyText}>{sharedPolicy}</p>
+            </section>}
             <div className={styles.cardsGrid}>
-              {data.sessions.map(session => <ComparisonCandidateCard key={session.id} session={session} />)}
+              {data.sessions.map(session => <ComparisonCandidateCard key={session.id} session={session} showPolicy={sharedPolicy === null} />)}
             </div>
           </section>
 
