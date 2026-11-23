@@ -263,7 +263,7 @@ def test_m22_compare_empty_retry_dossier_and_data_cohort_export(e2e_workspace, e
         assert feed_gate["hits"] >= 1
         _assert_expected_errors(collector, 500, page=page, gate=feed_gate, exact_one=False)
         alert.get_by_role("button", name="Retry", exact=True).click()
-        expect(page.get_by_text("Only 1 active interview found.")).to_be_visible()
+        expect(page.get_by_text("Only 1 interview found.")).to_be_visible()
         expect(page.get_by_role("link", name="New interview", exact=True)).to_have_attribute("href", "/interviews/new/")
 
         with e2e_workspace.client() as client:

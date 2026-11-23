@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react"
 import { dateLabel, message } from "@/lib/api"
 import type { FeedPage } from "@/lib/bulkArchive"
 import { request } from "@/lib/http"
+import { useDeferredFocus } from "@/lib/useDeferredFocus"
 import { candidateName, lifecycle, lifecycleText } from "@/lib/interview-list"
 import WorkspaceError from "./WorkspaceError"
 import { Badge } from "./ui/badge"
@@ -35,7 +36,7 @@ export default function ComparisonPicker({ open, committed, known, apply, cancel
   const [reply, setReply] = useState<Reply | null>(null)
   const searchInput = useRef<HTMLInputElement>(null)
   const pageStatus = useRef<HTMLParagraphElement>(null)
-  const moveFocus = useRef(false)
+  const { requestFocus, completeFocus, cancelFocus } = useDeferredFocus<"status">()
   const removeButtons = useRef(new Map<string, HTMLButtonElement>())
   const trimmed = search.trim()
   const key = open && trimmed === query ? JSON.stringify([query, page, attempt]) : ""
@@ -77,16 +78,17 @@ export default function ComparisonPicker({ open, committed, known, apply, cancel
   }, [known, data])
 
   useEffect(() => {
-    if (current && moveFocus.current) { moveFocus.current = false; pageStatus.current?.focus() }
-  }, [current])
+    if (!open) cancelFocus()
+    else if (current) completeFocus(() => pageStatus.current)
+  }, [current, open, cancelFocus, completeFocus])
 
   function filter(value: string) {
-    moveFocus.current = false
+    cancelFocus()
     setSearch(value); setPage(1)
   }
 
   function navigate(next: number) {
-    moveFocus.current = true
+    requestFocus("status")
     setPage(next); setAttempt((n) => n + 1)
   }
 
@@ -110,7 +112,7 @@ export default function ComparisonPicker({ open, committed, known, apply, cancel
   return <section className={`panel ${styles.pickerPanel}`} aria-labelledby="compare-picker-heading">
     <div className={styles.pickerControls}>
       <div><h2 id="compare-picker-heading">Select interviews</h2>
-        <p className="muted">Choose 2 to 6 active interviews ({selection.length} of 6 selected).</p></div>
+        <p className="muted">Choose 2 to 6 interviews ({selection.length} of 6 selected). The list includes ongoing, finished and imported interviews outside Trash.</p></div>
       <div className={styles.headerActions}>
         {cancel && <Button type="button" variant="ghost" size="sm" onClick={() => {
           setSelection(committed.map((id) => ({ id: id.toLowerCase() }))); filter(""); cancel()
@@ -129,18 +131,18 @@ export default function ComparisonPicker({ open, committed, known, apply, cancel
           onClick={() => remove(index)}>Remove</Button>
       </li>)}
     </ol>}
-    <label className={`field ${styles.pickerSearch}`}>Filter active archive
+    <label className={`field ${styles.pickerSearch}`}>Filter interviews
       <Input ref={searchInput} type="search" maxLength={120} placeholder="Search by candidate or role"
         value={search} onChange={(e) => filter(e.target.value)} />
     </label>
     {current?.error && <WorkspaceError text={current.error} retry={() => navigate(activePage)} />}
     <p className="muted" role="status" tabIndex={-1} ref={pageStatus}>
       {data ? data.filtered ? `${(data.page - 1) * data.page_size + 1} to ${(data.page - 1) * data.page_size + data.items.length} of ${data.filtered} interviews`
-        : query ? "No active interviews match your filter." : "No active interviews yet. Create at least 2 interviews to compare candidates."
+        : query ? "No interviews match your filter." : "No saved interviews. Create at least 2 interviews to compare candidates."
         : current?.error ? "This results page could not be loaded." : "Loading interviews…"}
     </p>
     {data && !query && data.total < 2 && <div className="notice row">
-      {data.total === 1 && <span>Only 1 active interview found. Create another interview to compare 2 or more candidates.</span>}
+      {data.total === 1 && <span>Only 1 interview found. Create another interview to compare candidates.</span>}
       <Button asChild size="sm"><Link href="/interviews/new/">New interview</Link></Button>
     </div>}
     {data && query && data.filtered === 0 && <div className="notice row">

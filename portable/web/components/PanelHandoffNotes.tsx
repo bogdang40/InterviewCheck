@@ -2,6 +2,7 @@ import { type FormEvent, useEffect, useId, useRef, useState } from "react"
 import { MessageSquarePlus, Trash2 } from "lucide-react"
 import { message } from "@/lib/api"
 import { useReportDirty, type DirtyReporter } from "@/lib/dirtyTracking"
+import { useDeferredFocus } from "@/lib/useDeferredFocus"
 import {
   createHandoffNote, deleteHandoffNote, fetchHandoffPage, fetchSessionScorecard, HANDOFF_PAGE_SIZE,
   ScorecardApiError, type HandoffNote, type HandoffNoteCategory, type HandoffPage, type ScorecardState,
@@ -17,7 +18,7 @@ function NoteTime({ value }: { value: string }) {
   return Number.isFinite(stamp) ? <time dateTime={value}>{noteTime.format(stamp)}</time> : <span>Time unavailable</span>
 }
 const options = Object.entries(categories).map(([key, label]) => <option key={key} value={key}>{label}</option>)
-type View = { category: HandoffNoteCategory | ""; cursors: string[]; afterDelete?: boolean }
+type View = { category: HandoffNoteCategory | ""; cursors: string[]; afterDelete?: "nearest" | "newest" }
 type Reply = { view: View; data?: HandoffPage; error?: string }
 
 function legacyPage(notes: HandoffNote[], view: View): HandoffPage {
@@ -55,9 +56,10 @@ export default function PanelHandoffNotes({ sessionId, initial, visible, onDirty
   const [withholdDraft, setWithholdDraft] = useState(false)
   const [status, setStatus] = useState("")
   const statusRef = useRef<HTMLParagraphElement>(null)
+  const writeAlert = useRef<HTMLParagraphElement>(null)
   const retry = useRef<HTMLButtonElement>(null)
   const composer = useRef<HTMLTextAreaElement>(null)
-  const focus = useRef<string | null>(null)
+  const { requestFocus, completeFocus, cancelFocus } = useDeferredFocus<string>()
   const prefix = useId()
   const current = !denied && reply?.view === view ? reply : null
   const data = current?.data
@@ -81,7 +83,9 @@ export default function PanelHandoffNotes({ sessionId, initial, visible, onDirty
       if (controller.signal.aborted) return
       if (page.next_cursor && view.cursors.includes(page.next_cursor)) throw new Error("The server returned a repeated handoff note page.")
       if (view.afterDelete && !page.items.length && view.cursors.length > 1) {
-        setView({ category: view.category, cursors: page.total ? view.cursors.slice(0, -1) : [""] })
+        // Try the nearest newer page once. If that page also vanished, return to the newest notes.
+        const cursors = page.total && view.afterDelete === "nearest" ? view.cursors.slice(0, -1) : [""]
+        setView({ category: view.category, cursors, afterDelete: "newest" })
       } else {
         setWithholdDraft(false)
         setReply({ view, data: page })
@@ -97,28 +101,29 @@ export default function PanelHandoffNotes({ sessionId, initial, visible, onDirty
   }, [sessionId, visible, view, denied])
 
   useEffect(() => {
-    if (!visible || !focus.current) return
-    if (readError) { retry.current?.focus(); focus.current = null; return }
-    if (!data) return
-    const next = focus.current === "composer" ? composer.current : document.getElementById(prefix + focus.current)
-    const target = next ?? statusRef.current
-    target?.focus()
-    focus.current = null
-  }, [data, prefix, visible, readError])
+    if (!visible) cancelFocus()
+    else if (busy) return
+    else if (readError) completeFocus(() => retry.current)
+    else if (writeError) completeFocus(() => writeAlert.current)
+    else if (data) completeFocus(target => target === "composer" ? composer.current :
+      document.getElementById(prefix + target) ?? statusRef.current)
+  }, [data, prefix, visible, busy, readError, writeError, cancelFocus, completeFocus])
 
   function navigate(next: View) {
-    focus.current = "status"
+    requestFocus("status")
     setView(next)
+    setWriteError("")
     setStatus("")
   }
   function failed(err: unknown) {
     const blocked = accessError(err)
-    if (blocked) { cached.current = null; focus.current = "status"; setWithholdDraft(true); setDenied(blocked) }
+    if (blocked) { cached.current = null; setWithholdDraft(true); setDenied(blocked) }
     else setWriteError(message(err))
   }
   async function add(event: FormEvent) {
     event.preventDefault()
     if (!data || busy || !body.trim()) return
+    requestFocus("composer")
     setBusy(true); setWriteError(""); setStatus("")
     try {
       const added = await createHandoffNote(sessionId, category, body.trim())
@@ -126,25 +131,23 @@ export default function PanelHandoffNotes({ sessionId, initial, visible, onDirty
       const switched = Boolean(view.category && view.category !== category)
       setBody("")
       setStatus(switched ? `Handoff note added. Showing ${categories[category].toLowerCase()} notes.` : "Handoff note added.")
-      focus.current = "composer"
       setView({ category: switched ? category : view.category, cursors: [""] })
     } catch (err) { failed(err) } finally { setBusy(false) }
   }
   async function remove(note: HandoffNote, index: number) {
     if (!data || busy) return
+    requestFocus(data.items[index + 1]?.id ?? data.items[index - 1]?.id ?? "status")
     setBusy(true); setWriteError(""); setStatus("")
     try {
       await deleteHandoffNote(sessionId, note.id)
       if (cached.current) cached.current = cached.current.filter(entry => entry.id !== note.id)
-      focus.current = data.items[index + 1]?.id ?? data.items[index - 1]?.id ?? "status"
       setStatus("Handoff note removed.")
-      setView({ ...view, afterDelete: true })
+      setView({ ...view, afterDelete: "nearest" })
     } catch (err) {
       if (err instanceof ScorecardApiError && err.status === 404) {
         cached.current = null
-        setWriteError("The selected handoff note is unavailable.")
-        focus.current = "status"
-        setView({ ...view, afterDelete: true })
+        setStatus("The selected handoff note is unavailable.")
+        setView({ ...view, afterDelete: "nearest" })
       } else failed(err)
     } finally { setBusy(false) }
   }
@@ -198,7 +201,7 @@ export default function PanelHandoffNotes({ sessionId, initial, visible, onDirty
       <Button type="button" variant="outline" size="sm" disabled={busy || !data?.next_cursor}
         onClick={() => { if (data?.next_cursor) navigate({ category: view.category, cursors: [...view.cursors, data.next_cursor] }) }}>Older notes</Button>
     </nav>}
-    {writeError && <p className="error" role="alert">{writeError}</p>}
+    {writeError && <p ref={writeAlert} tabIndex={-1} className="error" role="alert" aria-label="Handoff note change failed">{writeError}</p>}
     {status && <p className="notice" role="status">{status}</p>}
   </section>
 }

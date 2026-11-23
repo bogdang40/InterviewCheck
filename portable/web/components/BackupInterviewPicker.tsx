@@ -3,6 +3,7 @@ import { Download } from "lucide-react"
 import { api, message } from "@/lib/api"
 import type { FeedPage } from "@/lib/bulkArchive"
 import { cursorPageStatus, searchIdentity, SEARCH_PAGE_SIZE, useWorkspaceSearch } from "@/lib/search"
+import { useDeferredFocus } from "@/lib/useDeferredFocus"
 import { Button } from "./ui/button"
 import { Input } from "./ui/input"
 import SearchPageControls from "./SearchPageControls"
@@ -23,7 +24,7 @@ export default function BackupInterviewPicker({ revision }: { revision: number }
   const [choice, setChoice] = useState<Choice | null>(null)
   const select = useRef<HTMLSelectElement>(null)
   const retryButton = useRef<HTMLButtonElement>(null)
-  const refocus = useRef(false)
+  const { requestFocus, completeFocus, cancelFocus } = useDeferredFocus<"contents">()
   const browse = !searching && reply?.request === request && reply.revision === revision ? reply : null
   const page = searching ? search.pageNumber : browse?.data?.page ?? request.page
   const hasNext = searching ? search.hasNext : !!browse?.data && page < browse.data.pages
@@ -48,14 +49,11 @@ export default function BackupInterviewPicker({ revision }: { revision: number }
   }, [request, revision, searching])
 
   useEffect(() => {
-    if (!refocus.current || pending) return
-    refocus.current = false
-    if (error) retryButton.current?.focus()
-    else select.current?.focus()
-  }, [pending, error])
+    if (!pending) completeFocus(() => error ? retryButton.current : select.current)
+  }, [pending, error, completeFocus])
 
   function navigate(next: boolean) {
-    refocus.current = true
+    requestFocus("contents")
     if (!searching) setRequest({ page: page + (next ? 1 : -1) })
     else if (next) search.next()
     else search.previous()
@@ -66,7 +64,7 @@ export default function BackupInterviewPicker({ revision }: { revision: number }
       Find an interview
       <Input type="search" maxLength={160} value={search.query} placeholder="Enter a candidate or role"
         onChange={e => {
-          refocus.current = false
+          cancelFocus()
           search.setQuery(e.target.value)
           setRequest({ page: 1 })
         }} />
@@ -74,7 +72,7 @@ export default function BackupInterviewPicker({ revision }: { revision: number }
     {error && <div className="stack">
       <p className="error" role="alert">{error}</p>
       <Button type="button" ref={retryButton} size="sm" variant="outline" onClick={() => {
-        refocus.current = true
+        requestFocus("contents")
         if (searching) search.retry()
         else setRequest({ page })
       }}>Retry interview list</Button>

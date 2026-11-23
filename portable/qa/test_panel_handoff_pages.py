@@ -31,7 +31,7 @@ def test_panel_note_pages_preserve_drafts_and_recover_focus(workspace_url, brows
     calls = []
     page.on("request", lambda r: calls.append((r.method, urlsplit(r.url))))
     with httpx.Client(base_url=workspace_url, headers={"X-InterviewCheck": "1"}) as client:
-        sid, path, observations, _ = seed(client, 21)
+        sid, path, observations, _ = seed(client, 41)
         page.goto(f"{workspace_url}/interviews/review/?id={sid}")
         notes = page.get_by_role("region", name="Panel handoff notes")
         selector = notes.get_by_label("Show handoff notes")
@@ -41,17 +41,22 @@ def test_panel_note_pages_preserve_drafts_and_recover_focus(workspace_url, brows
         composer.fill("Private draft for the decision.")
         notes.get_by_role("combobox", name="Category", exact=True).select_option("decision")
         selector.select_option("observation")
-        expect(notes.get_by_text("Page 1. Showing 20 of 21 notes.")).to_be_visible()
+        expect(notes.get_by_text("Page 1. Showing 20 of 41 notes.")).to_be_visible()
         expect(notes.get_by_role("listitem")).to_have_count(20)
         expect(notes.get_by_text("No note text retained.")).to_be_visible()
         older = notes.get_by_role("button", name="Older notes")
         older.focus()
         page.keyboard.press("Enter")
-        expect(notes.get_by_text("Page 2. Showing 1 of 21 notes.")).to_be_focused()
+        expect(notes.get_by_text("Page 2. Showing 20 of 41 notes.")).to_be_focused()
+        older.press("Enter")
+        expect(notes.get_by_text("Page 3. Showing 1 of 41 notes.")).to_be_focused()
         expect(notes.get_by_role("listitem")).to_contain_text(observations[-1]["body"])
         page.set_viewport_size({"width": 320, "height": 800})
         assert notes.evaluate("(el) => el.scrollWidth <= el.clientWidth")
         notes.screenshot(path=tmp_path / "panel-handoff-notes-phone.png")
+        # Another reviewer removes the intervening page before this tab deletes its final row.
+        for record in observations[20:40]:
+            client.delete(path + "/" + record["id"]).raise_for_status()
         notes.get_by_role("button", name="Delete observation note").click()
         expect(notes.get_by_text("Page 1. Showing 20 of 20 notes.")).to_be_focused()
         expect(rating).to_have_attribute("aria-pressed", "true")
@@ -110,6 +115,13 @@ def test_changed_filters_ignore_late_note_replies_and_hide_denied_content(worksp
     expect(notes.get_by_role("listitem")).to_have_count(2)
     page.evaluate("async () => { document.dispatchEvent(new Event('release-note-page')); await new Promise(requestAnimationFrame); }")
     expect(notes.get_by_text(concern["body"])).to_have_count(0)
+    page.evaluate("delete document.documentElement.dataset.heldNotePage")
+    selector.select_option("concern")
+    expect(page.locator("html")).to_have_attribute("data-held-note-page", "true")
+    composer.fill("Private unsaved panel note.")
+    page.evaluate("document.dispatchEvent(new Event('release-note-page'))")
+    expect(notes.get_by_text(concern["body"])).to_be_visible()
+    expect(composer).to_be_focused()
     page.route(f"**{path}?*", lambda route: route.fulfill(status=403, json={"detail": "Denied."}))
     selector.select_option("decision")
     expect(notes.get_by_role("alert")).to_contain_text("no longer have access")
@@ -141,3 +153,77 @@ def test_old_scorecard_reply_pages_its_included_notes_without_a_new_endpoint(wor
     expect(notes.get_by_text("Time unavailable")).to_be_visible()
     assert historical["created_at"] not in notes.inner_html()
     assert reads == []
+
+
+def test_handoff_write_does_not_steal_focus_from_score_editor(workspace_url, browser_page):
+    page = browser_page
+    with httpx.Client(base_url=workspace_url, headers={"X-InterviewCheck": "1"}) as client:
+        sid, _, _, _ = seed(client, 1)
+    page.add_init_script("""
+      const send = window.fetch.bind(window);
+      window.fetch = async (input, init) => {
+        const response = await send(input, init);
+        if (init?.method !== "POST" || !new URL(input instanceof Request ? input.url : input, location.href).pathname.endsWith("/handoff-notes"))
+          return response;
+        await response.clone().text();
+        await new Promise(resolve => {
+          document.documentElement.dataset.noteWriteHeld = "true";
+          document.addEventListener("finish-note-write", resolve, {once:true});
+        });
+        return response;
+      };
+    """)
+    page.goto(f"{workspace_url}/interviews/review/?id={sid}")
+    notes = page.get_by_role("region", name="Panel handoff notes")
+    expect(notes.get_by_role("listitem")).to_have_count(2)
+    notes.get_by_role("textbox", name="Handoff note").fill("Held note write.")
+    notes.get_by_role("button", name="Add handoff note").press("Enter")
+    expect(page.locator("html")).to_have_attribute("data-note-write-held", "true")
+    criterion = page.get_by_role("textbox", name="Add criterion", exact=True)
+    criterion.fill("Unsaved local criterion")
+    page.evaluate("document.dispatchEvent(new Event('finish-note-write'))")
+    expect(notes.get_by_text("Held note write.", exact=True)).to_be_visible()
+    expect(criterion).to_be_focused()
+    criterion.press("End")
+    page.keyboard.insert_text("!")
+    expect(criterion).to_have_value("Unsaved local criterion!")
+
+
+def test_failed_handoff_write_respects_keyboard_focus(workspace_url, browser_page):
+    page = browser_page
+    with httpx.Client(base_url=workspace_url, headers={"X-InterviewCheck": "1"}) as client:
+        sid, _, _, _ = seed(client, 1)
+    page.add_init_script("""
+      const send = window.fetch.bind(window);
+      let attempts = 0;
+      window.fetch = async (input, init) => {
+        const path = new URL(input instanceof Request ? input.url : input, location.href).pathname;
+        if (!path.endsWith("/handoff-notes") || init?.method !== "POST") return send(input, init);
+        await new Promise(resolve => {
+          document.documentElement.dataset.failedWriteHeld = String(++attempts);
+          document.addEventListener("fail-note-write", resolve, {once:true});
+        });
+        return new Response(JSON.stringify({detail: "Fixture temporarily unavailable."}), {status: 503});
+      };
+    """)
+    page.goto(f"{workspace_url}/interviews/review/?id={sid}")
+    notes = page.get_by_role("region", name="Panel handoff notes")
+    composer = notes.get_by_role("textbox", name="Handoff note")
+    add = notes.get_by_role("button", name="Add handoff note")
+    error = notes.get_by_role("alert", name="Handoff note change failed")
+    composer.fill("Keep this note until saved.")
+    add.press("Enter")
+    expect(page.locator("html")).to_have_attribute("data-failed-write-held", "1")
+    page.evaluate("document.dispatchEvent(new Event('fail-note-write'))")
+    expect(error).to_be_focused()
+    expect(error).to_contain_text("Fixture temporarily unavailable.")
+    expect(composer).to_have_value("Keep this note until saved.")
+
+    add.press("Enter")
+    expect(page.locator("html")).to_have_attribute("data-failed-write-held", "2")
+    criterion = page.get_by_role("textbox", name="Add criterion", exact=True)
+    criterion.fill("Keep keyboard here")
+    page.evaluate("document.dispatchEvent(new Event('fail-note-write'))")
+    expect(error).to_be_visible()
+    expect(criterion).to_be_focused()
+    expect(composer).to_have_value("Keep this note until saved.")

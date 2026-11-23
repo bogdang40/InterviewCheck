@@ -55,9 +55,15 @@ export default function WorkspaceSearch({
   useEffect(() => {
     if (!focusRecords.current || !result) return
     focusRecords.current = false
+    if (document.activeElement !== input.current) return
     setActive(commands.length)
     document.getElementById(list + commands.length)?.scrollIntoView({ block: "nearest" })
   }, [result, commands.length, list])
+
+  function activateOption(index: number) {
+    focusRecords.current = false
+    setActive(index)
+  }
 
   function navigateResults(changePage: () => void) {
     setActive(commands.length)
@@ -151,6 +157,7 @@ export default function WorkspaceSearch({
     if (!totalCount) return
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault()
+      focusRecords.current = false
       const next = activeIndex < 0 ? (e.key === "ArrowDown" ? 0 : totalCount - 1)
         : (activeIndex + (e.key === "ArrowDown" ? 1 : -1) + totalCount) % totalCount
       setActive(next)
@@ -250,11 +257,11 @@ export default function WorkspaceSearch({
             const badge = cmd.shortcut ? <kbd>{cmd.shortcut}</kbd> : cmd.kind === "theme" ? "Theme" : "Navigate"
             const body = (<><Icon size={17} aria-hidden="true" /><span><b>{cmd.label}</b><small>{cmd.description}</small></span><em>{badge}</em></>)
             return cmd.href ? (
-              <Link id={list + i} key={cmd.id} role="option" aria-selected={i === activeIndex} tabIndex={-1} prefetch={false} href={cmd.href} className="search-hit" onMouseMove={() => setActive(i)} onClick={() => { navigatingRef.current = true; dialog.current?.close() }}>
+              <Link id={list + i} key={cmd.id} role="option" aria-selected={i === activeIndex} tabIndex={-1} prefetch={false} href={cmd.href} className="search-hit" onMouseMove={() => activateOption(i)} onClick={() => { navigatingRef.current = true; dialog.current?.close() }}>
                 {body}
               </Link>
             ) : (
-              <button type="button" id={list + i} key={cmd.id} role="option" aria-selected={i === activeIndex} tabIndex={-1} className="search-hit search-hit-action" onMouseMove={() => setActive(i)} onClick={() => runCommand(cmd)}>
+              <button type="button" id={list + i} key={cmd.id} role="option" aria-selected={i === activeIndex} tabIndex={-1} className="search-hit search-hit-action" onMouseMove={() => activateOption(i)} onClick={() => runCommand(cmd)}>
                 {body}
               </button>
             )
@@ -264,7 +271,7 @@ export default function WorkspaceSearch({
             const index = commands.length + offset
             const Icon = r.kind === "role" ? BriefcaseBusiness : r.kind === "session" ? FileText : MessageSquareText
             return (
-              <Link id={list + index} key={r.kind + r.id} role="option" aria-selected={index === activeIndex} tabIndex={-1} prefetch={false} href={resultURL(r)} className="search-hit" onMouseMove={() => setActive(index)} onClick={() => { navigatingRef.current = true; dialog.current?.close() }}>
+              <Link id={list + index} key={r.kind + r.id} role="option" aria-selected={index === activeIndex} tabIndex={-1} prefetch={false} href={resultURL(r)} className="search-hit" onMouseMove={() => activateOption(index)} onClick={() => { navigatingRef.current = true; dialog.current?.close() }}>
                 <Icon size={17} aria-hidden="true" />
                 <span><b>{r.label || "Untitled record"}</b>
                   {r.kind === "answer" && <small>{r.snippet}</small>}
