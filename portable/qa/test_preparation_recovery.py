@@ -29,6 +29,7 @@ def test_permission_snapshot_and_browser_restore(workspace_url, browser_page, mo
             "questions": ["Which readings?"],
             "policy": "You may read the operator manual.",
             "permitted_sources": [{"label": "Manual", "text": REFERENCE}],
+            "rubric": [{"id": "calibration-depth", "criterion": "Calibration depth", "weight": 3}],
         }
         template = c.post("/api/roles", json=role)
         template.raise_for_status()
@@ -47,12 +48,20 @@ def test_permission_snapshot_and_browser_restore(workspace_url, browser_page, mo
         sid = c.get("/api/sessions").json()[0]["id"]
         route = "/api/sessions/" + sid
         panel = page.get_by_role("region", name="Session scorecard panel")
+        rationale_text = "Verified zero drift baseline across three cold chambers."
+        panel.get_by_role("button", name="Rate Calibration depth 4 of 5").click()
+        panel.get_by_label("Rationale for Calibration depth").fill(rationale_text)
+        panel.get_by_role("button", name="Save scorecard").click()
+        expect(panel.get_by_role("status").filter(has_text="Scorecard saved.")).to_be_visible()
+        expect(panel.get_by_test_id("scorecard-weighted-badge")).to_have_text("Score: 80.0%")
         note_text = "Ask the next interviewer to repeat the cold calibration check."
         panel.get_by_role("combobox", name="Category").select_option("follow_up")
         panel.get_by_role("textbox", name="Handoff note").fill(note_text)
         panel.get_by_role("button", name="Add handoff note").click()
-        expect(panel.get_by_text(note_text, exact=True)).to_be_visible()
-        note, = c.get(route + "/scorecard").raise_for_status().json()["handoff_notes"]
+        expect(panel.get_by_role("listitem").get_by_text(note_text, exact=True)).to_be_visible()
+        scorecard_state = c.get(route + "/scorecard").raise_for_status().json()
+        scorecard_item, = scorecard_state["items"]
+        note, = scorecard_state["handoff_notes"]
         capture = {
             "question": "Which readings?",
             "answer": REFERENCE,
@@ -105,15 +114,24 @@ def test_permission_snapshot_and_browser_restore(workspace_url, browser_page, mo
             "assignee_email": reviewer, "priority": "high", "due_at": "2030-05-06T15:00:00Z",
         }).raise_for_status().json()["assignment"]
         original = c.get(route).json()
+        original_report = c.get(route + "/report").text
+        original_print = c.get(route + "/print").text
         page.goto(workspace_url + "/data/")
         expect(page.get_by_text("the file includes the assignee email", exact=False)).to_be_visible()
         expect(page.get_by_text("Each panel handoff note includes its text, category, author and creation time", exact=False)).to_be_visible()
+        expect(
+            page.get_by_text(
+                "Each rubric score includes the criterion, weight, rating, reviewer rationale, who last updated it and the update time",
+                exact=False,
+            )
+        ).to_be_visible()
         page.get_by_label("Backup contents").select_option(sid)
         with page.expect_download() as download:
             page.get_by_role("link", name="Download backup").click()
         file = tmp_path / "fixture.json"
         download.value.save_as(file)
         backup = json.loads(file.read_bytes())
+        assert backup["version"] == 5
         assert [r["id"] for r in backup["roles"]] == [rid]
         assert [r["id"] for r in backup["sessions"]] == [sid]
         assert backup["sessions"][0]["assignment"] == {
@@ -122,6 +140,7 @@ def test_permission_snapshot_and_browser_restore(workspace_url, browser_page, mo
         assert backup["sessions"][0]["handoff_notes"] == [
             {field: note[field] for field in ("id", "author_email", "category", "body", "created_at")}
         ]
+        assert backup["sessions"][0]["scorecard_items"] == [scorecard_item]
         target = tmp_path / "restored.sqlite"
         store.initialize(target)
         monkeypatch.setenv("INTERVIEWCHECK_DB", str(target))
@@ -130,15 +149,20 @@ def test_permission_snapshot_and_browser_restore(workspace_url, browser_page, mo
         assert c.get("/api/sessions").json() == []
         page.get_by_role("button", name="Preview restore").click()
         expect(page.get_by_role("heading", name="Restore preview")).to_be_visible()
-        expect(page.get_by_text("1 review assignment and 1 panel handoff note", exact=False)).to_be_visible()
+        expect(page.get_by_text("1 review assignment, 1 panel handoff note and 1 rubric score", exact=False)).to_be_visible()
         expect(page.get_by_text(note_text, exact=False)).to_have_count(0)
+        expect(page.get_by_text(rationale_text, exact=False)).to_have_count(0)
         assert c.get("/api/roles").json() == []
         page.get_by_role("button", name="Restore new records").click()
         expect(page.get_by_role("status").filter(has_text="Restored 1")).to_be_visible()
         assert c.get(route).json() == original
         assert c.get(route + "/assignment").raise_for_status().json()["assignment"] == assignment
         assert c.get(route + "/draft").json() == held.json()
-        assert "Private unfinished draft" not in c.get(route + "/report").text
+        assert c.get(route + "/report").text == original_report
+        assert "Private unfinished draft" not in original_report
+        restored_print = c.get(route + "/print").text
+        assert restored_print == original_print
+        assert "Calibration depth" in restored_print and "80.0%" in restored_print and rationale_text in restored_print
         rerun = c.post(route + "/imports/webvtt", json={**imported, "request_id": str(uuid4())})
         rerun.raise_for_status()
         assert (rerun.json()["saved"], rerun.json()["answer_ids"]) == (0, captured.json()["answer_ids"])
@@ -149,10 +173,13 @@ def test_permission_snapshot_and_browser_restore(workspace_url, browser_page, mo
         expect(restored_link).to_contain_text(reviewer)
         expect(restored_link).to_have_attribute("href", f"/interviews/review/?id={sid}")
         restored_link.click()
+        expect(panel.get_by_test_id("scorecard-weighted-badge")).to_have_text("Score: 80.0%")
+        expect(panel.get_by_role("button", name="Rate Calibration depth 4 of 5")).to_have_attribute("aria-pressed", "true")
+        expect(panel.get_by_label("Rationale for Calibration depth")).to_have_value(rationale_text)
         restored_note = panel.get_by_role("listitem").filter(has_text=note_text)
         expect(restored_note.get_by_text("Follow-up", exact=True)).to_be_visible()
         expect(restored_note).to_contain_text(note["author_email"])
-        assert c.get(route + "/scorecard").raise_for_status().json()["handoff_notes"] == [note]
+        assert c.get(route + "/scorecard").raise_for_status().json() == scorecard_state
 
 
 def test_backup_size_through_real_ingress(workspace_url):

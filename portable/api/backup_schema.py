@@ -1,24 +1,32 @@
 """Validate the versioned, local interview archive before it can enter the store."""
 
-from datetime import datetime, timezone
-import math
 import json
+import math
 from typing import Annotated, Literal
 
 from fastapi import HTTPException
 from pydantic import (
-    AfterValidator, BaseModel, BeforeValidator, ConfigDict, Field,
-    JsonValue, StringConstraints, ValidationError, field_validator, model_validator,
+    AfterValidator, BeforeValidator, Field, JsonValue, StringConstraints,
+    ValidationError, field_validator, model_validator,
 )
 
+from .backup_review_schema import (
+    Assignment,
+    HandoffNote,
+    HistoricalText,
+    ID,
+    Record,
+    ReviewActor,
+    ReviewStamp,
+    ScorecardItem,
+    TZStamp,
+    _require_tz,
+)
 from .backup_validation import check_session_chronology, unique, verify_records
-from .session_assignment import AssignmentPriority, SessionAssignmentInput
-from .session_scorecard import HandoffCategory, HandoffNoteInput
 
 LIMIT = 20 * 1024 * 1024
 LEGACY_MAX_DEPTH = 16
 LEGACY_MAX_NODES = 2000
-ID = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")]
 Digest = Annotated[str, StringConstraints(pattern=r"^[a-f0-9]{64}$")]
 Text = Annotated[str, Field(max_length=24000)]
 Label = Annotated[str, Field(max_length=180)]
@@ -33,30 +41,13 @@ TagStr = Annotated[
     BeforeValidator(_strip_tag),
     StringConstraints(min_length=1, max_length=32, pattern=r"^[^\x00-\x1f\x7f,]+$"),
 ]
-HistoricalText = Annotated[str, Field(max_length=2_000_000)]
 HistoricalQuestions = Annotated[list[HistoricalText], Field(max_length=1000)]
-
-
-def _require_tz(stamp: str) -> str:
-    if datetime.fromisoformat(stamp).utcoffset() is None:
-        raise ValueError("Timestamp needs a time zone.")
-    return stamp
 
 
 def _valid_span(span: list[int]) -> list[int]:
     if span[0] < 0 or span[1] <= span[0]:
         raise ValueError("Passage span must satisfy 0 <= start < end.")
     return span
-
-
-def _reject_null_bytes(value: object) -> None:
-    if isinstance(value, str):
-        if "\x00" in value:
-            raise ValueError("Null bytes are not allowed in text fields.")
-    elif isinstance(value, list):
-        for item in value:
-            if isinstance(item, str) and "\x00" in item:
-                raise ValueError("Null bytes are not allowed in text fields.")
 
 
 def _validate_legacy_tree(value: object) -> object:
@@ -90,23 +81,8 @@ def _validate_legacy_tree(value: object) -> object:
     return value
 
 
-TZStamp = Annotated[str, AfterValidator(_require_tz)]
-ReviewStamp = Annotated[
-    str, StringConstraints(max_length=64, pattern=r"^[^\p{Cc}]+$"), AfterValidator(_require_tz),
-]
 Span = Annotated[list[int], Field(min_length=2, max_length=2), AfterValidator(_valid_span)]
 LegacyDict = Annotated[dict[str, JsonValue] | None, BeforeValidator(_validate_legacy_tree)]
-
-
-class Record(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True)
-
-    @model_validator(mode="after")
-    def reject_null_bytes(self):
-        for name, value in self.__dict__.items():
-            if name != "legacy":
-                _reject_null_bytes(value)
-        return self
 
 
 class Material(Record):
@@ -240,51 +216,6 @@ class SavedDraft(Record):
     updated_at: TZStamp
 
 
-def _nonblank_actor(value: str) -> str:
-    if not value.strip():
-        raise ValueError("The recorded actor must contain a nonspace character.")
-    return value
-
-
-ReviewActor = Annotated[HistoricalText, StringConstraints(min_length=1, pattern=r"^[^\p{Cc}]+$"), AfterValidator(_nonblank_actor)]
-
-
-class HandoffNote(Record):
-    id: ID
-    author_email: ReviewActor
-    category: HandoffCategory
-    body: Annotated[str, Field(max_length=2000)]
-    created_at: ReviewStamp
-
-    @field_validator("body")
-    @classmethod
-    def valid_stored_body(cls, value: str) -> str:
-        # Retention removes the body while preserving the note and its provenance.
-        if value and HandoffNoteInput.clean_body(value) != value:
-            raise ValueError("Invalid stored handoff note body.")
-        return value
-
-
-class Assignment(Record):
-    assignee_email: Annotated[
-        str, Field(min_length=3, max_length=254), AfterValidator(SessionAssignmentInput.validate_assignee_email),
-    ]
-    assigned_by: ReviewActor
-    priority: AssignmentPriority
-    due_at: ReviewStamp | None
-    updated_at: ReviewStamp
-
-    @field_validator("due_at")
-    @classmethod
-    def utc_due_at(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        try:
-            return datetime.fromisoformat(value).astimezone(timezone.utc).isoformat()
-        except OverflowError as exc:
-            raise ValueError("The assignment deadline exceeds the supported UTC range.") from exc
-
-
 class Session(Record):
     id: ID
     candidate: HistoricalText
@@ -300,6 +231,7 @@ class Session(Record):
     draft: SavedDraft | None = None
     assignment: Assignment | None = None
     handoff_notes: list[HandoffNote] = Field(default_factory=list)
+    scorecard_items: list[ScorecardItem] = Field(default_factory=list, max_length=25)
     answers: list[Answer] = Field(max_length=20000)
     tags: list[TagStr] = Field(default_factory=list, max_length=10)
     review_events: list[ReviewEvent] = Field(default_factory=list, max_length=20000)
@@ -310,12 +242,13 @@ class Session(Record):
         check_session_chronology(self.created_at, self.ended_at, self.trashed_at)
         self.tags = sorted(unique(self.tags, "session tag"))
         self.handoff_notes.sort(key=lambda note: (note.created_at, note.id), reverse=True)
+        unique((item.criterion_id for item in self.scorecard_items), "scorecard criterion ID")
         return self
 
 
 class Backup(Record):
     format: Literal["interviewcheck.workspace"]
-    version: Literal[1, 2, 3, 4]
+    version: Literal[1, 2, 3, 4, 5]
     roles: list[Role] = Field(max_length=4000)
     sessions: list[Session] = Field(max_length=5000)
 
@@ -328,9 +261,11 @@ class Backup(Record):
             unique((v.version_number for v in r.versions), "role version number")
         for s in self.sessions:
             if ("assignment" in s.model_fields_set) != (self.version >= 3):
-                raise ValueError("Versions 3 and 4 require an assignment field on every interview.")
+                raise ValueError("Versions 3 and later require an assignment field on every interview.")
             if ("handoff_notes" in s.model_fields_set) != (self.version >= 4):
-                raise ValueError("Version 4 requires a handoff notes field on every interview.")
+                raise ValueError("Versions 4 and later require a handoff notes field on every interview.")
+            if ("scorecard_items" in s.model_fields_set) != (self.version >= 5):
+                raise ValueError("Version 5 requires a scorecard items field on every interview.")
             aids = {a.id for a in s.answers}
             for ev in s.review_events:
                 if ev.answer_id not in aids:

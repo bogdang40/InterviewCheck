@@ -62,10 +62,11 @@ def role_data(row, db=None):
     return record
 
 
-def session_data(db, key, *, has_assignments, has_notes):
+def session_data(db, key, *, has_assignments, has_notes, has_scorecards):
     record = select(store.get_session(db, key, include_trashed=True), SESSION_FIELDS)
     record["assignment"] = review_data.assignment_data(db, key) if has_assignments else None
     record["handoff_notes"] = review_data.handoff_data(db, key) if has_notes else []
+    record["scorecard_items"] = review_data.scorecard_data(db, key) if has_scorecards else []
     deleted = db.execute("SELECT trashed_at FROM session_trash WHERE session_id=?", (key,)).fetchone()
     if deleted:
         record["trashed_at"] = deleted["trashed_at"]
@@ -88,7 +89,7 @@ def session_data(db, key, *, has_assignments, has_notes):
 
 @router.get("/workspace")
 def download(session_id: UUID | None = None):
-    doc = {"format": "interviewcheck.workspace", "version": 4, "roles": [], "sessions": []}
+    doc = {"format": "interviewcheck.workspace", "version": 5, "roles": [], "sessions": []}
     size = 0
     size_error = (
         "This interview exceeds the JSON backup limit. Use a consistent SQLite database backup."
@@ -106,8 +107,11 @@ def download(session_id: UUID | None = None):
     with store.connection() as db:
         has_assignments = _has_table(db, "session_assignments")
         has_notes = _has_table(db, "session_handoff_notes")
+        has_scorecards = _has_table(db, "session_scorecards")
         if session_id:
-            record = session_data(db, str(session_id), has_assignments=has_assignments, has_notes=has_notes)
+            record = session_data(
+                db, str(session_id), has_assignments=has_assignments, has_notes=has_notes, has_scorecards=has_scorecards,
+            )
             if record["role_id"]:
                 append("roles", role_data(db.execute("SELECT * FROM roles WHERE id=?", (record["role_id"],)).fetchone(), db))
             append("sessions", record)
@@ -115,7 +119,12 @@ def download(session_id: UUID | None = None):
             for row in db.execute("SELECT * FROM roles ORDER BY id"):
                 append("roles", role_data(row, db))
             for row in db.execute("SELECT id FROM sessions ORDER BY created_at,id"):
-                append("sessions", session_data(db, row[0], has_assignments=has_assignments, has_notes=has_notes))
+                append(
+                    "sessions",
+                    session_data(
+                        db, row[0], has_assignments=has_assignments, has_notes=has_notes, has_scorecards=has_scorecards,
+                    ),
+                )
     body = encode(doc).encode("utf-8")
     if len(body) > schema.LIMIT:
         raise HTTPException(413, size_error)
@@ -128,9 +137,11 @@ def download(session_id: UUID | None = None):
     )
 
 
-def same_session(db, record, *, has_assignments, has_notes):
+def same_session(db, record, *, has_assignments, has_notes, has_scorecards):
     try:
-        data = session_data(db, record.id, has_assignments=has_assignments, has_notes=has_notes)
+        data = session_data(
+            db, record.id, has_assignments=has_assignments, has_notes=has_notes, has_scorecards=has_scorecards,
+        )
     except review_data.UnrepresentableReviewData:
         return False
     return schema.Session.model_validate(data) == record
@@ -145,10 +156,14 @@ def classify(db, backup):
     has_assignments = backup.version >= 3 and _has_table(db, "session_assignments")
     notes = sum(len(s.handoff_notes) for s in backup.sessions)
     has_notes = backup.version >= 4 and _has_table(db, "session_handoff_notes")
+    scorecards = sum(len(s.scorecard_items) for s in backup.sessions)
+    has_scorecards = backup.version >= 5 and _has_table(db, "session_scorecards")
     if assignments and not has_assignments:
         raise HTTPException(409, "Restart InterviewCheck to initialize assignment storage before restoring this backup.")
     if notes and not has_notes:
         raise HTTPException(409, "Restart InterviewCheck to initialize handoff note storage before restoring this backup.")
+    if scorecards and not has_scorecards:
+        raise HTTPException(409, "Restart InterviewCheck to initialize scorecard storage before restoring this backup.")
     for group, records in (("roles", backup.roles), ("sessions", backup.sessions)):
         for record in records:
             key = record.id
@@ -160,7 +175,9 @@ def classify(db, backup):
                     exists = any(db.execute("SELECT 1 FROM role_versions WHERE id=?", (v.id,)).fetchone() for v in record.versions)
             else:
                 exists = db.execute("SELECT 1 FROM sessions WHERE id=?", (key,)).fetchone() is not None
-                same = exists and same_session(db, record, has_assignments=has_assignments, has_notes=has_notes)
+                same = exists and same_session(
+                    db, record, has_assignments=has_assignments, has_notes=has_notes, has_scorecards=has_scorecards,
+                )
                 if not exists:
                     ids = [a.id for a in record.answers] + ([record.draft.id] if record.draft else [])
                     exists = review_data.has_handoff_collision(db, record.handoff_notes) or any(
@@ -180,6 +197,7 @@ def classify(db, backup):
         "drafts": sum(s.draft is not None for s in backup.sessions),
         "assignments": assignments,
         "handoff_notes": notes,
+        "scorecard_items": scorecards,
         "conflicts": conflicts,
     }
 
