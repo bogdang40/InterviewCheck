@@ -44,6 +44,7 @@ LABEL org.opencontainers.image.source="https://github.com/bogdang40/InterviewChe
       org.opencontainers.image.revision=$GIT_SHA
 
 VOLUME ["/data"]
+# readyz, not health: it also fails (503) when the model secret key file or the account schema is broken.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
-  CMD python -c "import urllib.request as u; u.urlopen('http://127.0.0.1:8000/api/health', timeout=4); u.urlopen('http://127.0.0.1:3000/', timeout=4)"
+  CMD python -c "import urllib.request as u; u.urlopen('http://127.0.0.1:8000/api/readyz', timeout=4); u.urlopen('http://127.0.0.1:3000/', timeout=4)"
 CMD ["node", "portable/web-runtime.mjs", "start"]

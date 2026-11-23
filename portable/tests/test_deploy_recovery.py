@@ -67,6 +67,8 @@ exit 0
         "az": "#!/bin/bash\nexit 0\n",
         "systemctl": "#!/bin/bash\nexit 0\n",
         "chown": "#!/bin/bash\nexit 0\n",
+        "curl": "#!/bin/bash\nexit 0\n",
+        "sleep": "#!/bin/bash\nexit 0\n",
     }
     for name, script in scripts.items():
         target = tools / name
