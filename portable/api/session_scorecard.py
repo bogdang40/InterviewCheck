@@ -11,6 +11,7 @@ from starlette.concurrency import run_in_threadpool
 
 from . import access, prompt_framing, sql_script, store
 from .models import Input
+from .scorecard_math import weighted_score_pct
 
 router = APIRouter()
 
@@ -132,20 +133,6 @@ def _load_role_rubric(db: sqlite3.Connection, session_id: str) -> list[dict[str,
             weight = 1
         criteria.append({"criterion_id": cid, "criterion_label": label, "weight": weight})
     return criteria
-
-
-def weighted_score_pct(items: list[dict[str, Any]]) -> float | None:
-    weighted_sum = 0
-    total_weight = 0
-    for item in items:
-        rating = item.get("rating")
-        weight = item.get("weight", 0)
-        if isinstance(rating, int) and 1 <= rating <= 5 and isinstance(weight, int) and weight > 0:
-            weighted_sum += rating * weight
-            total_weight += weight
-    if total_weight <= 0:
-        return None
-    return round((weighted_sum / (total_weight * 5)) * 100, 1)
 
 
 def _saved_scores(db: sqlite3.Connection, session_id: str) -> list[dict[str, Any]]:

@@ -64,7 +64,13 @@ export function computeWeightedScorePct(items: ReadonlyArray<{ weight: number; r
       totalWeight += item.weight
     }
   }
-  return totalWeight > 0 ? Math.round((weightedSum / (totalWeight * 5)) * 1000) / 10 : null
+  if (!totalWeight) return null
+  // Match the server's integer calculation, including exact half-tenths.
+  const numerator = weightedSum * 200
+  const tenths = Math.floor(numerator / totalWeight)
+  const remainder = numerator % totalWeight
+  const roundUp = 2 * remainder > totalWeight || (2 * remainder === totalWeight && tenths % 2 === 1)
+  return (tenths + Number(roundUp)) / 10
 }
 
 export async function fetchSessionScorecard(sessionId: string, signal?: AbortSignal): Promise<ScorecardState> {

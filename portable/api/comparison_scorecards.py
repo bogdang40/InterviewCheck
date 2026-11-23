@@ -4,7 +4,7 @@ from html import escape
 from fastapi import HTTPException
 
 from . import report
-from .session_scorecard import weighted_score_pct
+from .scorecard_math import weighted_score_pct
 
 
 def add_saved_scorecards(db, sessions, *, include_rationales):

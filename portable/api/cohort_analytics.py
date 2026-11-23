@@ -12,6 +12,7 @@ from fastapi.responses import Response, StreamingResponse
 from starlette.background import BackgroundTask
 
 from . import exports, store
+from .scorecard_math import percentage_from_totals
 
 router = APIRouter()
 LifecycleFilter = Literal["", "active", "finished", "archived"]
@@ -101,7 +102,7 @@ def _load_scorecard_pcts(db: sqlite3.Connection, session_ids: list[str]) -> dict
                 acc = totals.setdefault(row["session_id"], [0, 0])
                 acc[0] += rating * weight
                 acc[1] += weight
-    return {sid: round((ws / (tw * 5)) * 100.0, 1) for sid, (ws, tw) in totals.items() if tw > 0}
+    return {sid: percentage_from_totals(ws, tw) for sid, (ws, tw) in totals.items() if tw > 0}
 
 
 def _load_answer_counts(db: sqlite3.Connection, session_ids: list[str]) -> dict[str, dict[str, int]]:

@@ -15,6 +15,7 @@ from fastapi.responses import HTMLResponse, Response, StreamingResponse
 
 from . import review_brief, store
 from .lineage import description as origin_description
+from .scorecard_math import weighted_score_pct
 
 router = APIRouter()
 router.include_router(review_brief.router)
@@ -113,10 +114,9 @@ def render_scorecard(db, sid: str) -> str:
     if not _has_table(db, "session_scorecards"):
         return ""
     rows = db.execute("SELECT criterion_label,weight,rating,rationale FROM session_scorecards WHERE session_id=? ORDER BY rowid", (sid,)).fetchall()
-    if not rows:
+    pct = weighted_score_pct(rows)
+    if pct is None:
         return ""
-    total_w = sum(int(r["weight"]) for r in rows)
-    pct = round(sum(int(r["rating"]) * int(r["weight"]) for r in rows) / (total_w * 5) * 100, 1) if total_w > 0 else 0.0
     items = "".join(
         f"<dt>{escape(r['criterion_label'])} (weight {int(r['weight'])})</dt>"
         f"<dd>Rating: {int(r['rating'])}/5" + (f" - {escape(r['rationale'])}" if r["rationale"] else "") + "</dd>"
