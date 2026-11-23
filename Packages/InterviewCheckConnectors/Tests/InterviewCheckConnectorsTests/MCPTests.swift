@@ -89,6 +89,21 @@ final class MCPTests: XCTestCase {
         XCTAssertTrue(url.contains("resource=https://mcp.example.com/mcp") || url.contains("resource=https%3A%2F%2Fmcp.example.com%2Fmcp"))
     }
 
+    func testDiscoveryReadsOnlySuccessfulMetadata() async throws {
+        let stub = StubTransport()
+        stub.on("POST", "mcp.example.com/mcp", status: 401, json: "{}")
+        // An error page that happens to hold JSON is not the server's metadata.
+        stub.on("GET", "oauth-protected-resource", status: 404,
+                json: #"{"authorization_servers":["https://other.example.com"]}"#)
+        stub.on("GET", "mcp.example.com/.well-known/oauth-authorization-server", status: 500,
+                json: #"{"issuer":"https://mcp.example.com","authorization_endpoint":"https://mcp.example.com/broken","token_endpoint":"https://mcp.example.com/broken"}"#)
+        stub.on("GET", "mcp.example.com/.well-known/openid-configuration",
+                json: #"{"issuer":"https://mcp.example.com","authorization_endpoint":"https://mcp.example.com/authorize","token_endpoint":"https://mcp.example.com/token"}"#)
+        let endpoints = try await MCPAuthorization.discover(server: URL(string: "https://mcp.example.com/mcp")!, transport: stub)
+        XCTAssertEqual(endpoints.tokenURL.absoluteString, "https://mcp.example.com/token")
+        XCTAssertEqual(endpoints.authorizeURL.absoluteString, "https://mcp.example.com/authorize")
+    }
+
     func testUsesTheProtocolVersionTheServerAgreesTo() async throws {
         let stub = StubTransport()
         stub.on("POST", server, json: #"{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-03-26","capabilities":{}}}"#,
