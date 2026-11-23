@@ -78,9 +78,27 @@ export class TotpRepository {
     return Number(result.changes) === 1;
   }
 
-  deleteForUser(userId: string): void {
+  /** Replaces the stored ciphertext only if it is still the one the caller read, so a concurrent setup is not overwritten. */
+  replaceSecret(userId: string, expectedSecretEnc: string, secretEnc: string): boolean {
+    const result = this.db.run(
+      "UPDATE user_totp SET secret_enc = ? WHERE user_id = ? AND secret_enc = ?",
+      secretEnc,
+      userId,
+      expectedSecretEnc,
+    );
+    return Number(result.changes) === 1;
+  }
+
+  listSecrets(): Array<{ userId: string; secretEnc: string }> {
+    return this.db
+      .all<{ user_id: string; secret_enc: string }>("SELECT user_id, secret_enc FROM user_totp")
+      .map((row) => ({ userId: row.user_id, secretEnc: row.secret_enc }));
+  }
+
+  /** Returns true when a TOTP record existed. */
+  deleteForUser(userId: string): boolean {
     this.db.run("DELETE FROM user_backup_codes WHERE user_id = ?", userId);
-    this.db.run("DELETE FROM user_totp WHERE user_id = ?", userId);
+    return Number(this.db.run("DELETE FROM user_totp WHERE user_id = ?", userId).changes) > 0;
   }
 
   countUnusedBackupCodes(userId: string): number {

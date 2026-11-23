@@ -11,6 +11,9 @@ const app = AppFactory.create(container);
 const server = serve({ fetch: app.fetch, hostname: config.HOST, port: config.PORT }, (info) => {
   console.log(`[server] InterviewCheck access server listening on ${info.address}:${info.port}`);
   console.log(`[server] billing ${container.billing.isConfigured ? "configured" : "NOT configured (set STRIPE_* env vars)"}`);
+  if (!container.totpKeys.hasDedicatedKey) {
+    console.warn("[server] TOTP_ENCRYPTION_KEY is not set: TOTP seeds are encrypted with a key derived from ADMIN_BOOTSTRAP_SECRET (or the Stripe keys); set a dedicated key before rotating those secrets");
+  }
   if (!container.bootstrap.isConfigured) {
     console.warn("[server] ADMIN_EMAILS or ADMIN_BOOTSTRAP_SECRET missing: no signup can claim admin (promote via SQL instead)");
   }

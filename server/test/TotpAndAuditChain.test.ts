@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuditChainVerification } from "../src/repositories/AuditLogRepository.js";
 import type { SignedInResponse } from "../src/services/AuthService.js";
 import type { CreatedApiTokenView } from "../src/services/SecurityService.js";
@@ -127,7 +127,10 @@ describe("M18 TOTP 2FA and audit hash chain", () => {
       harness.clock.now.getTime(),
       harness.clock.now.getTime(),
     );
-    expect(() => harness.container.totp.verifyLoginFactor(adminId, validCode, harness.clock.now)).toThrow();
+    const decryptErrors = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(harness.container.totp.verifyLoginFactor(adminId, validCode, harness.clock.now)).toBeNull();
+    expect(decryptErrors).toHaveBeenCalledWith(expect.stringContaining("TOTP seed could not be decrypted (authentication_failed)"));
+    decryptErrors.mockRestore();
     harness.container.database.run("DELETE FROM user_totp WHERE user_id = ?", adminId);
 
     // Regenerate backup codes requires valid next-step TOTP

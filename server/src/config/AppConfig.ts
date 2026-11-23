@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { KeyMaterial } from "../crypto/KeyMaterial.js";
 
 /**
  * Typed, validated process configuration. Everything the server needs from
@@ -22,6 +23,20 @@ const optionalSecret = z
 
 const days = (fallback: number) => z.coerce.number().int().min(0).max(3650).default(fallback);
 
+const encryptionKey = optionalSecret.refine((value) => value === undefined || KeyMaterial.decode32(value) !== null, {
+  message: "must be 32 bytes encoded as base64 (generate with: openssl rand -base64 32)",
+});
+
+const retiredKeys = optionalSecret.transform((value, context) => {
+  if (value === undefined) return undefined;
+  const keys = KeyMaterial.parseKeyList(value);
+  if (!keys) {
+    context.addIssue({ code: "custom", message: "must be a comma separated list of kid:base64 entries with 32 byte keys" });
+    return z.NEVER;
+  }
+  return keys as ReadonlyMap<string, Buffer>;
+});
+
 const schema = z.object({
   HOST: z.string().trim().min(1).default("0.0.0.0"),
   PORT: z.coerce.number().int().min(1).max(65535).default(8787),
@@ -29,6 +44,9 @@ const schema = z.object({
   DATABASE_PATH: z.string().min(1).default("./data/access.sqlite"),
   ADMIN_EMAILS: emailList,
   ADMIN_BOOTSTRAP_SECRET: optionalSecret,
+  TOTP_ENCRYPTION_KEY: encryptionKey,
+  TOTP_ENCRYPTION_KEY_ID: z.string().trim().regex(/^[A-Za-z0-9_-]{1,32}$/, "must be 1 to 32 letters, digits, _ or -").default("k1"),
+  TOTP_ENCRYPTION_RETIRED_KEYS: retiredKeys,
   TRUST_PROXY: z
     .enum(["true", "false"])
     .default("false")

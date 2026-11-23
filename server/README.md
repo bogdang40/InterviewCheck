@@ -73,8 +73,12 @@ macOS sign in form exposes that field under Advanced when creating an
 account. Signup has no email verification, so the allow list alone is not
 trusted; without the secret anyone could claim an admin address first.
 
-Once your account exists you can clear the secret. Any admin can promote or
-demote anyone through the API or the in app Admin tab. To promote an
+Once your account exists you can clear or rotate the secret, provided
+`TOTP_ENCRYPTION_KEY` is set (see below). Without that key, two factor seeds
+are encrypted with a key derived from `ADMIN_BOOTSTRAP_SECRET` (or, when it is
+empty, `STRIPE_SECRET_KEY`, then `STRIPE_WEBHOOK_SECRET`, then a key file next
+to the database), and changing any of those makes existing seeds unreadable.
+Any admin can promote or demote anyone through the API or the in app Admin tab. To promote an
 existing account without the secret:
 
 ```bash
@@ -82,6 +86,33 @@ sqlite3 data/access.sqlite "UPDATE users SET role = 'admin' WHERE email = 'you@e
 ```
 
 Admins always have access, regardless of subscription state.
+
+## Two factor seed encryption
+
+TOTP seeds are stored with AES-256-GCM. Set `TOTP_ENCRYPTION_KEY` to 32 random
+bytes in base64 (`openssl rand -base64 32`) and keep it with your other
+secrets. `TOTP_ENCRYPTION_KEY_ID` (default `k1`) names it inside each stored
+value, so keys can rotate:
+
+1. Generate a new key. Set it as `TOTP_ENCRYPTION_KEY` with a new
+   `TOTP_ENCRYPTION_KEY_ID`, and move the old one into
+   `TOTP_ENCRYPTION_RETIRED_KEYS` as `oldkid:oldbase64` (comma separated).
+2. Restart. Startup re-encrypts every seed it can open under the new key, and
+   each successful verification does the same.
+3. Once the startup log no longer reports re-encrypted seeds, remove the
+   retired key.
+
+Upgrading a deployment that predates the key: set `TOTP_ENCRYPTION_KEY` and
+restart while `ADMIN_BOOTSTRAP_SECRET` (and the Stripe keys) are unchanged.
+Startup moves the old seeds onto the new key; only after that is it safe to
+clear or rotate the bootstrap secret. Without the key the server keeps the old
+behaviour and logs a warning at startup.
+
+A seed that cannot be decrypted never causes a 500: the server logs a
+sanitized error, still accepts the user's backup codes, and otherwise answers
+`401 invalid_totp_code`. An admin can clear a user's two factor setup with
+`POST /v1/admin/users/:id/reset-totp`, which also signs that user out
+everywhere and is recorded in the audit log.
 
 ## Behind a proxy
 
@@ -126,6 +157,7 @@ All JSON, all under `/v1`. Authenticated routes take `Authorization: Bearer <tok
 | GET | `/admin/users?q=&limit=&cursor=` | admin | paginated users with entitlement |
 | GET | `/admin/users/:id` | admin | one user |
 | PATCH | `/admin/users/:id` | admin | `{role?, disabled?, complimentaryUntil?}` |
+| POST | `/admin/users/:id/reset-totp` | admin | removes the user's two factor setup and revokes their sessions |
 | GET | `/admin/audit?limit=` | admin | recent audit entries |
 
 Errors are `{"error": {"code", "message"}}` with a meaningful status.

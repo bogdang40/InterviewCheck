@@ -89,6 +89,11 @@ export class AdminRoutes {
       );
     });
 
+    router.post("/admin/users/:id/reset-totp", writeGuard, (c) => {
+      const { id } = parseParams(c, uuidParamSchema);
+      return c.json(deps.admin.resetTwoFactor(c.get("user"), id));
+    });
+
     router.get("/admin/users/:id/sessions", readGuard, (c) => {
       const { id } = parseParams(c, uuidParamSchema);
       return c.json(deps.security.listUserSessions(id));
