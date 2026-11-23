@@ -59,7 +59,7 @@ function Record() {
   }
   return (
     <div className="stack">
-      <SessionAssignmentBar sessionId={session.data.id} />
+      <SessionAssignmentBar key={session.data.id} sessionId={session.data.id} />
       <InterviewView
         key={id}
         session={session.data}
