@@ -8,7 +8,7 @@ export type CohortRoleOption = { id: string; name: string }
 
 export type CohortSummary = {
   session_count: number; active_count: number; finished_count: number; archived_count: number
-  answer_count: number; reviewed_count: number; explained_count: number; concern_count: number
+  answer_count: number; reviewed_count: number; explained_count?: number; concern_count?: number
   pass_rate_pct: number; concern_rate_pct: number
   avg_scorecard_pct: number | null; scored_session_count: number
 }
@@ -16,7 +16,7 @@ export type CohortSummary = {
 export type CohortScoreBucket = { range: string; label: string; count: number }
 export type CohortTimelinePoint = { date: string; sessions: number; finished: number; explained: number; concerns: number }
 export type CohortTagBreakdown = {
-  tag: string; session_count: number; explained_count: number; reviewed_count: number
+  tag: string; session_count: number; explained_count?: number; reviewed_count?: number
   pass_rate_pct: number; avg_scorecard_pct: number | null
 }
 

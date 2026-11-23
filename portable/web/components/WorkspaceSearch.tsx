@@ -4,7 +4,7 @@ import Link from "next/link"
 import { BriefcaseBusiness, FileText, Laptop, MessageSquareText, Moon, Search, Sun, X } from "lucide-react"
 import { lazy, Suspense, useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyEvent } from "react"
 import type * as CommandPaletteModule from "@/lib/commandPalette"
-import { resultURL, searchIdentity, SEARCH_PAGE_SIZE, useWorkspaceSearch } from "@/lib/search"
+import { cursorPageStatus, resultURL, searchIdentity, useWorkspaceSearch } from "@/lib/search"
 import { useAccountStatus } from "@/lib/useAccountStatus"
 import SearchPageControls from "./SearchPageControls"
 
@@ -170,8 +170,7 @@ export default function WorkspaceSearch({
           ? `${commands.length} ${commands.length === 1 ? "command" : "commands"}. Type 2+ characters to search records.`
           : "Type 2+ characters to search records."
         : (search.hasNext || search.pageNumber > 1)
-          ? records.length ? `Page ${search.pageNumber}. Records ${(search.pageNumber - 1) * SEARCH_PAGE_SIZE + 1} to ${(search.pageNumber - 1) * SEARCH_PAGE_SIZE + records.length}.`
-            : `Page ${search.pageNumber}. No records remain on this page.`
+          ? cursorPageStatus(search.pageNumber, records.length, "record")
         : !totalCount
           ? "No matching commands or records."
           : `${totalCount} ${totalCount === 1 ? "result" : "results"}. Use arrow keys and Enter.`)

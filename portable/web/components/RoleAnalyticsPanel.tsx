@@ -72,14 +72,16 @@ function ReviewerTable({ rows, caption, baselineCount }: { rows: ReviewerSummary
 
 function QuestionOutcome({ item }: { item: QuestionCalibrationItem }) {
   const origin = item.planned_slot === null ? "Recorded question"
-    : `Question ${item.planned_slot} · ${item.question_source === "planned" ? "Saved plan" : "Recorded wording"}`
+    : `Question ${item.planned_slot} · ${item.question_source === "planned" ? "Saved plan" :
+      item.question_source === "recorded" ? "Recorded wording" : "First recorded wording"}`
+  const reviewed = item.reviewed_count ?? item.explained_count + item.concern_count
   return <li className="rounded-md border border-[var(--line)] bg-[var(--subtle)] p-2.5 text-xs stack">
     <small className="muted">{origin}</small>
     <strong className="min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere]">{item.question}</strong>
     <span className="font-mono tabular-nums text-[var(--muted)]">
-      {item.reviewed_count === 0 ? "No reviewed answers" : <>
-        Explained {countedRate(item.pass_rate_pct, item.explained_count, item.reviewed_count)} ·{" "}
-        Unresolved or disclosed {countedRate(item.concern_rate_pct, item.concern_count, item.reviewed_count)}
+      {reviewed === 0 ? "No reviewed answers" : <>
+        Explained {countedRate(item.pass_rate_pct, item.explained_count, reviewed)} ·{" "}
+        Unresolved or disclosed {countedRate(item.concern_rate_pct, item.concern_count, reviewed)}
       </>} · Answers with a passage match {countedRate(item.match_rate_pct, item.match_count, item.answer_count, "No answers")}
       {" "}· Disagreements {item.disagreement_count}
     </span>

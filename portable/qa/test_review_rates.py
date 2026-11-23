@@ -68,3 +68,36 @@ def test_review_denominators_and_frozen_question_labels(workspace_url, browser_p
     page.set_viewport_size({"width": 320, "height": 800})
     assert questions.evaluate("(el) => el.scrollWidth <= el.clientWidth")
     questions.screenshot(path=tmp_path / "question-review-outcomes-phone.png")
+
+
+def test_older_cohort_reply_shows_available_percentages_without_inventing_counts(workspace_url, browser_page):
+    page = browser_page
+    with httpx.Client(base_url=workspace_url, headers={"X-InterviewCheck": "1"}) as client:
+        for tag in ("observed", "pending"):
+            sid = client.post("/api/sessions", json={
+                "candidate": tag, "role": "Engineer", "policy": "Manual permitted.", "consent": True,
+            }).raise_for_status().json()["id"]
+            aid = client.post(f"/api/sessions/{sid}/answers", json={
+                "question": "Which readings?", "answer": "I checked the receiver.",
+            }).raise_for_status().json()["id"]
+            if tag == "observed":
+                client.patch(f"/api/sessions/{sid}/answers/{aid}", json={"disposition": "explained", "note": "Recorded."}).raise_for_status()
+            client.post("/api/interviews/bulk/tag", json={"session_ids": [sid], "add": [tag], "remove": []}).raise_for_status()
+        legacy = client.get("/api/analytics/cohorts").raise_for_status().json()
+    for key in ("explained_count", "concern_count"):
+        del legacy["summary"][key]
+    for row in legacy["tag_breakdown"]:
+        for key in ("explained_count", "reviewed_count"):
+            del row[key]
+    page.route("**/api/analytics/cohorts", lambda route: route.fulfill(json=legacy))
+    page.goto(workspace_url + "/data/")
+    cohort = page.get_by_role("region", name="Cohort analytics and scorecard calibration")
+    explained = cohort.get_by_text("Explained answers", exact=True).locator("..")
+    expect(explained).to_contain_text("100.0%")
+    expect(explained).not_to_contain_text(" of ")
+    tags = cohort.get_by_role("table", name="Cohort review outcomes by tag")
+    observed = tags.get_by_role("row").filter(has=page.get_by_role("button", name="observed"))
+    expect(observed.get_by_role("cell").nth(2)).to_have_text("100.0%")
+    unknown = tags.get_by_role("row").filter(has=page.get_by_role("button", name="pending"))
+    expect(unknown.get_by_role("cell").nth(2)).to_have_text("Unavailable")
+    expect(cohort).not_to_contain_text("undefined")

@@ -10,7 +10,7 @@ import {
   type CohortLifecycle, type CohortRoleOption,
 } from "@/lib/cohortAnalytics"
 import { interviewURL } from "@/lib/workspace"
-import { countedRate, rateValue } from "@/lib/reviewRates"
+import { countedRate, rateCounts, rateValue } from "@/lib/reviewRates"
 import styles from "./CohortAnalyticsPanel.module.css"
 import WorkspaceError from "./WorkspaceError"
 import { Badge } from "./ui/badge"
@@ -83,13 +83,15 @@ export default function CohortAnalyticsPanel() {
 
   const maxBucket = data ? Math.max(1, ...data.score_buckets.map((b) => b.count)) : 1
   const summary = data?.summary
+  const explained = rateCounts(summary?.explained_count, summary?.reviewed_count)
+  const concerns = rateCounts(summary?.concern_count, summary?.reviewed_count)
   const metricCards = summary ? [
     ["Sessions", String(summary.session_count), `${summary.active_count} active / ${summary.finished_count} finished / ${summary.archived_count} archived`],
     ["Reviewed answers", `${summary.reviewed_count} / ${summary.answer_count}`, "Marked explained, unresolved or disclosed"],
     ["Explained answers", rateValue(summary.pass_rate_pct, summary.reviewed_count),
-      summary.reviewed_count > 0 ? `${summary.explained_count} of ${summary.reviewed_count} reviewed` : ""],
+      explained ? `${explained} reviewed` : ""],
     ["Unresolved or disclosed", rateValue(summary.concern_rate_pct, summary.reviewed_count),
-      summary.reviewed_count > 0 ? `${summary.concern_count} of ${summary.reviewed_count} reviewed` : ""],
+      concerns ? `${concerns} reviewed` : ""],
     ["Avg scorecard", formatPct(summary.avg_scorecard_pct), `${summary.scored_session_count} scored sessions`],
   ] : []
 
@@ -249,7 +251,10 @@ export default function CohortAnalyticsPanel() {
               )}
 
               <div className={styles.cardBox}>
-                <h3 className={styles.cardTitle}>Candidate pipeline ({data.candidates.length})</h3>
+                <h3 className={styles.cardTitle}>Candidate pipeline ({data.summary.session_count})</h3>
+                {data.candidates.length < data.summary.session_count && <p className="muted text-sm">
+                  Showing {data.candidates.length} of {data.summary.session_count} interviews. CSV and JSON exports include every match.
+                </p>}
                 <div className={styles.tableWrap}>
                   <table className={styles.table}>
                     <caption className="sr-only">Cohort candidate pipeline</caption>

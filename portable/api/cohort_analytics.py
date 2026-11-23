@@ -167,7 +167,7 @@ def _compute_cohort(db: sqlite3.Connection, parsed: dict[str, Any], *, candidate
     scored: list[float] = []
     timeline_map: dict[str, dict[str, int]] = defaultdict(lambda: {"sessions": 0, "finished": 0, "explained": 0, "concerns": 0})
     tag_stats: dict[str, dict[str, Any]] = defaultdict(lambda: {"session_count": 0, "explained": 0, "reviewed": 0, "scores": []})
-    candidates_all: list[dict[str, Any]] = []
+    candidates: list[dict[str, Any]] = []
 
     for row, created_dt in matched:
         sid = row["id"]
@@ -196,11 +196,12 @@ def _compute_cohort(db: sqlite3.Connection, parsed: dict[str, Any], *, candidate
             ts["reviewed"] += reviewed
             if score_pct is not None:
                 ts["scores"].append(score_pct)
-        candidates_all.append({
-            "session_id": sid, "candidate": row["candidate"], "role": row["role"], "role_id": row["role_id"],
-            "lifecycle": lc, "created_at": row["created_at"], "ended_at": row["ended_at"], "tags": tags,
-            **ac, "weighted_score_pct": score_pct,
-        })
+        if candidate_limit is None or len(candidates) < candidate_limit:
+            candidates.append({
+                "session_id": sid, "candidate": row["candidate"], "role": row["role"], "role_id": row["role_id"],
+                "lifecycle": lc, "created_at": row["created_at"], "ended_at": row["ended_at"], "tags": tags,
+                **ac, "weighted_score_pct": score_pct,
+            })
 
     reviewed_total = total_explained + total_concerns
     return {
@@ -225,7 +226,7 @@ def _compute_cohort(db: sqlite3.Connection, parsed: dict[str, Any], *, candidate
             }
             for t, item in sorted(tag_stats.items(), key=lambda e: (-e[1]["session_count"], e[0].casefold(), e[0]))[:20]
         ],
-        "candidates": candidates_all[:candidate_limit] if candidate_limit is not None else candidates_all,
+        "candidates": candidates,
     }
 
 

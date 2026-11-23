@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react"
 import { Download } from "lucide-react"
 import { api, message } from "@/lib/api"
 import type { FeedPage } from "@/lib/bulkArchive"
-import { searchIdentity, SEARCH_PAGE_SIZE, useWorkspaceSearch } from "@/lib/search"
+import { cursorPageStatus, searchIdentity, SEARCH_PAGE_SIZE, useWorkspaceSearch } from "@/lib/search"
 import { Button } from "./ui/button"
 import { Input } from "./ui/input"
 import SearchPageControls from "./SearchPageControls"
@@ -27,6 +27,7 @@ export default function BackupInterviewPicker({ revision }: { revision: number }
   const browse = !searching && reply?.request === request && reply.revision === revision ? reply : null
   const page = searching ? search.pageNumber : browse?.data?.page ?? request.page
   const hasNext = searching ? search.hasNext : !!browse?.data && page < browse.data.pages
+  const first = browse?.data ? (browse.data.page - 1) * browse.data.page_size + 1 : 0
   const pending = searching ? search.pending : !browse
   const error = searching ? search.error : browse?.error
   const rows: Choice[] = searching
@@ -95,7 +96,8 @@ export default function BackupInterviewPicker({ revision }: { revision: number }
     </label>
     {choice && <small className="backup-choice-id">Selected interview ID <code>{choice.id}</code></small>}
     {pending ? <p role="status">Loading interviews…</p> : !error && (page > 1 || hasNext || searching) && <p role="status">
-      {rows.length ? `Page ${page}. Interviews ${(page - 1) * SEARCH_PAGE_SIZE + 1} to ${(page - 1) * SEARCH_PAGE_SIZE + rows.length}.`
+      {searching ? cursorPageStatus(page, rows.length, "interview") :
+        rows.length ? `Page ${page}. Interviews ${first} to ${first + rows.length - 1}.`
         : "No interviews match on this page."}
     </p>}
     <SearchPageControls label="Backup interview pages" page={page} hasNext={hasNext}

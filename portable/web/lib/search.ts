@@ -14,6 +14,9 @@ export type SearchHit = {
   created_at?: string
 }
 export const SEARCH_PAGE_SIZE = 20
+export function cursorPageStatus(page: number, count: number, label: "record" | "interview") {
+  return `Page ${page}. ${count} ${label}${count === 1 ? "" : "s"} shown.`
+}
 type Results = { items: SearchHit[]; has_more: boolean; next_cursor: string | null }
 type SearchPage = { query: string; cursors: string[] }
 type Reply = { page: SearchPage; revision: number; result?: Results; error?: string }
