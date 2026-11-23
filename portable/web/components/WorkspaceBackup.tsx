@@ -18,6 +18,7 @@ type Preview = {
   answers: number
   drafts: number
   assignments: number
+  handoff_notes: number
   trashed: number
   fingerprint: string
   sha256?: string
@@ -116,11 +117,15 @@ export default function WorkspaceBackup() {
         <Download className="data-symbol" size={22} aria-hidden="true" />
         <h2>Download a backup</h2>
         <p>
-          Save role plans, interviews, sources, saved drafts and review notes in one JSON file. It contains
-          private interview text. For each review assignment, the file includes the assignee email, who
-          assigned the review, its priority, due date and last update. A workspace backup includes records
-          in Trash. JSON saves only the current answer revision. A consistent SQLite backup preserves
-          earlier revisions and their attribution.
+          Save role plans, interviews, sources, saved drafts and review notes in one JSON file.
+          A workspace backup includes records in Trash. JSON saves only the current answer revision.
+          A consistent SQLite backup preserves earlier revisions and their attribution.
+        </p>
+        <p>
+          The file contains private interview text. Each panel handoff note includes its text, category,
+          author and creation time. The author can be an email address, an external account ID or the local operator.
+          For each review assignment, the file includes the assignee email, who assigned the review,
+          its priority, due date and last update.
         </p>
         {(sessions.data?.total ?? 0) > 20 && (
           <label className="field">
@@ -177,6 +182,7 @@ export default function WorkspaceBackup() {
           Preview the records before importing. Identical records are skipped. If an ID contains different
           data, the restore stops. Each newly restored answer starts its history at the revision saved in the file.
           When you restore a version 1 or 2 backup, new interviews start unassigned and existing assignments stay in place.
+          Backups from versions 1 through 3 leave existing panel handoff notes in place.
         </p>
         <label className="field">
           Workspace backup file
@@ -251,8 +257,10 @@ export default function WorkspaceBackup() {
               </table>
             </div>
             <p>
-              {preview.answers} captured exchanges, {preview.drafts} saved drafts and{" "}
-              {preview.assignments} review {preview.assignments === 1 ? "assignment" : "assignments"} in this file.{" "}
+              This file contains {preview.answers} captured {preview.answers === 1 ? "exchange" : "exchanges"},{" "}
+              {preview.drafts} saved {preview.drafts === 1 ? "draft" : "drafts"},{" "}
+              {preview.assignments} review {preview.assignments === 1 ? "assignment" : "assignments"} and{" "}
+              {preview.handoff_notes} panel handoff {preview.handoff_notes === 1 ? "note" : "notes"}.{" "}
               {preview.trashed} interviews will remain in Trash.
             </p>
             {!!preview.conflicts.length && (

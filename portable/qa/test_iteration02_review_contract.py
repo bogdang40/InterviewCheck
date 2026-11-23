@@ -118,7 +118,7 @@ def test_history_is_private_and_sqlite_recovery_preserves_it(workspace_url, tmp_
         }).raise_for_status()
         assert "Current interviewer note" in brief.text
         archive = client.get("/api/backups/workspace").raise_for_status()
-        assert archive.json()["version"] == 3
+        assert archive.json()["version"] == 4
         for response in (client.get(answer_url), client.get(session_url), client.get(session_url + "/report"),
                          client.get(session_url + "/brief"), brief, archive):
             assert all(marker not in response.raise_for_status().text for marker in markers)

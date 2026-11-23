@@ -7,10 +7,10 @@ import re
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Header, HTTPException, Request, Response
-from pydantic import ValidationError
 from starlette.concurrency import run_in_threadpool
 
 from . import backup_schema as schema, bulk_operations, drafts, store
+from . import backup_review_data as review_data
 
 router = APIRouter(prefix="/backups")
 ROLE_FIELDS = set(schema.Role.model_fields)
@@ -62,28 +62,10 @@ def role_data(row, db=None):
     return record
 
 
-class InvalidStoredAssignment(HTTPException):
-    def __init__(self, session_id):
-        super().__init__(409, f"Interview {session_id} contains an assignment that this file cannot preserve. "
-                              "Use a SQLite backup or reassign the interview before exporting it.")
-
-
-def assignment_data(db, key):
-    row = db.execute(
-        """SELECT assignee_email,assigned_by,priority,due_at,updated_at
-           FROM session_assignments WHERE session_id=?""", (key,),
-    ).fetchone()
-    if row is None:
-        return None
-    try:
-        return schema.Assignment.model_validate(dict(row)).model_dump()
-    except ValidationError as exc:
-        raise InvalidStoredAssignment(key) from exc
-
-
-def session_data(db, key, *, has_assignments):
+def session_data(db, key, *, has_assignments, has_notes):
     record = select(store.get_session(db, key, include_trashed=True), SESSION_FIELDS)
-    record["assignment"] = assignment_data(db, key) if has_assignments else None
+    record["assignment"] = review_data.assignment_data(db, key) if has_assignments else None
+    record["handoff_notes"] = review_data.handoff_data(db, key) if has_notes else []
     deleted = db.execute("SELECT trashed_at FROM session_trash WHERE session_id=?", (key,)).fetchone()
     if deleted:
         record["trashed_at"] = deleted["trashed_at"]
@@ -106,7 +88,7 @@ def session_data(db, key, *, has_assignments):
 
 @router.get("/workspace")
 def download(session_id: UUID | None = None):
-    doc = {"format": "interviewcheck.workspace", "version": 3, "roles": [], "sessions": []}
+    doc = {"format": "interviewcheck.workspace", "version": 4, "roles": [], "sessions": []}
     size = 0
     size_error = (
         "This interview exceeds the JSON backup limit. Use a consistent SQLite database backup."
@@ -123,8 +105,9 @@ def download(session_id: UUID | None = None):
 
     with store.connection() as db:
         has_assignments = _has_table(db, "session_assignments")
+        has_notes = _has_table(db, "session_handoff_notes")
         if session_id:
-            record = session_data(db, str(session_id), has_assignments=has_assignments)
+            record = session_data(db, str(session_id), has_assignments=has_assignments, has_notes=has_notes)
             if record["role_id"]:
                 append("roles", role_data(db.execute("SELECT * FROM roles WHERE id=?", (record["role_id"],)).fetchone(), db))
             append("sessions", record)
@@ -132,7 +115,7 @@ def download(session_id: UUID | None = None):
             for row in db.execute("SELECT * FROM roles ORDER BY id"):
                 append("roles", role_data(row, db))
             for row in db.execute("SELECT id FROM sessions ORDER BY created_at,id"):
-                append("sessions", session_data(db, row[0], has_assignments=has_assignments))
+                append("sessions", session_data(db, row[0], has_assignments=has_assignments, has_notes=has_notes))
     body = encode(doc).encode("utf-8")
     if len(body) > schema.LIMIT:
         raise HTTPException(413, size_error)
@@ -145,10 +128,10 @@ def download(session_id: UUID | None = None):
     )
 
 
-def same_session(db, record, *, has_assignments):
+def same_session(db, record, *, has_assignments, has_notes):
     try:
-        data = session_data(db, record.id, has_assignments=has_assignments)
-    except InvalidStoredAssignment:
+        data = session_data(db, record.id, has_assignments=has_assignments, has_notes=has_notes)
+    except review_data.UnrepresentableReviewData:
         return False
     return schema.Session.model_validate(data) == record
 
@@ -158,10 +141,14 @@ def classify(db, backup):
     totals = {kind: {"new": 0, "identical": 0, "conflict": 0} for kind in actions}
     conflicts = []
     assignments = sum(s.assignment is not None for s in backup.sessions)
-    # Older files did not record assignments. Compare only the fields those files knew.
-    has_assignments = backup.version == 3 and _has_table(db, "session_assignments")
+    # Compare only fields included by the writer's version.
+    has_assignments = backup.version >= 3 and _has_table(db, "session_assignments")
+    notes = sum(len(s.handoff_notes) for s in backup.sessions)
+    has_notes = backup.version >= 4 and _has_table(db, "session_handoff_notes")
     if assignments and not has_assignments:
         raise HTTPException(409, "Restart InterviewCheck to initialize assignment storage before restoring this backup.")
+    if notes and not has_notes:
+        raise HTTPException(409, "Restart InterviewCheck to initialize handoff note storage before restoring this backup.")
     for group, records in (("roles", backup.roles), ("sessions", backup.sessions)):
         for record in records:
             key = record.id
@@ -173,10 +160,10 @@ def classify(db, backup):
                     exists = any(db.execute("SELECT 1 FROM role_versions WHERE id=?", (v.id,)).fetchone() for v in record.versions)
             else:
                 exists = db.execute("SELECT 1 FROM sessions WHERE id=?", (key,)).fetchone() is not None
-                same = exists and same_session(db, record, has_assignments=has_assignments)
+                same = exists and same_session(db, record, has_assignments=has_assignments, has_notes=has_notes)
                 if not exists:
                     ids = [a.id for a in record.answers] + ([record.draft.id] if record.draft else [])
-                    exists = any(
+                    exists = review_data.has_handoff_collision(db, record.handoff_notes) or any(
                         db.execute("SELECT 1 FROM answers WHERE id=? UNION ALL SELECT 1 FROM session_drafts WHERE id=?", (aid, aid)).fetchone()
                         for aid in ids
                     )
@@ -192,6 +179,7 @@ def classify(db, backup):
         "trashed": sum(s.trashed_at is not None for s in backup.sessions),
         "drafts": sum(s.draft is not None for s in backup.sessions),
         "assignments": assignments,
+        "handoff_notes": notes,
         "conflicts": conflicts,
     }
 
@@ -235,13 +223,7 @@ def restore_records(db, actions):
             "INSERT INTO session_context(session_id,role_id,questions,ended_at,permitted_sources) VALUES(?,?,?,?,?)",
             (s.id, s.role_id, encode(s.planned_questions), s.ended_at, materials(s.permitted_sources)),
         )
-        if s.assignment is not None:
-            a = s.assignment
-            db.execute(
-                """INSERT INTO session_assignments(session_id,assignee_email,assigned_by,priority,due_at,updated_at)
-                   VALUES(?,?,?,?,?,?)""",
-                (s.id, a.assignee_email, a.assigned_by, a.priority, a.due_at, a.updated_at),
-            )
+        review_data.restore_review_data(db, s)
         if s.trashed_at:
             db.execute("INSERT INTO session_trash(session_id,trashed_at,operation_version) VALUES (?,?,?)", (s.id, s.trashed_at, str(uuid4())))
         if s.draft:

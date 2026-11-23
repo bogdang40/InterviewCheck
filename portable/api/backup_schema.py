@@ -13,6 +13,7 @@ from pydantic import (
 
 from .backup_validation import check_session_chronology, unique, verify_records
 from .session_assignment import AssignmentPriority, SessionAssignmentInput
+from .session_scorecard import HandoffCategory, HandoffNoteInput
 
 LIMIT = 20 * 1024 * 1024
 LEGACY_MAX_DEPTH = 16
@@ -90,7 +91,7 @@ def _validate_legacy_tree(value: object) -> object:
 
 
 TZStamp = Annotated[str, AfterValidator(_require_tz)]
-AssignmentStamp = Annotated[
+ReviewStamp = Annotated[
     str, StringConstraints(max_length=64, pattern=r"^[^\p{Cc}]+$"), AfterValidator(_require_tz),
 ]
 Span = Annotated[list[int], Field(min_length=2, max_length=2), AfterValidator(_valid_span)]
@@ -239,21 +240,39 @@ class SavedDraft(Record):
     updated_at: TZStamp
 
 
+def _nonblank_actor(value: str) -> str:
+    if not value.strip():
+        raise ValueError("The recorded actor must contain a nonspace character.")
+    return value
+
+
+ReviewActor = Annotated[HistoricalText, StringConstraints(min_length=1, pattern=r"^[^\p{Cc}]+$"), AfterValidator(_nonblank_actor)]
+
+
+class HandoffNote(Record):
+    id: ID
+    author_email: ReviewActor
+    category: HandoffCategory
+    body: Annotated[str, Field(max_length=2000)]
+    created_at: ReviewStamp
+
+    @field_validator("body")
+    @classmethod
+    def valid_stored_body(cls, value: str) -> str:
+        # Retention removes the body while preserving the note and its provenance.
+        if value and HandoffNoteInput.clean_body(value) != value:
+            raise ValueError("Invalid stored handoff note body.")
+        return value
+
+
 class Assignment(Record):
     assignee_email: Annotated[
         str, Field(min_length=3, max_length=254), AfterValidator(SessionAssignmentInput.validate_assignee_email),
     ]
-    assigned_by: Annotated[HistoricalText, StringConstraints(min_length=1, pattern=r"^[^\p{Cc}]+$")]
+    assigned_by: ReviewActor
     priority: AssignmentPriority
-    due_at: AssignmentStamp | None
-    updated_at: AssignmentStamp
-
-    @field_validator("assigned_by")
-    @classmethod
-    def nonblank_actor(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError("An assignment needs an actor.")
-        return value
+    due_at: ReviewStamp | None
+    updated_at: ReviewStamp
 
     @field_validator("due_at")
     @classmethod
@@ -280,6 +299,7 @@ class Session(Record):
     trashed_at: TZStamp | None = None
     draft: SavedDraft | None = None
     assignment: Assignment | None = None
+    handoff_notes: list[HandoffNote] = Field(default_factory=list)
     answers: list[Answer] = Field(max_length=20000)
     tags: list[TagStr] = Field(default_factory=list, max_length=10)
     review_events: list[ReviewEvent] = Field(default_factory=list, max_length=20000)
@@ -289,24 +309,28 @@ class Session(Record):
     def valid_chronology(self):
         check_session_chronology(self.created_at, self.ended_at, self.trashed_at)
         self.tags = sorted(unique(self.tags, "session tag"))
+        self.handoff_notes.sort(key=lambda note: (note.created_at, note.id), reverse=True)
         return self
 
 
 class Backup(Record):
     format: Literal["interviewcheck.workspace"]
-    version: Literal[1, 2, 3]
+    version: Literal[1, 2, 3, 4]
     roles: list[Role] = Field(max_length=4000)
     sessions: list[Session] = Field(max_length=5000)
 
     @model_validator(mode="after")
     def check_extensions(self):
         role_ids = {r.id for r in self.roles}
+        unique((n.id for s in self.sessions for n in s.handoff_notes), "handoff note ID")
         unique((v.id for r in self.roles for v in r.versions), "role version ID")
         for r in self.roles:
             unique((v.version_number for v in r.versions), "role version number")
         for s in self.sessions:
-            if ("assignment" in s.model_fields_set) != (self.version == 3):
-                raise ValueError("Only version 3 backups require an assignment field on every interview.")
+            if ("assignment" in s.model_fields_set) != (self.version >= 3):
+                raise ValueError("Versions 3 and 4 require an assignment field on every interview.")
+            if ("handoff_notes" in s.model_fields_set) != (self.version >= 4):
+                raise ValueError("Version 4 requires a handoff notes field on every interview.")
             aids = {a.id for a in s.answers}
             for ev in s.review_events:
                 if ev.answer_id not in aids:
