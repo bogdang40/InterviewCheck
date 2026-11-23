@@ -51,7 +51,7 @@ def markdown(sessions):
                           f"Criterion ID {report.heading(item['criterion_id'])}", "",
                           f"Rating {item['rating']}/5 · Weight {item['weight']}", ""])
             if "rationale" in item:
-                lines.extend(["Rationale", "", report.literal(item["rationale"]) if item["rationale"] else "None recorded.", ""])
+                lines.extend(["Rationale", "", report.literal(item["rationale"]) if item["rationale"] else "No saved rationale.", ""])
     return lines
 
 
@@ -66,6 +66,6 @@ def html(sessions):
             parts.append(f"<h4>{escape(item['criterion_label'])}</h4><p>Criterion ID {escape(item['criterion_id'])}</p>"
                          f"<p>Rating {item['rating']}/5 · Weight {item['weight']}</p>")
             if "rationale" in item:
-                parts.append(f"<p>Rationale</p><pre>{escape(item['rationale']) if item['rationale'] else 'None recorded.'}</pre>")
+                parts.append(f"<p>Rationale</p><pre>{escape(item['rationale']) if item['rationale'] else 'No saved rationale.'}</pre>")
         parts.append("</article>")
     return "".join(parts) + "</section>"

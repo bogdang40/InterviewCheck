@@ -30,8 +30,8 @@ export default function ComparisonScorecards({ sessions, includeRationales }: {
                     <li key={item.criterion_id}>
                       <strong>{item.criterion_label}</strong>
                       <p className={styles.cardMeta}>Rating {item.rating} of 5 · Weight {item.weight}</p>
-                      {includeRationales && item.rationale && <p className={styles.rationale}>
-                        <strong>Reviewer rationale</strong> {item.rationale}
+                      {includeRationales && <p className={styles.rationale}>
+                        <strong>Reviewer rationale</strong> {item.rationale || "No saved rationale."}
                       </p>}
                     </li>
                   ))}
