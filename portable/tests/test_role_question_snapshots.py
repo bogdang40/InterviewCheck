@@ -36,9 +36,9 @@ def test_calibration_separates_prompt_revisions_and_keeps_slot_edits_together(cl
 
     monkeypatch.setattr(access, "optional_actor", current_actor)
     route = f"/api/sessions/{first}/answers/{a1}"
-    client.patch(route, json={"disposition": "explained"}).raise_for_status()
+    client.patch(route, json={"disposition": "explained", "note": "Baseline verified."}).raise_for_status()
     actor = "second@example.test"
-    client.patch(route, json={"disposition": "unresolved"}).raise_for_status()
+    client.patch(route, json={"disposition": "unresolved", "note": "Needs clarification."}).raise_for_status()
     url = f"/api/roles/{role['id']}/calibration"
     data = client.get(url).raise_for_status().json()
     assert data["summary"]["answer_count"] == 6
