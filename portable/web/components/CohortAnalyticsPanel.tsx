@@ -253,7 +253,8 @@ export default function CohortAnalyticsPanel() {
               <div className={styles.cardBox}>
                 <h3 className={styles.cardTitle}>Candidate pipeline ({data.summary.session_count})</h3>
                 {data.candidates.length < data.summary.session_count && <p className="muted text-sm">
-                  Showing {data.candidates.length} of {data.summary.session_count} interviews. CSV and JSON exports include every match.
+                  Showing {data.candidates.length} of {data.summary.session_count} interviews. CSV includes every matching interview.
+                  JSON includes these {data.candidates.length} interview rows and summary totals for all {data.summary.session_count} matches.
                 </p>}
                 <div className={styles.tableWrap}>
                   <table className={styles.table}>
