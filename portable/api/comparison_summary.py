@@ -24,11 +24,11 @@ def interview_title(number, session):
 def _matrices(sessions):
     for start in range(0, len(sessions), 3):
         group = sessions[start:start + 3]
-        headers = [f"Interview {n}" for n in range(start + 1, start + len(group) + 1)]
-        caption = headers[0] if len(group) == 1 else f"Interviews {start + 1} to {start + len(group)}"
+        numbers = range(start + 1, start + len(group) + 1)
+        caption = f"Interview {numbers[0]}" if len(group) == 1 else f"Interviews {numbers[0]} to {numbers[-1]}"
         rows = [(label, [s["answer_count"] if key == "answer_count" else s["counts"][key] for s in group])
                 for label, key in MEASURES]
-        yield caption, headers, rows
+        yield caption, numbers, rows
 
 
 def _policy(session):
@@ -45,7 +45,8 @@ def markdown(sessions):
             f"Lifecycle · {session['lifecycle']}", "", "Assistance policy", "", report.literal(_policy(session)), "",
         ])
     lines.extend(["## Answer and review counts", ""])
-    for caption, headers, rows in _matrices(sessions):
+    for caption, numbers, rows in _matrices(sessions):
+        headers = [f"Interview {n}" for n in numbers]
         lines.extend([f"### {caption}", "", "| Measure | " + " | ".join(headers) + " |",
                       "| --- | " + " | ".join(["---:"] * len(headers)) + " |"])
         for label, values in rows:
@@ -65,9 +66,10 @@ def html(sessions):
             f"<dt>Assistance policy</dt><dd>{escape(_policy(session))}</dd></dl></article>"
         )
     parts.append('</section><section class="comparison-counts"><h2>Answer and review counts</h2>')
-    for caption, headers, rows in _matrices(sessions):
+    for caption, numbers, rows in _matrices(sessions):
         parts.append(f'<table><caption>{caption}</caption><thead><tr><th scope="col">Measure</th>')
-        parts.extend(f'<th scope="col">{header}</th>' for header in headers)
+        parts.extend(f'<th scope="col" aria-label="Interview {n}"><span class="interview-prefix">Interview </span>{n}</th>'
+                     for n in numbers)
         parts.append("</tr></thead><tbody>")
         for label, values in rows:
             parts.append(f'<tr><th scope="row">{label}</th>' + "".join(f"<td>{n}</td>" for n in values) + "</tr>")

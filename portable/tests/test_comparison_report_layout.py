@@ -92,7 +92,12 @@ def test_dossier_identity_and_metric_grids_match_in_html_markdown_and_print(clie
         group = records[start:start + 3]
         headers = ["Measure", *[f"Interview {n}" for n in range(start + 1, start + len(group) + 1)]]
         rows = [[label, *[str(record["counts"][i]) for record in group]] for i, label in enumerate(LABELS)]
-        assert [th.text for th in table.findall("thead/tr/th[@scope='col']")] == headers
+        columns = table.findall("thead/tr/th[@scope='col']")
+        assert ["".join(th.itertext()) for th in columns] == headers
+        for column, header, number in zip(columns[1:], headers[1:], range(start + 1, start + len(group) + 1)):
+            assert column.get("aria-label") == header
+            prefix = column.find("span[@class='interview-prefix']")
+            assert prefix is not None and prefix.text == "Interview " and prefix.tail == str(number)
         assert [[tr.findtext("th[@scope='row']"), *[td.text for td in tr.findall("td")]]
                 for tr in table.findall("tbody/tr")] == rows
         assert text_tables[group_index] == [headers, *rows]

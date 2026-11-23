@@ -95,6 +95,7 @@ button {background:#194a33;color:white;border:0;border-radius:5px;padding:.7rem 
 .comparison-report th:not(:first-child),.comparison-report td {text-align:right;font-variant-numeric:tabular-nums;}
 @media screen and (max-width:28rem) {
   .comparison-report thead th {font-size:.875em;}
+  .comparison-report .interview-prefix {display:none;}
   .comparison-report th,.comparison-report td {padding:.3em .15em;}
   .comparison-report th:first-child {width:35%;}
 }
