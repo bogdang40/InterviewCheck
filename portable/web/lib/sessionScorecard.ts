@@ -1,6 +1,6 @@
 "use client"
 
-import { ApiError, request } from "./http"
+import { ApiError, request, type HttpOptions } from "./http"
 
 export type HandoffNoteCategory = "observation" | "follow_up" | "decision" | "concern"
 export type ScorecardItem = {
@@ -60,7 +60,7 @@ function extractError(data: unknown, status: number): string {
   return `Request failed (HTTP ${status}).`
 }
 
-export function requestJson<T>(url: string, options: RequestInit = {}): Promise<T> {
+export function requestJson<T>(url: string, options: HttpOptions = {}): Promise<T> {
   return request<T>(url, { ...options, errorType: ScorecardApiError, describe: extractError })
 }
 
