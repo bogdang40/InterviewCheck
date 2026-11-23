@@ -205,7 +205,7 @@ def test_m22_review_draft_recovery_scorecard_and_brief_hardening(e2e_workspace, 
         page.get_by_role("button", name="Save scorecard").click()
         expect(page.get_by_text("Scorecard saved.")).to_be_visible()
         expect(page.get_by_test_id("scorecard-weighted-badge")).to_have_text("Score: 80.0%")
-        page.get_by_label("Handoff note").fill("Ready for panel debrief")
+        page.get_by_role("textbox", name="Handoff note", exact=True).fill("Ready for panel debrief")
         page.get_by_role("button", name="Add handoff note").click()
         expect(page.get_by_text("Handoff note added.")).to_be_visible()
         assert_no_horizontal_overflow(page)

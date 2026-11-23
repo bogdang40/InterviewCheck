@@ -40,12 +40,27 @@ def test_conflict_reasons_remain_optional_private_and_read_only(workspace_url, b
     preview = page.get_by_role("button", name="Preview restore", exact=True)
     writes = []
     page.on("request", lambda req: writes.append(req.url) if urlsplit(req.url).path == "/api/backups/restore" else None)
+    pattern = "**/api/backups/preview?include_conflict_reasons=true"
+    plans = []
+
+    def remember_preview(intercepted):
+        # Capture the one genuine reply before Chrome can evict it from its inspector cache.
+        upstream = intercepted.fetch()
+        try:
+            body = upstream.body()
+            plans.append(json.loads(body))
+            intercepted.fulfill(response=upstream, body=body)
+        finally:
+            upstream.dispose()
+
+    page.route(pattern, remember_preview)
     with page.expect_response(lambda r: urlsplit(r.url).path == "/api/backups/preview") as result:
         preview.click()
+    page.unroute(pattern, remember_preview)
     response = result.value
     assert response.ok and parse_qs(urlsplit(response.url).query) == {"include_conflict_reasons": ["true"]}
     assert "x-backup-preview" not in response.request.headers
-    plan = response.json()
+    plan, = plans
     assert all(text not in json.dumps(plan) for text in private)
     conflict = page.get_by_role("alert").filter(has_text="Restore blocked by conflicting records.")
     session_row = conflict.get_by_role("listitem").filter(has_text=sid)
@@ -66,7 +81,6 @@ def test_conflict_reasons_remain_optional_private_and_read_only(workspace_url, b
             entry.pop("reasons", None)
             if entry["kind"] == "sessions" and metadata is not None:
                 entry["reasons"] = metadata
-        pattern = "**/api/backups/preview?include_conflict_reasons=true"
         page.route(pattern, lambda intercepted: intercepted.fulfill(json=variant))
         with page.expect_response(lambda r: urlsplit(r.url).path == "/api/backups/preview"):
             preview.click()
