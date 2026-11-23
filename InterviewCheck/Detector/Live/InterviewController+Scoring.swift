@@ -78,7 +78,7 @@ extension InterviewController {
             defer {
                 if self.scoringTokens[questionID] == token { self.pendingScoring.remove(questionID) }
             }
-            await self.waitForReferences(questionID, timeout: 45)
+            await self.waitForReferences(questionID, timeout: self.referenceWaitTimeout)
             // Let the candidate's last words arrive before the answer is read.
             if self.answerSettleDelay > 0 { try? await Task.sleep(nanoseconds: self.answerSettleDelay) }
             guard !Task.isCancelled, let index = self.questions.firstIndex(where: { $0.id == questionID }) else { return }
@@ -114,8 +114,18 @@ extension InterviewController {
             let final = self.evaluate(question: question, window: window, answerEmbedding: answerEmbedding,
                                       referenceEmbeddings: referenceEmbeddings, judge: judge)
             self.store(final, questionID: questionID, window: window, isFinal: true)
+            self.finalReferenceIDs[questionID] = Set(answers.map(\.id))
             self.refreshSummary()
+            // AI answers that finished while this run was reviewing: score again with them.
+            if !self.referencesInFlight.contains(questionID), !self.finalUsedEveryReference(questionID) {
+                self.scoreFinal(questionID: questionID)
+            }
         }
+    }
+
+    /// The saved final score was computed from every AI answer there is now.
+    func finalUsedEveryReference(_ questionID: String) -> Bool {
+        finalReferenceIDs[questionID] == Set((references[questionID] ?? []).map(\.id))
     }
 
     func waitForReferences(_ questionID: String, timeout: TimeInterval) async {
@@ -157,13 +167,19 @@ extension InterviewController {
             }
             guard self.referenceGeneration[questionID] == generation else { return }
             results.forEach(self.database.saveReferenceAnswer)
-            self.referencesInFlight.remove(questionID)
-            // New AI answers for an answer that already closed: score again
-            // (this also replaces a scoring run still using the old ones).
-            if self.questions.first(where: { $0.id == questionID })?.closedAt != nil,
-               generation > 1 || self.scoringTasks[questionID] == nil {
-                self.scoreFinal(questionID: questionID)
-            }
+            self.referencesFinished(questionID: questionID, generation: generation)
+        }
+    }
+
+    /// Every AI answer of this generation is in. For an answer that already
+    /// closed, score again when no run will read them: a regenerated set, no
+    /// run yet, or a final score saved from only the answers ready in time.
+    func referencesFinished(questionID: String, generation: Int) {
+        referencesInFlight.remove(questionID)
+        guard questions.first(where: { $0.id == questionID })?.closedAt != nil else { return }
+        let finalIsStale = scores[questionID]?.isFinal == true && !finalUsedEveryReference(questionID)
+        if generation > 1 || scoringTasks[questionID] == nil || finalIsStale {
+            scoreFinal(questionID: questionID)
         }
     }
 

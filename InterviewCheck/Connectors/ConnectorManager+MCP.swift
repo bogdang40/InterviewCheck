@@ -15,7 +15,8 @@ extension ConnectorManager {
             return
         }
         let endpoints = try await MCPAuthorization.discover(server: server, transport: transport)
-        let receiver = try LoopbackReceiver()
+        let state = UUID().uuidString
+        let receiver = try LoopbackReceiver(expectedState: state)
         defer { receiver.stop() }
         let redirect = try await receiver.start()
         guard let registration = endpoints.registrationURL else {
@@ -24,7 +25,6 @@ extension ConnectorManager {
         let clientID = try await MCPAuthorization.register(at: registration, redirectURI: redirect, transport: transport)
         let client = OAuthClient(provider: MCPAuthorization.provider(endpoints, server: server), clientID: clientID, transport: transport)
         let verifier = PKCE.verifier()
-        let state = UUID().uuidString
         openURL(client.authorizationURL(redirectURI: redirect, state: state, codeChallenge: PKCE.challenge(for: verifier)))
         let code = try LoopbackReceiver.code(from: try await receiver.waitForCallback(), expectedState: state)
         let tokens = try await client.exchange(code: code, verifier: verifier, redirectURI: redirect)

@@ -17,11 +17,18 @@ public enum BullhornConnectorProvider {
     public static func locate(username: String, transport: HTTPTransport) async throws -> (oauthURL: String, restURL: String) {
         let api = APIClient(baseURL: URL(string: defaultRestURL)!, transport: transport)
         let info = try await api.getJSON("loginInfo", query: [URLQueryItem(name: "username", value: username)])
-        guard let oauth = info["oauthUrl"].url, oauth.scheme == "https", oauth.host?.hasSuffix("bullhornstaffing.com") == true,
-              let rest = info["restUrl"].url, rest.scheme == "https", rest.host?.hasSuffix("bullhornstaffing.com") == true else {
+        guard let oauth = info["oauthUrl"].url, isBullhorn(oauth), let rest = info["restUrl"].url, isBullhorn(rest) else {
             throw ConnectorError.invalidResponse("no data center found for \(username)")
         }
         return (oauth.absoluteString, rest.absoluteString)
+    }
+
+    /// https on bullhornstaffing.com or a subdomain of it; not a look-alike
+    /// such as evilbullhornstaffing.com.
+    static func isBullhorn(_ url: URL) -> Bool {
+        let domain = "bullhornstaffing.com"
+        guard url.scheme?.lowercased() == "https", let host = url.host?.lowercased() else { return false }
+        return host == domain || host.hasSuffix("." + domain)
     }
 }
 

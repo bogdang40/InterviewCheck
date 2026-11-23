@@ -143,13 +143,13 @@ extension AudioCaptureService {
         // Preserve partials for dual stream modes before shutdown
         transcriptMerger?.finalizePartials()
 
-        // Shutdown external services before audio engine
-        shutdownActiveTranscriptionEngine(preserveTranscriptState: true)
-
-        // Stop audio engine and remove tap
+        // Stop the engine and remove the tap before the router and request
+        // it reads on the audio thread are released.
         audioEngine.stop()
         removeInputTapIfNeeded()
         syncEngineRunningState()
+
+        shutdownActiveTranscriptionEngine(preserveTranscriptState: true)
 
         // Finalize transcripts (preserves partial speech as entries)
         cleanupRecording(preservePartials: usingAppleSpeech)
@@ -179,15 +179,15 @@ extension AudioCaptureService {
         // Stop buffer health monitoring
         stopBufferHealthMonitoring()
 
-        // Shutdown external services before audio engine
-        shutdownActiveTranscriptionEngine(preserveTranscriptState: false)
-
-        // Stop audio engine and remove tap if needed
+        // Stop the engine and remove the tap before the router and request
+        // it reads on the audio thread are released.
         if audioEngine.isRunning {
             audioEngine.stop()
         }
         removeInputTapIfNeeded()
         syncEngineRunningState()
+
+        shutdownActiveTranscriptionEngine(preserveTranscriptState: false)
 
         // Cleanup recognition requests
         cleanupRecording(preservePartials: false)

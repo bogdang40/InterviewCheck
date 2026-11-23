@@ -15,6 +15,7 @@ final class ReportAutoSaveTests: XCTestCase {
         let controller = InterviewController(timeline: InterviewTimeline(), database: database, settings: DetectorSettings(defaults: defaults))
         controller.startAudio = {}
         controller.stopAudio = {}
+        controller.finishTranscription = { $0() }
         controller.roleProvider = { nil }
         let autosave = ReportAutoSave(defaults: defaults, database: database)
         autosave.watch(controller)
@@ -49,6 +50,7 @@ final class ReportAutoSaveTests: XCTestCase {
         let controller = InterviewController(timeline: InterviewTimeline(), database: database, settings: DetectorSettings(defaults: defaults))
         controller.startAudio = {}
         controller.stopAudio = {}
+        controller.finishTranscription = { $0() }
         controller.roleProvider = { nil }
         let autosave = ReportAutoSave(defaults: defaults, database: database)
         autosave.folder = folder
@@ -111,6 +113,7 @@ final class ReportAutoSaveTests: XCTestCase {
         let controller = InterviewController(timeline: InterviewTimeline(), database: database, settings: DetectorSettings(defaults: defaults))
         controller.startAudio = {}
         controller.stopAudio = {}
+        controller.finishTranscription = { $0() }
         controller.roleProvider = { nil }
         let autosave = ReportAutoSave(defaults: defaults, database: database)
         autosave.folder = folder

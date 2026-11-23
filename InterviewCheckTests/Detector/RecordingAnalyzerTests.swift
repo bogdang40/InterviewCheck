@@ -40,7 +40,9 @@ final class RecordingAnalyzerTests: XCTestCase {
         analyzer.database = database
         analyzer.settings = settings
         analyzer.transcribe = { _ in words }
-        analyzer.start(file: URL(fileURLWithPath: "/tmp/interview.wav"), candidateName: "Ana Diaz", role: nil)
+        let consent = Date(timeIntervalSince1970: 1_794_000_123)
+        analyzer.start(file: URL(fileURLWithPath: "/tmp/interview.wav"), candidateName: "Ana Diaz", role: nil,
+                       consentConfirmedAt: consent)
         try await waitUntil { analyzer.step == .chooseSpeaker }
         XCTAssertEqual(analyzer.speakers.map(\.id), [0, 1])
         XCTAssertEqual(analyzer.candidateSpeaker, 1, "the voice with the most words is preselected")
@@ -52,6 +54,7 @@ final class RecordingAnalyzerTests: XCTestCase {
 
         let report = try XCTUnwrap(database.loadInterviewReport(id: id))
         XCTAssertEqual(report.interview.candidateName, "Ana Diaz")
+        XCTAssertEqual(report.interview.consentConfirmedAt, consent, "the time the interviewer confirmed the notice")
         XCTAssertEqual(report.questions.map(\.text), ["Tell me about a hard bug you fixed recently.", "How did you find it?"])
         XCTAssertEqual(report.scores.count, 2)
         XCTAssertNotNil(report.interview.overallPercent)
@@ -91,7 +94,7 @@ final class RecordingAnalyzerTests: XCTestCase {
         analyzer.database = database
         analyzer.settings = settings
         analyzer.meetingStart = Date(timeIntervalSince1970: 1_794_000_000)
-        analyzer.startTranscript(file: file, candidateName: "Ana Diaz", role: nil,
+        analyzer.startTranscript(file: file, candidateName: "Ana Diaz", role: nil, consentConfirmedAt: nil,
                                  recordingID: ExternalRecordingFixture.zoom.id, cleanup: folder)
         XCTAssertFalse(FileManager.default.fileExists(atPath: folder.path), "the download folder is removed")
         XCTAssertEqual(analyzer.step, .chooseSpeaker)
@@ -104,6 +107,7 @@ final class RecordingAnalyzerTests: XCTestCase {
         XCTAssertEqual(questions, 2)
         let report = try XCTUnwrap(database.loadInterviewReport(id: id))
         XCTAssertEqual(report.interview.scoredFrom, .transcript)
+        XCTAssertNil(report.interview.consentConfirmedAt, "no confirmation was given, so none is recorded")
         XCTAssertEqual(report.interview.startedAt, Date(timeIntervalSince1970: 1_794_000_000))
         XCTAssertTrue(report.scores.values.allSatisfy { $0.confidence == .low })
         XCTAssertEqual(database.loadExternalRecordings().first?.interviewID, id)
@@ -125,7 +129,7 @@ final class RecordingAnalyzerTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: file) }
         try "WEBVTT\n\n00:00:01.000 --> 00:00:03.000\nHello there.\n".write(to: file, atomically: true, encoding: .utf8)
         let analyzer = RecordingAnalyzer()
-        analyzer.startTranscript(file: file, candidateName: "", role: nil)
+        analyzer.startTranscript(file: file, candidateName: "", role: nil, consentConfirmedAt: nil)
         guard case .failed(let message) = analyzer.step else { return XCTFail("should fail") }
         XCTAssertTrue(message.contains("no speaker names"))
     }

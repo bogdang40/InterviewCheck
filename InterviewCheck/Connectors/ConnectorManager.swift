@@ -95,11 +95,11 @@ final class ConnectorManager: ObservableObject {
         guard let provider = ConnectorOAuth.provider(kind, ConnectorCredentials(fields: fields)) else { return }
         let client = OAuthClient(provider: provider, clientID: clientID, clientSecret: fields["clientSecret"], transport: transport)
         // Webex, Bullhorn and JobAdder match the redirect exactly, port included.
-        let receiver = try LoopbackReceiver(port: ConnectorOAuth.redirectPort(kind))
+        let state = UUID().uuidString
+        let receiver = try LoopbackReceiver(port: ConnectorOAuth.redirectPort(kind), expectedState: state)
         defer { receiver.stop() }
         let redirect = try await receiver.start(host: kind == .microsoft365 ? "localhost" : "127.0.0.1")
         let verifier = PKCE.verifier()
-        let state = UUID().uuidString
         openURL(client.authorizationURL(redirectURI: redirect, state: state, codeChallenge: PKCE.challenge(for: verifier)))
         let callback = try await receiver.waitForCallback()
         let code = try LoopbackReceiver.code(from: callback, expectedState: state)
@@ -160,11 +160,9 @@ final class ConnectorManager: ObservableObject {
                 let client = OAuthClient(provider: provider, clientID: credentials["clientID"] ?? "",
                                          clientSecret: credentials["clientSecret"], transport: transport)
                 let store = self.store
+                let lineage = RefreshTokenLineage(tokens)
                 let session = OAuthSession(tokens: tokens, client: client) { updated in
-                    // Not after a disconnect: the account is gone for good.
-                    guard var saved = store.load(kind.rawValue) else { return }
-                    saved.tokens = updated
-                    try? store.save(saved, for: kind.rawValue)
+                    lineage.save(updated, kind: kind, in: store)
                 }
                 sessions[kind] = session
                 return session

@@ -8,7 +8,7 @@ enum InterviewReportComposer {
         var lines = ["# Interview report: \(interview.candidateName.isEmpty ? "Candidate" : interview.candidateName)", ""]
         lines.append("- Role: \(interview.roleTitle.isEmpty ? "Not set" : interview.roleTitle)")
         lines.append("- Date: \(dateFormatter.string(from: interview.startedAt))\(duration(interview))")
-        lines.append("- Candidate notified: \(interview.consentConfirmedAt.map { "yes, \(timeFormatter.string(from: $0))" } ?? "not recorded")")
+        lines.append("- Candidate notified: \(ConsentNotice.detail(interview.consentConfirmedAt, timeFormatter: timeFormatter))")
         if let overall = interview.overallPercent {
             lines.append("- Overall: **\(overall)%** (\(ScoreBand(percent: overall).title.lowercased())); " +
                          "\(report.flaggedLine) (70% or more)")

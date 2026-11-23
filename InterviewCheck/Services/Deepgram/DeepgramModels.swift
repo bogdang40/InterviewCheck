@@ -11,6 +11,8 @@ struct DeepgramResponse: Codable {
     let speechFinal: Bool?
     let start: Double?
     let duration: Double?
+    /// The answer to a Finalize message.
+    var fromFinalize: Bool?
 
     enum CodingKeys: String, CodingKey {
         case type
@@ -20,6 +22,7 @@ struct DeepgramResponse: Codable {
         case speechFinal = "speech_final"
         case start
         case duration
+        case fromFinalize = "from_finalize"
     }
 }
 

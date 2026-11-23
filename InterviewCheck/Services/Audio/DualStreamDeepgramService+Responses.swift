@@ -59,14 +59,16 @@ extension DualStreamDeepgramService {
 
         do {
             let response = try JSONDecoder().decode(DeepgramResponse.self, from: data)
+            let answersFinalize = response.fromFinalize == true
 
             guard let channel = response.channel,
-                  let alternative = channel.alternatives.first else {
+                  let alternative = channel.alternatives.first,
+                  !alternative.transcript.isEmpty else {
+                if answersFinalize { DispatchQueue.main.async { [weak self] in self?.resolveFinalize(source) } }
                 return
             }
 
             let transcript = alternative.transcript
-            guard !transcript.isEmpty else { return }
             updateTranscriptMetrics(source: source)
 
             // Extract speaker using majority vote over word-level speakers
@@ -92,7 +94,10 @@ extension DualStreamDeepgramService {
             // Resolve the callback when delivering. Teardown or reconnect can
             // invalidate a queued frame after parsing but before the main queue runs.
             DispatchQueue.main.async { [weak self] in
-                guard let self, self.connectionEpoch(for: source) == epoch else { return }
+                guard let self else { return }
+                // After the words are delivered: the end of the interview waits for them.
+                defer { if answersFinalize { self.resolveFinalize(source) } }
+                guard self.connectionEpoch(for: source) == epoch else { return }
                 let (callback, timedCallback) = self.stateLock.withLock {
                     (source == .microphone ? self.onMicTranscript : self.onSystemTranscript,
                      self.onFinalTimedWords)

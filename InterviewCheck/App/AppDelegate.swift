@@ -86,7 +86,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 item.indentationLevel = 1
                 menu.addItem(item)
             }
-            if upcoming.first?.meetingURL != nil {
+            if upcoming.first?.safeMeetingLink?.opensAutomatically == true {
                 let join = NSMenuItem(title: "Join Next Interview", action: #selector(joinFromDock), keyEquivalent: "")
                 join.target = self
                 menu.addItem(join)
@@ -141,14 +141,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         // The last answers are still being scored: quit once they are saved
         // (and the report PDF written), at most a minute later.
-        guard !controller.pendingScoring.isEmpty || !controller.referencesInFlight.isEmpty else {
+        guard controller.isEnding || !controller.pendingScoring.isEmpty || !controller.referencesInFlight.isEmpty else {
             // Nothing left to score: write the report PDF now, before the app exits.
             if controller.phase == .ended, let id = controller.interview?.id { ReportAutoSave.shared.save(id: id) }
             return .terminateNow
         }
         Task { @MainActor in
             let deadline = Date().addingTimeInterval(60)
-            while !controller.pendingScoring.isEmpty || !controller.referencesInFlight.isEmpty, Date() < deadline {
+            while controller.isEnding || !controller.pendingScoring.isEmpty || !controller.referencesInFlight.isEmpty,
+                  Date() < deadline {
                 try? await Task.sleep(nanoseconds: 200_000_000)
             }
             try? await Task.sleep(nanoseconds: 300_000_000)

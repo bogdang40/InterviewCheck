@@ -15,7 +15,7 @@ enum ReportAttributedText {
         text.append(line("Interview report: \(interview.candidateName.isEmpty ? "Candidate" : interview.candidateName)",
                          font: .systemFont(ofSize: 20, weight: .bold), after: 4))
         let meta = [interview.roleTitle, InterviewReportComposer.dateFormatter.string(from: interview.startedAt),
-                    "candidate notified: \(interview.consentConfirmedAt == nil ? "not recorded" : "yes")"]
+                    "candidate notified: \(ConsentNotice.short(interview.consentConfirmedAt))"]
             .filter { !$0.isEmpty }.joined(separator: " \u{00B7} ")
         text.append(line(meta, font: .systemFont(ofSize: 11), color: muted, after: 8))
         if let overall = interview.overallPercent {

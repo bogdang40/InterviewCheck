@@ -19,20 +19,18 @@ public enum MCPAuthorization {
     }
 
     public static func discover(server: URL, transport: HTTPTransport) async throws -> Endpoints {
-        let probe = APIClient(baseURL: server, transport: NoThrowTransport(transport))
+        let probe = MCPProbe(transport: transport)
         let (_, response) = try await probe.send(method: "POST", url: server, body: Data("{}".utf8))
         var authorizationServer = origin(server)
         var scopes: [String] = []
         if let metadata = resourceMetadataURL(response) ?? URL(string: "\(origin(server))/.well-known/oauth-protected-resource\(server.path)"),
-           let resource = try? await probe.send(method: "GET", url: metadata, body: nil), resource.1.statusCode == 200,
-           let json = try? JSONValue.parse(resource.0) {
+           let json = await probe.json(at: metadata) {
             if let first = json["authorization_servers"][0].string { authorizationServer = first }
             scopes = json["scopes_supported"].array.compactMap(\.string)
         }
         var rejected = false
         for candidate in metadataURLs(for: authorizationServer) {
-            guard let (data, response) = try? await probe.send(method: "GET", url: candidate, body: nil), response.statusCode == 200,
-                  let json = try? JSONValue.parse(data), let authorize = json["authorization_endpoint"].url,
+            guard let json = await probe.json(at: candidate), let authorize = json["authorization_endpoint"].url,
                   let token = json["token_endpoint"].url else { continue }
             // Every address must be https (the sign-in page is opened in the
             // browser). The code and PKCE verifier go only to the token endpoint,
@@ -95,20 +93,5 @@ public enum MCPAuthorization {
         return ["\(base)/.well-known/oauth-authorization-server\(path)", "\(base)/.well-known/openid-configuration\(path)",
                 "\(issuer.hasSuffix("/") ? String(issuer.dropLast()) : issuer)/.well-known/openid-configuration"]
             .compactMap(URL.init(string:))
-    }
-}
-
-/// Passes every status through, so discovery can read a 401's headers.
-struct NoThrowTransport: HTTPTransport {
-    let base: HTTPTransport
-    init(_ base: HTTPTransport) { self.base = base }
-    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
-        let (data, response) = try await base.send(request)
-        guard (200..<300).contains(response.statusCode) else {
-            return (data, HTTPURLResponse(url: response.url!, statusCode: 200, httpVersion: nil,
-                                          headerFields: (response.allHeaderFields as? [String: String] ?? [:])
-                                              .merging(["X-Original-Status": "\(response.statusCode)"]) { $1 })!)
-        }
-        return (data, response)
     }
 }

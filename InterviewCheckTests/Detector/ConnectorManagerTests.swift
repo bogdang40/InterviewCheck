@@ -322,4 +322,58 @@ final class ConnectorManagerTests: XCTestCase {
         XCTAssertEqual(merged["apiKey"], "old-secret", "an empty secret keeps the saved one")
         XCTAssertEqual(merged["subdomain"], "acme2")
     }
+
+    func testARefreshFromAnOldSignInNeverOverwritesANewOne() async throws {
+        let path = NSTemporaryDirectory() + "refresh-\(UUID().uuidString).sqlite"
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let store = MemoryCredentialStore()
+        let manager = ConnectorManager(store: store, database: SessionDatabase(databasePath: path),
+                                       defaults: UserDefaults(suiteName: "refresh.\(UUID().uuidString)")!)
+        manager.transport = RotatingTokenStub()
+        var token: AccessTokenProvider?
+        manager.factory = { _, _, _, provider in
+            token = provider
+            return FakeCalendar(start: Date())
+        }
+        func expired(_ refresh: String) -> ConnectorCredentials {
+            ConnectorCredentials(fields: ["clientID": "c"],
+                                 tokens: OAuthTokens(accessToken: "a-\(refresh)", refreshToken: refresh, expiresAt: .distantPast))
+        }
+
+        // The same sign-in: each rotated token is saved, refresh after refresh.
+        try store.save(expired("r1"), for: "google")
+        _ = try manager.makeConnector(.google)
+        _ = try await XCTUnwrap(token)()
+        XCTAssertEqual(store.load("google")?.tokens?.refreshToken, "rotated-1")
+        await manager.sessions[.google]?.expire()
+        _ = try await XCTUnwrap(token)()
+        XCTAssertEqual(store.load("google")?.tokens?.refreshToken, "rotated-2")
+
+        // Signed in again (another account) while the old session still refreshes.
+        manager.sessions[.google] = nil
+        try store.save(expired("r1"), for: "google")
+        _ = try manager.makeConnector(.google)
+        let oldSession = try XCTUnwrap(token)
+        try store.save(ConnectorCredentials(fields: ["clientID": "c"],
+                                            tokens: OAuthTokens(accessToken: "new-account", refreshToken: "n1",
+                                                                expiresAt: Date().addingTimeInterval(3600))), for: "google")
+        _ = try await oldSession()
+        XCTAssertEqual(store.load("google")?.tokens?.refreshToken, "n1", "the new account's tokens are kept")
+        XCTAssertEqual(store.load("google")?.tokens?.accessToken, "new-account")
+    }
+}
+
+/// A token endpoint that rotates the refresh token on every call.
+final class RotatingTokenStub: HTTPTransport, @unchecked Sendable {
+    private let lock = NSLock()
+    private var calls = 0
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let call = lock.withLock { () -> Int in
+            calls += 1
+            return calls
+        }
+        let body = #"{"access_token":"fresh-\#(call)","refresh_token":"rotated-\#(call)","expires_in":3600}"#
+        return (Data(body.utf8), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+    }
 }

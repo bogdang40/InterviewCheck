@@ -71,6 +71,33 @@ final class DeepgramTimedWordsTests: XCTestCase {
         XCTAssertEqual(stamps[1], 500.0, accuracy: 1e-9)
     }
 
+    func testLiveAudioNeverOvertakesAudioQueuedBeforeTheStreamWasReady() {
+        let session = URLSession(configuration: .ephemeral)
+        defer { session.invalidateAndCancel() }
+        let service = DualStreamDeepgramService(socketFactory: { _ in nil })
+        let sent = SentLog()
+        let liveSent = expectation(description: "live chunk sent")
+        service.transmit = { _, message, _ in
+            guard case .data(let data) = message else { return }
+            sent.append(data.count)
+            if data.count == 100 {
+                // While the queue is flushing, live audio arrives on another thread.
+                DispatchQueue.global().async {
+                    service.sendMicAudio(Data(count: 300))
+                    liveSent.fulfill()
+                }
+                _ = sent.wait(forCount: 3, timeout: 0.3)
+            }
+        }
+        service.stateLock.withLock { service.micWebSocket = session.webSocketTask(with: URL(string: "wss://localhost/x")!) }
+        service.sendMicAudio(Data(count: 100))   // not ready yet: queued
+        service.sendMicAudio(Data(count: 200))   // queued
+        service.markReadyIfNeeded(.microphone)   // flushes both
+        wait(for: [liveSent], timeout: 2)
+        XCTAssertEqual(sent.values, [100, 200, 300], "queued audio first, then live audio")
+        service.disconnect()
+    }
+
     func testRequestKeepsFillerWords() {
         let url = DeepgramStreamCore.buildWebSocketURL(diarize: true, utterances: false)
         XCTAssertTrue(url?.absoluteString.contains("filler_words=true") ?? false)
@@ -117,5 +144,31 @@ final class ReconnectGapTests: XCTestCase {
         XCTAssertTrue(timeline.voiceNeedsRepick)
         timeline.candidateSpeakerIndex = 0
         XCTAssertFalse(timeline.voiceNeedsRepick)
+    }
+}
+
+/// Sizes of chunks handed to the socket, in order, from any thread.
+final class SentLog: @unchecked Sendable {
+    private let condition = NSCondition()
+    private var sizes: [Int] = []
+
+    var values: [Int] { condition.withLock { sizes } }
+
+    func append(_ size: Int) {
+        condition.withLock {
+            sizes.append(size)
+            condition.broadcast()
+        }
+    }
+
+    /// True once `count` chunks were sent; false after `timeout`.
+    func wait(forCount count: Int, timeout: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        condition.lock()
+        defer { condition.unlock() }
+        while sizes.count < count {
+            if !condition.wait(until: deadline) { return false }
+        }
+        return true
     }
 }

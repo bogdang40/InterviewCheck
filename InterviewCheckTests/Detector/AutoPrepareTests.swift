@@ -10,6 +10,7 @@ private struct TwoInterviews: InterviewSource, CandidateSource {
     var gap: TimeInterval = 3 * 3600
     var delay: UInt64 = 0
     var withLink = false
+    var link = "https://acme.zoom.us/j/81234567890"
     var withJob = false
     var cancelledFirst = false
     func verify() async throws -> String { "lee@acme.com" }
@@ -18,7 +19,7 @@ private struct TwoInterviews: InterviewSource, CandidateSource {
     }
     private var all: [ExternalInterview] {
         [ExternalInterview(source: .calendly, externalID: "a", title: "Phone Screen", startsAt: first,
-                           meetingURL: withLink ? URL(string: "https://acme.zoom.us/j/81234567890") : nil,
+                           meetingURL: withLink ? URL(string: link) : nil,
                            candidate: ExternalCandidate(externalID: "ca", name: "Jane Doe", email: "jane@example.com"),
                            job: withJob ? ExternalJob(externalID: "j1", title: "Backend Engineer") : nil),
          ExternalInterview(source: .calendly, externalID: "b", title: "Phone Screen", startsAt: first.addingTimeInterval(gap),
@@ -150,6 +151,24 @@ final class AutoPrepareTests: XCTestCase {
         XCTAssertEqual(opened.map(\.host), ["acme.zoom.us"], "once")
     }
 
+    func testUnsafeOrUnknownMeetingLinksNeverOpenAutomatically() async {
+        for link in ["file:///Applications/Calculator.app", "smb://files.example.com/share",
+                     "zoommtg://zoom.us/join?confno=1", "https://evil.example.com/j/1"] {
+            source.withLink = true
+            source.link = link
+            await manager.sync(.calendly)
+            var opened: [URL] = []
+            auto.openLink = { opened.append($0) }
+            auto.joinsAutomatically = true
+            await auto.tick()
+            clock = clock.addingTimeInterval(7 * 60)
+            await auto.tick()
+            XCTAssertTrue(opened.isEmpty, link)
+            XCTAssertNil(auto.joinIfDue(), link)
+            clock = clock.addingTimeInterval(-7 * 60)
+        }
+    }
+
     func testAManualJoinIsNotRepeated() async {
         source.withLink = true
         await manager.sync(.calendly)
@@ -242,6 +261,7 @@ final class AutoPrepareTests: XCTestCase {
     func testAFinishedInterviewLetsTheNextOneIn() async throws {
         controller.startAudio = {}
         controller.stopAudio = {}
+        controller.finishTranscription = { $0() }
         controller.roleProvider = { nil }
         await auto.tick()
         controller.consentConfirmed = true
@@ -303,6 +323,7 @@ final class AutoPrepareTests: XCTestCase {
     func testTheInterviewJustRunIsNotPreparedAgain() async throws {
         controller.startAudio = {}
         controller.stopAudio = {}
+        controller.finishTranscription = { $0() }
         controller.roleProvider = { nil }
         let a = manager.upcoming[0]
         _ = await manager.prepare(a, controller: controller, roles: roles, navigate: false)   // by hand
@@ -318,6 +339,7 @@ final class AutoPrepareTests: XCTestCase {
     func testABackToBackNextInterviewIsPreparedAfterTheLastOneRan() async throws {
         controller.startAudio = {}
         controller.stopAudio = {}
+        controller.finishTranscription = { $0() }
         controller.roleProvider = { nil }
         source.gap = 15 * 60                                  // A at T+8, B (Max Roe) at T+23
         await manager.sync(.calendly)
