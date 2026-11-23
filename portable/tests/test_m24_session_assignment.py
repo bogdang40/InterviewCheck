@@ -277,3 +277,67 @@ def test_trash_purge_cleans_assignment_even_without_fk_and_auth_gates_hold(clien
     with account_db.connection() as adb:
         assert adb.execute("PRAGMA user_version").fetchone()[0] == 8
     assert account_db.VERSION == 8
+
+
+def test_pages_cover_every_visible_matching_assignment_and_clamp_after_change(client):
+    ids = [_create_session(client, candidate=f"Queue {i}") for i in range(14)]
+    path = "/api/interviews/assignments"
+    assignment = {"assignee_email": "panel@example.test", "priority": "high", "due_at": "2020-02-03T12:00:00Z"}
+    client.post(path + "/bulk", json={"session_ids": ids, **assignment}).raise_for_status()
+    client.post(f"/api/sessions/{ids[-1]}/trash").raise_for_status()
+    _create_session(client, candidate="Unassigned")
+    filters = {"limit": 12, "due": "overdue", "priority": "high", "assignee": "PANEL@example.test"}
+
+    first = client.get(path, params=filters).json()
+    second = client.get(path, params={**filters, "page": 2}).json()
+    assert [first["page"], second["page"]] == [1, 2]
+    assert first["pages"] == second["pages"] == 2
+    assert first["limit"] == second["limit"] == 12
+    assert first["filtered"] == second["filtered"] == 13
+    assert first["counts"] == {"assigned_to_me": 0, "high_priority": 13, "unassigned": 1}
+    assert first["due_counts"] == {"overdue": 13, "due_soon": 0}
+    ordered = [row["session_id"] for row in first["items"] + second["items"]]
+    assert ordered == sorted(ids[:-1]), "tied priority, deadline and bulk update timestamp are resolved by session ID"
+
+    client.delete(f"/api/sessions/{ordered[-1]}/assignment").raise_for_status()
+    clamped = client.get(path, params={**filters, "page": 2}).json()
+    assert (clamped["page"], clamped["pages"], clamped["filtered"]) == (1, 1, 12)
+    assert [row["session_id"] for row in clamped["items"]] == ordered[:-1]
+    assert client.get(path, params={"page": 0}).status_code == 422
+
+
+def test_empty_assignment_schema_pages_unassigned_without_creating_the_table(client):
+    ids = [_create_session(client, candidate=f"Legacy {i}") for i in range(3)]
+    with store.connection(write=True) as db:
+        db.execute("DROP TABLE session_assignments")
+    query = {"assignee": "unassigned", "limit": 2, "page": 99}
+    response = client.get("/api/interviews/assignments", params=query).json()
+    assert (response["page"], response["pages"], response["filtered"]) == (2, 2, 3)
+    assert [item["session_id"] for item in response["items"]] == ids[:1]
+    empty = client.get("/api/interviews/assignments", params={**query, "due": "soon"}).json()
+    assert (empty["page"], empty["pages"], empty["filtered"], empty["items"]) == (1, 1, 0, [])
+    with store.connection() as db:
+        assert not db.execute("SELECT 1 FROM sqlite_master WHERE name='session_assignments'").fetchone()
+
+
+def test_due_pages_respect_utc_boundaries_to_microsecond(client):
+    from datetime import datetime, timezone
+    from api.assignment_queue import read_page
+
+    now = datetime(2026, 11, 21, 13, 30, tzinfo=timezone.utc)
+    timestamps = ["2026-11-21T13:29:59.999999Z", "2026-11-21T14:30:00+01:00",
+                  "2026-11-23T05:30:00-08:00", "2026-11-23T13:30:00.000001Z", "unknown", None]
+    ids = [_create_session(client, candidate=f"Deadline {i}") for i in range(len(timestamps))]
+    with store.connection(write=True) as db:
+        db.executemany("""INSERT INTO session_assignments(session_id,assignee_email,assigned_by,due_at,updated_at)
+                       VALUES (?,'qa@example.test','operator',?,'2026-11-20')""", zip(ids, timestamps))
+
+    with store.connection() as db:
+        defaults = dict(viewer="operator", assignee="", priority="", limit=1, has_assignments=True, now=now)
+        first = read_page(db, due="soon", page=1, **defaults)
+        second = read_page(db, due="soon", page=2, **defaults)
+        overdue = read_page(db, due="overdue", page=1, **defaults)
+        assert first["due_counts"] == {"overdue": 1, "due_soon": 2}
+        assert first["filtered"] == second["filtered"] == 2
+        assert {first["items"][0]["session_id"], second["items"][0]["session_id"]} == set(ids[1:3])
+        assert overdue["items"][0]["session_id"] == ids[0]

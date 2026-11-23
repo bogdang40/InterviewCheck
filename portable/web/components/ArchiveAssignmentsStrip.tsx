@@ -1,7 +1,8 @@
 "use client"
 
 import Link from "next/link"
-import { type FormEvent, useEffect, useMemo, useState } from "react"
+import { useSearchParams } from "next/navigation"
+import { type FormEvent, useEffect, useMemo, useRef, useState } from "react"
 import { ArrowRight, RefreshCw, Trash2, UserCheck } from "lucide-react"
 import { dateLabel, message } from "@/lib/api"
 import {
@@ -13,22 +14,53 @@ import { Badge } from "./ui/badge"
 import { Button } from "./ui/button"
 import { Input } from "./ui/input"
 
-type QueueMode = "me" | "high" | "unassigned" | "overdue"
+type QueueMode = "me" | "high" | "unassigned" | "overdue" | "soon"
 
 const QUEUE_FILTERS: Record<QueueMode, AssignmentQueueFilters> = {
   me: { assignee: "me", limit: 12 },
   high: { priority: "high", limit: 12 },
   unassigned: { assignee: "unassigned", limit: 12 },
   overdue: { due: "overdue", limit: 12 },
+  soon: { due: "soon", limit: 12 },
 }
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
+function queueMode(value: string | null): QueueMode {
+  return value && Object.hasOwn(QUEUE_FILTERS, value) ? value as QueueMode : "me"
+}
+
+function queuePage(value: string | null) {
+  const page = Number(value)
+  return Number.isSafeInteger(page) && page > 0 && page <= 2147483647 ? page : 1
+}
+
+function navigate(mode: QueueMode, page: number, replace = false) {
+  const url = new URL(window.location.href)
+  if (mode === "me") url.searchParams.delete("queue")
+  else url.searchParams.set("queue", mode)
+  if (page === 1) url.searchParams.delete("queue_page")
+  else url.searchParams.set("queue_page", String(page))
+  if (url.href === window.location.href) return
+  if (replace) window.history.replaceState(null, "", url)
+  else window.history.pushState(null, "", url)
+}
+
+type QueueLoad = { key: string; data?: AssignmentQueueResponse; error?: string }
+
 export default function ArchiveAssignmentsStrip() {
-  const [mode, setMode] = useState<QueueMode>("me")
-  const [data, setData] = useState<AssignmentQueueResponse | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState("")
+  const params = useSearchParams()
+  const mode = queueMode(params.get("queue"))
+  const requestedPage = queuePage(params.get("queue_page"))
   const [refreshSeq, setRefreshSeq] = useState(0)
+  const requestKey = `${mode}/${requestedPage}/${refreshSeq}`
+  const [response, setResponse] = useState<QueueLoad | null>(null)
+  const current = response?.key === requestKey ? response : null
+  const data = current?.data
+  const error = current?.error
+  const loading = current === null
+  const statusRef = useRef<HTMLParagraphElement>(null)
+  const selectVisibleRef = useRef<HTMLButtonElement>(null)
+  const focusRange = useRef(false)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [bulkEmail, setBulkEmail] = useState("")
   const [bulkPriority, setBulkPriority] = useState<AssignmentPriority>("normal")
@@ -39,14 +71,38 @@ export default function ArchiveAssignmentsStrip() {
 
   useEffect(() => {
     const controller = new AbortController()
-    setLoading(true)
-    setError("")
-    fetchAssignmentQueue(QUEUE_FILTERS[mode], controller.signal)
-      .then((res) => setData(res))
-      .catch((err) => { if (!(err instanceof DOMException && err.name === "AbortError")) setError(message(err)) })
-      .finally(() => { if (!controller.signal.aborted) setLoading(false) })
+    fetchAssignmentQueue({ ...QUEUE_FILTERS[mode], page: requestedPage }, controller.signal)
+      .then(result => {
+        if (controller.signal.aborted) return
+        if (result.page !== requestedPage) {
+          // A bulk action or another reviewer may have emptied the last page.
+          const url = new URL(window.location.href)
+          if (queueMode(url.searchParams.get("queue")) !== mode || queuePage(url.searchParams.get("queue_page")) !== requestedPage) return
+          navigate(mode, result.page, true)
+        }
+        setResponse({ key: `${mode}/${result.page}/${refreshSeq}`, data: result })
+      })
+      .catch(err => {
+        if (!controller.signal.aborted) setResponse({ key: requestKey, error: message(err) })
+      })
     return () => controller.abort()
-  }, [mode, refreshSeq])
+  }, [mode, requestedPage, refreshSeq, requestKey])
+
+  useEffect(() => {
+    if (data && focusRange.current) {
+      statusRef.current?.focus({ preventScroll: true })
+      focusRange.current = false
+    }
+  }, [data])
+
+  function changeView(nextMode: QueueMode, page: number) {
+    if (nextMode === mode && page === requestedPage) return
+    focusRange.current = nextMode === mode
+    setSelectedIds([])
+    setBulkError("")
+    setBulkStatus("")
+    navigate(nextMode, page)
+  }
 
   const visibleIds = useMemo(() => (data?.items ?? []).map((item) => item.session_id), [data])
   useEffect(() => { setSelectedIds((prev) => prev.filter((id) => visibleIds.includes(id))) }, [visibleIds])
@@ -58,7 +114,7 @@ export default function ArchiveAssignmentsStrip() {
 
   async function runBulk(action: "assign" | "clear", e?: FormEvent) {
     e?.preventDefault()
-    if (bulkBusy) return
+    if (bulkBusy || !data) return
     if (selectedIds.length === 0) return setBulkError("Select at least one session.")
     if (selectedIds.length > 50) return setBulkError("Select at most 50 sessions per bulk action.")
     const trimmedEmail = bulkEmail.trim().toLowerCase()
@@ -81,6 +137,7 @@ export default function ArchiveAssignmentsStrip() {
           ? `Assigned ${res.updated} ${noun} to ${trimmedEmail}.`
           : `Cleared assignments for ${res.updated} ${noun}.`,
       )
+      focusRange.current = true
       setSelectedIds([])
       setRefreshSeq((n) => n + 1)
     } catch (err) {
@@ -90,13 +147,14 @@ export default function ArchiveAssignmentsStrip() {
     }
   }
 
-  const counts = data?.counts ?? { assigned_to_me: 0, high_priority: 0, unassigned: 0 }
-  const dueCounts = data?.due_counts ?? { overdue: 0, due_soon: 0 }
+  const counts = response?.data?.counts ?? { assigned_to_me: 0, high_priority: 0, unassigned: 0 }
+  const dueCounts = response?.data?.due_counts ?? { overdue: 0, due_soon: 0 }
   const pills: Array<{ id: QueueMode; label: string; count: number }> = [
     { id: "me", label: "Assigned to me", count: counts.assigned_to_me },
     { id: "high", label: "High priority", count: counts.high_priority },
     { id: "unassigned", label: "Unassigned", count: counts.unassigned },
     { id: "overdue", label: "Overdue", count: dueCounts.overdue },
+    { id: "soon", label: "Due soon", count: dueCounts.due_soon },
   ]
 
   return (
@@ -126,7 +184,7 @@ export default function ArchiveAssignmentsStrip() {
             <Button
               key={pill.id} type="button" variant={active ? "default" : "outline"} size="sm"
               aria-pressed={active} className="min-h-[44px] md:min-h-8"
-              onClick={() => { setMode(pill.id); setBulkError(""); setBulkStatus("") }}
+              disabled={bulkBusy !== null} onClick={() => changeView(pill.id, 1)}
             >
               <span>{pill.label}</span>
               <Badge variant={active ? "secondary" : "outline"}>{pill.count}</Badge>
@@ -135,39 +193,56 @@ export default function ArchiveAssignmentsStrip() {
         })}
       </div>
 
+      {data && data.filtered > 0 && (
+        <nav aria-label="Assignment queue pages" className="flex flex-wrap items-center justify-between gap-2">
+          <p ref={statusRef} tabIndex={-1} role="status" className="muted text-sm">
+            {(data.page - 1) * data.limit + 1} to {(data.page - 1) * data.limit + data.items.length} of {data.filtered} assignments
+          </p>
+          {data.pages > 1 && <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="outline" size="sm" className="min-h-[44px] md:min-h-8"
+              disabled={data.page === 1 || bulkBusy !== null} onClick={() => changeView(mode, data.page - 1)}>Previous assignments</Button>
+            <Button type="button" variant="outline" size="sm" className="min-h-[44px] md:min-h-8"
+              disabled={data.page === data.pages || bulkBusy !== null} onClick={() => changeView(mode, data.page + 1)}>Next assignments</Button>
+          </div>}
+        </nav>
+      )}
+
       {error ? (
         <WorkspaceError text={error} retry={() => setRefreshSeq((n) => n + 1)} showAccount={false} />
       ) : loading && !data ? (
         <p className="muted text-sm" role="status" aria-live="polite">Loading assignment queues...</p>
       ) : !data || data.items.length === 0 ? (
         <div className="stack">
-          <p className="muted text-sm">No sessions in this assignment queue.</p>
+          <p ref={statusRef} tabIndex={-1} className="muted text-sm">No sessions in this assignment queue.</p>
           {bulkStatus && <p role="status" aria-live="polite" className="notice">{bulkStatus}</p>}
           {bulkError && <p role="alert" className="error">{bulkError}</p>}
         </div>
       ) : (
         <div className="stack">
-          <div className="panel inset stack" role="region" aria-label="Bulk session assignment">
+          <div className={selectedIds.length ? "panel inset stack" : "stack"} role="region" aria-label="Bulk session assignment">
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant={selectedIds.length > 0 ? "default" : "outline"}>{selectedIds.length} selected</Badge>
               <Button
-                type="button" variant="outline" size="sm" className="min-h-[44px] md:min-h-8"
-                disabled={bulkBusy !== null || visibleIds.length === 0 || allVisibleSelected}
-                onClick={() => setSelectedIds(visibleIds)}
+                ref={selectVisibleRef} type="button" variant="outline" size="sm" className="min-h-[44px] md:min-h-8"
+                disabled={bulkBusy !== null}
+                onClick={() => setSelectedIds(allVisibleSelected ? [] : visibleIds)}
               >
-                Select visible
+                {allVisibleSelected ? "Clear selection" : "Select visible"}
               </Button>
-              {selectedIds.length > 0 && (
+              {selectedIds.length > 0 && !allVisibleSelected && (
                 <Button
                   type="button" variant="ghost" size="sm" className="min-h-[44px] md:min-h-8"
-                  disabled={bulkBusy !== null} onClick={() => setSelectedIds([])}
+                  disabled={bulkBusy !== null} onClick={() => {
+                    setSelectedIds([])
+                    selectVisibleRef.current?.focus()
+                  }}
                 >
                   Clear selection
                 </Button>
               )}
             </div>
 
-            <form
+            {selectedIds.length > 0 && <form
               className="grid gap-3 md:grid-cols-[minmax(0,1.4fr)_minmax(130px,0.8fr)_minmax(145px,0.9fr)_auto] md:items-end"
               noValidate onSubmit={(e) => void runBulk("assign", e)}
             >
@@ -191,18 +266,18 @@ export default function ArchiveAssignmentsStrip() {
                 <Input type="date" value={bulkDueDate} disabled={bulkBusy !== null} onChange={(e) => setBulkDueDate(e.target.value)} />
               </label>
               <div className="flex flex-wrap items-center gap-2">
-                <Button type="submit" size="sm" className="min-h-[44px] md:min-h-8" disabled={bulkBusy !== null || selectedIds.length === 0}>
+                <Button type="submit" size="sm" className="min-h-[44px] md:min-h-8" disabled={bulkBusy !== null}>
                   {bulkBusy === "assign" ? "Assigning..." : "Assign selected"}
                 </Button>
                 <Button
                   type="button" variant="outline" size="sm" className="min-h-[44px] md:min-h-8"
-                  disabled={bulkBusy !== null || selectedIds.length === 0} onClick={() => void runBulk("clear")}
+                  disabled={bulkBusy !== null} onClick={() => void runBulk("clear")}
                 >
                   <Trash2 className="size-3.5" aria-hidden="true" />
                   {bulkBusy === "clear" ? "Clearing..." : "Clear selected assignments"}
                 </Button>
               </div>
-            </form>
+            </form>}
 
             {bulkStatus && <p role="status" aria-live="polite" className="notice">{bulkStatus}</p>}
             {bulkError && <p role="alert" className="error">{bulkError}</p>}
@@ -222,12 +297,12 @@ export default function ArchiveAssignmentsStrip() {
                   </label>
                   <Link
                     href={`/interviews/review/?id=${encodeURIComponent(item.session_id)}`}
-                    className="flex flex-1 min-w-0 flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2.5 transition-colors hover:bg-[var(--subtle)] min-h-[44px]"
+                    className="flex flex-1 min-w-0 flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2.5 transition-colors hover:bg-[var(--subtle)] min-h-[44px]"
                   >
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <strong className="text-sm break-words">{item.candidate || "Untitled interview"}</strong>
-                        {item.role && <Badge variant="outline">{item.role}</Badge>}
+                        <strong className="max-w-full text-sm [overflow-wrap:anywhere]">{item.candidate || "Untitled interview"}</strong>
+                        {item.role && <Badge variant="outline" className="max-w-full whitespace-normal [overflow-wrap:anywhere]">{item.role}</Badge>}
                         {item.priority === "high" && <Badge variant="warning">High priority</Badge>}
                         {overdue && <Badge variant="warning">Overdue</Badge>}
                         {item.review_count > 0 && <Badge variant="secondary">{item.review_count} pending</Badge>}
