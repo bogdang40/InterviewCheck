@@ -1,4 +1,5 @@
 import { useRef, useState, type FormEvent } from "react"
+import { flushSync } from "react-dom"
 import dynamic from "next/dynamic"
 import { Plus, Trash2, ScanText } from "lucide-react"
 import { api, message, DraftConflict, type Draft, type QuestionOrigin, RevisionConflict, type Answer, type Interview, type Source } from "@/lib/api"
@@ -18,6 +19,22 @@ const Capture = dynamic(() => import("./Capture"), { ssr: false })
 const ConflictReview = dynamic(() => import("./ConflictReview"), { ssr: false })
 
 const emptySource = () => ({ label: "", text: "", permitted: false })
+
+function confirmsExchange(saved: Answer | null | undefined, id: string): boolean {
+  if (!saved || saved.id !== id || !Number.isSafeInteger(saved.revision) || saved.revision < 1) return false
+  const result = saved.result
+  return typeof saved.question === "string" && typeof saved.answer === "string" && typeof saved.note === "string"
+    && ["pending", "explained", "unresolved", "disclosed"].includes(saved.disposition)
+    && Array.isArray(saved.references) && saved.references.every(ref =>
+      typeof ref?.label === "string" && typeof ref.text === "string" && typeof ref.permitted === "boolean")
+    && ["match", "no_match", "insufficient"].includes(result?.status)
+    && typeof result.explanation === "string" && typeof result.follow_up === "string"
+    && Array.isArray(result.passages) && result.passages.every(p =>
+      typeof p?.label === "string" && typeof p.answer_excerpt === "string" && typeof p.source_excerpt === "string"
+      && Number.isSafeInteger(p.words) && [p.answer_span, p.source_span].every(span =>
+        span == null || (Array.isArray(span) && span.length === 2 && span.every(Number.isSafeInteger))))
+}
+
 export default function AnswerEditor({
   session, onDirty, initial: original, firstQuestion = "", firstOrigin,
   draft: resumed, onDraftSaved, onSave, onCancel, embeddingAvailable,
@@ -103,7 +120,13 @@ export default function AnswerEditor({
       const path = baseline ? `sessions/${session.id}/draft/publish` : `sessions/${session.id}/answers` + (initial ? `/${initial.id}` : "")
       const saved = await api<Answer>(path, initial ? "PUT" : "POST", { id, question, answer, references: sources, ...origin,
         ...(initial || baseline ? { expected_revision: (initial || baseline)?.revision } : {}) })
-      clearLocalBuffer(); onSave(saved)
+      if (!confirmsExchange(saved, id)) {
+        throw new Error("The server did not confirm this exchange. Your edits are still here. Check the saved interview before submitting again.")
+      }
+      clearLocalBuffer()
+      // Native navigation can start as soon as the saved evidence enters the DOM.
+      flushSync(() => onDirty("editor", false))
+      onSave(saved)
     } catch (e) {
       if(e instanceof DraftConflict) setDraftConflict(true)
       else if (e instanceof RevisionConflict) setConflict(true)

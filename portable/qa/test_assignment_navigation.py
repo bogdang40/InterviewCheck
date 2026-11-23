@@ -1,6 +1,9 @@
 """The review route protects all editor drafts once and retains assignments between questions."""
+import json
+from uuid import uuid4
+
 import httpx
-from playwright.sync_api import expect
+from playwright.sync_api import Error as PlaywrightError, expect
 import pytest
 
 
@@ -141,28 +144,77 @@ def test_document_navigation_when_saved_exchange_first_appears(workspace_url, br
             assert dialogs == ["beforeunload"]
             dialogs.clear()
 
-        # Leave the document at the first DOM commit exposing the saved answer.
-        # Polling for a ready control here would give a stale guard time to disappear.
+        # Measure the guard at the first commit. Use a trusted click for the separate document departure.
         page.evaluate("""answer => {
             const observer = new MutationObserver(() => {
                 if (document.querySelector('article.evidence > .transcript-text')?.textContent !== answer) return;
                 observer.disconnect();
                 const check = new Event('beforeunload', { cancelable: true });
                 window.dispatchEvent(check);
-                sessionStorage.setItem('qa-guard-at-commit', String(check.defaultPrevented));
-                location.assign('/roles/');
+                const depart = document.createElement('button');
+                depart.type = 'button';
+                depart.textContent = 'Leave fixture document';
+                depart.dataset.guardAtCommit = String(check.defaultPrevented);
+                depart.addEventListener('click', () => location.assign('/roles/'), {once: true});
+                document.body.append(depart);
             });
             observer.observe(document.body, {childList: true, subtree: true});
         }""", answer)
-        if handoff_draft:
-            with page.expect_event("dialog"):
-                save.click()
-            assert dialogs == ["beforeunload"]
-            expect(handoff).to_have_value("Independent unfinished handoff.")
-        else:
-            save.click()
-            expect(page).to_have_url(workspace_url + "/roles/")
-            assert dialogs == []
-        assert page.evaluate("sessionStorage.getItem('qa-guard-at-commit')") == ("true" if handoff_draft else "false")
+        save.click()
+        depart = page.get_by_role("button", name="Leave fixture document", exact=True)
+        guard = depart.get_attribute("data-guard-at-commit")
+        try:
+            assert guard == ("true" if handoff_draft else "false")
+            if handoff_draft:
+                with page.expect_event("dialog"):
+                    depart.click()
+                assert dialogs == ["beforeunload"]
+                expect(handoff).to_have_value("Independent unfinished handoff.")
+            else:
+                depart.click()
+                expect(page).to_have_url(workspace_url + "/roles/")
+                assert dialogs == []
+        except (AssertionError, PlaywrightError) as failure:
+            raise AssertionError(f"Saved exchange departure: guard_at_commit={guard}, dialogs={dialogs}, url={page.url}") from failure
         stored = client.get(f"/api/sessions/{sid}").raise_for_status().json()["answers"]
         assert [(item["question"], item["answer"]) for item in stored] == [(question, answer)]
+
+
+def test_unconfirmed_exchange_save_keeps_the_editor_and_local_recovery(workspace_url, browser_page):
+    page = browser_page
+    with httpx.Client(base_url=workspace_url, headers={"X-InterviewCheck": "1"}) as client:
+        sid = client.post("/api/sessions", json={
+            "candidate": "Unconfirmed reply fixture", "role": "Engineer", "policy": "Notes permitted.", "consent": True,
+        }).raise_for_status().json()["id"]
+        path = f"/api/sessions/{sid}/answers"
+        writes = []
+
+        def unconfirmed(route):
+            writes.append(route.request.post_data_json["id"])
+            response = route.fetch()
+            assert response.ok
+            if len(writes) == 1:
+                route.fulfill(status=204)
+            else:
+                route.fulfill(json={**response.json(), "id": str(uuid4())})
+
+        page.route("**" + path, unconfirmed)
+        page.goto(f"{workspace_url}/interviews/review/?id={sid}")
+        question = page.get_by_role("textbox", name="Question", exact=True)
+        answer = page.get_by_role("textbox", name="Candidate answer", exact=True)
+        save = page.get_by_role("button", name="Save and compare", exact=True)
+        question.fill("What did you measure?")
+        answer.fill("The sample interval.")
+        for attempt in (1, 2):
+            with page.expect_response(lambda res: res.url == workspace_url + path and res.request.method == "POST"):
+                save.click()
+            expect(page.get_by_role("alert").filter(has_text="The server did not confirm this exchange.")).to_be_visible()
+            expect(save).to_be_enabled()
+            expect(question).to_have_value("What did you measure?")
+            expect(answer).to_have_value("The sample interval.")
+            assert page.evaluate("() => !window.dispatchEvent(new Event('beforeunload', {cancelable: true}))")
+            raw = page.evaluate("key => localStorage.getItem(key)", f"ic_draft_v1:{sid}:editor:new")
+            assert raw and json.loads(raw)["text"] == "The sample interval."
+            assert len(writes) == attempt and len(set(writes)) == 1
+        records = client.get(f"/api/sessions/{sid}").raise_for_status().json()["answers"]
+        assert [item["id"] for item in records] == [writes[0]]
