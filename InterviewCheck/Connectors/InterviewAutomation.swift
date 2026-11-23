@@ -55,10 +55,16 @@ enum InterviewAutomation {
         if !manager.holds(interview, in: controller) {
             said.append(await prepare(interview, manager: manager, controller: controller, mailResumes: mailResumes))
         }
-        guard let link = interview.meetingURL else { return (said + ["This interview has no meeting link."]).joined(separator: " ") }
-        open(link)
+        guard interview.meetingURL != nil else { return (said + ["This interview has no meeting link."]).joined(separator: " ") }
+        // Any web page can send interviewcheck://join-next, so only a known
+        // meeting platform's https link is opened from here.
+        guard let link = interview.safeMeetingLink, link.opensAutomatically else {
+            return (said + ["The meeting link is not a Zoom, Meet, Teams or Webex link, so it was not opened."])
+                .joined(separator: " ")
+        }
+        open(link.url)
         joined(interview.id)
-        return (said + ["Opened the \(MeetingLinks.platform(of: link).title) link."]).joined(separator: " ")
+        return (said + ["Opened the \(link.platform.title) link."]).joined(separator: " ")
     }
 
     static func openLatestReport(database: SessionDatabase = .shared) -> String {

@@ -86,7 +86,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 item.indentationLevel = 1
                 menu.addItem(item)
             }
-            if upcoming.first?.meetingURL != nil {
+            if upcoming.first?.safeMeetingLink?.opensAutomatically == true {
                 let join = NSMenuItem(title: "Join Next Interview", action: #selector(joinFromDock), keyEquivalent: "")
                 join.target = self
                 menu.addItem(join)

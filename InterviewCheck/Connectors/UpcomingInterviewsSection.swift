@@ -81,9 +81,9 @@ struct UpcomingInterviewsSection: View {
                     .font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer(minLength: 8)
-            if let link = interview.meetingURL {
+            if let link = interview.safeMeetingLink {
                 Button("Join") {
-                    NSWorkspace.shared.open(link)
+                    NSWorkspace.shared.open(link.url)
                     AutoPrepare.shared.markJoined(interview.id)
                     // Joining also prepares the interview, unless that is done.
                     guard !connectors.holds(interview, in: controller), preparingID == nil else { return }
@@ -93,8 +93,8 @@ struct UpcomingInterviewsSection: View {
                         preparingID = nil
                     }
                 }
-                .help("Open the \(MeetingLinks.platform(of: link).title) link and prepare this interview")
-                .accessibilityLabel("Join \(MeetingLinks.platform(of: link).title) call with \(interview.candidate?.name ?? interview.title)")
+                .help("Open the \(link.platform.title) link and prepare this interview")
+                .accessibilityLabel("Join \(link.platform.title) call with \(interview.candidate?.name ?? interview.title)")
             }
             Button(preparingID == interview.id ? "Preparing\u{2026}" : "Prepare") {
                 preparingID = interview.id

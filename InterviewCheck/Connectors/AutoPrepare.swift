@@ -126,13 +126,14 @@ final class AutoPrepare {
     func joinIfDue() -> URL? {
         guard joinsAutomatically, controller.phase == .setup, controller.externalRef != nil, let prepared = controller.preparedFrom,
               let interview = manager.mine.first(where: { manager.holds($0, in: controller) }),
-              !joinedIDs.contains(interview.id), !joinedIDs.contains(prepared), let link = interview.meetingURL else { return nil }
+              !joinedIDs.contains(interview.id), !joinedIDs.contains(prepared),
+              let link = interview.safeMeetingLink, link.opensAutomatically else { return nil }
         let id = interview.id
         let untilStart = interview.startsAt.timeIntervalSince(now())
         guard untilStart <= 90, untilStart > -10 * 60 else { return nil }
         joinedIDs.insert(id)
-        openLink(link)
-        return link
+        openLink(link.url)
+        return link.url
     }
 
     /// The first interview starting within the lead time (or started in the
