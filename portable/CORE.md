@@ -171,6 +171,8 @@ In role calibration, each numbered question is grouped by its slot and the promp
 
 Open **Interviews** to find reviews by assignee, priority or deadline. **Due soon** covers the next 48 hours, including the upper bound. Each page shows its position in the filtered queue. Moving to another page or filter clears the current selection; bulk changes apply only to the selected interviews on the displayed page. Interviews in Trash are excluded.
 
+An open queue refreshes when a deadline enters **Due soon** or becomes overdue. Selecting interviews for a bulk edit holds the displayed rows and their saved versions until you finish or clear the selection.
+
 When editing one assignment, leaving the displayed UTC date unchanged preserves the original time and precision. Changing the date sets the deadline to 23:59:59 UTC. A blank date clears the deadline. Bulk assignment replaces the deadline on every selected interview.
 
 Assignment changes in the browser use the version displayed for each interview. When another reviewer changes an assignment first, compare the current assignment with your proposed change before saving. For a bulk change, a conflict leaves every selected interview unchanged. Review the refreshed page and select the intended interviews again. The form keeps the entered assignee, priority and date.
