@@ -1,3 +1,5 @@
+import { ApiError, readJson, request } from "./http"
+
 export type TotpStatus = {
   enabled: boolean
   verifiedAt: string | null
@@ -10,15 +12,7 @@ export type TotpBackupRegenerateResult = { backupCodes: string[] }
 export type TotpDisableResult = { enabled: boolean }
 export type LoginWithTotpResult<T> = { ok: true; account: T } | { ok: false; totpRequired: true; message: string }
 
-export class TotpApiError extends Error {
-  status: number
-  code?: string
-  constructor(status: number, message: string, code?: string) {
-    super(message)
-    this.status = status
-    this.code = code
-  }
-}
+export class TotpApiError extends ApiError {}
 
 export function isTotpUnsupported(err: unknown): boolean {
   return err instanceof TotpApiError && (err.status === 404 || err.status === 501)
@@ -38,17 +32,13 @@ function readErrorInfo(data: unknown, status: number): { message: string; code?:
   return { message: `Two-factor authentication request failed (HTTP ${status}).` }
 }
 
-async function totpRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const headers = new Headers(options.headers)
-  headers.set("X-InterviewCheck", "1")
-  if (options.body !== undefined && !headers.has("Content-Type")) headers.set("Content-Type", "application/json")
-  const response = await fetch(`/api/integrations/security/totp/${path}`, { ...options, headers, cache: "no-store" })
-  const data = await response.json().catch(() => null)
-  if (!response.ok) {
-    const info = readErrorInfo(data, response.status)
-    throw new TotpApiError(response.status, info.message, info.code)
-  }
-  return data as T
+function toTotpError(response: Response, data: unknown): TotpApiError {
+  const info = readErrorInfo(data, response.status)
+  return new TotpApiError(response.status, info.message, info.code)
+}
+
+function totpRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
+  return request<T>(`/api/integrations/security/totp/${path}`, { ...options, toError: toTotpError })
 }
 
 export async function getTotpStatus(signal?: AbortSignal): Promise<TotpStatus> {
@@ -83,7 +73,8 @@ export async function submitAccessAuth<T>(action: "login" | "signup", payload: R
     body: JSON.stringify(payload),
     cache: "no-store",
   })
-  const data = await response.json().catch(() => null)
+  // Kept on fetch: a 401 that asks for a second factor is an answer here, not an error.
+  const data = await readJson(response)
   if (!response.ok) {
     const info = readErrorInfo(data, response.status)
     const totpHeader = response.headers.get("X-InterviewCheck-TOTP")?.toLowerCase() === "required"

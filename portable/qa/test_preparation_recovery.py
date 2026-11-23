@@ -1,10 +1,18 @@
 """Retain the rules, evidence, and transcript identity through a workstation move."""
 
 import json
+from pathlib import Path
+import sys
 from uuid import uuid4
 
 import httpx
 from playwright.sync_api import expect
+
+QA_ROOT = Path(__file__).resolve().parent
+if str(QA_ROOT) not in sys.path:
+    sys.path.insert(0, str(QA_ROOT))
+
+from e2e_suite.harness import IsolatedWorkspace, signup_user  # noqa: E402
 
 
 REFERENCE = "Measure the amber receiver against three cold baselines before comparing its packet counts."
@@ -176,3 +184,57 @@ def test_backup_size_through_real_ingress(workspace_url):
     roles_after_rejection = httpx.get(f"{workspace_url}/api/roles", timeout=15)
     assert roles_after_rejection.status_code == 200
     assert roles_after_rejection.json() == []
+
+
+def test_unsaved_note_survives_reload_and_is_cleared_on_sign_out(tmp_path, monkeypatch, frontend, qa_browser):
+    ws = IsolatedWorkspace(tmp_path, monkeypatch, frontend)
+    ws.prepare_env()
+    ws.configure_embedded_auth(admin_emails=("nobody@example.test",))
+    ws.start()
+    context = qa_browser.new_context(viewport={"width": 1440, "height": 900}, reduced_motion="reduce")
+    try:
+        identity = {"email": "drafts@example.test", "password": "Synthetic-Draft-Pass-5521"}
+        with ws.client() as c:
+            signup_user(c, **identity)
+        api = context.request
+        headers = {"X-InterviewCheck": "1"}
+        assert api.post(ws.base_url + "/api/integrations/access/login", data=identity, headers=headers).ok
+        sid = api.post(ws.base_url + "/api/sessions", headers=headers, data={
+            "candidate": "Draft owner", "role": "Engineer", "policy": "Notes allowed.", "consent": True}).json()["id"]
+        answer = api.post(f"{ws.base_url}/api/sessions/{sid}/answers", headers=headers, data={
+            "question": "Which readings?", "answer": REFERENCE, "references": []})
+        assert answer.ok
+        aid = answer.json()["id"]
+        page = context.new_page()
+        page.set_default_timeout(10_000)
+        # Leaving with the restored note asks first; accept so the test can reach Account.
+        page.on("dialog", lambda dialog: dialog.accept())
+        page.goto(f"{ws.base_url}/interviews/review/?id={sid}&answer={aid}", wait_until="domcontentloaded")
+        key = f"ic_draft_v1:{sid}:review:{aid}"
+        note = page.get_by_role("textbox", name="Interviewer note", exact=True)
+        banner = page.get_by_role("region", name="Local draft recovery")
+        # An entry older than the seven day lifetime is dropped instead of offered for recovery.
+        expired = {"text": "Week old note", "note": "Week old note", "savedAt": "2020-01-01T00:00:00.000Z"}
+        page.evaluate("([k, v]) => localStorage.setItem(k, v)", [key, json.dumps(expired)])
+        page.reload(wait_until="domcontentloaded")
+        expect(note).to_have_value("")
+        expect(banner).to_have_count(0)
+        assert page.evaluate("(k) => localStorage.getItem(k)", key) is None
+
+        note.fill("Unsaved note before sign out")
+        page.wait_for_function("(k) => Boolean(localStorage.getItem(k))", arg=key)
+        page.reload(wait_until="domcontentloaded")
+        expect(banner).to_be_visible()
+        banner.get_by_role("button", name="Restore local edits").click()
+        expect(page.get_by_role("textbox", name="Interviewer note", exact=True)).to_have_value(
+            "Unsaved note before sign out")
+
+        page.goto(ws.base_url + "/account/", wait_until="domcontentloaded")
+        page.get_by_role("button", name="Sign out", exact=True).click()
+        expect(page.get_by_role("button", name="Sign in", exact=True)).to_be_visible()
+        remaining = page.evaluate(
+            "() => Object.keys(localStorage).filter((k) => k.startsWith('ic_draft_v1:'))")
+        assert remaining == []
+    finally:
+        context.close()
+        ws.stop()

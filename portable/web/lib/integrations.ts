@@ -15,7 +15,9 @@ export async function integration<T>(path: string, options: RequestInit = {}): P
   const headers = new Headers(options.headers);
   headers.set("X-InterviewCheck", "1");
   const response = await fetch("/api/integrations/" + path, { ...options, headers, cache: "no-store" });
-  const data = await response.json();
+  // A proxy or gateway can answer with an HTML page; never surface a JSON parser message.
+  const data = await response.json().catch(() => null);
+  if (data === null) throw new Error(`Request failed (HTTP ${response.status}).`);
   if (!response.ok) {
     throw new Error(typeof data.detail === "string" ? data.detail : "The request failed. Check the supplied values.");
   }

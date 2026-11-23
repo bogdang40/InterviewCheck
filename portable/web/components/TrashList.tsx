@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react"
 import { ArchiveRestore, Trash2 } from "lucide-react"
 import { api, dateLabel, message } from "@/lib/api"
 import { bulkRestore, pruneSelection, toggleSelection } from "@/lib/bulkArchive"
+import { sweepLocalDrafts } from "@/lib/localDraftSweep"
 import { interviewURL, useResource } from "@/lib/workspace"
 import { moveNotice, rememberMove, type TrashedInterview, type TrashPage } from "@/lib/trash"
 import BulkArchiveToolbar from "./BulkArchiveToolbar"
@@ -55,6 +56,7 @@ export default function TrashList() {
         ...(purge ? { confirm_session_id: typed.trim() } : {}),
       }
       await api(`trash/${item.id}/${purge ? "purge" : "restore"}`, "POST", payload)
+      if (purge) sweepLocalDrafts([item.id])
       if (recent?.id === item.id) {
         rememberMove(null)
         setRecent(null)

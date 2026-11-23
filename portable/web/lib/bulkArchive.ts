@@ -1,9 +1,8 @@
-import { extractApiError } from "@/lib/adminModels"
 import type { Session } from "@/lib/api"
+import { downloadResponse } from "@/lib/download"
+import { ApiError, request, send } from "@/lib/http"
 import type { InterviewPage, SessionCard } from "@/lib/interview-list"
 import type { TrashedInterview } from "@/lib/trash"
-
-export { extractApiError }
 
 export type FeedItem = SessionCard & { tags?: string[] }
 export type FeedPage = Omit<InterviewPage, "items"> & { items: FeedItem[] }
@@ -14,11 +13,7 @@ export type BulkTagResult = { updated: number; tags_by_session: Record<string, s
 export type BulkExportFormat = "csv" | "json"
 export type WorkspaceTag = { tag: string; count: number }
 
-export class BulkApiError extends Error {
-  constructor(public status: number, message: string) {
-    super(message)
-  }
-}
+export class BulkApiError extends ApiError {}
 
 export function parseTagList(raw: string): string[] {
   const seen = new Set<string>()
@@ -35,42 +30,12 @@ export function parseTagList(raw: string): string[] {
   return tags
 }
 
-export function sanitizeDownloadFilename(header: string | null, format: BulkExportFormat): string {
-  const fallback = format === "json" ? "interviews-bulk.json" : "interviews-bulk.csv"
-  if (!header) return fallback
-  let candidate = ""
-  const extMatch = /filename\*\s*=\s*(?:utf-8''|[^']*''|)([^;]+)/i.exec(header)
-  if (extMatch?.[1]) {
-    const raw = extMatch[1].trim().replace(/^["']|["']$/g, "")
-    try { candidate = decodeURIComponent(raw) } catch { candidate = raw }
-  } else {
-    const plainMatch = /filename\s*=\s*"([^"]+)"|filename\s*=\s*([^;\s]+)/i.exec(header)
-    candidate = (plainMatch?.[1] || plainMatch?.[2] || "").trim()
-  }
-  const base = (candidate.split(/[\\/]/).pop() || "").trim()
-  const cleaned = base.replace(/[^a-zA-Z0-9._-]/g, "-").replace(/-+/g, "-").replace(/^[.-]+|[.-]+$/g, "")
-  if (!cleaned || cleaned === "." || cleaned === "..") return fallback
-  const expectedExt = `.${format}`
-  const withExt = cleaned.toLowerCase().endsWith(expectedExt)
-    ? cleaned
-    : `${cleaned.replace(/\.[a-z0-9]+$/i, "")}${expectedExt}`
-  return withExt.slice(0, 120) || fallback
+function bulkFetch(path: string, body: unknown): Promise<Response> {
+  return send("/api/" + path, { method: "POST", json: body, errorType: BulkApiError })
 }
 
-async function bulkFetch(path: string, body: unknown): Promise<Response> {
-  const response = await fetch("/api/" + path, {
-    method: "POST", credentials: "include", cache: "no-store",
-    headers: { "Content-Type": "application/json", "X-InterviewCheck": "1" },
-    body: JSON.stringify(body),
-  })
-  if (!response.ok) {
-    const data = await response.json().catch(() => null)
-    throw new BulkApiError(response.status, extractApiError(data, response.status))
-  }
-  return response
-}
-
-const bulkJson = async <T,>(path: string, body: unknown): Promise<T> => (await (await bulkFetch(path, body)).json()) as T
+const bulkJson = <T,>(path: string, body: unknown): Promise<T> =>
+  request<T>("/api/" + path, { method: "POST", json: body, errorType: BulkApiError })
 
 export const bulkArchive = (sessionIds: string[], confirmCount: number) =>
   bulkJson<BulkArchiveResult>("interviews/bulk/archive", { session_ids: sessionIds, confirm_count: confirmCount })
@@ -83,25 +48,12 @@ export const bulkTag = (sessionIds: string[], add: string[], remove: string[]) =
 
 export async function bulkExport(sessionIds: string[], format: BulkExportFormat): Promise<string> {
   const response = await bulkFetch("interviews/bulk/export", { session_ids: sessionIds, format })
-  const filename = sanitizeDownloadFilename(response.headers.get("Content-Disposition"), format)
-  const objectUrl = URL.createObjectURL(await response.blob())
-  try {
-    const anchor = document.createElement("a")
-    anchor.href = objectUrl; anchor.download = filename; anchor.style.display = "none"
-    document.body.appendChild(anchor); anchor.click(); anchor.remove()
-  } finally {
-    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
-  }
-  return filename
+  return downloadResponse(response, `interviews-bulk.${format}`)
 }
 
 export async function fetchWorkspaceTags(signal?: AbortSignal): Promise<WorkspaceTag[] | null> {
   try {
-    const response = await fetch("/api/interviews/tags", {
-      method: "GET", credentials: "include", cache: "no-store", signal, headers: { "X-InterviewCheck": "1" },
-    })
-    if (!response.ok) return null
-    const data = (await response.json().catch(() => null)) as { tags?: unknown } | null
+    const data = await request<{ tags?: unknown } | null>("/api/interviews/tags", { signal })
     if (!data || !Array.isArray(data.tags)) return null
     return data.tags
       .filter((t): t is WorkspaceTag => Boolean(t && typeof (t as WorkspaceTag).tag === "string" && typeof (t as WorkspaceTag).count === "number"))

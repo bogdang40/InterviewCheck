@@ -8,6 +8,7 @@ import {
   type BulkExportFormat, type FeedPage, type WorkspaceTag,
 } from "@/lib/bulkArchive"
 import { buildComparePageUrl } from "@/lib/compareInterviews"
+import { sweepLocalDrafts } from "@/lib/localDraftSweep"
 import type { SessionSort } from "@/lib/interview-list"
 import { useResource } from "@/lib/workspace"
 import BulkArchiveToolbar from "./BulkArchiveToolbar"
@@ -149,6 +150,7 @@ export default function InterviewArchive({
   const handleBulkArchive = (confirmCount: number) =>
     runBulk(async () => {
       const res = await bulkArchive(selectedIds, confirmCount)
+      sweepLocalDrafts(selectedIds)
       setSelectedIds([])
       setArchivedCount(res.archived)
       setBulkNotice(`Moved ${res.archived} ${res.archived === 1 ? "interview" : "interviews"} to Trash.`)

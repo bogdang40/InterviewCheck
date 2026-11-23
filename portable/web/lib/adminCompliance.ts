@@ -1,4 +1,6 @@
-import { AdminApiError, adminRequest, extractApiError } from "./adminModels"
+import { AdminApiError, adminRequest } from "./adminModels"
+import { downloadResponse } from "./download"
+import { send } from "./http"
 
 export type AuditChainSummary = {
   available?: boolean; ok: boolean; verifiedCount: number; legacyUnchainedCount: number
@@ -62,38 +64,14 @@ export type SessionAuditResponse = {
   timeline: SessionAuditEvent[]
 }
 
-function safeDownloadName(header: string | null, fallback: string, ext: string): string {
-  const m = header ? /filename\s*=\s*"([^"]+)"|filename\s*=\s*([^;\s]+)/i.exec(header) : null
-  const raw = (m?.[1] || m?.[2] || "").split(/[\\/]/).pop()?.trim() || ""
-  const cleaned = raw.replace(/[^a-zA-Z0-9._-]/g, "-").replace(/^[.-]+|[.-]+$/g, "")
-  if (!cleaned) return fallback
-  return cleaned.toLowerCase().endsWith(`.${ext}`) ? cleaned.slice(0, 120) : `${cleaned.slice(0, 110)}.${ext}`
-}
-
-async function downloadComplianceFile(url: string, fallback: string, ext: string): Promise<string> {
-  const response = await fetch(url, {
-    method: "GET", credentials: "include", cache: "no-store", headers: { "X-InterviewCheck": "1" },
-  })
-  if (!response.ok) {
-    const data = await response.json().catch(() => null)
-    throw new AdminApiError(response.status, extractApiError(data, response.status))
-  }
-  const filename = safeDownloadName(response.headers.get("Content-Disposition"), fallback, ext)
-  const objectUrl = URL.createObjectURL(await response.blob())
-  try {
-    const anchor = document.createElement("a")
-    anchor.href = objectUrl; anchor.download = filename; anchor.style.display = "none"
-    document.body.appendChild(anchor); anchor.click(); anchor.remove()
-  } finally {
-    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
-  }
-  return filename
+async function downloadComplianceFile(url: string, fallback: string): Promise<string> {
+  return downloadResponse(await send(url, { errorType: AdminApiError }), fallback)
 }
 
 export const getComplianceReport = () => adminRequest<ComplianceReport>("/api/admin/compliance/report?format=json")
 export const downloadComplianceReport = (format: "json" | "markdown") => {
   const ext = format === "markdown" ? "md" : "json"
-  return downloadComplianceFile(`/api/admin/compliance/report?format=${format}`, `compliance-report.${ext}`, ext)
+  return downloadComplianceFile(`/api/admin/compliance/report?format=${format}`, `compliance-report.${ext}`)
 }
 export const runHeadersCheck = () => adminRequest<HeadersCheckResponse>("/api/admin/compliance/headers-check")
 export const getRetentionState = () => adminRequest<RetentionState>("/api/admin/compliance/retention")
@@ -119,5 +97,5 @@ export const getSessionAuditPreview = (sid: string) =>
 export const downloadSessionAudit = (sid: string, format: "json" | "csv") =>
   downloadComplianceFile(
     `/api/admin/compliance/sessions/${encodeURIComponent(sid)}/audit?format=${format}`,
-    `session-audit-${sid}.${format}`, format,
+    `session-audit-${sid}.${format}`,
   )

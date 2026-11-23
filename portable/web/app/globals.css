@@ -98,6 +98,15 @@ textarea:focus-visible {
     min-height: 18px;
   }
 }
+/* Touch screens get 44px targets at every width, tablets included; mouse layouts keep their density. */
+@media (pointer: coarse) {
+  [data-slot="button"] {
+    min-height: 44px;
+  }
+  [data-slot="button"][data-size^="icon"] {
+    min-width: 44px;
+  }
+}
 @media (max-width: 680px) {
   button,
   [role="tab"],

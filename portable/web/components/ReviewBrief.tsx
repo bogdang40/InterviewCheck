@@ -4,6 +4,8 @@ import Link from "next/link"
 import { useEffect, useState } from "react"
 import { Download, FileCheck2 } from "lucide-react"
 import { api, message } from "@/lib/api"
+import { saveBlob } from "@/lib/download"
+import { detailOr, send } from "@/lib/http"
 import { interviewURL } from "@/lib/workspace"
 import { Button } from "./ui/button"
 import WorkspaceError from "./WorkspaceError"
@@ -64,23 +66,12 @@ export default function ReviewBrief({ sessionId }: { sessionId: string }) {
     setDownloading(true)
     setError("")
     try {
-      const response = await fetch("/api/" + endpoint + "/download", {
+      const response = await send("/api/" + endpoint + "/download", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "X-InterviewCheck": "1" },
-        body: JSON.stringify({ ...selection, preview_sha256: current.preview_sha256 }),
+        json: { ...selection, preview_sha256: current.preview_sha256 },
+        describe: (data) => detailOr(data, "The download could not be prepared."),
       })
-      if (!response.ok) {
-        const data = await response.json()
-        throw new Error(data.detail || "The download could not be prepared.")
-      }
-      const url = URL.createObjectURL(await response.blob())
-      const link = document.createElement("a")
-      link.href = url
-      link.download = "review-brief-" + sessionId + ".md"
-      document.body.appendChild(link)
-      link.click()
-      link.remove()
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+      saveBlob(await response.blob(), "review-brief-" + sessionId + ".md")
       setStatusNote("Brief downloaded as review-brief-" + sessionId + ".md.")
     } catch (error) {
       setError(message(error))

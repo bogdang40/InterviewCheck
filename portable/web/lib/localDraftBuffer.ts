@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import type { Disposition, QuestionOrigin, Source } from "./api"
+import { DRAFT_KEY_PREFIX, isDraftExpired } from "./localDraftSweep"
 
 export type LocalDraftPayload = {
   text: string
@@ -13,8 +14,8 @@ export type LocalDraftPayload = {
   answerId?: string
 }
 
-export const editorDraftKey = (sessionId: string, answerId?: string) => `ic_draft_v1:${sessionId}:editor:${answerId ?? "new"}`
-export const reviewDraftKey = (sessionId: string, answerId: string) => `ic_draft_v1:${sessionId}:review:${answerId}`
+export const editorDraftKey = (sessionId: string, answerId?: string) => `${DRAFT_KEY_PREFIX}${sessionId}:editor:${answerId ?? "new"}`
+export const reviewDraftKey = (sessionId: string, answerId: string) => `${DRAFT_KEY_PREFIX}${sessionId}:review:${answerId}`
 
 function getStorage(): Storage | null {
   if (typeof window === "undefined") return null
@@ -29,6 +30,7 @@ export function readLocalDraft(key: string): LocalDraftPayload | null {
     if (!raw) return null
     const data = JSON.parse(raw) as Record<string, unknown> | null
     if (!data || typeof data !== "object" || typeof data.text !== "string" || typeof data.savedAt !== "string") return null
+    if (isDraftExpired(data.savedAt)) { storage.removeItem(key); return null }
     return data as unknown as LocalDraftPayload
   } catch { return null }
 }

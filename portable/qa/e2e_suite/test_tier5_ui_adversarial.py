@@ -318,16 +318,16 @@ def test_t5_12_accounts_tab_pagination_complimentary_close_and_last_admin_guard(
     _sign_in_admin(page, e2e_workspace.base_url, ADMIN1_EMAIL, ADMIN1_PASS)
     page.get_by_role("tab", name="Accounts").click()
 
-    expect(page.locator("tbody tr")).to_have_count(25)
+    expect(page.get_by_role("tabpanel").locator("tbody tr")).to_have_count(25)
     load_more = page.get_by_role("button", name="Load more")
     expect(load_more).to_be_visible()
     load_more.click()
-    expect(page.locator("tbody tr")).to_have_count(29)
+    expect(page.get_by_role("tabpanel").locator("tbody tr")).to_have_count(29)
     expect(load_more).to_have_count(0)
 
     page.get_by_label("Search accounts").fill(MEMBER_EMAIL)
     page.get_by_role("button", name="Search", exact=True).click()
-    expect(page.locator("tbody tr")).to_have_count(1)
+    expect(page.get_by_role("tabpanel").locator("tbody tr")).to_have_count(1)
     member_row = page.get_by_role("row").filter(has_text=MEMBER_EMAIL)
     expect(member_row.get_by_text("Inactive", exact=True)).to_be_visible()
 

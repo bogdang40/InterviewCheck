@@ -1,11 +1,12 @@
 "use client"
 
-import { useCallback, useEffect, useState, type FormEvent } from "react"
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import { BellRing, LockOpen, Play, Plus, RefreshCw, ShieldAlert, Trash2, Users } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { AdminApiError, CAPABILITY_LABELS, listAdminUsers, type AdminMember, type ModelCapability } from "@/lib/adminModels"
+import { useReportDirty, type DirtyReporter } from "@/lib/dirtyTracking"
 import {
   ALERT_TRIGGER_LABELS, ALERT_TRIGGER_TYPES, clearAdminRateLimits, createAlertRule, deleteAlertRule,
   evaluateAlertRules, listAdminRateLimits, listAdminUserSessions, listAlertRules, revokeAdminUserSessions,
@@ -19,7 +20,7 @@ import styles from "./SecurityAlertsTab.module.css"
 const CAPABILITIES: readonly ModelCapability[] = ["reference", "question_planning", "transcription", "embedding", "judge"]
 const fmt = (iso: string | null | undefined) => (!iso ? "Never" : Number.isNaN(new Date(iso).getTime()) ? iso : new Date(iso).toLocaleString())
 
-export function SecurityAlertsTab({ onAuthInvalid }: { onAuthInvalid: (msg: string) => void }) {
+export function SecurityAlertsTab({ onAuthInvalid, onDirtyChange }: { onAuthInvalid: (msg: string) => void; onDirtyChange?: DirtyReporter }) {
   const [rateLimits, setRateLimits] = useState<RateLimitEntry[]>([])
   const [rlLoading, setRlLoading] = useState(true), [rlError, setRlError] = useState("")
   const [accounts, setAccounts] = useState<AdminMember[]>([])
@@ -37,6 +38,9 @@ export function SecurityAlertsTab({ onAuthInvalid }: { onAuthInvalid: (msg: stri
   const [webhookUrl, setWebhookUrl] = useState(""), [signingSecret, setSigningSecret] = useState("")
   const [clearSecret, setClearSecret] = useState(false), [cooldownRaw, setCooldownRaw] = useState("15")
   const [enabled, setEnabled] = useState(true)
+  const openedRule = useRef("")
+  const ruleSnapshot = JSON.stringify([name, triggerType, thresholdRaw, capabilityFilter, webhookUrl, signingSecret, clearSecret, cooldownRaw, enabled])
+  useReportDirty(formOpen && ruleSnapshot !== openedRule.current, onDirtyChange)
 
   const checkAuth = useCallback((err: unknown): boolean => {
     if (err instanceof AdminApiError && (err.status === 401 || err.status === 403)) { onAuthInvalid(err.message); return true }
@@ -104,6 +108,10 @@ export function SecurityAlertsTab({ onAuthInvalid }: { onAuthInvalid: (msg: stri
     setWebhookUrl(rule?.webhook_url ?? ""); setSigningSecret(""); setClearSecret(false)
     setCooldownRaw(String(rule?.cooldown_minutes ?? 15)); setEnabled(rule?.enabled ?? true)
     setFormOpen(true); setAlertsError("")
+    openedRule.current = JSON.stringify([
+      rule?.name ?? "", rule?.trigger_type ?? "model_error_streak", String(rule?.threshold_value ?? 3), rule?.capability_filter ?? "",
+      rule?.webhook_url ?? "", "", false, String(rule?.cooldown_minutes ?? 15), rule?.enabled ?? true,
+    ])
   }
 
   async function handleSaveRule(e: FormEvent<HTMLFormElement>) {

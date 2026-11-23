@@ -1,5 +1,7 @@
 import { useRef, useState } from "react"
 import { api, message, type Role } from "@/lib/api"
+import { saveBlob } from "@/lib/download"
+import { detailOr, send } from "@/lib/http"
 import { Button } from "./ui/button"
 
 export default function RoleFileActions({ id, disabled, onDuplicate, onEdit }: {
@@ -26,17 +28,10 @@ export default function RoleFileActions({ id, disabled, onDuplicate, onEdit }: {
         setCopy(role)
         onDuplicate(role)
       } else {
-        const response = await fetch("/api/" + path + "/export", { cache: "no-store" })
-        if (!response.ok) {
-          const data = await response.json().catch(() => ({}))
-          throw new Error(data.detail || "The role file could not be downloaded.")
-        }
-        const url = URL.createObjectURL(await response.blob())
-        const link = document.createElement("a")
-        link.href = url
-        link.download = "role-" + id + ".json"
-        link.click()
-        window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+        const response = await send("/api/" + path + "/export", {
+          describe: (data) => detailOr(data, "The role file could not be downloaded."),
+        })
+        saveBlob(await response.blob(), "role-" + id + ".json")
       }
     } catch (e) {
       setError(message(e))

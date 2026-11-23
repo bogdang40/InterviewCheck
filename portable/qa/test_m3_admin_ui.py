@@ -244,3 +244,76 @@ def test_mobile_drawer_navigation_at_390x844(m3_workspace, m3_browser):
         collector.assert_clean()
     finally:
         ctx.close()
+
+
+def _sign_in_api(page, ws: IsolatedWorkspace, email: str, password: str) -> None:
+    response = page.request.post(ws.base_url + "/api/integrations/access/login",
+                                 data={"email": email, "password": password}, headers={"X-InterviewCheck": "1"})
+    assert response.ok
+
+
+def test_admin_status_failure_offers_retry_that_recovers(m3_workspace, m3_browser):
+    _bootstrap_users(m3_workspace)
+    ctx, page, collector = _new_page(m3_browser, DESKTOP_VIEWPORT)
+    collector.ignore_server_5xx = True
+    try:
+        page.route("**/api/integrations/status", lambda route: route.fulfill(status=503, body="unavailable"))
+        page.goto(m3_workspace.base_url + "/admin/", wait_until="domcontentloaded")
+        alert = page.get_by_role("alert").filter(has_text="workspace status")
+        expect(alert).to_contain_text("Could not check workspace status (HTTP 503).")
+        expect(page.get_by_role("heading", name="Account authentication inactive")).to_have_count(0)
+        page.unroute("**/api/integrations/status")
+        alert.get_by_role("button", name="Retry").click()
+        expect(page.get_by_role("heading", name="Administrator sign in required")).to_be_visible()
+        assert not collector.page_errors
+    finally:
+        ctx.close()
+
+
+def test_admin_sign_out_failure_is_shown(m3_workspace, m3_browser):
+    _bootstrap_users(m3_workspace)
+    ctx, page, collector = _new_page(m3_browser, DESKTOP_VIEWPORT)
+    collector.ignore_server_5xx = True
+    try:
+        _sign_in_api(page, m3_workspace, MEMBER_EMAIL, "Synthetic-M3-Member-1")
+        page.goto(m3_workspace.base_url + "/admin/", wait_until="domcontentloaded")
+        expect(page.get_by_role("heading", name="Administrator access required")).to_be_visible()
+        page.route("**/api/integrations/logout",
+                   lambda route: route.fulfill(status=502, content_type="text/html", body="<html>Bad gateway</html>"))
+        page.get_by_role("button", name="Sign out", exact=True).click()
+        expect(page.get_by_role("alert").filter(has_text="HTTP")).to_have_text("Request failed (HTTP 502).")
+        expect(page.get_by_role("button", name="Sign out", exact=True)).to_be_enabled()
+        assert not collector.page_errors
+    finally:
+        ctx.close()
+
+
+def test_admin_tab_switch_and_refresh_keep_half_edited_values(m3_workspace, m3_browser):
+    _bootstrap_users(m3_workspace)
+    ctx, page, collector = _new_page(m3_browser, DESKTOP_VIEWPORT)
+    try:
+        _sign_in_api(page, m3_workspace, ADMIN_EMAIL, ADMIN_PASS)
+        page.goto(m3_workspace.base_url + "/admin/", wait_until="domcontentloaded")
+        simulator = page.get_by_label("Simulator provider or slug (optional)")
+        simulator.fill("half-typed-slug")
+        page.get_by_role("button", name="Refresh", exact=True).click()
+        expect(page.get_by_role("button", name="Refresh", exact=True)).to_be_enabled()
+        expect(simulator).to_have_value("half-typed-slug")
+
+        page.get_by_role("tab", name="Prompts & SLA").click()
+        prompt = page.get_by_role("tabpanel").get_by_label("System prompt")
+        prompt.fill("Half edited system prompt")
+        page.get_by_role("tab", name="Models").click()
+        expect(page.get_by_role("tab", name="Models")).to_have_attribute("aria-selected", "true")
+        page.get_by_role("tab", name="Prompts & SLA").click()
+        expect(prompt).to_have_value("Half edited system prompt")
+
+        dialogs = []
+        page.once("dialog", lambda dialog: (dialogs.append(dialog.message), dialog.dismiss()))
+        page.get_by_role("navigation", name="Workspace").get_by_role("link", name="Overview", exact=True).click()
+        expect(page).to_have_url(re.compile(r"/admin/?$"))
+        assert dialogs == ["Discard unsaved admin changes and leave this page?"]
+        expect(prompt).to_have_value("Half edited system prompt")
+        collector.assert_clean()
+    finally:
+        ctx.close()

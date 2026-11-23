@@ -87,7 +87,7 @@ if (mode === "build") {
 }
 
 if (mode === "start") {
-  const manifestFile = path.join(web, ".next-server", "routes-manifest.json");
+  const manifestFile = path.resolve(web, env.INTERVIEWCHECK_NEXT_DIST_DIR || ".next-server", "routes-manifest.json");
   if (!existsSync(manifestFile)) throw new Error("Run npm run build before starting the production server.");
   const rewrites = JSON.parse(readFileSync(manifestFile, "utf8")).rewrites;
   const routes = Array.isArray(rewrites) ? rewrites : Object.values(rewrites).flat();

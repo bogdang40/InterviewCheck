@@ -32,6 +32,8 @@ ADMIN_PASS = "Synthetic-M26-Admin-Pass-1"
 VIEWPORTS = (
     ("1440x900", DESKTOP_VIEWPORT, False),
     ("390x844", MOBILE_VIEWPORT, True),
+    # A touch tablet keeps the desktop layout but needs 44px buttons (pointer: coarse).
+    ("1024x768-touch", {"width": 1024, "height": 768}, True),
 )
 THEMES = ("dark", "light")
 

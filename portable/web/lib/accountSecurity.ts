@@ -1,3 +1,5 @@
+import { ApiError, request } from "./http"
+
 export const API_TOKEN_SCOPES = [
   "read:interviews",
   "write:interviews",
@@ -47,14 +49,7 @@ export type CreateApiTokenInput = {
   ttlDays?: number | null
 }
 
-export class AccountSecurityError extends Error {
-  status: number
-
-  constructor(status: number, message: string) {
-    super(message)
-    this.status = status
-  }
-}
+export class AccountSecurityError extends ApiError {}
 
 function readErrorMessage(data: unknown, status: number): string {
   if (data && typeof data === "object") {
@@ -71,22 +66,12 @@ function readErrorMessage(data: unknown, status: number): string {
   return `Security request failed (HTTP ${status}).`
 }
 
-async function securityRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const headers = new Headers(options.headers)
-  headers.set("X-InterviewCheck", "1")
-  if (options.body !== undefined && !headers.has("Content-Type")) {
-    headers.set("Content-Type", "application/json")
-  }
-  const response = await fetch(`/api/integrations/security/${path}`, {
+function securityRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
+  return request<T>(`/api/integrations/security/${path}`, {
     ...options,
-    headers,
-    cache: "no-store",
+    errorType: AccountSecurityError,
+    describe: readErrorMessage,
   })
-  const data = await response.json().catch(() => null)
-  if (!response.ok) {
-    throw new AccountSecurityError(response.status, readErrorMessage(data, response.status))
-  }
-  return data as T
 }
 
 export async function listAccountSessions(signal?: AbortSignal): Promise<AccountSession[]> {

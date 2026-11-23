@@ -11,18 +11,14 @@ import { AdminAccounts } from "./AdminAccounts";
 import { PasswordChangeForm } from "./PasswordChangeForm";
 import WorkspaceError from "./WorkspaceError";
 import { message } from "@/lib/api";
+import { sweepLocalDrafts } from "@/lib/localDraftSweep";
+import { nextPathFromLocation } from "@/lib/safeNextPath";
 import { integration, submit } from "@/lib/integrations";
 import { submitAccessAuth } from "@/lib/totpApi";
 import { notifyAccountChanged } from "@/lib/useAccountStatus";
 
 type Account = { email: string; active: boolean; admin?: boolean };
 
-/** Where to go after signing in from the public sign-in screen: a same-site path from ?next=, or stay. */
-function nextPath(): string | null {
-  if (typeof window === "undefined") return null;
-  const next = new URLSearchParams(window.location.search).get("next");
-  return next && next.startsWith("/") && !next.startsWith("//") ? next : null;
-}
 
 export function AccountConnection({
   enabled,
@@ -90,7 +86,7 @@ export function AccountConnection({
     if (!leaving) return;
     // Normally the shell replaces this screen within a moment. If it does not, reload to settle.
     const timer = window.setTimeout(() => {
-      const next = leaving === "in" ? nextPath() : null;
+      const next = leaving === "in" ? nextPathFromLocation() : null;
       window.location.assign(next ?? window.location.pathname);
     }, 5000);
     return () => window.clearTimeout(timer);
@@ -122,12 +118,13 @@ export function AccountConnection({
         </div> : <p className="muted">Billing plans are unavailable.</p>}
         <div className="row">
           <Button variant="outline" disabled={busy} onClick={() => act(refresh)}>Refresh access</Button>
-          <Button variant="ghost" disabled={busy} onClick={() => act(async () => { await submit("logout"); setLeaving("out"); setAccount(null); notifyAccountChanged(); })}>Sign out</Button>
+          <Button variant="ghost" disabled={busy} onClick={() => act(async () => { await submit("logout"); sweepLocalDrafts(); setLeaving("out"); setAccount(null); notifyAccountChanged(); })}>Sign out</Button>
         </div>
         <PasswordChangeForm onRotated={next => setAccount(next)} />
         <AccountSecurityPanel
           isAdmin={Boolean(account.admin)}
           onCurrentSessionRevoked={() => {
+            sweepLocalDrafts();
             setLeaving("out");
             setAccount(null);
             notifyAccountChanged();
@@ -165,7 +162,7 @@ export function AccountConnection({
           // show a status, not account controls that are about to be replaced.
           setLeaving("in");
           notifyAccountChanged();
-          const next = nextPath();
+          const next = nextPathFromLocation();
           if (next) router.push(next);
           return;
         }

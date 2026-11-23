@@ -121,3 +121,23 @@ def test_discard_stale_role_edits_and_continue_on_phone(workspace_url, browser_p
     page.get_by_role("button", name="Save role").click()
     expect(page.get_by_text("Edited after reload", exact=True)).to_be_visible()
     assert page.request.get(detail).json()["name"] == "Lead inspector"
+
+
+def test_unsaved_role_form_asks_before_leaving(workspace_url, browser_page):
+    page = browser_page
+    page.goto(workspace_url + "/roles/")
+    page.get_by_role("button", name="Add role").click()
+    interviews = page.get_by_role("navigation", name="Workspace").get_by_role("link", name="Interviews", exact=True)
+    # Opening an empty form is not an edit, so leaving needs no confirmation.
+    page.get_by_role("button", name="Cancel").click()
+    page.get_by_role("button", name="Add role").click()
+    page.get_by_label("Role name", exact=True).fill("Half written role")
+    prompts = []
+    page.once("dialog", lambda dialog: (prompts.append(dialog.message), dialog.dismiss()))
+    interviews.click()
+    expect(page.get_by_label("Role name", exact=True)).to_have_value("Half written role")
+    assert prompts == ["Discard unsaved role changes and leave this page?"]
+    assert page.url.endswith("/roles/")
+    page.once("dialog", lambda dialog: dialog.accept())
+    interviews.click()
+    expect(page).to_have_url(re.compile(r"/interviews/$"))

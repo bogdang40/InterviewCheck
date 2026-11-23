@@ -1,4 +1,5 @@
 import type { PermittedMaterial, Role } from "./api"
+import { ApiError, errorMessage, request } from "./http"
 
 export type RubricCriterion = {
   id: string
@@ -149,51 +150,24 @@ export type RoleVersionDetailResponse = {
 export type RoleRestoreRequest = { expected_version: string; change_note?: string }
 export type RoleRestoreResponse = CalibratedRole & { restored_from_version: number }
 
-export class RoleApiError extends Error {
-  status: number
-  conflictHeader: string | null
-
-  constructor(status: number, message: string, conflictHeader: string | null = null) {
-    super(message)
-    this.status = status
-    this.conflictHeader = conflictHeader
+export class RoleApiError extends ApiError {
+  constructor(
+    status: number,
+    message: string,
+    readonly conflictHeader: string | null = null,
+  ) {
+    super(status, message)
   }
 }
 
-export function extractApiError(data: unknown, status: number): string {
-  if (data && typeof data === "object") {
-    const obj = data as { detail?: unknown; error?: { message?: unknown } }
-    if (typeof obj.detail === "string" && obj.detail.trim()) return obj.detail
-    if (Array.isArray(obj.detail) && obj.detail.length > 0) {
-      const first = obj.detail[0] as { msg?: unknown; loc?: unknown }
-      if (typeof first?.msg === "string") {
-        const loc = Array.isArray(first.loc) ? first.loc.slice(1).join(".") : ""
-        return loc ? `${loc}: ${first.msg}` : first.msg
-      }
-    }
-    if (obj.error && typeof obj.error.message === "string" && obj.error.message.trim()) {
-      return obj.error.message
-    }
-  }
-  return `Request failed (HTTP ${status}).`
-}
+export const extractApiError = errorMessage
 
-async function requestRoleApi<T>(url: string, options: RequestInit = {}): Promise<T> {
-  const headers = new Headers(options.headers)
-  headers.set("X-InterviewCheck", "1")
-  if (options.body !== undefined && !headers.has("Content-Type")) {
-    headers.set("Content-Type", "application/json")
-  }
-  const response = await fetch(url, { ...options, credentials: "include", cache: "no-store", headers })
-  const data = await response.json().catch(() => null)
-  if (!response.ok) {
-    throw new RoleApiError(
-      response.status,
-      extractApiError(data, response.status),
-      response.headers.get("X-InterviewCheck-Conflict"),
-    )
-  }
-  return data as T
+export function requestRoleApi<T>(url: string, options: RequestInit = {}): Promise<T> {
+  return request<T>(url, {
+    ...options,
+    toError: (response, data) =>
+      new RoleApiError(response.status, errorMessage(data, response.status), response.headers.get("X-InterviewCheck-Conflict")),
+  })
 }
 
 export function fetchRolesAnalytics(signal?: AbortSignal): Promise<RolesAnalyticsResponse> {

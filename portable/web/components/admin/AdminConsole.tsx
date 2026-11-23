@@ -20,14 +20,16 @@ import {
   type FleetTelemetryResponse,
 } from "@/lib/adminTelemetry"
 import { mergeBatchModels } from "@/lib/adminModelPresets"
-import { type ProviderStatus } from "@/lib/integrations"
-import { type AccountSnapshot } from "@/lib/useAccountStatus"
+import { useDirtyRegistry } from "@/lib/dirtyTracking"
+import { useDraftGuard } from "@/lib/useDraftGuard"
 import { AdminGate } from "./AdminGate"
 import { AdminTabNav, type AdminTabItem } from "./AdminTabNav"
+import { AdminTabPanel } from "./AdminTabPanel"
 import { ModelHealthDrawer } from "./ModelHealthDrawer"
 import { ModelList } from "./ModelList"
 import { ModelSummaryCards } from "./ModelSummaryCards"
 import { RoutingSimulatorPanel } from "./RoutingSimulatorPanel"
+import { useAdminAccess } from "./useAdminAccess"
 import "./AdminConsole.css"
 
 const AccountsTab = dynamic(() => import("./AccountsTab").then((m) => m.AccountsTab), { ssr: false })
@@ -53,12 +55,13 @@ const ADMIN_TABS: readonly AdminTabItem<AdminTab>[] = [
 ]
 
 export default function AdminConsole() {
-  const [status, setStatus] = useState<ProviderStatus | null>(null)
-  const [account, setAccount] = useState<AccountSnapshot | null>(null)
-  const [gateLoading, setGateLoading] = useState(true)
-  const [gateError, setGateError] = useState("")
+  const access = useAdminAccess()
+  const { status, setStatus, account, setAccount, onAuthInvalid } = access
 
   const [tab, setTab] = useState<AdminTab>("models")
+  const [openedTabs, setOpenedTabs] = useState<ReadonlySet<AdminTab>>(() => new Set<AdminTab>(["models"]))
+  const { anyDirty, reporterFor } = useDirtyRegistry()
+  useDraftGuard(anyDirty, "Discard unsaved admin changes and leave this page?")
   const [models, setModels] = useState<ConnectedModel[]>([])
   const [envFallbacks, setEnvFallbacks] = useState<EnvFallback[]>([])
   const [fleetTelemetry, setFleetTelemetry] = useState<FleetTelemetryResponse | null>(null)
@@ -71,38 +74,10 @@ export default function AdminConsole() {
   const [editing, setEditing] = useState<ConnectedModel | null>(null)
   const [healthModel, setHealthModel] = useState<ConnectedModel | null>(null)
 
-  const bootstrap = useCallback(async (preserveError = false) => {
-    setGateLoading(true)
-    if (!preserveError) setGateError("")
-    try {
-      const res = await fetch("/api/integrations/status", { cache: "no-store" })
-      if (!res.ok) throw new Error(`Could not check workspace status (HTTP ${res.status}).`)
-      const nextStatus = (await res.json()) as ProviderStatus
-      setStatus(nextStatus)
-      if (!nextStatus.access || !nextStatus.signedIn) {
-        setAccount(null)
-        return
-      }
-      const acctRes = await fetch("/api/integrations/account", { cache: "no-store" })
-      if (!acctRes.ok) {
-        setAccount(null)
-        return
-      }
-      setAccount((await acctRes.json()) as AccountSnapshot)
-    } catch (err) {
-      setGateError(err instanceof Error ? err.message : "Could not check account status.")
-    } finally {
-      setGateLoading(false)
-    }
-  }, [])
-
-  const onAuthInvalid = useCallback(
-    (msg: string) => {
-      setGateError(msg)
-      void bootstrap(true)
-    },
-    [bootstrap],
-  )
+  function selectTab(next: AdminTab) {
+    setTab(next)
+    setOpenedTabs((prev) => (prev.has(next) ? prev : new Set(prev).add(next)))
+  }
 
   const handleAuthFailure = useCallback(
     (err: unknown): boolean => {
@@ -163,10 +138,6 @@ export default function AdminConsole() {
   }, [handleAuthFailure])
 
   useEffect(() => {
-    void bootstrap()
-  }, [bootstrap])
-
-  useEffect(() => {
     if (account?.admin) {
       void loadModels()
     }
@@ -225,14 +196,15 @@ export default function AdminConsole() {
     }
   }
 
-  if (gateLoading || !status?.access || !account || !account.admin) {
+  if (access.loading || !status?.access || !account || !account.admin) {
     return (
       <AdminGate
-        loading={gateLoading}
+        loading={access.loading}
         status={status}
         account={account}
-        error={gateError}
-        onError={setGateError}
+        error={access.error}
+        onError={access.setError}
+        onRetry={access.retry}
         onSignedIn={(next) => {
           setAccount(next)
           setStatus((prev) => (prev ? { ...prev, signedIn: true } : prev))
@@ -260,7 +232,7 @@ export default function AdminConsole() {
         </div>
         <div className="admin-header-actions">
           <Badge variant="default">Admin: {account.email}</Badge>
-          <Button type="button" variant="outline" size="sm" disabled={modelsLoading} onClick={() => void loadModels()}>
+          <Button type="button" variant="outline" size="sm" disabled={modelsLoading} onClick={() => { access.setError(""); void loadModels() }}>
             <RefreshCw size={14} aria-hidden="true" />
             Refresh
           </Button>
@@ -271,55 +243,52 @@ export default function AdminConsole() {
         </div>
       </header>
 
-      <AdminTabNav tabs={ADMIN_TABS} activeTab={tab} onSelect={setTab} />
+      <AdminTabNav tabs={ADMIN_TABS} activeTab={tab} onSelect={selectTab} />
 
-      {bannerError && <p role="alert" className="error">{bannerError}</p>}
+      {(bannerError || access.error) && <p role="alert" className="error">{bannerError || access.error}</p>}
       {bannerStatus && <p role="status" className="notice">{bannerStatus}</p>}
 
-      {tab === "models" && (
-        <div id="panel-models" role="tabpanel" aria-labelledby="tab-models" className="stack">
-          <ModelSummaryCards
+      <AdminTabPanel id="models" active={tab === "models"} opened className="stack">
+        <ModelSummaryCards
+          models={models}
+          envFallbacks={envFallbacks}
+          telemetry={fleetTelemetry?.summary ?? null}
+        />
+        {modelsLoading ? (
+          <p role="status" className="panel inset muted">Loading connected models…</p>
+        ) : (
+          <ModelList
             models={models}
-            envFallbacks={envFallbacks}
-            telemetry={fleetTelemetry?.summary ?? null}
+            busyId={busyId}
+            telemetryByModel={fleetTelemetry?.models}
+            usageByModel={diagnostics?.usageByModel}
+            onConnect={() => { setEditing(null); setModalOpen(true) }}
+            onConfigure={(m) => { setEditing(m); setModalOpen(true) }}
+            onProbe={(m) => void handleProbe(m)}
+            onToggle={(m) => void handleToggle(m)}
+            onDelete={(m) => void handleDelete(m)}
+            onViewHealth={(m) => setHealthModel(m)}
+            onBatchUpdated={(updated, msg) => {
+              setModels((prev) => mergeBatchModels(prev, updated))
+              void refreshTelemetry()
+              setBannerError("")
+              setBannerStatus(msg)
+            }}
+            onBatchError={(msg) => { if (msg) setBannerStatus(""); setBannerError(msg) }}
+            onAuthInvalid={onAuthInvalid}
           />
-          {modelsLoading ? (
-            <p role="status" className="panel inset muted">Loading connected models…</p>
-          ) : (
-            <>
-              <ModelList
-                models={models}
-                busyId={busyId}
-                telemetryByModel={fleetTelemetry?.models}
-                usageByModel={diagnostics?.usageByModel}
-                onConnect={() => { setEditing(null); setModalOpen(true) }}
-                onConfigure={(m) => { setEditing(m); setModalOpen(true) }}
-                onProbe={(m) => void handleProbe(m)}
-                onToggle={(m) => void handleToggle(m)}
-                onDelete={(m) => void handleDelete(m)}
-                onViewHealth={(m) => setHealthModel(m)}
-                onBatchUpdated={(updated, msg) => {
-                  setModels((prev) => mergeBatchModels(prev, updated))
-                  void refreshTelemetry()
-                  setBannerError("")
-                  setBannerStatus(msg)
-                }}
-                onBatchError={(msg) => { if (msg) setBannerStatus(""); setBannerError(msg) }}
-                onAuthInvalid={onAuthInvalid}
-              />
-              <RoutingSimulatorPanel onAuthInvalid={onAuthInvalid} />
-            </>
-          )}
-        </div>
-      )}
+        )}
+        {/* Outside the loading branch so a header Refresh keeps the simulator's inputs and result. */}
+        <RoutingSimulatorPanel onAuthInvalid={onAuthInvalid} />
+      </AdminTabPanel>
 
-      {tab === "accounts" && <div id="panel-accounts" role="tabpanel" aria-labelledby="tab-accounts"><AccountsTab onAuthInvalid={onAuthInvalid} /></div>}
-      {tab === "audit" && <div id="panel-audit" role="tabpanel" aria-labelledby="tab-audit"><AuditLogTab onAuthInvalid={onAuthInvalid} /></div>}
-      {tab === "diagnostics" && <div id="panel-diagnostics" role="tabpanel" aria-labelledby="tab-diagnostics"><DiagnosticsTab models={models} onAuthInvalid={onAuthInvalid} /></div>}
-      {tab === "playground" && <div id="panel-playground" role="tabpanel" aria-labelledby="tab-playground"><PlaygroundTab models={models} onAuthInvalid={onAuthInvalid} /></div>}
-      {tab === "security" && <div id="panel-security" role="tabpanel" aria-labelledby="tab-security"><SecurityAlertsTab onAuthInvalid={onAuthInvalid} /></div>}
-      {tab === "prompts" && <div id="panel-prompts" role="tabpanel" aria-labelledby="tab-prompts"><PromptsAndSlaTab models={models} onAuthInvalid={onAuthInvalid} /></div>}
-      {tab === "compliance" && <div id="panel-compliance" role="tabpanel" aria-labelledby="tab-compliance"><ComplianceTab onAuthInvalid={onAuthInvalid} /></div>}
+      <AdminTabPanel id="accounts" active={tab === "accounts"} opened={openedTabs.has("accounts")}><AccountsTab onAuthInvalid={onAuthInvalid} /></AdminTabPanel>
+      <AdminTabPanel id="audit" active={tab === "audit"} opened={openedTabs.has("audit")}><AuditLogTab onAuthInvalid={onAuthInvalid} /></AdminTabPanel>
+      <AdminTabPanel id="diagnostics" active={tab === "diagnostics"} opened={openedTabs.has("diagnostics")}><DiagnosticsTab models={models} onAuthInvalid={onAuthInvalid} /></AdminTabPanel>
+      <AdminTabPanel id="playground" active={tab === "playground"} opened={openedTabs.has("playground")}><PlaygroundTab models={models} onAuthInvalid={onAuthInvalid} /></AdminTabPanel>
+      <AdminTabPanel id="security" active={tab === "security"} opened={openedTabs.has("security")}><SecurityAlertsTab onAuthInvalid={onAuthInvalid} onDirtyChange={reporterFor("security")} /></AdminTabPanel>
+      <AdminTabPanel id="prompts" active={tab === "prompts"} opened={openedTabs.has("prompts")}><PromptsAndSlaTab models={models} onAuthInvalid={onAuthInvalid} onDirtyChange={reporterFor("prompts")} /></AdminTabPanel>
+      <AdminTabPanel id="compliance" active={tab === "compliance"} opened={openedTabs.has("compliance")}><ComplianceTab onAuthInvalid={onAuthInvalid} /></AdminTabPanel>
 
       {modalOpen && (
         <ModelFormModal
@@ -348,8 +317,7 @@ export default function AdminConsole() {
           onClose={() => setHealthModel(null)}
           onAuthInvalid={(msg) => {
             setHealthModel(null)
-            setGateError(msg)
-            void bootstrap(true)
+            onAuthInvalid(msg)
           }}
         />
       )}
