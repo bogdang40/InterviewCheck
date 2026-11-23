@@ -1,5 +1,13 @@
 # Portable edition acceptance
 
+## Reviewer data and recovery
+
+The Windows, Ubuntu and container upgrade checks passed for the reviewer workflow release. The deployed merge `4f38133` has the same Git tree as the tested PR head. Local verification on that head passed 728 backend tests, 371 production browser tests, six development checks and three static browser checks. The normal npm launchers and a fresh ZIP extraction also passed their startup and shutdown checks. The separate Windows build after merge passed the static browser assertions but failed while stopping its test server. [PR checks](https://github.com/bogdang40/InterviewCheck/actions/runs/45232233822) · [Postmerge Windows job](https://github.com/bogdang40/InterviewCheck/actions/runs/45236954386/job/137911081853) · [Production rollout](https://github.com/bogdang40/InterviewCheck/actions/runs/45240578974)
+
+Two synthetic reviewers exercised scorecard changes for 130 minutes on `ba1c157`. The test observed 101 save requests, 32 stale writes and two overlapping edits that needed an explicit choice. It checked the saved ratings, rationales and attribution after writes and after two ten minute idle periods.
+
+The archive recovery check used files created by the actual version 1, 3, 4 and 5 writers. A separate version 2 reader fixture was derived from version 1. Version 5 recovered a 70.0% active scorecard and a 73.3% scorecard in Trash with their original rationale text, authors and update times. Replaying an older archive over an otherwise identical interview preserved a newer local grade. Replaying a conflicting version 5 file returned HTTP 409.
+
 ## Interview workbench
 
 The release candidate at Git tree `73bae5dc9ba93aeed437c2ed3f0883d0d6c9b9f3` passed all **232 backend and production browser tests** in a clean Debian 13 ARM64 guest, in 72.05 seconds. The run used Linux 6.12.117, Python 3.13.5, Node 22.16.0 and Chromium 159.0.8154.6. Both root npm entry points passed HTTP, WebSocket and shutdown checks. The static export, production build, TypeScript and all synthetic evaluation expectations passed. Five additional development checks and three static browser checks passed. A fresh extracted ZIP started without Node on the executable path, completed embedded trial signup and durably saved an interview.
