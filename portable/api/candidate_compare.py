@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import HTMLResponse, Response
 from pydantic import Field, model_validator
 
-from . import comparison_scorecards, exports, report, store
+from . import comparison_scorecards, comparison_summary, exports, report, store
 from .models import Input, RequestID
 
 router = APIRouter()
@@ -198,19 +198,8 @@ def _render_markdown(data: dict[str, Any]) -> str:
     sessions = data["sessions"]
     lines = [
         "# Candidate comparison dossier", "", "Shared wording requires interpretation against the interview rules.", "",
-        "## Candidates", "",
-        "| Candidate | Role | Lifecycle | Answers | Matches | Pending | Explained | Unresolved | Disclosed |",
-        "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
-    for s in sessions:
-        c = s["counts"]
-        lines.append(
-            f"| {report.heading(s['candidate'])} | {report.heading(s['role'])} | {s['lifecycle']} | "
-            f"{s['answer_count']} | {c['match']} | {c['pending']} | {c['explained']} | {c['unresolved']} | {c['disclosed']} |"
-        )
-    lines.extend(["", "### Session policies", ""])
-    for s in sessions:
-        lines.extend([f"**{report.heading(s['candidate'])}** ({s['id']})", "", report.literal(s["policy"]), ""])
+    lines.extend(comparison_summary.markdown(sessions))
     if data["rubric_criteria"]:
         lines.extend(["## Shared role rubric", "", "Guidance from the current role template.", ""])
         for crit in data["rubric_criteria"]:
@@ -225,11 +214,11 @@ def _render_markdown(data: dict[str, Any]) -> str:
         lines.extend([f"### {_slot_title(slot)}", ""])
         if slot["planned_question"]:
             lines.extend(["Planned question", "", report.literal(slot["planned_question"]), ""])
-        for s in sessions:
+        for number, s in enumerate(sessions, 1):
             if "owner_session_id" in slot and slot["owner_session_id"] != s["id"]:
                 continue
             cell = slot["cells"][s["id"]]
-            lines.extend([f"**{report.heading(s['candidate'])}**", ""])
+            lines.extend([f"**{report.heading(comparison_summary.interview_title(number, s))}**", ""])
             prompts = slot.get("planned_questions")
             if prompts is not None:
                 prompt = prompts[s["id"]]
@@ -256,13 +245,6 @@ def _render_markdown(data: dict[str, Any]) -> str:
 
 def _render_html(data: dict[str, Any]) -> str:
     sessions = data["sessions"]
-    summary_rows = "".join(
-        f"<tr><td>{escape(s['candidate'])}</td><td>{escape(s['role'])}</td><td>{escape(s['lifecycle'])}</td>"
-        f"<td>{escape(s['created_at'])}</td><td>{escape(s['policy'])}</td><td>{s['answer_count']}</td>"
-        f"<td>{s['counts']['match']}</td><td>{s['counts']['no_match']}</td><td>{s['counts']['insufficient']}</td>"
-        f"<td>{s['counts']['pending']}</td><td>{s['counts']['explained']}</td>"
-        f"<td>{s['counts']['unresolved']}</td><td>{s['counts']['disclosed']}</td></tr>" for s in sessions
-    )
     rubric_html = ""
     if data["rubric_criteria"]:
         items = "".join(
@@ -276,10 +258,11 @@ def _render_html(data: dict[str, Any]) -> str:
         heading = _slot_title(slot)
         planned = f"<p>Planned question: {escape(slot['planned_question'])}</p>" if slot["planned_question"] else ""
         cells = []
-        for s in sessions:
+        for number, s in enumerate(sessions, 1):
             if "owner_session_id" in slot and slot["owner_session_id"] != s["id"]:
                 continue
             cell = slot["cells"][s["id"]]
+            who = escape(comparison_summary.interview_title(number, s))
             prompt_html = ""
             prompts = slot.get("planned_questions")
             if prompts is not None:
@@ -288,7 +271,7 @@ def _render_html(data: dict[str, Any]) -> str:
                                else "<p>Not in this interview plan.</p>")
             if cell is None:
                 empty = "" if prompts is not None and prompts[s["id"]] is None else "<p>No recorded answer.</p>"
-                cells.append(f"<div><h3>{escape(s['candidate'])}</h3>{prompt_html}{empty}</div>")
+                cells.append(f"<div><h3>{who}</h3>{prompt_html}{empty}</div>")
                 continue
             question_html = ""
             if prompts is None or prompts[s["id"]] != cell["question"]:
@@ -297,7 +280,7 @@ def _render_html(data: dict[str, Any]) -> str:
                 f"<p>Note: {escape(cell['note'])}</p>" if cell.get("note") else ""
             )
             cells.append(
-                f"<div><h3>{escape(s['candidate'])}</h3>{prompt_html}{question_html}"
+                f"<div><h3>{who}</h3>{prompt_html}{question_html}"
                 f"<p>Status: {escape(cell['status'])}, Disposition: {escape(cell['disposition'])}, Passages: {cell['passage_count']}</p>{extra}</div>"
             )
         slot_articles.append(f"<article><h2>{escape(heading)}</h2>{planned}{''.join(cells)}</article>")
@@ -305,10 +288,8 @@ def _render_html(data: dict[str, Any]) -> str:
         f"<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
         f"<title>Candidate comparison dossier</title><style>{exports.STYLE}</style><script src=\"/api/exports/print.js\" defer></script></head><body>"
         f"<nav aria-label=\"Report actions\"><button type=\"button\" id=\"print-report\">Print or save PDF</button></nav>"
-        f"<main><h1>Candidate comparison dossier</h1><p>Shared wording requires interpretation against the interview rules.</p>"
-        f"<table><thead><tr><th>Candidate</th><th>Role</th><th>Lifecycle</th><th>Created</th><th>Policy</th>"
-        f"<th>Answers</th><th>Match</th><th>No match</th><th>Insufficient</th><th>Pending</th><th>Explained</th><th>Unresolved</th><th>Disclosed</th>"
-        f"</tr></thead><tbody>{summary_rows}</tbody></table>{rubric_html}{comparison_scorecards.html(sessions)}"
+        f'<main class="comparison-report"><h1>Candidate comparison dossier</h1><p>Shared wording requires interpretation against the interview rules.</p>'
+        f"{comparison_summary.html(sessions)}{rubric_html}{comparison_scorecards.html(sessions)}"
         f"<section><h2>Question slot comparison</h2>{''.join(slot_articles) or '<p>No slots recorded.</p>'}</section></main></body></html>"
     )
 

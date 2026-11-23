@@ -83,6 +83,26 @@ p,blockquote,pre,dd {white-space:pre-wrap;overflow-wrap:anywhere;}
 blockquote {border-left:3px solid #839e8c;padding-left:1rem;margin:.5rem 0 1rem;}
 article {border-top:1px solid #a8b4a8;margin-top:1.8rem;} pre {font-size:.78rem;}
 button {background:#194a33;color:white;border:0;border-radius:5px;padding:.7rem 1rem;font-size:1rem;cursor:pointer;}
+.comparison-report {overflow-wrap:anywhere;}
+.comparison-report h4 {break-after:avoid;line-height:1.3;}
+.comparison-report pre {font:inherit;white-space:pre-wrap;}
+.comparison-report .candidate-identities article {margin-top:.9rem;}
+.comparison-report .candidate-identities dl {margin:.35em 0;}
+.comparison-report .comparison-counts table {width:100%;table-layout:fixed;border-collapse:collapse;margin:1em 0 1.4em;}
+.comparison-report caption {text-align:left;font-weight:650;margin-bottom:.35em;break-after:avoid;}
+.comparison-report th,.comparison-report td {padding:.3em .4em;border-bottom:1px solid #a8b4a8;vertical-align:top;line-height:1.35;}
+.comparison-report th:first-child {width:40%;text-align:left;}
+.comparison-report th:not(:first-child),.comparison-report td {text-align:right;font-variant-numeric:tabular-nums;}
+@media screen and (max-width:28rem) {
+  .comparison-report thead th {font-size:.875em;}
+  .comparison-report th,.comparison-report td {padding:.3em .15em;}
+  .comparison-report th:first-child {width:35%;}
+}
+@media print {
+  .comparison-report thead {display:table-header-group;}
+  .comparison-report tr {break-inside:avoid;}
+  .comparison-report dt {break-after:avoid;}
+}
 @media print {body{margin:0;max-width:none;padding:0;font-size:10.5pt;} nav{display:none;} @page{margin:17mm;}}
 """
 PRINT_STYLE_HASH = "sha256-" + base64.b64encode(hashlib.sha256(STYLE.encode("utf-8")).digest()).decode("ascii")

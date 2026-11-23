@@ -124,14 +124,14 @@ def test_comparison_keeps_each_interviews_plan_and_exchange_order(client):
     # The reports must attribute each snapshot prompt even if the reviewer asked a different question.
     md = client.post("/api/interviews/compare/dossier", json={"session_ids": ids, "format": "markdown"}).raise_for_status().text
     plan_section = md.split("### Slot 2\n", 1)[1].split("### Slot 2 (additional answer)", 1)[0]
-    assert "**Ada**\n\nPlanned question\n\n    " + old in plan_section
+    assert "**Interview 1 · Ada**\n\nPlanned question\n\n    " + old in plan_section
     assert "Recorded question\n\n    What did you observe?" in plan_section
-    assert "**Grace**\n\nPlanned question\n\n    " + new + "\n\nNo recorded answer" in plan_section
-    assert "**Lin**\n\nNot in this interview plan." in plan_section
+    assert "**Interview 2 · Grace**\n\nPlanned question\n\n    " + new + "\n\nNo recorded answer" in plan_section
+    assert "**Interview 3 · Lin**\n\nNot in this interview plan." in plan_section
     html = client.get("/api/interviews/compare/print", params={"ids": ",".join(ids)}).raise_for_status().text
-    assert "<h3>Ada</h3><p>Planned question: Assess &lt;old&gt; evidence.</p>" in html
-    assert f"<h3>Grace</h3><p>Planned question: {new}</p><p>No recorded answer.</p>" in html
-    assert "<h3>Lin</h3><p>Not in this interview plan.</p>" in html
+    assert "<h3>Interview 1 · Ada</h3><p>Planned question: Assess &lt;old&gt; evidence.</p>" in html
+    assert f"<h3>Interview 2 · Grace</h3><p>Planned question: {new}</p><p>No recorded answer.</p>" in html
+    assert "<h3>Interview 3 · Lin</h3><p>Not in this interview plan.</p>" in html
     for export in (md, html):
         assert export.count("Revisit the evidence.") == 1
         assert export.count("Independent Grace question.") == export.count("Independent Ada question.") == 1
