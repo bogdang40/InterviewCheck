@@ -53,22 +53,24 @@ def test_queue_parses_only_eligible_deadlines_for_sorting(client, monkeypatch):
                           VALUES(?,?,?,?,'qa@example.test','operator')""", (
             (sid, "high" if i < 3 else "normal", stamps[i], NOW.isoformat()) for i, sid in enumerate(ids[:240])
         ))
-        parsed = Counter()
-        parse = assignment_queue._due_microseconds
+    parsed = Counter()
+    parse = assignment_queue._due_microseconds
 
-        def observe(raw, now):
-            parsed[raw] += 1
-            return parse(raw, now)
+    def observe(raw, now):
+        parsed[raw] += 1
+        return parse(raw, now)
 
-        monkeypatch.setattr(assignment_queue, "_due_microseconds", observe)
-        totals_scan = Counter([*stamps, *([None] * 16)])
-        for filters, expected in [
-            ({"priority": "high", "due": "soon"}, stamps[:3]),
-            ({"assignee": "unassigned"}, []),
-            ({}, stamps),
-        ]:
-            parsed.clear()
+    monkeypatch.setattr(assignment_queue, "_due_microseconds", observe)
+    totals_scan = Counter([*stamps, *([None] * 16)])
+    for filters, expected in [
+        ({"priority": "high", "due": "soon"}, stamps[:3]),
+        ({"assignee": "unassigned"}, []),
+        ({}, stamps),
+    ]:
+        parsed.clear()
+        # Each queue request opens its own read connection after the indexed inserts commit.
+        with store.connection() as db:
             result = read(db, **filters)
-            assert len(result["items"]) == 2
-            assert result["due_counts"] == {"overdue": 0, "due_soon": 240}
-            assert parsed == totals_scan + Counter(expected)
+        assert len(result["items"]) == 2
+        assert result["due_counts"] == {"overdue": 0, "due_soon": 240}
+        assert parsed == totals_scan + Counter(expected)
