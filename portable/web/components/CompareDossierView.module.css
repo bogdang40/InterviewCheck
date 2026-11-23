@@ -41,6 +41,8 @@
 .slotCellHead { min-width: 160px; max-width: 240px; background: var(--subtle); }
 .cellStack { display: grid; gap: 7px; min-width: 180px; }
 .cellQuestion { font-size: 13px; font-weight: 560; color: var(--ink); }
+.promptLabel { display: block; font-size: 12px; font-weight: 400; color: var(--muted); }
+.mobileCandidate { display: none; }
 .cellLink { font-size: 13px; font-weight: 600; color: var(--green-ink); justify-self: start; }
 .cellLink:hover { text-decoration: underline; }
 .cardTitle:focus-visible,
@@ -126,6 +128,7 @@
     min-width: 0;
     width: 100%;
   }
+  .mobileCandidate { display: block; font-size: 14px; }
   .cellLink {
     min-height: 44px;
     display: inline-flex;

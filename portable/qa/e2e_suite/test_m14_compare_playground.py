@@ -176,6 +176,53 @@ def test_m14_compare_matrix_rubric_gating_markdown_and_print_dossier(e2e_workspa
     collector.assert_clean()
 
 
+def test_compare_changed_plans_and_additional_answers(e2e_workspace, desktop_page, tmp_path):
+    common, old, revised = "How do you measure lag?", "How do you check logs?", "How do you check metrics?"
+    payload = {"name": "Release engineer", "policy": "Notes permitted.", "questions": [common, old]}
+    with e2e_workspace.client() as c:
+        role = c.post("/api/roles", json=payload).raise_for_status().json()
+        ada = _seed_session(c, candidate="Ada", role=role)
+        c.put(f"/api/roles/{role['id']}", json={**payload, "questions": [common, revised]}).raise_for_status()
+        grace = _seed_session(c, candidate="Grace", role=role)
+        c.put(f"/api/roles/{role['id']}", json={**payload, "questions": [common]}).raise_for_status()
+        lin = _seed_session(c, candidate="Lin", role=role)
+        _add_answer(c, ada, question="Show the evidence.", answer="I used a trace.", slot=2)
+        extra = _add_answer(c, ada, question="What else did you inspect?", answer="The logs.", slot=2)
+        _add_answer(c, lin, question="Walk through your notes.", answer="I compared offsets.")
+        _add_answer(c, grace, question="What did you change?", answer="The metric.")
+
+    page, collector = desktop_page
+    page.goto(f"{e2e_workspace.base_url}/interviews/compare/?ids={ada},{grace},{lin}")
+    table = page.get_by_role("table")
+    expect(table.get_by_role("rowheader", name="Question 1 " + common)).to_be_visible()
+    row = table.get_by_role("row").filter(has=page.get_by_role("rowheader", name="Question 2", exact=True))
+    old_cell, new_cell, absent = (row.get_by_role("cell").nth(i) for i in range(3))
+    expect(old_cell).to_contain_text(old)
+    expect(old_cell).to_contain_text("Show the evidence.")
+    expect(new_cell).to_contain_text(revised)
+    expect(new_cell).to_contain_text("No response recorded")
+    expect(absent).to_contain_text("Not in this interview plan.")
+    unplanned = table.get_by_role("row").filter(has=page.get_by_role("rowheader", name="Unslotted"))
+    expect(unplanned).to_have_count(2)
+    expect(unplanned.first).to_contain_text("Walk through your notes.")
+    expect(unplanned.first).not_to_contain_text("What did you change?")
+
+    page.set_viewport_size({"width": 320, "height": 800})
+    expect(old_cell.get_by_text("Ada", exact=True)).to_be_visible()
+    expect(new_cell.get_by_text("Grace", exact=True)).to_be_visible()
+    expect(absent.get_by_text("Lin", exact=True)).to_be_visible()
+    assert_no_horizontal_overflow(page)
+    row.scroll_into_view_if_needed()
+    page.screenshot(path=tmp_path / "comparison-saved-plans.png")
+    follow = table.get_by_role("row").filter(has=page.get_by_role("rowheader", name="Question 2 (additional answer)"))
+    link = follow.get_by_role("link", name="Open answer")
+    expect(link).to_have_attribute("href", f"/interviews/review/?id={ada}&answer={extra}")
+    link.focus()
+    page.keyboard.press("Enter")
+    expect(page).to_have_url(f"{e2e_workspace.base_url}/interviews/review/?id={ada}&answer={extra}")
+    collector.assert_clean()
+
+
 def test_m14_playground_auth_presets_run_schema_errors_and_audit(e2e_workspace, desktop_page, monkeypatch):
     _setup_auth(e2e_workspace, include_member=True)
     probe_body = {"model_ids": [str(uuid4())], "system_prompt": "S", "user_input": "U"}

@@ -9,6 +9,7 @@ import type { FeedPage } from "@/lib/bulkArchive"
 import {
   buildComparePageUrl, buildComparePrintUrl, compareInterviews, downloadCompareDossier,
   formatSlotHeading, getSlotCell, parseCompareIds, type CompareCounts, type CompareResponse,
+  type CompareSessionSummary, type CompareSlotRow,
 } from "@/lib/compareInterviews"
 import { candidateName, lifecycle, lifecycleText, type Lifecycle } from "@/lib/interview-list"
 import { interviewURL, useResource } from "@/lib/workspace"
@@ -30,10 +31,50 @@ const statusVariant = (status: string) =>
 const lifecycleLabel = (value: string) =>
   value in lifecycleText ? lifecycleText[value as Lifecycle] : value || "Unknown"
 
+function InterviewQuestionCell({ session, row, includeExcerpts, includeNotes }: {
+  session: CompareSessionSummary; row: CompareSlotRow; includeExcerpts: boolean; includeNotes: boolean
+}) {
+  const answer = getSlotCell(row, session.id)
+  const prompt = row.planned_questions?.[session.id]
+  const otherInterview = row.owner_session_id !== undefined && row.owner_session_id !== session.id
+  return (
+    <td>
+      <div className={styles.cellStack}>
+        <strong className={styles.mobileCandidate} aria-hidden="true">{session.candidate || "Unnamed candidate"}</strong>
+        {prompt === null && <p className={styles.cellMeta}>Not in this interview plan.</p>}
+        {typeof prompt === "string" && <p className={styles.cellQuestion}>
+          <span className={styles.promptLabel}>Planned question</span>{prompt}
+        </p>}
+        {!answer && prompt !== null && <span className={styles.cellMeta}>
+          {otherInterview ? "Not applicable" : "No response recorded"}
+        </span>}
+        {answer && <>
+          <div className={styles.countsList}>
+            <Badge variant={statusVariant(answer.status)}>{statusText[answer.status as keyof typeof statusText] || answer.status}</Badge>
+            <Badge variant="outline">{answer.disposition}</Badge>
+          </div>
+          {prompt !== answer.question && <p className={styles.cellQuestion}>
+            {row.planned_questions && <span className={styles.promptLabel}>Recorded question</span>}{answer.question}
+          </p>}
+          <span className={styles.cellMeta}>{answer.passage_count} {answer.passage_count === 1 ? "passage" : "passages"}</span>
+          {includeExcerpts && answer.excerpt && <blockquote className={styles.excerpt}>{answer.excerpt}</blockquote>}
+          {includeNotes && answer.note && <p className={styles.note}><strong>Note:</strong> {answer.note}</p>}
+          <Link className={styles.cellLink} href={interviewURL(session.id, answer.answer_id)}>Open answer</Link>
+        </>}
+      </div>
+    </td>
+  )
+}
+
 export default function CompareDossierView() {
+  const ids = useSearchParams().get("ids")
+  const parsed = useMemo(() => parseCompareIds(ids), [ids])
+  // Each candidate selection starts with private notes and excerpts excluded.
+  return <CandidateComparison key={parsed.ids.join(",")} parsed={parsed} />
+}
+
+function CandidateComparison({ parsed }: { parsed: ReturnType<typeof parseCompareIds> }) {
   const router = useRouter()
-  const params = useSearchParams()
-  const parsed = useMemo(() => parseCompareIds(params.get("ids")), [params])
   const selectedIds = parsed.ids
   const [pickerOpen, setPickerOpen] = useState(false)
   const [draftIds, setDraftIds] = useState<string[]>(selectedIds)
@@ -47,7 +88,6 @@ export default function CompareDossierView() {
   const [downloading, setDownloading] = useState(false)
   const [downloadNotice, setDownloadNotice] = useState("")
 
-  useEffect(() => { setDraftIds(selectedIds) }, [selectedIds])
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(searchText.trim().slice(0, 120)), 140)
     return () => window.clearTimeout(timer)
@@ -111,7 +151,7 @@ export default function CompareDossierView() {
           <h1>Candidate comparison</h1>
           <p>
             {selectedIds.length >= 2
-              ? `Comparing ${selectedIds.length} candidates across aligned question slots.`
+              ? `Comparing ${selectedIds.length} candidates using their saved interview plans.`
               : "Select 2 to 6 interviews to compare candidates side by side."}
           </p>
         </div>
@@ -252,6 +292,9 @@ export default function CompareDossierView() {
 
           <section className={`panel ${styles.section}`} aria-labelledby="compare-matrix-heading">
             <h2 id="compare-matrix-heading">Question-slot matrix</h2>
+            {data.slots.some(row => row.owner_session_id) && <p className="muted">
+              Additional answers follow their planned question in recorded order. Unslotted exchanges appear last in recorded order.
+            </p>}
             {data.slots.length === 0 ? (
               <p className="muted">No recorded questions or answers across the selected interviews.</p>
             ) : (
@@ -270,27 +313,8 @@ export default function CompareDossierView() {
                           <div>{formatSlotHeading(row, idx)}</div>
                           {row.planned_question && <p className={styles.cellMeta}>{row.planned_question}</p>}
                         </th>
-                        {data.sessions.map((session) => {
-                          const cell = getSlotCell(row, session.id)
-                          if (!cell) return <td key={session.id}><span className={styles.cellMeta}>No response recorded</span></td>
-                          return (
-                            <td key={session.id}>
-                              <div className={styles.cellStack}>
-                                <div className={styles.countsList}>
-                                  <Badge variant={statusVariant(cell.status)}>
-                                    {statusText[cell.status as keyof typeof statusText] || cell.status}
-                                  </Badge>
-                                  <Badge variant="outline">{cell.disposition}</Badge>
-                                </div>
-                                <p className={styles.cellQuestion}>{cell.question}</p>
-                                <span className={styles.cellMeta}>{cell.passage_count} {cell.passage_count === 1 ? "passage" : "passages"}</span>
-                                {includeExcerpts && cell.excerpt && <blockquote className={styles.excerpt}>{cell.excerpt}</blockquote>}
-                                {includeNotes && cell.note && <p className={styles.note}><strong>Note:</strong> {cell.note}</p>}
-                                <Link className={styles.cellLink} href={interviewURL(session.id, cell.answer_id)}>Open answer</Link>
-                              </div>
-                            </td>
-                          )
-                        })}
+                        {data.sessions.map(session => <InterviewQuestionCell key={session.id} session={session} row={row}
+                          includeExcerpts={includeExcerpts} includeNotes={includeNotes} />)}
                       </tr>
                     ))}
                   </tbody>
