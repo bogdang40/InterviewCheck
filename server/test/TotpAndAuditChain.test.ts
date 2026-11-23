@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuditChainVerification } from "../src/repositories/AuditLogRepository.js";
 import type { SignedInResponse } from "../src/services/AuthService.js";
-import type { CreatedApiTokenView } from "../src/services/SecurityService.js";
+import type { CreatedApiTokenView } from "../src/services/ApiTokenService.js";
 import { TotpService, type TotpSetupView, type TotpStatusView, type TotpVerifyView } from "../src/services/TotpService.js";
 import { buildHarness, get, json, post, type TestHarness } from "./support/TestContainer.js";
 

@@ -40,6 +40,22 @@ export class LoginThrottle {
     this.database.run("DELETE FROM login_email_windows WHERE email = ?", email);
   }
 
+  activeWindows(now: Date): Array<{ email: string; startMs: number; hits: number }> {
+    return this.database
+      .all<{ email: string; start: number; hits: number }>("SELECT email, start, hits FROM login_email_windows WHERE start > ?", now.getTime() - this.policy.windowMs)
+      .map((row) => ({ email: row.email, startMs: Number(row.start), hits: Number(row.hits) }));
+  }
+
+  /** Clears every window, or only those whose email matches. Returns the number removed. */
+  clear(matches?: (email: string) => boolean): number {
+    if (!matches) return Number(this.database.run("DELETE FROM login_email_windows").changes);
+    let cleared = 0;
+    for (const row of this.database.all<{ email: string }>("SELECT email FROM login_email_windows")) {
+      if (matches(row.email)) cleared += Number(this.database.run("DELETE FROM login_email_windows WHERE email = ?", row.email).changes);
+    }
+    return cleared;
+  }
+
   private pruneExpired(now: Date): void {
     this.database.run("DELETE FROM login_email_windows WHERE start <= ?", now.getTime() - this.policy.windowMs);
   }

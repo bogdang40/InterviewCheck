@@ -1,14 +1,13 @@
-import { Hono, type Context } from "hono";
-import type { ZodTypeAny, z } from "zod";
-import type { Database } from "../../db/Database.js";
+import { Hono } from "hono";
+import type { AccessStatsQuery } from "../../repositories/AccessStatsQuery.js";
 import type { AdminService } from "../../services/AdminService.js";
 import type { AuditChainVerifier } from "../../services/AuditChainVerifier.js";
 import type { AuthService } from "../../services/AuthService.js";
-import type { SecurityService } from "../../services/SecurityService.js";
-import { HttpError } from "../HttpError.js";
+import type { RateLimitAdminService } from "../../services/RateLimitAdminService.js";
+import type { SessionManagementService } from "../../services/SessionManagementService.js";
 import { authenticate, requireAdmin, type AuthEnv } from "../middleware/Authenticate.js";
 import { rateLimit, type ClientAddressResolver, type FixedWindowRateLimiter } from "../middleware/RateLimit.js";
-import { parseJsonBody, parseParams, parseQuery } from "../RequestParsing.js";
+import { parseJsonBody, parseOptionalJsonBody, parseParams, parseQuery } from "../RequestParsing.js";
 import {
   adminAuditQuerySchema,
   adminAuditVerifyQuerySchema,
@@ -23,8 +22,9 @@ export interface AdminRouteDeps {
   auth: AuthService;
   admin: AdminService;
   auditVerifier: AuditChainVerifier;
-  security: SecurityService;
-  database: Database;
+  sessionManagement: SessionManagementService;
+  rateLimitAdmin: RateLimitAdminService;
+  stats: AccessStatsQuery;
   adminReadLimiter: FixedWindowRateLimiter;
   adminWriteLimiter: FixedWindowRateLimiter;
   clientAddress: ClientAddressResolver;
@@ -35,28 +35,6 @@ function grantFrom(raw: string | null | undefined): Date | null | undefined {
   if (raw === undefined) return undefined;
   if (raw === null) return null;
   return new Date(raw);
-}
-
-async function parseOptionalJsonBody<Schema extends ZodTypeAny>(c: Context, schema: Schema): Promise<z.infer<Schema>> {
-  const rawText = await c.req.text();
-  if (!rawText.trim()) {
-    const empty = schema.safeParse({});
-    if (empty.success) return empty.data;
-    throw new HttpError(400, "invalid_json", "Request body must be valid JSON.");
-  }
-  let raw: unknown;
-  try {
-    raw = JSON.parse(rawText);
-  } catch {
-    throw new HttpError(400, "invalid_json", "Request body must be valid JSON.");
-  }
-  const result = schema.safeParse(raw);
-  if (!result.success) {
-    const first = result.error.issues[0];
-    const where = first?.path.length ? `${first.path.join(".")}: ` : "";
-    throw new HttpError(400, "validation_failed", `${where}${first?.message ?? "Invalid request."}`);
-  }
-  return result.data;
 }
 
 export class AdminRoutes {
@@ -97,22 +75,22 @@ export class AdminRoutes {
 
     router.get("/admin/users/:id/sessions", readGuard, (c) => {
       const { id } = parseParams(c, uuidParamSchema);
-      return c.json(deps.security.listUserSessions(id));
+      return c.json(deps.sessionManagement.listUserSessions(id));
     });
 
     router.post("/admin/users/:id/revoke-sessions", writeGuard, async (c) => {
       const { id } = parseParams(c, uuidParamSchema);
       const body = await parseOptionalJsonBody(c, adminRevokeSessionsSchema);
-      return c.json(deps.security.revokeUserSessions(c.get("user"), id, body.sessionId));
+      return c.json(deps.sessionManagement.revokeUserSessions(c.get("user"), id, body.sessionId));
     });
 
-    router.get("/admin/rate-limits", readGuard, (c) => c.json(deps.security.listRateLimits()));
+    router.get("/admin/rate-limits", readGuard, (c) => c.json(deps.rateLimitAdmin.listRateLimits()));
 
     router.delete("/admin/rate-limits", writeGuard, async (c) => {
       const query = parseQuery(c, adminRateLimitQuerySchema);
       const body = await parseOptionalJsonBody(c, adminRateLimitQuerySchema);
       return c.json(
-        deps.security.clearRateLimits(c.get("user"), {
+        deps.rateLimitAdmin.clearRateLimits(c.get("user"), {
           limiter: body.limiter ?? query.limiter,
           keyHash: body.keyHash ?? query.keyHash,
           key: body.key ?? query.key,
@@ -141,19 +119,16 @@ export class AdminRoutes {
     });
 
     router.get("/admin/compliance/summary", readGuard, (c) => {
-      const count = (sql: string, ...p: Array<string | number>) => Number(deps.database.get<{ n: number }>(sql, ...p)?.n ?? 0);
-      const hasTable = (t: string) => Boolean(deps.database.get("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", t));
+      const nowMs = deps.stats.referenceTimeMs(c.get("session")?.id);
       const lastVerification = deps.auditVerifier.lastResult();
-      const sid = c.get("session")?.id;
-      const nowMs = (sid ? deps.database.get<{ last_seen_at: number }>("SELECT last_seen_at FROM sessions WHERE id = ?", sid)?.last_seen_at : undefined) ?? Date.now();
       return c.json({
-        schemaVersion: deps.database.userVersion(),
-        usersTotal: count("SELECT COUNT(*) AS n FROM users"),
-        adminsTotal: count("SELECT COUNT(*) AS n FROM users WHERE role = 'admin' AND disabled = 0"),
-        disabledUsersTotal: count("SELECT COUNT(*) AS n FROM users WHERE disabled = 1"),
-        totpEnabledUsersTotal: hasTable("user_totp") ? count("SELECT COUNT(*) AS n FROM user_totp WHERE enabled = 1") : 0,
-        activeSessionsTotal: count("SELECT COUNT(*) AS n FROM sessions WHERE revoked_at IS NULL AND expires_at > ?", nowMs),
-        activeApiTokensTotal: hasTable("api_tokens") ? count("SELECT COUNT(*) AS n FROM api_tokens WHERE revoked_at IS NULL AND (expires_at IS NULL OR expires_at > ?)", nowMs) : 0,
+        schemaVersion: deps.stats.schemaVersion(),
+        usersTotal: deps.stats.usersTotal(),
+        adminsTotal: deps.stats.activeAdminsTotal(),
+        disabledUsersTotal: deps.stats.disabledUsersTotal(),
+        totpEnabledUsersTotal: deps.stats.totpEnabledUsersTotal(),
+        activeSessionsTotal: deps.stats.activeSessionsTotal(nowMs),
+        activeApiTokensTotal: deps.stats.activeApiTokensTotal(nowMs),
         // The last recorded verification; GET /admin/audit/verify runs a new one.
         auditChainOk: lastVerification?.ok ?? null,
         auditChainVerifiedAt: lastVerification?.verifiedAt ?? null,

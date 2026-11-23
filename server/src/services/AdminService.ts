@@ -9,6 +9,7 @@ import type { SessionRepository } from "../repositories/SessionRepository.js";
 import type { SubscriptionRepository } from "../repositories/SubscriptionRepository.js";
 import type { TotpRepository } from "../repositories/TotpRepository.js";
 import type { UserRepository } from "../repositories/UserRepository.js";
+import type { AdminActorGuard } from "./AdminActorGuard.js";
 import type { EntitlementService } from "./EntitlementService.js";
 
 export interface AdminUserView {
@@ -46,6 +47,7 @@ export class AdminService {
     private readonly entitlements: EntitlementService,
     private readonly totp: TotpRepository,
     private readonly apiTokens: ApiTokenRepository,
+    private readonly adminGuard: AdminActorGuard,
     private readonly clock: () => Date = () => new Date(),
   ) {}
 
@@ -62,7 +64,7 @@ export class AdminService {
 
   updateUser(actor: User, targetId: string, patch: AdminUserPatch): AdminUserView {
     return this.database.transaction(() => {
-      const currentActor = this.requireActiveAdmin(actor.id);
+      const currentActor = this.adminGuard.requireActiveAdmin(actor.id);
       const target = this.users.findById(targetId);
       if (!target) throw new HttpError(404, "user_not_found", "No user with that id.");
       this.guardLastAdmin(currentActor, target, patch);
@@ -88,7 +90,7 @@ export class AdminService {
   /** Recovery for a user who lost their authenticator and backup codes, or whose seed can no longer be decrypted. */
   resetTwoFactor(actor: User, targetId: string): AdminTotpResetView {
     return this.database.transaction(() => {
-      const currentActor = this.requireActiveAdmin(actor.id);
+      const currentActor = this.adminGuard.requireActiveAdmin(actor.id);
       const target = this.users.findById(targetId);
       if (!target) throw new HttpError(404, "user_not_found", "No user with that id.");
       const now = this.clock();
@@ -118,14 +120,6 @@ export class AdminService {
 
   recentAudit(limit = 100): AuditEntry[] {
     return this.audit.recent(limit);
-  }
-
-  private requireActiveAdmin(actorId: string): User {
-    const currentActor = this.users.findById(actorId);
-    if (!currentActor || currentActor.disabled || currentActor.role !== "admin") {
-      throw new HttpError(403, "forbidden", "Admin access required.");
-    }
-    return currentActor;
   }
 
   private guardLastAdmin(actor: User, target: User, patch: AdminUserPatch): void {

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { SignedInResponse } from "../src/services/AuthService.js";
-import type { CreatedApiTokenView } from "../src/services/SecurityService.js";
+import type { CreatedApiTokenView } from "../src/services/ApiTokenService.js";
 import { buildHarness, json, patch, post, type TestHarness } from "./support/TestContainer.js";
 
 const PASSWORD = "a-long-password";
@@ -30,7 +30,7 @@ describe("API token hardening", () => {
   }
 
   function isLive(rawToken: string): boolean {
-    return harness.container.security.verifyApiToken(rawToken, "read:interviews") !== null;
+    return harness.container.apiTokenService.verifyApiToken(rawToken, "read:interviews") !== null;
   }
 
   it("rate limits token minting per user", async () => {

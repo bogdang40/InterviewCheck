@@ -88,7 +88,8 @@ export class AppFactory {
       "/",
       SecurityRoutes.build({
         auth: container.auth,
-        security: container.security,
+        sessionManagement: container.sessionManagement,
+        apiTokens: container.apiTokenService,
         apiTokenLimiter: container.apiTokenLimiter,
       }),
     );
@@ -109,8 +110,9 @@ export class AppFactory {
         auth: container.auth,
         admin: container.admin,
         auditVerifier: container.auditVerifier,
-        security: container.security,
-        database: container.database,
+        sessionManagement: container.sessionManagement,
+        rateLimitAdmin: container.rateLimitAdmin,
+        stats: container.stats,
         adminReadLimiter: container.adminReadLimiter,
         adminWriteLimiter: container.adminWriteLimiter,
         clientAddress: container.clientAddress,
@@ -120,8 +122,8 @@ export class AppFactory {
       "/admin/metrics",
       MetricsRoutes.build({
         auth: container.auth,
-        database: container.database,
-        security: container.security,
+        stats: container.stats,
+        rateLimitAdmin: container.rateLimitAdmin,
         adminReadLimiter: container.adminReadLimiter,
         clientAddress: container.clientAddress,
       }),

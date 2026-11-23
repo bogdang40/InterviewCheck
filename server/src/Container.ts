@@ -6,6 +6,7 @@ import { MigrationRunner } from "./db/Migrations.js";
 import { EntitlementResolver } from "./domain/Entitlement.js";
 import { PlanCatalog } from "./domain/Subscription.js";
 import { ClientAddressResolver, FixedWindowRateLimiter } from "./http/middleware/RateLimit.js";
+import { AccessStatsQuery } from "./repositories/AccessStatsQuery.js";
 import { ApiTokenRepository } from "./repositories/ApiTokenRepository.js";
 import { AuditCheckpointRepository } from "./repositories/AuditCheckpointRepository.js";
 import { AuditLogRepository } from "./repositories/AuditLogRepository.js";
@@ -16,7 +17,9 @@ import { SubscriptionRepository } from "./repositories/SubscriptionRepository.js
 import { TotpRepository } from "./repositories/TotpRepository.js";
 import { UserRepository } from "./repositories/UserRepository.js";
 import { AdminBootstrap } from "./services/AdminBootstrap.js";
+import { AdminActorGuard } from "./services/AdminActorGuard.js";
 import { AdminService } from "./services/AdminService.js";
+import { ApiTokenService } from "./services/ApiTokenService.js";
 import { AuditChainVerifier } from "./services/AuditChainVerifier.js";
 import { AuthService } from "./services/AuthService.js";
 import { BillingService } from "./services/BillingService.js";
@@ -24,7 +27,8 @@ import { BillingWebhookService } from "./services/BillingWebhookService.js";
 import { EntitlementService } from "./services/EntitlementService.js";
 import { LoginThrottle } from "./services/LoginThrottle.js";
 import { PasswordHasher } from "./services/PasswordHasher.js";
-import { SecurityService } from "./services/SecurityService.js";
+import { RateLimitAdminService } from "./services/RateLimitAdminService.js";
+import { SessionManagementService } from "./services/SessionManagementService.js";
 import { SessionPruneScheduler } from "./services/SessionPruneScheduler.js";
 import { TokenService } from "./services/TokenService.js";
 import { TotpSecretMigrator } from "./services/TotpSecretMigrator.js";
@@ -59,7 +63,10 @@ export class Container {
   readonly billing: BillingService;
   readonly billingWebhook: BillingWebhookService;
   readonly admin: AdminService;
-  readonly security: SecurityService;
+  readonly sessionManagement: SessionManagementService;
+  readonly apiTokenService: ApiTokenService;
+  readonly rateLimitAdmin: RateLimitAdminService;
+  readonly stats: AccessStatsQuery;
   readonly clientAddress: ClientAddressResolver;
   readonly sessionPruner: SessionPruneScheduler;
   readonly credentialLimiter: FixedWindowRateLimiter;
@@ -99,6 +106,8 @@ export class Container {
     this.totpMigrator = new TotpSecretMigrator(this.totpKeys, totpCipher, this.totpCodes);
     this.totp = new TotpService(this.database, this.users, this.totpCodes, this.sessions, this.audit, hasher, totpCipher, clock);
 
+    const loginThrottle = new LoginThrottle(this.database);
+    const adminGuard = new AdminActorGuard(this.users);
     this.auth = new AuthService(
       this.database,
       this.users,
@@ -111,7 +120,7 @@ export class Container {
       this.bootstrap,
       policy,
       this.totp,
-      new LoginThrottle(this.database),
+      loginThrottle,
       clock,
     );
 
@@ -138,7 +147,10 @@ export class Container {
       clock,
     );
 
-    this.admin = new AdminService(this.database, this.users, this.sessions, this.subscriptions, this.audit, this.entitlements, this.totpCodes, this.apiTokens, clock);
+    this.admin = new AdminService(
+      this.database, this.users, this.sessions, this.subscriptions, this.audit, this.entitlements, this.totpCodes, this.apiTokens, adminGuard, clock,
+    );
+    this.stats = new AccessStatsQuery(this.database);
     this.clientAddress = ClientAddressResolver.fromConfig(config);
     this.credentialLimiter = new FixedWindowRateLimiter({ windowMs: 60_000, max: 10 });
     this.adminReadLimiter = new FixedWindowRateLimiter({ windowMs: 60_000, max: 120 });
@@ -146,11 +158,10 @@ export class Container {
     this.billingLimiter = new FixedWindowRateLimiter({ windowMs: 60_000, max: 20 });
     this.totpLimiter = new FixedWindowRateLimiter({ windowMs: 60_000, max: 10 });
     this.apiTokenLimiter = new FixedWindowRateLimiter({ windowMs: 60_000, max: 10 });
-    this.security = new SecurityService(
+    this.sessionManagement = new SessionManagementService(this.database, this.users, this.sessions, this.audit, adminGuard, clock);
+    this.apiTokenService = new ApiTokenService(this.database, this.users, this.apiTokens, this.audit, clock);
+    this.rateLimitAdmin = new RateLimitAdminService(
       this.database,
-      this.users,
-      this.sessions,
-      this.apiTokens,
       this.audit,
       {
         credential: this.credentialLimiter,
@@ -160,6 +171,8 @@ export class Container {
         totp: this.totpLimiter,
         apiToken: this.apiTokenLimiter,
       },
+      loginThrottle,
+      adminGuard,
       clock,
     );
   }
