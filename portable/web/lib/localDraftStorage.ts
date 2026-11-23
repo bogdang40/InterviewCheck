@@ -31,7 +31,12 @@ function object(value: unknown): value is Record<string, unknown> {
 }
 
 function text(value: unknown, limit: number): value is string {
-  return typeof value === "string" && value.length <= limit
+  if (typeof value !== "string" || value.length > limit * 2) return false
+  if (value.length <= limit) return true
+  // Python validates code points. A character outside the BMP is two JS code units.
+  let count = 0
+  for (const _ of value) if (++count > limit) return false
+  return true
 }
 
 function positive(value: unknown): value is number {

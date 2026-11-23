@@ -62,7 +62,10 @@ def test_unlinked_copy_is_private_and_can_be_recovered_as_a_file(workspace_url, 
         legacy = {
             "text": "Private unlinked answer.", "question": "Private unlinked question?",
             "baseRevision": draft["revision"], "savedAt": datetime.now(timezone.utc).isoformat(),
-            "origin": {"planned_slot": 2}, "sources": [{"label": "Private manual", "text": "Read this passage.", "permitted": True}],
+            "origin": {"planned_slot": 2}, "sources": [
+                {"label": "Private manual", "text": "Read this passage.", "permitted": True},
+                {"label": "計測🧪" * 60, "text": "", "permitted": False},
+            ],
         }
         page.goto(workspace_url + "/sample/")
         page.evaluate("([key, value]) => localStorage.setItem(key, value)", [f"ic_draft_v1:{sid}:editor:new", json.dumps(legacy)])
