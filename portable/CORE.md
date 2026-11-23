@@ -188,6 +188,8 @@ Clients can supply `parent_answer_id` or `planned_slot` when creating or updatin
 
 Candidate comparisons use the saved question plan for each interview. If plans differ, each candidate's cell shows the prompt that applied at the time. Additional answers retain their slot and exchange link. Excerpts and reviewer notes require a new selection when the comparison moves to a different set or order of interviews.
 
+Changing what to include requests a fresh comparison and cancels a Markdown download that is still being prepared. If access is denied, use **Retry comparison** after access is restored.
+
 Use **Change interviews** to select up to six interviews across archive pages or searches. Select **Include saved scorecards** to compare the recorded criteria, weights and ratings in selection order. **Include reviewer rationales** also shares the rationale text in the comparison, printout and Markdown download. Each interview's weighted percentage uses only criteria with a saved rating. Percentages round to one decimal place, with exact ties rounded to the even tenth. An interview with no ratings is ungraded.
 
 ## Workspace recovery

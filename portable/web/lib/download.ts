@@ -43,8 +43,11 @@ export function saveBlob(blob: Blob, filename: string): void {
 }
 
 /** Save a successful reply as a file and return the name it was saved under. */
-export async function downloadResponse(response: Response, fallbackName: string): Promise<string> {
+export async function downloadResponse(response: Response, fallbackName: string, signal?: AbortSignal): Promise<string> {
+  signal?.throwIfAborted()
   const filename = downloadFilename(response.headers.get("Content-Disposition"), fallbackName)
-  saveBlob(await response.blob(), filename)
+  const blob = await response.blob()
+  signal?.throwIfAborted()
+  saveBlob(blob, filename)
   return filename
 }

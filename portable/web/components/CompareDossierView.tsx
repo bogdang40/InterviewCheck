@@ -2,12 +2,13 @@
 
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { Download, Printer, RotateCcw, SlidersHorizontal } from "lucide-react"
 import { message, statusText } from "@/lib/api"
+import { ApiError } from "@/lib/http"
 import {
   buildComparePageUrl, buildComparePrintUrl, compareInterviews, downloadCompareDossier,
-  formatSlotHeading, getSlotCell, parseCompareIds, type CompareResponse,
+  formatSlotHeading, getSlotCell, parseCompareIds, type CompareInput, type CompareResponse,
   type CompareSessionSummary, type CompareSlotRow,
 } from "@/lib/compareInterviews"
 import { interviewURL } from "@/lib/workspace"
@@ -18,6 +19,14 @@ import { Badge } from "./ui/badge"
 import { Button } from "./ui/button"
 import ComparisonPicker from "./ComparisonPicker"
 import styles from "./CompareDossierView.module.css"
+
+type ComparisonRead = { input: CompareInput; attempt: number }
+type ReadResult = { read: ComparisonRead; data?: CompareResponse; error?: string; unavailable?: boolean }
+type FileResult = { read: ComparisonRead; state: "preparing" | "started" | "failed"; text?: string }
+
+function unavailable(error: unknown) {
+  return error instanceof ApiError && [401, 402, 403, 404].includes(error.status)
+}
 
 function InterviewQuestionCell({ session, row, rowHeader, includeExcerpts, includeNotes }: {
   session: CompareSessionSummary; row: CompareSlotRow; rowHeader: string; includeExcerpts: boolean; includeNotes: boolean
@@ -71,36 +80,48 @@ function CandidateComparison({ parsed }: { parsed: ReturnType<typeof parseCompar
   const [scorecardDetail, setScorecardDetail] = useState<"none" | "ratings" | "rationales">("none")
   const includeScorecards = scorecardDetail !== "none"
   const includeRationales = scorecardDetail === "rationales"
-  const [result, setResult] = useState<{ key: string; data: CompareResponse } | null>(null)
-  const [error, setError] = useState("")
+  const [result, setResult] = useState<ReadResult | null>(null)
   const [refresh, setRefresh] = useState(0)
-  const [downloading, setDownloading] = useState(false)
-  const [downloadNotice, setDownloadNotice] = useState("")
+  const [file, setFile] = useState<FileResult | null>(null)
+  const transfer = useRef<AbortController | null>(null)
 
   const showPicker = selectedIds.length < 2 || pickerOpen
-  const comparison = useMemo(() => ({
-    session_ids: selectedIds, include_excerpts: includeExcerpts, include_notes: includeNotes,
-    ...(includeScorecards && { include_scorecards: true }),
-    ...(includeRationales && { include_rationales: true }),
-  }), [selectedIds, includeExcerpts, includeNotes, includeScorecards, includeRationales])
-  const requestKey = selectedIds.length >= 2 ? JSON.stringify([comparison, refresh]) : ""
+  // Returning to the same options still requires a new authorized response.
+  const read = useMemo<ComparisonRead>(() => ({
+    attempt: refresh,
+    input: {
+      session_ids: selectedIds, include_excerpts: includeExcerpts, include_notes: includeNotes,
+      ...(includeScorecards && { include_scorecards: true }),
+      ...(includeRationales && { include_rationales: true }),
+    },
+  }), [selectedIds, includeExcerpts, includeNotes, includeScorecards, includeRationales, refresh])
 
   useEffect(() => {
-    if (!requestKey) { setError(""); return }
+    if (read.input.session_ids.length < 2) return
     const controller = new AbortController()
-    setError("")
-    compareInterviews(comparison, controller.signal)
-      .then((data) => { if (!controller.signal.aborted) setResult({ key: requestKey, data }) })
-      .catch((err) => { if (!controller.signal.aborted) setError(message(err)) })
+    compareInterviews(read.input, controller.signal)
+      .then((data) => { if (!controller.signal.aborted) setResult({ read, data }) })
+      .catch((err) => {
+        if (!controller.signal.aborted) setResult({ read, error: message(err), unavailable: unavailable(err) })
+      })
     return () => controller.abort()
-  }, [requestKey, comparison])
+  }, [read])
 
-  const data = result?.key === requestKey ? result.data : null
+  useLayoutEffect(() => () => {
+    transfer.current?.abort()
+    transfer.current = null
+  }, [read])
+
+  const current = result?.read === read ? result : null
+  const data = current?.data
+  const error = current?.error
+  const currentFile = file?.read === read ? file : null
+  const downloading = currentFile?.state === "preparing"
   const firstPolicy = data?.sessions[0]?.policy
   const sharedPolicy = data && data.sessions.length >= 2 && data.sessions.length <= 6 &&
     typeof firstPolicy === "string" && firstPolicy.trim() && data.sessions.every(session => session.policy === firstPolicy)
     ? firstPolicy : null
-  const loading = Boolean(requestKey) && !data && !error
+  const loading = selectedIds.length >= 2 && !current
   const printUrl = buildComparePrintUrl(selectedIds, { includeExcerpts, includeNotes, includeScorecards, includeRationales })
 
   function closePicker() {
@@ -115,17 +136,22 @@ function CandidateComparison({ parsed }: { parsed: ReturnType<typeof parseCompar
   }
 
   async function handleDownload() {
-    if (selectedIds.length < 2 || downloading) return
-    setDownloading(true)
-    setDownloadNotice("")
-    setError("")
+    if (!data || transfer.current) return
+    const controller = new AbortController()
+    transfer.current = controller
+    setFile({ read, state: "preparing" })
     try {
-      const filename = await downloadCompareDossier(comparison)
-      setDownloadNotice(`Downloaded ${filename}.`)
+      const filename = await downloadCompareDossier(read.input, controller.signal)
+      if (!controller.signal.aborted) setFile({ read, state: "started", text: `Download started for ${filename}.` })
     } catch (err) {
-      setError(message(err))
+      if (!controller.signal.aborted) {
+        if (unavailable(err)) {
+          setFile(null)
+          setResult({ read, error: message(err), unavailable: true })
+        } else setFile({ read, state: "failed", text: message(err) })
+      }
     } finally {
-      setDownloading(false)
+      if (transfer.current === controller) transfer.current = null
     }
   }
 
@@ -149,9 +175,11 @@ function CandidateComparison({ parsed }: { parsed: ReturnType<typeof parseCompar
             <Button type="button" size="sm" disabled={downloading || loading || !data} onClick={() => void handleDownload()}>
               <Download aria-hidden="true" />{downloading ? "Preparing…" : "Download Markdown dossier"}
             </Button>
-            <Button asChild variant="outline" size="sm">
+            {loading || current?.unavailable ? <Button type="button" disabled variant="outline" size="sm">
+              <Printer aria-hidden="true" />Print or save PDF
+            </Button> : <Button asChild variant="outline" size="sm">
               <a href={printUrl} target="_blank" rel="noreferrer"><Printer aria-hidden="true" />Print or save PDF</a>
-            </Button>
+            </Button>}
           </div>
         )}
       </header>
@@ -169,7 +197,8 @@ function CandidateComparison({ parsed }: { parsed: ReturnType<typeof parseCompar
           {parsed.truncatedCount > 0 && "Comparison supports up to 6 interviews; showing the first 6."}
         </p>
       )}
-      {downloadNotice && <p className="notice" role="status">{downloadNotice}</p>}
+      {currentFile?.state === "started" && <p className="notice" role="status">{currentFile.text}</p>}
+      {currentFile?.state === "failed" && <p className="error" role="alert">{currentFile.text}</p>}
 
       <ComparisonPicker open={showPicker} committed={selectedIds} known={data?.sessions}
         apply={applySelection} cancel={selectedIds.length >= 2 ? closePicker : undefined} />

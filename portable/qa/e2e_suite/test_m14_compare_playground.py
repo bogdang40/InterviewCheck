@@ -159,7 +159,7 @@ def test_m14_compare_matrix_rubric_gating_markdown_and_print_dossier(e2e_workspa
         page.get_by_role("button", name="Download Markdown dossier").click()
     dl = dl_info.value
     assert dl.suggested_filename == "candidate-comparison.md"
-    expect(page.get_by_text("Downloaded candidate-comparison.md.")).to_be_visible()
+    expect(page.get_by_text("Download started for candidate-comparison.md.")).to_be_visible()
     md_text = dl.path().read_text(encoding="utf-8")
     assert "Consensus safety" in md_text and note_secret in md_text
     assert "\\<script\\>alert\\(1\\)\\</script\\>" in md_text and "\\| md" in md_text

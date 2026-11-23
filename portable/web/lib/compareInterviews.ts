@@ -92,9 +92,9 @@ export function compareInterviews(input: CompareInput, signal?: AbortSignal): Pr
   return request<CompareResponse>("/api/interviews/compare", { method: "POST", json: input, signal })
 }
 
-export async function downloadCompareDossier(input: CompareInput): Promise<string> {
-  const response = await send("/api/interviews/compare/dossier", { method: "POST", json: { ...input, format: "markdown" } })
-  return downloadResponse(response, "candidate-comparison.md")
+export async function downloadCompareDossier(input: CompareInput, signal?: AbortSignal): Promise<string> {
+  const response = await send("/api/interviews/compare/dossier", { method: "POST", json: { ...input, format: "markdown" }, signal })
+  return downloadResponse(response, "candidate-comparison.md", signal)
 }
 
 export function getSlotCell(row: CompareSlotRow, sessionId: string): CompareSlotCell | null {
