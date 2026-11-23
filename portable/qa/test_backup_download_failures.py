@@ -89,12 +89,13 @@ def test_bad_backup_responses_never_create_a_file(workspace_url, browser_page):
       };
     })()""")
     page.goto(workspace_url + "/data/")
+    download_panel = page.locator("section.data-panel").filter(has=page.get_by_role("heading", name="Download a backup", exact=True))
     cases = [("401", "Sign in"), ("413", "export limits"), ("html", "verifiable backup"), ("name", "verifiable backup"),
              ("checksum", "checksum does not match"), ("oversize", "exceeds 20 MiB"), ("long-error", "cannot preserve")]
     for index, (fault, expected) in enumerate(cases, 1):
         page.evaluate("(fault) => { window.backupFault = fault }", fault)
         action(page).click()
-        alert = page.get_by_role("alert")
+        alert = download_panel.get_by_role("alert")
         expect(alert).to_contain_text(expected)
         expect(alert).not_to_contain_text("Private gateway fixture")
         expect(page.get_by_role("link", name="Retry backup download for the entire workspace")).to_have_attribute("href", BACKUP)
@@ -103,11 +104,24 @@ def test_bad_backup_responses_never_create_a_file(workspace_url, browser_page):
 
 def install_held_digest(page):
     page.add_init_script("""(() => {
+      const fetch = window.fetch.bind(window);
+      let expected = null;
+      window.fetch = async (input, init) => {
+        const response = await fetch(input, init);
+        const url = new URL(input instanceof Request ? input.url : input, location.href);
+        if (window.holdBackupDigest && url.origin === location.origin && url.pathname === "/api/backups/workspace" && response.ok) {
+          expected = response.headers.get("X-Backup-SHA256")?.toLowerCase() ?? null;
+        }
+        return response;
+      };
       const subtle = Object.getPrototypeOf(crypto.subtle);
       const digest = subtle.digest;
       subtle.digest = async function(...args) {
         const result = await digest.apply(this, args);
-        if (window.holdBackupDigest) {
+        // Hydration also computes digests. Only pause the bytes of the requested backup.
+        if (window.holdBackupDigest && expected !== null &&
+            Array.from(new Uint8Array(result), n => n.toString(16).padStart(2, "0")).join("") === expected) {
+          expected = null;
           window.holdBackupDigest = false;
           await new Promise(resolve => {
             window.releaseBackupDigest = resolve;
