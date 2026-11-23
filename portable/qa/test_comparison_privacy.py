@@ -32,7 +32,10 @@ def test_comparison_privacy_after_selection_changes(workspace_url, browser_page)
           if (query.include_excerpts && query.include_notes && !window.releaseComparison) {
             const response = await fetchOriginal(input, {...init, signal: undefined});
             await response.clone().text();
-            await new Promise(resolve => { window.releaseComparison = resolve; });
+            await new Promise(resolve => {
+              window.releaseComparison = resolve;
+              document.documentElement.dataset.comparisonHeld = "true";
+            });
             return response;
           }
           return fetchOriginal(input, init);
@@ -46,7 +49,7 @@ def test_comparison_privacy_after_selection_changes(workspace_url, browser_page)
     notes.check()
     expect(page.get_by_text("Private note for Ada.", exact=False)).to_be_visible()
     excerpts.check()
-    page.wait_for_function("typeof window.releaseComparison === 'function'")
+    expect(page.locator("html")).to_have_attribute("data-comparison-held", "true")
 
     page.get_by_role("button", name="Change interviews").click()
     page.get_by_role("checkbox", name="Ada", exact=False).uncheck()
