@@ -26,7 +26,7 @@ curl -i -sS http://127.0.0.1:8000/api/readyz
 ```
 
 1. **`review_db: "error"`**: Confirm `review.sqlite3` exists, is owned by UID `10001` in Docker, has `PRAGMA journal_mode` set to `wal`, and contains `sessions`, `roles`, and `connected_models`. Run `sqlite3 /srv/interviewcheck/data/review.sqlite3 "PRAGMA integrity_check;"`.
-2. **`access_db: "error"`**: Applies when `INTERVIEWCHECK_ACCESS_MODE=embedded` (`access_db` is `skipped` otherwise). Verify `access.sqlite3` is readable, separate from `review.sqlite3`, passes `PRAGMA integrity_check`, and has `PRAGMA user_version` equal to `account_db.VERSION` (`6`).
+2. **`access_db: "error"`**: Applies when `INTERVIEWCHECK_ACCESS_MODE=embedded` (`access_db` is `skipped` otherwise). Verify `access.sqlite3` is readable, separate from `review.sqlite3`, passes `PRAGMA integrity_check`, and has `PRAGMA user_version` equal to `account_db.VERSION` (`8`).
 3. **`secret_box: "error"`**: Check `INTERVIEWCHECK_MODEL_SECRET_KEY` in `app.env`, or check `.model_secret.key` (or `INTERVIEWCHECK_MODEL_SECRET_FILE`). On POSIX hosts, `.model_secret.key` must have mode `0600` (no group or world permissions) and contain a valid 32-byte URL-safe base64 key.
 4. **`web_bundle: "missing"`**: Verify either `portable/web/out/index.html` (static export via `npm --prefix portable/web run export`) or `portable/web/.next-server/routes-manifest.json` (Next.js `start` runtime via `node portable/web-runtime.mjs build`) is present in the deployed image.
 

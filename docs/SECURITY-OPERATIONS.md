@@ -121,7 +121,8 @@ Run the deployment configuration validator in CI and before production rollouts:
 
 ```sh
 python3 scripts/check_deploy_config.py --json
-python3 scripts/check_deploy_config.py --strict-prod
+# --strict-prod checks app.env only through --env-file; without it, it checks this shell's environment.
+python3 scripts/check_deploy_config.py --strict-prod --env-file <path to the deployment's app.env>
 ```
 
 The validator checks:

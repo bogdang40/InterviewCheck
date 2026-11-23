@@ -43,6 +43,8 @@ BACKUP_ACCOUNT=<storage-account> deploy/backup.sh manual
 
 Use this procedure when `review.sqlite3`, `access.sqlite3`, or the host disk is lost or corrupted.
 
+> **Known gap:** the nightly archive holds only the two databases. The master key file `/data/.model_secret.key` (on the VM `/srv/interviewcheck/data/.model_secret.key`) and `/srv/interviewcheck/app.env` are not in it, so a restore onto a new disk without them cannot decrypt stored model credentials, TOTP secrets or alert signing secrets, and loses the sign-up and administrator secrets. Keep a copy of both outside the VM (for example in a password manager), taken after provisioning and after every key rotation: `az vm run-command invoke -g interviewcheck-rg -n interviewcheck-vm --command-id RunShellScript --scripts "cat /srv/interviewcheck/data/.model_secret.key /srv/interviewcheck/app.env" --query "value[0].message" -o tsv`. On restore, install them before the first start, or the app creates a new, different key (key file mode `0600`, owner `10001`).
+
 1. Stop the application container so no process holds open WAL handles or writes to `/srv/interviewcheck/data`:
    ```sh
    cd /srv/interviewcheck
