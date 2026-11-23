@@ -222,19 +222,24 @@ def test_m8_backup_checksum_ui_and_tamper_rejection(e2e_workspace, desktop_page,
     monkeypatch.setenv("INTERVIEWCHECK_DB", str(target_db))
 
     page, collector = desktop_page
+    restore_writes = []
+    page.on("request", lambda req: restore_writes.append(req.method) if req.url.endswith("/api/backups/restore") else None)
     page.goto(e2e_workspace.base_url + "/data/", wait_until="networkidle")
     backup_input = page.get_by_label("Workspace backup file")
     expect(backup_input).to_have_attribute("data-hydrated", "true")
     backup_input.set_input_files(backup_file)
     sha_input = page.get_by_label("Expected SHA-256 checksum (optional)")
 
-    # Mismatched checksum on Preview -> explicit 409 role="alert" without restoring records.
+    # The browser reports a mismatched checksum. The service also rejects it independently.
     sha_input.fill("0" * 64)
     preview_btn = page.get_by_role("button", name="Preview restore")
     expect(preview_btn).to_be_enabled()
     preview_btn.click()
     expect(page.locator('p[role="alert"]')).to_contain_text("does not match")
     with e2e_workspace.client() as c:
+        wrong = {"Content-Type": "application/json", "X-Backup-SHA256": "0" * 64}
+        assert c.post("/api/backups/preview", content=raw_bytes, headers=wrong).status_code == 409
+        assert c.post("/api/backups/restore", content=raw_bytes, headers={**wrong, "X-Backup-Preview": expected_sha256}).status_code == 409
         assert c.get("/api/sessions").json() == []
         assert c.get("/api/roles").json() == []
     assert not collector.page_errors and not collector.server_errors
@@ -246,10 +251,11 @@ def test_m8_backup_checksum_ui_and_tamper_rejection(e2e_workspace, desktop_page,
     page.get_by_role("button", name="Preview restore").click()
     expect(page.get_by_test_id("backup-sha256")).to_have_text(expected_sha256)
 
-    # Mismatched checksum before clicking Restore new records -> explicit 409 alert, zero partial writes.
+    # A material edit immediately retires the verified plan and sends no browser restore.
     sha_input.fill("f" * 64)
-    page.get_by_role("button", name="Restore new records").click()
-    expect(page.locator('p[role="alert"]')).to_contain_text("does not match")
+    expect(page.get_by_role("button", name="Restore new records")).to_have_count(0)
+    expect(page.get_by_test_id("backup-sha256")).to_have_count(0)
+    assert restore_writes == []
     with e2e_workspace.client() as c:
         assert c.get("/api/sessions").json() == []
         assert c.get("/api/roles").json() == []
@@ -259,10 +265,12 @@ def test_m8_backup_checksum_ui_and_tamper_rejection(e2e_workspace, desktop_page,
 
     # Matching checksum -> Preview + Restore succeeds.
     sha_input.fill(expected_sha256)
+    expect(page.get_by_role("button", name="Restore new records")).to_have_count(0)
     page.get_by_role("button", name="Preview restore").click()
     expect(page.get_by_test_id("backup-sha256")).to_have_text(expected_sha256)
     page.get_by_role("button", name="Restore new records").click()
     expect(page.get_by_role("status").filter(has_text="Restored 1 interviews and 1 roles")).to_be_visible()
+    assert restore_writes == ["POST"]
     with e2e_workspace.client() as c:
         assert len(c.get("/api/sessions").json()) == 1
         assert len(c.get("/api/roles").json()) == 1
