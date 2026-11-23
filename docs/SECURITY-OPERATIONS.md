@@ -93,7 +93,7 @@ Expected response: `{"ok": true, "verifiedCount": ..., "legacyUnchainedCount": .
 
 1. Stop writes or snapshot `review.sqlite3` and `access.sqlite3` to a read-only forensic copy immediately.
 2. Inspect rows around `firstBrokenId` to distinguish unauthorized SQLite mutation from an interrupted legacy migration.
-3. Rotate session/model encryption keys (`INTERVIEWCHECK_MODEL_SECRET`, admin credentials, and connected provider API keys).
+3. Rotate session/model encryption keys (`INTERVIEWCHECK_MODEL_SECRET_KEY`, admin credentials, and connected provider API keys).
 4. Restore databases from the latest verified pre-tamper archive in `backups/` after fixing the host compromise vector.
 
 ## 5. CSP Violation Triage
