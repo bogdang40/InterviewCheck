@@ -21,7 +21,6 @@ import SavedDraft from "./SavedDraft"
 import MoveToTrash from "./MoveToTrash"
 import ReportExport from "./ReportExport"
 import Evidence, { type EvidenceHotkeyControls } from "./Evidence"
-import AnswerEditor from "./AnswerEditor"
 import QuestionLineage from "./QuestionLineage"
 import QuestionNavigator, { needsReview, nextPending } from "./QuestionNavigator"
 
@@ -29,6 +28,10 @@ const ATSNote = dynamic(() => import("./ATSNote"), { ssr: false })
 const LocalRecordingPlayback = dynamic(() => import("./LocalRecordingPlayback"), { ssr: false })
 const TranscriptBatchImport = dynamic(() => import("./TranscriptBatchImport"), { ssr: false })
 const SessionScorecardPanel = dynamic(() => import("./SessionScorecardPanel"), { ssr: false })
+const AnswerEditor = dynamic(() => import("./AnswerEditor"), {
+  ssr: false,
+  loading: () => <p role="status">Loading exchange editor...</p>,
+})
 
 type Props = {
   session: Interview
