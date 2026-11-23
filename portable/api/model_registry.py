@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from fastapi import HTTPException
 
-from . import model_budgets, store
+from . import model_budgets, sql_script, store
 from .error_sanitizer import sanitize_error_text
 
 PROVIDERS = ("openai", "anthropic", "azure_openai", "deepgram", "openai_compatible")
@@ -76,7 +76,7 @@ CREATE INDEX IF NOT EXISTS idx_model_audit_action_id ON model_audit(action, id D
 def migrate(db: sqlite3.Connection) -> None:
     from . import alert_rules, audit_integrity, csp_reports, model_circuit, model_telemetry, prompt_templates
 
-    db.executescript(SCHEMA)
+    sql_script.execute(db, SCHEMA)
     model_telemetry.migrate(db)
     model_budgets.migrate(db)
     alert_rules.migrate(db)

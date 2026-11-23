@@ -7,6 +7,7 @@ from urllib.parse import urlencode
 from .origin import browser_origin
 
 from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect
+from starlette.concurrency import run_in_threadpool
 from websockets.asyncio.client import connect
 from websockets.exceptions import WebSocketException
 
@@ -39,7 +40,7 @@ async def transcribe(request: Request):
     kind = request.headers.get("content-type", "").split(";")[0].lower()
     if kind not in MIME:
         raise HTTPException(415, "Select a WAV, M4A, MP3, Ogg, FLAC, WebM, MP4 or MOV file.")
-    model_execution.resolve_candidates("transcription")
+    await run_in_threadpool(model_execution.resolve_candidates, "transcription")
     audio = bytearray()
     async for chunk in request.stream():
         if len(audio) + len(chunk) > LIMIT:
@@ -141,7 +142,7 @@ async def live(ws: WebSocket):
         return
     try:
         await require_entitlement(ws)
-        candidates = _live_candidates()
+        candidates = await run_in_threadpool(_live_candidates)
     except HTTPException:
         await ws.close(code=1008)
         return
@@ -178,12 +179,12 @@ async def live(ws: WebSocket):
             ready_sent = True
             await asyncio.wait_for(relay_audio(ws, provider), timeout=1800)
         elapsed = int((time.monotonic() - started) * 1000)
-        model_execution._record_outcome(target, ok=True, http_status=200, latency_ms=elapsed, error=None)
+        await run_in_threadpool(model_execution._record_outcome, target, ok=True, http_status=200, latency_ms=elapsed, error=None)
         await ws.close()
     except WebSocketDisconnect:
         if ready_sent and target is not None:
             elapsed = int((time.monotonic() - started) * 1000)
-            model_execution._record_outcome(target, ok=True, http_status=200, latency_ms=elapsed, error=None)
+            await run_in_threadpool(model_execution._record_outcome, target, ok=True, http_status=200, latency_ms=elapsed, error=None)
         return
     except HTTPException as exc:
         try:
@@ -194,8 +195,8 @@ async def live(ws: WebSocket):
     except (TimeoutError, OSError, WebSocketException, ValueError, IndexError, KeyError, TypeError) as exc:
         if provider_attempted and target is not None:
             elapsed = int((time.monotonic() - started) * 1000)
-            model_execution._record_outcome(
-                target, ok=False, http_status=502, latency_ms=elapsed, error=str(exc) or exc.__class__.__name__,
+            await run_in_threadpool(
+                model_execution._record_outcome, target, ok=False, http_status=502, latency_ms=elapsed, error=str(exc) or exc.__class__.__name__,
             )
         try:
             await ws.send_json({"error": "The transcription stream stopped. Check the input and provider connection."})

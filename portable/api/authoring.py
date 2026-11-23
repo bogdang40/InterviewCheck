@@ -7,6 +7,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import Field
+from starlette.concurrency import run_in_threadpool
 
 from . import model_execution, model_resolver, prompt_framing, prompt_templates, rate_limit
 from .access import require_entitlement
@@ -127,7 +128,7 @@ async def complete(provider, instructions, prompt):
 
 @router.post("/questions", dependencies=[Depends(rate_limit.limit(rate_limit.AI_REQUEST))])
 async def questions(form: Draft):
-    tpl = prompt_templates.resolve_slot("question_planning")
+    tpl = await run_in_threadpool(prompt_templates.resolve_slot, "question_planning")
     instructions = prompt_framing.frame_instructions(tpl["system_prompt"], output_rule=tpl["output_rule"])
     prompt = prompt_framing.untrusted_json_prompt({"role": form.role, "description": form.description})
     token = _capability.set("question_planning")
@@ -154,7 +155,11 @@ async def questions(form: Draft):
 
 @router.post("/reference", dependencies=[Depends(rate_limit.limit(rate_limit.AI_REQUEST))])
 async def reference(form: Example):
-    tpl = prompt_templates.resolve_slot(STYLE_SLOTS[form.style])
+    tpl = await run_in_threadpool(prompt_templates.resolve_slot, STYLE_SLOTS[form.style])
+    return await _write_reference(form, tpl)
+
+
+async def _write_reference(form: Example, tpl: dict) -> dict:
     instructions = prompt_framing.frame_instructions(tpl["system_prompt"], output_rule=tpl["output_rule"])
     prompt = prompt_framing.untrusted_json_prompt({"role": form.role, "question": form.question})
     model, text = await complete(form.provider, instructions, prompt)
@@ -180,16 +185,22 @@ async def references(form: Lineup):
         raise HTTPException(422, "Choose each provider and format only once.")
     if form.existing_reference_count + len(pairs) > 12:
         raise HTTPException(422, "The selected requests exceed the twelve reference limit.")
-    for provider in {item_provider for item_provider, _ in pairs}:
-        if model_resolver.resolve_capability("reference", provider=provider) is None:
-            raise HTTPException(503, "Configure all selected providers before starting the request.")
+    templates = await run_in_threadpool(_lineup_templates, {provider for provider, _ in pairs}, {style for _, style in pairs})
 
     async def generate(item):
         pair = item.model_dump()
         try:
-            source = await reference(Example(**pair, role=form.role, question=form.question))
+            source = await _write_reference(Example(**pair, role=form.role, question=form.question), templates[item.style])
         except HTTPException as error:
             return {**pair, "error": sanitize_error_text(str(error.detail), "Reference generation failed.")}
         return {**pair, "source": source}
 
     return {"results": await asyncio.gather(*(generate(item) for item in form.pairs))}
+
+
+def _lineup_templates(providers: set[str], styles: set[str]) -> dict[str, dict]:
+    """Check every provider before any request starts, then load each style's template once."""
+    for provider in providers:
+        if model_resolver.resolve_capability("reference", provider=provider) is None:
+            raise HTTPException(503, "Configure all selected providers before starting the request.")
+    return {style: prompt_templates.resolve_slot(STYLE_SLOTS[style]) for style in styles}

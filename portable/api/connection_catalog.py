@@ -1,6 +1,7 @@
 """Describe implemented operations using credential presence without contacting vendors."""
 
 from fastapi import APIRouter, HTTPException, Request
+from starlette.concurrency import run_in_threadpool
 
 from . import access, account_stripe, ats, ats_notes, authoring, booking_sources, mailbox, model_resolver, oauth_tokens
 from .provider_http import configured
@@ -245,6 +246,17 @@ def _redact_non_admin(providers):
 
 @router.get("/catalog")
 async def catalog(request: Request):
+    providers = await run_in_threadpool(catalog_providers)
+    if not access.account_enabled() and not access.production_mode():
+        return {"providers": providers}
+    try:
+        await access.require_admin_session(request)
+        return {"providers": providers}
+    except HTTPException:
+        return {"providers": _redact_non_admin(providers)}
+
+
+def catalog_providers() -> list[dict]:
     dg_rows = model_resolver.list_model_summaries(provider="deepgram", capability="transcription")
     dg_state = (
         "configured"
@@ -357,11 +369,4 @@ async def catalog(request: Request):
                 )
             )
         result.append(card(key, NAMES[key], ops))
-    providers = result + account_operations()
-    if not access.account_enabled() and not access.production_mode():
-        return {"providers": providers}
-    try:
-        await access.require_admin_session(request)
-        return {"providers": providers}
-    except HTTPException:
-        return {"providers": _redact_non_admin(providers)}
+    return result + account_operations()

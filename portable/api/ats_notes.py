@@ -1,4 +1,5 @@
 """Preview, explicitly send, and retain the delivery state of a private ATS note."""
+from functools import partial
 import re
 from typing import Literal
 from uuid import UUID, uuid4
@@ -6,6 +7,7 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import Field
+from starlette.concurrency import run_in_threadpool
 
 from . import ats, rate_limit, store
 from .ats_directory import subdomain
@@ -86,36 +88,47 @@ async def find_recipients(query):
 
 @router.post("/sessions/{sid}/ats/recipients", dependencies=[Depends(rate_limit.limit(rate_limit.INTEGRATION_REMOTE))])
 async def recipients(sid: UUID, query: RecipientQuery):
-    with store.connection(write=True) as db:
-        version = begin_operation(db, str(sid))
+    version = await run_in_threadpool(_open_operation, str(sid))
     options = await find_recipients(query)
-    with store.connection() as db:
-        check_operation(db, str(sid), version)
+    await run_in_threadpool(_confirm_operation, str(sid), version)
     return options
+
+
+def _open_operation(sid: str) -> str:
+    with store.connection(write=True) as db:
+        return begin_operation(db, sid)
+
+
+def _confirm_operation(sid: str, version: str) -> None:
+    with store.connection() as db:
+        check_operation(db, sid, version)
 
 
 @router.post("/sessions/{sid}/ats/drafts", dependencies=[Depends(rate_limit.limit(rate_limit.INTEGRATION_REMOTE))])
 async def prepare(sid: UUID, form: Draft):
     # Re-resolve at preview so the destination is a provider record with an actual name.
-    with store.connection(write=True) as db:
-        version = begin_operation(db, str(sid))
+    version = await run_in_threadpool(_open_operation, str(sid))
     options = await find_recipients(form)
+    return await run_in_threadpool(_save_draft, str(sid), version, form, options)
+
+
+def _save_draft(sid: str, version: str, form: Draft, options: list[dict]):
     with store.connection(write=True) as db:
-        check_operation(db, str(sid), version)
+        check_operation(db, sid, version)
         target = next((r for r in options if r["target_id"] == form.target_id), None)
         if target is None:
             raise HTTPException(409, "The selected candidate is no longer in the provider search results.")
-        session = store.get_session(db, str(sid))
+        session = store.get_session(db, sid)
         key = str(uuid4())
         db.execute("INSERT INTO note_exports VALUES (?,?,?,?,?,?,?,?)",
-                   (key, str(sid), form.provider, form.target_id, target["candidate"], draft_text(session), "draft", store.timestamp()))
-        return receipt(db, str(sid), key)
+                   (key, sid, form.provider, form.target_id, target["candidate"], draft_text(session), "draft", store.timestamp()))
+        return receipt(db, sid, key)
 
 
 async def send_private(provider, target, text, *, before_send=None):
     async def deliver(name, url, **kwargs):
         if before_send is not None:
-            before_send()
+            await run_in_threadpool(before_send)
         return await fetch_json(name, "POST", url, **kwargs)
 
     if provider == "ashby":
@@ -174,28 +187,37 @@ async def send_private(provider, target, text, *, before_send=None):
 @router.post("/sessions/{sid}/ats/drafts/{draft_id}/send", dependencies=[Depends(rate_limit.limit(rate_limit.INTEGRATION_REMOTE))])
 async def send(sid: UUID, draft_id: UUID, form: Delivery):
     session_id, key = str(sid), str(draft_id)
+    version, row, already_sent = await run_in_threadpool(_record_attempt, session_id, key, form.note)
+    if already_sent:
+        return row
+    # Persist the attempt before the network call. A crash, concurrent send or
+    # lost response must not cause an automatic duplicate note upstream.
+    before_send = partial(_confirm_operation, session_id, version)
+    try:
+        await send_private(row["provider"], row["remote_id"], form.note, before_send=before_send)
+    except HTTPException as error:
+        await run_in_threadpool(before_send)
+        raise HTTPException(error.status_code, f"{error.detail} Delivery unconfirmed. Check the ATS before preparing another note.") from error
+    return await run_in_threadpool(_record_delivery, session_id, key, version)
+
+
+def _record_attempt(session_id: str, key: str, note: str):
     with store.connection(write=True) as db:
         version = begin_operation(db, session_id)
         row = receipt(db, session_id, key)
-        if row["state"] == "sent" and row["draft"] == form.note:
-            return row
+        if row["state"] == "sent" and row["draft"] == note:
+            return version, row, True
         if row["state"] != "draft":
             raise HTTPException(409, "This draft already has a delivery attempt. Check the destination before preparing another.")
         if row["provider"] not in destinations():
             raise HTTPException(503, "Configure a provider with private note access.")
-        if row["provider"] == "lever" and re.search(r"(?<![\w.+-])@[\w.-]+", form.note):
+        if row["provider"] == "lever" and re.search(r"(?<![\w.+-])@[\w.-]+", note):
             raise HTTPException(422, "Remove user mentions. Lever grants mentioned users access to the note.")
-        db.execute("UPDATE note_exports SET state='attempted',draft=? WHERE id=?", (form.note, key))
-    # Persist the attempt before the network call. A crash, concurrent send or
-    # lost response must not cause an automatic duplicate note upstream.
-    def before_send():
-        with store.connection() as db:
-            check_operation(db, session_id, version)
-    try:
-        await send_private(row["provider"], row["remote_id"], form.note, before_send=before_send)
-    except HTTPException as error:
-        before_send()
-        raise HTTPException(error.status_code, f"{error.detail} Delivery unconfirmed. Check the ATS before preparing another note.") from error
+        db.execute("UPDATE note_exports SET state='attempted',draft=? WHERE id=?", (note, key))
+    return version, row, False
+
+
+def _record_delivery(session_id: str, key: str, version: str):
     with store.connection(write=True) as db:
         # The vendor can finish after the operator has removed the session.
         # Never recreate an export or disclose its destination from Trash.

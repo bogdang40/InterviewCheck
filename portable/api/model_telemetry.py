@@ -3,7 +3,7 @@ import math
 import sqlite3
 from typing import Any, Literal
 
-from . import model_registry, store
+from . import model_registry, sql_script, store
 from .error_sanitizer import sanitize_error_text
 
 MAX_HISTORY_PER_MODEL = 50
@@ -25,7 +25,7 @@ CREATE INDEX IF NOT EXISTS idx_model_health_model_at
 
 
 def migrate(db: sqlite3.Connection) -> None:
-    db.executescript(SCHEMA)
+    sql_script.execute(db, SCHEMA)
 
 
 def record_check(

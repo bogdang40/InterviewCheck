@@ -6,8 +6,9 @@ import sqlite3
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import Field, field_validator
+from starlette.concurrency import run_in_threadpool
 
-from . import access, prompt_framing, store
+from . import access, prompt_framing, sql_script, store
 from .models import Input
 
 router = APIRouter()
@@ -40,7 +41,7 @@ CREATE INDEX IF NOT EXISTS idx_handoff_notes_session
 
 
 def migrate(db: sqlite3.Connection) -> None:
-    db.executescript(SCHEMA)
+    sql_script.execute(db, SCHEMA)
 
 
 class ScorecardItemInput(Input):
@@ -202,8 +203,11 @@ def get_scorecard(sid: UUID):
 
 @router.put("/sessions/{sid}/scorecard")
 async def save_scorecard(sid: UUID, payload: ScorecardSaveInput, request: Request):
-    key = str(sid)
     _, actor_email = await access.optional_actor(request)
+    return await run_in_threadpool(_save_scorecard, str(sid), payload, actor_email)
+
+
+def _save_scorecard(key: str, payload: ScorecardSaveInput, actor_email: str):
     now = store.timestamp()
     with store.connection(write=True) as db:
         store.get_summary(db, key)
@@ -229,8 +233,11 @@ async def save_scorecard(sid: UUID, payload: ScorecardSaveInput, request: Reques
 
 @router.post("/sessions/{sid}/handoff-notes", status_code=201)
 async def create_handoff_note(sid: UUID, payload: HandoffNoteInput, request: Request):
-    key = str(sid)
     _, actor_email = await access.optional_actor(request)
+    return await run_in_threadpool(_save_handoff_note, str(sid), payload, actor_email)
+
+
+def _save_handoff_note(key: str, payload: HandoffNoteInput, actor_email: str):
     note_id = str(uuid4())
     created_at = store.timestamp()
     with store.connection(write=True) as db:

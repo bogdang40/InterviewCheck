@@ -259,3 +259,35 @@ def test_real_transport_blocks_redirects_and_dns_rebind_and_fallback_audit(env, 
     for _ in range(13):
         assert env.post("/api/admin/alerts/evaluate").status_code == 200
     assert env.post("/api/admin/alerts/evaluate").status_code == 429
+
+
+def test_concurrent_patches_to_different_fields_never_lose_a_change(env, monkeypatch):
+    env.cookies.set(access.COOKIE, _seed_user(email="admin@example.invalid", role="admin"))
+    rid = env.post("/api/admin/alerts", json=_rule_payload()).json()["rule"]["id"]
+    validate = ssrf_guard.validate_endpoint_url_async
+
+    async def other_admin_saves_during_dns_check(url, **kwargs):
+        # A second admin's PATCH commits a rename while this request awaits DNS validation.
+        with store.connection(write=True) as db:
+            db.execute("UPDATE alert_rules SET name='Renamed by B', updated_at=? WHERE id=?", (store.timestamp(), rid))
+        return await validate(url, **kwargs)
+
+    monkeypatch.setattr(ssrf_guard, "validate_endpoint_url_async", other_admin_saves_during_dns_check)
+    stale = env.patch(f"/api/admin/alerts/{rid}", json={"webhook_url": "https://hooks.example.com/moved"})
+    assert stale.status_code == 409
+    with store.connection() as db:
+        row = db.execute("SELECT name, webhook_url FROM alert_rules WHERE id=?", (rid,)).fetchone()
+    assert (row["name"], row["webhook_url"]) == ("Renamed by B", "https://hooks.example.com/alerts")
+
+    monkeypatch.setattr(ssrf_guard, "validate_endpoint_url_async", validate)
+    retried = env.patch(f"/api/admin/alerts/{rid}", json={"webhook_url": "https://hooks.example.com/moved"})
+    assert retried.status_code == 200
+    assert (retried.json()["rule"]["name"], retried.json()["rule"]["webhook_url"]) == ("Renamed by B", "https://hooks.example.com/moved")
+
+    async def rule_deleted_during_dns_check(url, **kwargs):
+        with store.connection(write=True) as db:
+            db.execute("DELETE FROM alert_rules WHERE id=?", (rid,))
+        return await validate(url, **kwargs)
+
+    monkeypatch.setattr(ssrf_guard, "validate_endpoint_url_async", rule_deleted_during_dns_check)
+    assert env.patch(f"/api/admin/alerts/{rid}", json={"webhook_url": "https://hooks.example.com/again"}).status_code == 404

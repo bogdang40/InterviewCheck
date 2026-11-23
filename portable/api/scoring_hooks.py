@@ -7,6 +7,7 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import Field
+from starlette.concurrency import run_in_threadpool
 
 from . import model_execution, model_resolver, prompt_framing, prompt_templates, rate_limit, ssrf_guard
 from .access import require_entitlement
@@ -160,7 +161,7 @@ async def judge_answer(body: JudgeInput):
         ],
         "signals": signals,
     }
-    tpl = prompt_templates.resolve_slot("judge_rubric")
+    tpl = await run_in_threadpool(prompt_templates.resolve_slot, "judge_rubric")
     instructions = prompt_framing.frame_instructions(tpl["system_prompt"], output_rule=tpl["output_rule"])
     target, (_, reply) = await model_execution.execute_completion_chain(
         "judge",

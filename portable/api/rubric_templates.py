@@ -5,6 +5,7 @@ from uuid import UUID, uuid4
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import Field
+from starlette.concurrency import run_in_threadpool
 
 from . import access, role_kits, role_versions, store
 from .models import Input
@@ -179,8 +180,11 @@ def list_rubric_templates():
 
 @router.post("/roles/{rid}/clone", status_code=201)
 async def clone_role(rid: UUID, request: Request, item: CloneRoleInput | None = None):
-    source_id = str(rid)
     _, actor_email = await access.optional_actor(request)
+    return await run_in_threadpool(_clone_role, str(rid), item, actor_email)
+
+
+def _clone_role(source_id: str, item: CloneRoleInput | None, actor_email: str):
     with store.connection(write=True) as db:
         source = db.execute("SELECT * FROM roles WHERE id=?", (source_id,)).fetchone()
         if source is None:

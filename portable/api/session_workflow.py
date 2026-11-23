@@ -2,6 +2,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Request
+from starlette.concurrency import run_in_threadpool
 
 from . import access, role_files, role_kits, store
 from .models import AnswerInput, Input, RequestID, RoleInput
@@ -46,8 +47,12 @@ async def edit_role(rid: UUID, item: RoleInput, request: Request):
     if item.id is not None and item.id != rid:
         raise HTTPException(409, "The role ID differs from the requested role.")
     _, actor_email = await access.optional_actor(request)
+    return await run_in_threadpool(_save_role, str(rid), item, actor_email)
+
+
+def _save_role(rid: str, item: RoleInput, actor_email: str):
     with store.connection(write=True) as db:
-        return role_kits.update_role(db, str(rid), item, created_by=actor_email)
+        return role_kits.update_role(db, rid, item, created_by=actor_email)
 
 
 @router.get("/roles/{rid}/export")
@@ -63,8 +68,12 @@ class RoleCopy(Input):
 @router.post("/roles/{rid}/duplicate")
 async def duplicate_role(rid: UUID, item: RoleCopy, request: Request):
     _, actor_email = await access.optional_actor(request)
+    return await run_in_threadpool(_save_duplicate, rid, item.id, actor_email)
+
+
+def _save_duplicate(rid: UUID, copy_id, actor_email: str):
     with store.connection(write=True) as db:
-        return role_files.duplicate(db, rid, item.id, created_by=actor_email)
+        return role_files.duplicate(db, rid, copy_id, created_by=actor_email)
 
 
 @router.post("/sessions/{sid}/preview")

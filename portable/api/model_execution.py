@@ -6,6 +6,7 @@ import time
 from typing import Any
 
 from fastapi import HTTPException
+from starlette.concurrency import run_in_threadpool
 
 from . import model_budgets, model_circuit, model_resolver, model_telemetry, provider_http, ssrf_guard, store
 from .error_sanitizer import sanitize_error_text
@@ -121,7 +122,7 @@ async def _validate_target_endpoint(target: model_resolver.ResolvedModel, *, res
             await ssrf_guard.validate_endpoint_url_async(target.endpoint or "", provider=ssrf_provider, resolve_dns=True)
     except ssrf_guard.SSRFValidationError as exc:
         detail = _sanitize_target_error(str(exc), "Blocked unsafe provider endpoint.", target)
-        _record_outcome(target, ok=False, http_status=400, latency_ms=0, error=detail)
+        await run_in_threadpool(_record_outcome, target, ok=False, http_status=400, latency_ms=0, error=detail)
         raise HTTPException(400, detail) from exc
 
 
@@ -139,11 +140,11 @@ async def _run_chain(
     budget_blocked = False
     circuit_retry_after: int | None = None
     for target in candidates:
-        decision = _check_target_budget(target)
+        decision = await run_in_threadpool(_check_target_budget, target)
         if decision is not None and not decision.allowed:
             budget_blocked = True
             continue
-        c_decision = model_circuit.check_target(target.id)
+        c_decision = await run_in_threadpool(model_circuit.check_target, target.id)
         if c_decision is not None and not c_decision.allowed:
             wait_s = max(1, int(c_decision.retry_after_s or 1))
             circuit_retry_after = wait_s if circuit_retry_after is None else min(circuit_retry_after, wait_s)
@@ -152,7 +153,7 @@ async def _run_chain(
         rpm_limit = _rpm_limit(target)
         for attempt in range(retries + 1):
             if attempt > 0:
-                retry_circuit = model_circuit.check_target(target.id)
+                retry_circuit = await run_in_threadpool(model_circuit.check_target, target.id)
                 if retry_circuit is not None and not retry_circuit.allowed:
                     wait_s = max(1, int(retry_circuit.retry_after_s or 1))
                     circuit_retry_after = wait_s if circuit_retry_after is None else min(circuit_retry_after, wait_s)
@@ -178,16 +179,16 @@ async def _run_chain(
             except ssrf_guard.SSRFValidationError as exc:
                 elapsed = int((time.monotonic() - started) * 1000)
                 detail = _sanitize_target_error(str(exc), "Blocked unsafe provider endpoint.", target)
-                _record_outcome(
-                    target, ok=False, http_status=400, latency_ms=elapsed, error=detail,
+                await run_in_threadpool(
+                    _record_outcome, target, ok=False, http_status=400, latency_ms=elapsed, error=detail,
                     input_tokens=usage_holder[0], output_tokens=usage_holder[1],
                 )
                 raise HTTPException(400, detail) from exc
             except HTTPException as exc:
                 elapsed = int((time.monotonic() - started) * 1000)
                 detail = _sanitize_target_error(str(exc.detail), "Provider call failed.", target)
-                _record_outcome(
-                    target, ok=False, http_status=exc.status_code, latency_ms=elapsed, error=detail,
+                await run_in_threadpool(
+                    _record_outcome, target, ok=False, http_status=exc.status_code, latency_ms=elapsed, error=detail,
                     input_tokens=usage_holder[0], output_tokens=usage_holder[1],
                 )
                 safe_exc = HTTPException(exc.status_code, detail, headers=getattr(exc, "headers", None))
@@ -199,8 +200,8 @@ async def _run_chain(
                     continue
                 break
             elapsed = int((time.monotonic() - started) * 1000)
-            _record_outcome(
-                target, ok=True, http_status=200, latency_ms=elapsed, error=None,
+            await run_in_threadpool(
+                _record_outcome, target, ok=True, http_status=200, latency_ms=elapsed, error=None,
                 input_tokens=usage_holder[0], output_tokens=usage_holder[1],
             )
             return target, result
@@ -234,7 +235,9 @@ async def execute_completion_chain(
     max_tokens: int | None = None,
     on_usage: Callable[[int, int], None] | None = None,
 ) -> tuple[model_resolver.ResolvedModel, tuple[str, str]]:
-    candidates = resolve_candidates(capability, provider=provider, allow_reference_fallback=allow_reference_fallback)
+    candidates = await run_in_threadpool(
+        resolve_candidates, capability, provider=provider, allow_reference_fallback=allow_reference_fallback
+    )
 
     async def _call(target: model_resolver.ResolvedModel, record_tokens: Callable[[int, int], None]) -> tuple[str, str]:
         return await model_resolver.dispatch_completion(
@@ -252,7 +255,7 @@ async def execute_reference_chain(
     default_max_tokens: int = 1200,
     on_usage: Callable[[int, int], None] | None = None,
 ) -> tuple[model_resolver.ResolvedModel, tuple[str, str]]:
-    candidates = resolve_candidates("reference")
+    candidates = await run_in_threadpool(resolve_candidates, "reference")
     fetch = fetch_fn or provider_http.fetch_json
     extra_opts = {"ssrf_safe": True} if fetch is provider_http.fetch_json else {}
 
@@ -302,7 +305,7 @@ async def execute_embedding_chain(
     fetch_fn=None,
     on_usage: Callable[[int, int], None] | None = None,
 ) -> tuple[model_resolver.ResolvedModel, list[list[float]]]:
-    candidates = resolve_candidates("embedding", provider=provider)
+    candidates = await run_in_threadpool(resolve_candidates, "embedding", provider=provider)
     fetch = fetch_fn or provider_http.fetch_json
     extra_opts = {"ssrf_safe": True} if fetch is provider_http.fetch_json else {}
 
@@ -331,7 +334,7 @@ async def execute_transcription_chain(
     fetch_fn=None,
     on_usage: Callable[[int, int], None] | None = None,
 ) -> tuple[model_resolver.ResolvedModel, list[dict[str, str]]]:
-    candidates = resolve_candidates("transcription")
+    candidates = await run_in_threadpool(resolve_candidates, "transcription")
     fetch = fetch_fn or provider_http.fetch_json
     extra_opts = {"ssrf_safe": True} if fetch is provider_http.fetch_json else {}
 

@@ -9,6 +9,7 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import Field, StringConstraints, model_validator
+from starlette.concurrency import run_in_threadpool
 
 from . import (
     model_admin, model_budgets, model_execution, model_registry, model_resolver,
@@ -259,11 +260,10 @@ async def _run_single_model(row: dict[str, Any], item: PlaygroundRunInput, instr
             )
         except ssrf_guard.SSRFValidationError as exc:
             detail = _sanitize_playground_error(str(exc), "Blocked unsafe provider endpoint.", secret_value=target.api_key)
-            _record_live_outcome(target, ok=False, http_status=400, latency_ms=0, error=detail)
+            await run_in_threadpool(_record_live_outcome, target, ok=False, http_status=400, latency_ms=0, error=detail)
             return _fail_result(row, http_status=400, error=detail, latency_ms=0, secret_value=target.api_key)
 
-    with store.connection() as db:
-        decision = model_budgets.check_budget(db, target.id, target.config)
+    decision = await run_in_threadpool(_budget_decision, target)
     if not decision.allowed:
         return _fail_result(row, http_status=429, error="Model budget ceiling reached.", secret_value=target.api_key)
 
@@ -293,21 +293,21 @@ async def _run_single_model(row: dict[str, Any], item: PlaygroundRunInput, instr
     except ssrf_guard.SSRFValidationError as exc:
         elapsed = int((time.monotonic() - started) * 1000)
         detail = _sanitize_playground_error(str(exc), "Blocked unsafe provider endpoint.", secret_value=target.api_key)
-        _record_live_outcome(target, ok=False, http_status=400, latency_ms=elapsed, error=detail, input_tokens=usage[0], output_tokens=usage[1])
+        await run_in_threadpool(_record_live_outcome, target, ok=False, http_status=400, latency_ms=elapsed, error=detail, input_tokens=usage[0], output_tokens=usage[1])
         return _fail_result(row, http_status=400, error=detail, latency_ms=elapsed, input_tokens=usage[0], output_tokens=usage[1], secret_value=target.api_key)
     except HTTPException as exc:
         elapsed = int((time.monotonic() - started) * 1000)
         detail = _sanitize_playground_error(str(exc.detail), "Provider call failed.", secret_value=target.api_key)
-        _record_live_outcome(target, ok=False, http_status=exc.status_code, latency_ms=elapsed, error=detail, input_tokens=usage[0], output_tokens=usage[1])
+        await run_in_threadpool(_record_live_outcome, target, ok=False, http_status=exc.status_code, latency_ms=elapsed, error=detail, input_tokens=usage[0], output_tokens=usage[1])
         return _fail_result(row, http_status=exc.status_code, error=detail, latency_ms=elapsed, input_tokens=usage[0], output_tokens=usage[1], secret_value=target.api_key)
     except Exception:
         elapsed = int((time.monotonic() - started) * 1000)
         detail = "Provider call failed."
-        _record_live_outcome(target, ok=False, http_status=502, latency_ms=elapsed, error=detail, input_tokens=usage[0], output_tokens=usage[1])
+        await run_in_threadpool(_record_live_outcome, target, ok=False, http_status=502, latency_ms=elapsed, error=detail, input_tokens=usage[0], output_tokens=usage[1])
         return _fail_result(row, http_status=502, error=detail, latency_ms=elapsed, input_tokens=usage[0], output_tokens=usage[1], secret_value=target.api_key)
 
     elapsed = int((time.monotonic() - started) * 1000)
-    _record_live_outcome(target, ok=True, http_status=200, latency_ms=elapsed, error=None, input_tokens=usage[0], output_tokens=usage[1])
+    await run_in_threadpool(_record_live_outcome, target, ok=True, http_status=200, latency_ms=elapsed, error=None, input_tokens=usage[0], output_tokens=usage[1])
     schema_valid, schema_errors, parsed_json = validate_expected_schema(clean_output, item.expected_schema)
     return {
         "model_id": row["id"], "slug": row["slug"], "display_name": row["display_name"],
@@ -324,21 +324,34 @@ async def _run_single_model(row: dict[str, Any], item: PlaygroundRunInput, instr
     dependencies=[Depends(rate_limit.limit(rate_limit.ADMIN_WRITE)), Depends(rate_limit.limit(rate_limit.ADMIN_PROBE))],
 )
 async def run_playground(item: PlaygroundRunInput, actor: dict = Depends(model_admin.require_admin)):
-    rows: list[dict[str, Any]] = []
-    with store.connection() as db:
-        for mid in item.model_ids:
-            row = model_registry.get_row(db, str(mid))
-            if row["capability"] not in COMPLETION_CAPABILITIES:
-                raise HTTPException(422, "Only completion models (reference, question_planning, judge) can run in the playground.")
-            rows.append(dict(row))
-
+    rows = await run_in_threadpool(_completion_rows, item.model_ids)
     instructions, prompt = _build_prompts(item)
     results = list(await asyncio.gather(*(_run_single_model(row, item, instructions, prompt) for row in rows)))
     ok_count = sum(1 for entry in results if entry["ok"])
 
-    post_commit: list = []
     details = {"model_ids": [str(mid) for mid in item.model_ids], "preset": item.preset, "expected_schema": item.expected_schema, "ok_count": ok_count}
-    with store.connection(write=True) as db:
-        model_admin._record_audit(db, actor=actor, action="admin.model.playground", model_uuid=str(item.model_ids[0]), details=details, post_commit=post_commit)
-    model_admin._flush_account_audits(post_commit)
+    await run_in_threadpool(_audit_run, actor, str(item.model_ids[0]), details)
     return {"preset": item.preset, "expected_schema": item.expected_schema, "frame_as_untrusted": item.frame_as_untrusted, "ok_count": ok_count, "results": results}
+
+
+def _budget_decision(target: model_resolver.ResolvedModel) -> model_budgets.BudgetDecision:
+    with store.connection() as db:
+        return model_budgets.check_budget(db, target.id, target.config)
+
+
+def _completion_rows(model_ids: list) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    with store.connection() as db:
+        for mid in model_ids:
+            row = model_registry.get_row(db, str(mid))
+            if row["capability"] not in COMPLETION_CAPABILITIES:
+                raise HTTPException(422, "Only completion models (reference, question_planning, judge) can run in the playground.")
+            rows.append(dict(row))
+    return rows
+
+
+def _audit_run(actor: dict, model_uuid: str, details: dict[str, Any]) -> None:
+    post_commit: list = []
+    with store.connection(write=True) as db:
+        model_admin._record_audit(db, actor=actor, action="admin.model.playground", model_uuid=model_uuid, details=details, post_commit=post_commit)
+    model_admin._flush_account_audits(post_commit)

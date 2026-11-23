@@ -10,6 +10,7 @@ from uuid import UUID, uuid4
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
 
 from . import meeting_artifacts, model_resolver, oauth_tokens, rate_limit
 from .access import require_entitlement
@@ -164,7 +165,7 @@ async def import_file(handle: UUID, body: ImportSelection):
     if file.kind != "transcript":
         if not body.send_to_deepgram:
             raise HTTPException(400, "Confirm transfer of this recording to Deepgram.")
-        model_resolver.resolve_or_503("transcription")
+        await run_in_threadpool(model_resolver.resolve_or_503, "transcription")
     raw, mime = await download(file, 2_000_000 if file.kind == "transcript" else LIMIT)
     if file.kind != "transcript":
         return await transcribe_bytes(raw, mime)
