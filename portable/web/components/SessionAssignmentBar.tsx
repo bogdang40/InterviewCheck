@@ -194,7 +194,7 @@ export default function SessionAssignmentBar({ sessionId, onDirtyChange }: { ses
         <label className="field">
           Assignee email
           <Input
-            ref={emailField} type="email" list={datalistId} value={assigneeEmail} placeholder="reviewer@example.com"
+            ref={emailField} type="email" list={datalistId} aria-label="Assignee email" value={assigneeEmail} placeholder="reviewer@example.com"
             maxLength={254} disabled={locked} onChange={(e) => setAssigneeEmail(e.target.value)}
           />
           <datalist id={datalistId}>

@@ -27,7 +27,7 @@ def test_assignment_navigation_guard_and_local_discard(workspace_url, browser_pa
         start = f"{workspace_url}/interviews/review/?id={sid}&answer={answer_ids[0]}"
         page.goto(start)
         bar = page.get_by_role("region", name="Session assignment")
-        email = bar.get_by_role("textbox", name="Assignee email")
+        email = bar.get_by_role("combobox", name="Assignee email", exact=True)
         expect(email).to_have_value("original@example.test")
         email.fill("draft@example.test")
         discard = bar.get_by_role("button", name="Discard assignment changes")
@@ -82,7 +82,7 @@ def test_assignment_reload_warns_and_save_or_discard_releases_the_guard(workspac
             dialog.dismiss()
         page.on("dialog", dismiss)
         bar = page.get_by_role("region", name="Session assignment")
-        email = bar.get_by_role("textbox", name="Assignee email")
+        email = bar.get_by_role("combobox", name="Assignee email", exact=True)
         leave = page.get_by_role("navigation", name="Workspace").get_by_role("link", name="Overview", exact=True)
         page.goto(url)
         email.click()
