@@ -125,6 +125,8 @@ def _setup_workspace(e2e_workspace, *, include_member: bool = False) -> tuple[st
 
 
 def _sign_in(page, base_url: str, email: str, password: str) -> None:
+    # Leave the current page before clearing cookies, or its pending requests go out unsigned and get 401.
+    page.goto("about:blank")
     page.context.clear_cookies()
     page.goto(base_url + "/account/", wait_until="domcontentloaded")
     page.get_by_label("Operator email").fill(email)
