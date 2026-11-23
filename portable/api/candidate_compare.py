@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import HTMLResponse, Response
 from pydantic import Field, model_validator
 
-from . import exports, report, store
+from . import comparison_scorecards, exports, report, store
 from .models import Input, RequestID
 
 router = APIRouter()
@@ -20,6 +20,8 @@ class CompareInput(Input):
     session_ids: list[RequestID] = Field(min_length=2, max_length=6)
     include_excerpts: bool = False
     include_notes: bool = False
+    include_scorecards: bool = False
+    include_rationales: bool = False
 
     @model_validator(mode="after")
     def require_unique_sessions(self):
@@ -116,8 +118,10 @@ def _comparison_slots(plans, planned_answers, unplanned_answers):
     return rows
 
 
-def _load_comparison(session_ids: list[UUID], *, include_excerpts: bool, include_notes: bool) -> dict[str, Any]:
-    ordered_ids = [str(uid) for uid in session_ids]
+def _load_comparison(options: CompareInput) -> dict[str, Any]:
+    if options.include_rationales and not options.include_scorecards:
+        raise HTTPException(422, "Include saved scorecards to include their rationales.")
+    ordered_ids = [str(uid) for uid in options.session_ids]
     placeholders = ",".join("?" for _ in ordered_ids)
     with store.connection() as db:
         session_rows = db.execute(
@@ -128,7 +132,7 @@ def _load_comparison(session_ids: list[UUID], *, include_excerpts: bool, include
         by_id = {row["id"]: row for row in session_rows}
         if len(by_id) != len(ordered_ids):
             raise HTTPException(404, "One or more interviews do not exist.")
-        private_columns = (", answer" if include_excerpts else "") + (", note" if include_notes else "")
+        private_columns = (", answer" if options.include_excerpts else "") + (", note" if options.include_notes else "")
         answer_rows = db.execute(
             f"SELECT id, session_id, question, result, status, disposition, planned_slot{private_columns} "
             f"FROM answers WHERE session_id IN ({placeholders}) ORDER BY rowid",
@@ -151,9 +155,9 @@ def _load_comparison(session_ids: list[UUID], *, include_excerpts: bool, include
                 "answer_id": arow["id"], "question": arow["question"], "status": status,
                 "disposition": disposition, "passage_count": len(result_data.get("passages", [])),
             }
-            if include_excerpts:
+            if options.include_excerpts:
                 cell["excerpt"] = _cap_excerpt(arow["answer"] or "")
-            if include_notes:
+            if options.include_notes:
                 cell["note"] = arow["note"] or ""
             slot = arow["planned_slot"]
             if isinstance(slot, int) and slot >= 1:
@@ -178,6 +182,8 @@ def _load_comparison(session_ids: list[UUID], *, include_excerpts: bool, include
 
         slots_out = _comparison_slots(planned_lists, planned_answers, unplanned_answers)
         rubric_criteria = _load_shared_rubric(db, sessions_out)
+        if options.include_scorecards:
+            comparison_scorecards.add_saved_scorecards(db, sessions_out, include_rationales=options.include_rationales)
     return {"sessions": sessions_out, "slots": slots_out, "rubric_criteria": rubric_criteria}
 
 
@@ -206,13 +212,14 @@ def _render_markdown(data: dict[str, Any]) -> str:
     for s in sessions:
         lines.extend([f"**{report.heading(s['candidate'])}** ({s['id']})", "", report.literal(s["policy"]), ""])
     if data["rubric_criteria"]:
-        lines.extend(["## Shared role rubric", ""])
+        lines.extend(["## Shared role rubric", "", "Guidance from the current role template.", ""])
         for crit in data["rubric_criteria"]:
             lines.extend([f"### {report.heading(crit['criterion'])} (weight {crit['weight']})", ""])
             if crit["expected_signals"]:
                 lines.extend(["Expected signals", "", report.literal("\n".join(crit["expected_signals"])), ""])
             if crit["red_flags"]:
                 lines.extend(["Red flags", "", report.literal("\n".join(crit["red_flags"])), ""])
+    lines.extend(comparison_scorecards.markdown(sessions))
     lines.extend(["## Question slot comparison", ""])
     for slot in data["slots"]:
         lines.extend([f"### {_slot_title(slot)}", ""])
@@ -263,7 +270,7 @@ def _render_html(data: dict[str, Any]) -> str:
             f"<p>Expected signals: {escape(', '.join(c['expected_signals']) or 'None')}</p>"
             f"<p>Red flags: {escape(', '.join(c['red_flags']) or 'None')}</p></article>" for c in data["rubric_criteria"]
         )
-        rubric_html = f"<section><h2>Shared role rubric</h2>{items}</section>"
+        rubric_html = f"<section><h2>Shared role rubric</h2><p>Guidance from the current role template.</p>{items}</section>"
     slot_articles = []
     for slot in data["slots"]:
         heading = _slot_title(slot)
@@ -301,19 +308,19 @@ def _render_html(data: dict[str, Any]) -> str:
         f"<main><h1>Candidate comparison dossier</h1><p>Shared wording requires interpretation against the interview rules.</p>"
         f"<table><thead><tr><th>Candidate</th><th>Role</th><th>Lifecycle</th><th>Created</th><th>Policy</th>"
         f"<th>Answers</th><th>Match</th><th>No match</th><th>Insufficient</th><th>Pending</th><th>Explained</th><th>Unresolved</th><th>Disclosed</th>"
-        f"</tr></thead><tbody>{summary_rows}</tbody></table>{rubric_html}"
+        f"</tr></thead><tbody>{summary_rows}</tbody></table>{rubric_html}{comparison_scorecards.html(sessions)}"
         f"<section><h2>Question slot comparison</h2>{''.join(slot_articles) or '<p>No slots recorded.</p>'}</section></main></body></html>"
     )
 
 
 @router.post("/interviews/compare")
 def compare_candidates(item: CompareInput):
-    return _load_comparison(item.session_ids, include_excerpts=item.include_excerpts, include_notes=item.include_notes)
+    return _load_comparison(item)
 
 
 @router.post("/interviews/compare/dossier")
 def compare_dossier(item: CompareDossierInput):
-    data = _load_comparison(item.session_ids, include_excerpts=item.include_excerpts, include_notes=item.include_notes)
+    data = _load_comparison(item)
     if item.format == "markdown":
         return Response(_render_markdown(data), media_type="text/markdown; charset=utf-8",
                         headers={"Content-Disposition": 'attachment; filename="candidate-comparison.md"', "Cache-Control": "no-store"})
@@ -321,6 +328,8 @@ def compare_dossier(item: CompareDossierInput):
 
 
 @router.get("/interviews/compare/print", response_class=HTMLResponse)
-def compare_print(ids: str = Query(..., min_length=36, max_length=300), include_excerpts: bool = False, include_notes: bool = False):
-    data = _load_comparison(_parse_print_ids(ids), include_excerpts=include_excerpts, include_notes=include_notes)
+def compare_print(ids: str = Query(..., min_length=36, max_length=300), include_excerpts: bool = False,
+                  include_notes: bool = False, include_scorecards: bool = False, include_rationales: bool = False):
+    data = _load_comparison(CompareInput(session_ids=_parse_print_ids(ids), include_excerpts=include_excerpts, include_notes=include_notes,
+                                         include_scorecards=include_scorecards, include_rationales=include_rationales))
     return HTMLResponse(_render_html(data), headers={"Cache-Control": "no-store"})

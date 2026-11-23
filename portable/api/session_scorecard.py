@@ -134,7 +134,7 @@ def _load_role_rubric(db: sqlite3.Connection, session_id: str) -> list[dict[str,
     return criteria
 
 
-def _compute_weighted_score_pct(items: list[dict[str, Any]]) -> float | None:
+def weighted_score_pct(items: list[dict[str, Any]]) -> float | None:
     weighted_sum = 0
     total_weight = 0
     for item in items:
@@ -205,7 +205,7 @@ def _load_scorecard_state(db: sqlite3.Connection, session_id: str) -> dict[str, 
         "session_id": session_id,
         "version": _scorecard_version(session_id, rubric, saved_rows),
         "items": items,
-        "weighted_score_pct": _compute_weighted_score_pct(items),
+        "weighted_score_pct": weighted_score_pct(items),
         "handoff_notes": notes,
     }
 

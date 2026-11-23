@@ -2,21 +2,21 @@
 
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Download, Printer, RotateCcw, SlidersHorizontal } from "lucide-react"
 import { dateLabel, message, statusText } from "@/lib/api"
-import type { FeedPage } from "@/lib/bulkArchive"
 import {
   buildComparePageUrl, buildComparePrintUrl, compareInterviews, downloadCompareDossier,
   formatSlotHeading, getSlotCell, parseCompareIds, type CompareCounts, type CompareResponse,
   type CompareSessionSummary, type CompareSlotRow,
 } from "@/lib/compareInterviews"
-import { candidateName, lifecycle, lifecycleText, type Lifecycle } from "@/lib/interview-list"
-import { interviewURL, useResource } from "@/lib/workspace"
+import { lifecycleText, type Lifecycle } from "@/lib/interview-list"
+import { interviewURL } from "@/lib/workspace"
+import ComparisonScorecards from "./ComparisonScorecards"
 import WorkspaceError from "./WorkspaceError"
 import { Badge } from "./ui/badge"
 import { Button } from "./ui/button"
-import { Input } from "./ui/input"
+import ComparisonPicker from "./ComparisonPicker"
 import styles from "./CompareDossierView.module.css"
 
 const COUNT_BADGES: Array<[keyof CompareCounts, string, "success" | "destructive" | "warning" | "secondary" | "outline"]> = [
@@ -69,7 +69,7 @@ function InterviewQuestionCell({ session, row, includeExcerpts, includeNotes }: 
 export default function CompareDossierView() {
   const ids = useSearchParams().get("ids")
   const parsed = useMemo(() => parseCompareIds(ids), [ids])
-  // Each candidate selection starts with private notes and excerpts excluded.
+  // A new selection requires a fresh opt-in to private review material.
   return <CandidateComparison key={parsed.ids.join(",")} parsed={parsed} />
 }
 
@@ -77,52 +77,48 @@ function CandidateComparison({ parsed }: { parsed: ReturnType<typeof parseCompar
   const router = useRouter()
   const selectedIds = parsed.ids
   const [pickerOpen, setPickerOpen] = useState(false)
-  const [draftIds, setDraftIds] = useState<string[]>(selectedIds)
-  const [searchText, setSearchText] = useState("")
-  const [debouncedSearch, setDebouncedSearch] = useState("")
+  const pickerButton = useRef<HTMLButtonElement>(null)
   const [includeExcerpts, setIncludeExcerpts] = useState(false)
   const [includeNotes, setIncludeNotes] = useState(false)
+  const [scorecardDetail, setScorecardDetail] = useState<"none" | "ratings" | "rationales">("none")
+  const includeScorecards = scorecardDetail !== "none"
+  const includeRationales = scorecardDetail === "rationales"
   const [result, setResult] = useState<{ key: string; data: CompareResponse } | null>(null)
   const [error, setError] = useState("")
   const [refresh, setRefresh] = useState(0)
   const [downloading, setDownloading] = useState(false)
   const [downloadNotice, setDownloadNotice] = useState("")
 
-  useEffect(() => {
-    const timer = window.setTimeout(() => setDebouncedSearch(searchText.trim().slice(0, 120)), 140)
-    return () => window.clearTimeout(timer)
-  }, [searchText])
-
   const showPicker = selectedIds.length < 2 || pickerOpen
-  const archive = useResource<FeedPage>(
-    showPicker ? "interviews/feed?page_size=50" + (debouncedSearch ? "&q=" + encodeURIComponent(debouncedSearch) : "") : null,
-  )
-  const requestKey = useMemo(
-    () => (selectedIds.length >= 2 ? JSON.stringify({ selectedIds, includeExcerpts, includeNotes, refresh }) : ""),
-    [selectedIds, includeExcerpts, includeNotes, refresh],
-  )
+  const comparison = useMemo(() => ({
+    session_ids: selectedIds, include_excerpts: includeExcerpts, include_notes: includeNotes,
+    ...(includeScorecards && { include_scorecards: true }),
+    ...(includeRationales && { include_rationales: true }),
+  }), [selectedIds, includeExcerpts, includeNotes, includeScorecards, includeRationales])
+  const requestKey = selectedIds.length >= 2 ? JSON.stringify([comparison, refresh]) : ""
 
   useEffect(() => {
     if (!requestKey) { setError(""); return }
     const controller = new AbortController()
     setError("")
-    compareInterviews({ session_ids: selectedIds, include_excerpts: includeExcerpts, include_notes: includeNotes }, controller.signal)
+    compareInterviews(comparison, controller.signal)
       .then((data) => { if (!controller.signal.aborted) setResult({ key: requestKey, data }) })
       .catch((err) => { if (!controller.signal.aborted) setError(message(err)) })
     return () => controller.abort()
-  }, [requestKey, selectedIds, includeExcerpts, includeNotes])
+  }, [requestKey, comparison])
 
   const data = result?.key === requestKey ? result.data : null
   const loading = Boolean(requestKey) && !data && !error
-  const printUrl = buildComparePrintUrl(selectedIds, { includeExcerpts, includeNotes })
+  const printUrl = buildComparePrintUrl(selectedIds, { includeExcerpts, includeNotes, includeScorecards, includeRationales })
 
-  function toggleDraft(id: string, checked: boolean) {
-    setDraftIds((prev) => (!checked ? prev.filter((item) => item !== id) : prev.includes(id) || prev.length >= 6 ? prev : [...prev, id]))
+  function closePicker() {
+    setPickerOpen(false)
+    pickerButton.current?.focus()
   }
 
-  function applySelection() {
+  function applySelection(draftIds: string[]) {
     if (draftIds.length < 2 || draftIds.length > 6) return
-    setPickerOpen(false)
+    closePicker()
     router.replace(buildComparePageUrl(draftIds))
   }
 
@@ -132,9 +128,7 @@ function CandidateComparison({ parsed }: { parsed: ReturnType<typeof parseCompar
     setDownloadNotice("")
     setError("")
     try {
-      const filename = await downloadCompareDossier({
-        session_ids: selectedIds, include_excerpts: includeExcerpts, include_notes: includeNotes,
-      })
+      const filename = await downloadCompareDossier(comparison)
       setDownloadNotice(`Downloaded ${filename}.`)
     } catch (err) {
       setError(message(err))
@@ -157,7 +151,7 @@ function CandidateComparison({ parsed }: { parsed: ReturnType<typeof parseCompar
         </div>
         {selectedIds.length >= 2 && (
           <div className={styles.headerActions}>
-            <Button type="button" variant="outline" size="sm" onClick={() => setPickerOpen((open) => !open)}>
+            <Button ref={pickerButton} type="button" variant="outline" size="sm" aria-expanded={pickerOpen} onClick={() => setPickerOpen((open) => !open)}>
               <SlidersHorizontal aria-hidden="true" />{pickerOpen ? "Hide selector" : "Change interviews"}
             </Button>
             <Button type="button" size="sm" disabled={downloading || loading || !data} onClick={() => void handleDownload()}>
@@ -178,81 +172,22 @@ function CandidateComparison({ parsed }: { parsed: ReturnType<typeof parseCompar
       )}
       {downloadNotice && <p className="notice" role="status">{downloadNotice}</p>}
 
-      {showPicker && (
-        <section className={`panel ${styles.pickerPanel}`} aria-labelledby="compare-picker-heading">
-          <div className={styles.pickerControls}>
-            <div>
-              <h2 id="compare-picker-heading">Select interviews</h2>
-              <p className="muted">Choose 2 to 6 active interviews ({draftIds.length} of 6 selected).</p>
-            </div>
-            <div className={styles.headerActions}>
-              {selectedIds.length >= 2 && (
-                <Button type="button" variant="ghost" size="sm" onClick={() => { setDraftIds(selectedIds); setPickerOpen(false) }}>
-                  Cancel
-                </Button>
-              )}
-              <Button type="button" size="sm" disabled={draftIds.length < 2 || draftIds.length > 6} onClick={applySelection}>
-                Compare selected ({draftIds.length})
-              </Button>
-            </div>
-          </div>
-          <label className={`field ${styles.pickerSearch}`}>
-            Filter active archive
-            <Input
-              type="search" maxLength={120} placeholder="Search by candidate or role"
-              value={searchText} onChange={(e) => setSearchText(e.target.value)}
-            />
-          </label>
-          {archive.error && <WorkspaceError text={archive.error} retry={archive.reload} />}
-          {!archive.data && !archive.error && <p className="muted" role="status">Loading interviews…</p>}
-          {!archive.error && archive.data && !debouncedSearch && archive.data.items.length < 2 && (
-            <div className="notice row" role="status">
-              <span>
-                {archive.data.items.length === 0
-                  ? "No active interviews yet. Create at least 2 interviews to compare candidates."
-                  : "Only 1 active interview found. Create another interview to compare 2 or more candidates."}
-              </span>
-              <Button asChild size="sm"><Link href="/interviews/new/">New interview</Link></Button>
-            </div>
-          )}
-          {!archive.error && archive.data && debouncedSearch && archive.data.items.length === 0 && (
-            <div className="notice row" role="status">
-              <span>No active interviews match your filter.</span>
-              <Button type="button" variant="outline" size="sm" onClick={() => setSearchText("")}>Clear search</Button>
-              <Link className="text-action" href="/interviews/">Open interviews</Link>
-            </div>
-          )}
-          {!archive.error && archive.data && archive.data.items.length > 0 && (
-            <ul className={styles.pickerList}>
-              {archive.data.items.map((item) => {
-                const checked = draftIds.includes(item.id)
-                return (
-                  <li key={item.id}>
-                    <label className={checked ? `${styles.pickerOption} ${styles.pickerOptionSelected}` : styles.pickerOption}>
-                      <input
-                        type="checkbox" checked={checked} disabled={!checked && draftIds.length >= 6}
-                        onChange={(e) => toggleDraft(item.id, e.target.checked)}
-                      />
-                      <span className={styles.pickerMeta}>
-                        <strong>{candidateName(item)}</strong>
-                        <small>{item.role || "No role"} · {lifecycleText[lifecycle(item)]} · {dateLabel(item.created_at)}</small>
-                      </span>
-                      <Badge variant="outline">{item.answer_count} answers</Badge>
-                    </label>
-                  </li>
-                )
-              })}
-            </ul>
-          )}
-        </section>
-      )}
+      <ComparisonPicker open={showPicker} committed={selectedIds} known={data?.sessions}
+        apply={applySelection} cancel={selectedIds.length >= 2 ? closePicker : undefined} />
 
       {selectedIds.length >= 2 && (
         <section className={`panel ${styles.optionsBar}`} aria-label="Comparison options">
-          <div className={styles.toggles}>
-            <label className="check"><input type="checkbox" checked={includeExcerpts} onChange={(e) => setIncludeExcerpts(e.target.checked)} />Include answer excerpts</label>
-            <label className="check"><input type="checkbox" checked={includeNotes} onChange={(e) => setIncludeNotes(e.target.checked)} />Include interviewer notes</label>
-          </div>
+          <fieldset className={styles.disclosures}>
+            <legend>Include in comparison and exports</legend>
+            <div className={styles.toggles}>
+              <label className="check"><input type="checkbox" checked={includeExcerpts} onChange={(e) => setIncludeExcerpts(e.target.checked)} />Include answer excerpts</label>
+              <label className="check"><input type="checkbox" checked={includeNotes} onChange={(e) => setIncludeNotes(e.target.checked)} />Include interviewer notes</label>
+              <label className="check"><input type="checkbox" checked={includeScorecards}
+                onChange={e => setScorecardDetail(e.target.checked ? "ratings" : "none")} />Include saved scorecards</label>
+              <label className="check"><input type="checkbox" checked={includeRationales} disabled={!includeScorecards}
+                onChange={e => setScorecardDetail(e.target.checked ? "rationales" : "ratings")} />Include reviewer rationales</label>
+            </div>
+          </fieldset>
           {error && <Button type="button" variant="outline" size="sm" onClick={() => setRefresh((n) => n + 1)}><RotateCcw aria-hidden="true" />Retry comparison</Button>}
         </section>
       )}
@@ -290,6 +225,8 @@ function CandidateComparison({ parsed }: { parsed: ReturnType<typeof parseCompar
             </div>
           </section>
 
+          {includeScorecards && <ComparisonScorecards sessions={data.sessions} includeRationales={includeRationales} />}
+
           <section className={`panel ${styles.section}`} aria-labelledby="compare-matrix-heading">
             <h2 id="compare-matrix-heading">Question-slot matrix</h2>
             {data.slots.some(row => row.owner_session_id) && <p className="muted">
@@ -326,6 +263,7 @@ function CandidateComparison({ parsed }: { parsed: ReturnType<typeof parseCompar
           {data.rubric_criteria && data.rubric_criteria.length > 0 && (
             <section className={`panel ${styles.section}`} aria-labelledby="compare-rubric-heading">
               <h2 id="compare-rubric-heading">Shared role rubric criteria</h2>
+              <p className="muted">Current guidance from the shared role definition.</p>
               <div className={styles.rubricGrid}>
                 {data.rubric_criteria.map((item, idx) => (
                   <article key={item.id || `${item.criterion}-${idx}`} className={styles.rubricCard}>
