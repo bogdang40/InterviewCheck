@@ -228,7 +228,7 @@ def test_m9_scale_routes_web_vitals_dom_and_canvas(
                 if path == "/admin/":
                     page.get_by_role("tab", name="Audit log").click()
                     expect(page.get_by_text("Showing 50 events")).to_be_visible()
-                    expect(page.locator(".admin-table tbody tr")).to_have_count(50)
+                    expect(page.get_by_role("tabpanel").locator(".admin-table tbody tr")).to_have_count(50)
                     _assert_vitals_and_layout(page, f"/admin/ audit tab ({viewport_label})")
                 collector.assert_clean()
             finally:

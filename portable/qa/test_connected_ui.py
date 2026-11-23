@@ -1,4 +1,5 @@
 """Exercise the mounted UI, FastAPI and storage with synthetic provider responses."""
+import re
 from unittest.mock import ANY, AsyncMock
 from uuid import uuid4
 
@@ -90,7 +91,8 @@ def test_embedded_account_browser_session(workspace_url, browser_page, monkeypat
     page.go_back()
     prompt = page.get_by_role("status").filter(has_text="Sign in to open your interviews")
     expect(prompt).to_be_visible()
-    expect(prompt.get_by_role("link", name="Sign in")).to_have_attribute("href", "/account/")
+    # The link returns to this record after signing in.
+    expect(prompt.get_by_role("link", name="Sign in")).to_have_attribute("href", re.compile(r"^/account/\?next=%2Finterviews%2F"))
     expect(page.get_by_role("heading", name="Account fixture")).to_have_count(0)
 
 
