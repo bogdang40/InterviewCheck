@@ -72,6 +72,10 @@ final class InterviewController: ObservableObject {
     var referenceTasks: [String: Task<Void, Never>] = [:]
     @Published var referencesInFlight: Set<String> = []
     var referenceGeneration: [String: Int] = [:]
+    /// The AI answers each saved final score used, to notice ones that came later.
+    var finalReferenceIDs: [String: Set<String>] = [:]
+    /// How long a final score waits for AI answers still being written.
+    var referenceWaitTimeout: TimeInterval = 45
 
     init(timeline: InterviewTimeline = .shared, database: SessionDatabase = .shared,
          settings: DetectorSettings = .shared) {
@@ -109,6 +113,7 @@ final class InterviewController: ObservableObject {
         questions = []
         autoMarkedIDs = []
         references = [:]
+        finalReferenceIDs = [:]
         scores = [:]
         activeQuestionID = nil
         liveWindow = nil

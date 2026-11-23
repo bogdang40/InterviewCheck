@@ -254,6 +254,42 @@ final class InterviewFlowTests: XCTestCase {
         XCTAssertEqual(controller.phase, .ended, "a second End changes nothing")
     }
 
+    func testAIAnswersThatFinishAfterTheFinalScoreScoreItAgain() async throws {
+        controller.consentConfirmed = true
+        controller.referenceWaitTimeout = 0.1
+        controller.start()
+        let question = F.words(F.question, side: .interviewer, start: now + 1)
+        timeline.append(question)
+        now = question.last!.end + 0.3
+        controller.markQuestion()
+        try await waitUntil { self.controller.questions.first?.text.isEmpty == false }
+        let questionID = controller.questions[0].id
+        // One AI answer is ready in time; the run is still writing another.
+        controller.referencesInFlight.insert(questionID)
+        controller.upsertReference(ReferenceAnswerRecord(
+            id: "fast", questionID: questionID, provider: .openai, model: "gpt-5.2", promptName: "Copilot",
+            text: "Use a queue.", firstSentenceSeconds: 1, totalSeconds: 2))
+        let answer = F.readingAnswer(after: question.last!.end)
+        timeline.append(answer)
+        now = answer.last!.end + 1
+        controller.answerDone()
+        try await waitUntil { self.controller.scores[questionID]?.isFinal == true && self.controller.pendingScoring.isEmpty }
+        XCTAssertEqual(controller.finalReferenceIDs[questionID], ["fast"], "saved from the answers ready in time")
+        let early = try XCTUnwrap(controller.scores[questionID])
+
+        controller.upsertReference(ReferenceAnswerRecord(
+            id: "slow", questionID: questionID, provider: .claude, model: "claude-sonnet-5", promptName: "Copilot",
+            text: F.aiAnswer, firstSentenceSeconds: 50, totalSeconds: 60))
+        controller.referencesFinished(questionID: questionID, generation: 1)
+        try await waitUntil { self.controller.finalReferenceIDs[questionID] == ["fast", "slow"] }
+        try await waitUntil { self.controller.pendingScoring.isEmpty }
+        let rescored = try XCTUnwrap(controller.scores[questionID])
+        XCTAssertTrue(rescored.isFinal)
+        XCTAssertGreaterThan(rescored.percent, early.percent, "the matching AI answer now counts")
+        XCTAssertEqual(database.loadInterviewReport(id: controller.interview!.id)?.scores[questionID]?.percent,
+                       rescored.percent)
+    }
+
     private func waitUntil(timeout: TimeInterval = 3, _ condition: @escaping () -> Bool) async throws {
         let deadline = Date().addingTimeInterval(timeout)
         while !condition() {
