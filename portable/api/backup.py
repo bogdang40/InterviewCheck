@@ -147,6 +147,21 @@ def stored_session(db, key, *, has_assignments, has_notes, has_scorecards):
     return schema.Session.model_validate(data)
 
 
+def _has_exchange_collision(db, session):
+    if not session.answers and session.draft is None:
+        return False
+    ids = [answer.id for answer in session.answers]
+    if session.draft is not None:
+        ids.append(session.draft.id)
+    # A parked draft and a published exchange share one ID namespace, including in Trash.
+    return db.execute(
+        """SELECT 1 FROM json_each(?) AS incoming
+           WHERE EXISTS (SELECT 1 FROM answers WHERE id=incoming.value)
+              OR EXISTS (SELECT 1 FROM session_drafts WHERE id=incoming.value)
+           LIMIT 1""", (encode(ids),),
+    ).fetchone() is not None
+
+
 def classify(db, backup, *, include_conflict_reasons=False):
     actions = {"roles": [], "sessions": []}
     totals = {kind: {"new": 0, "identical": 0, "conflict": 0} for kind in actions}
@@ -175,17 +190,17 @@ def classify(db, backup, *, include_conflict_reasons=False):
                 if exists:
                     stored = schema.Role.model_validate(role_data(row, db))
                 elif record.versions and _has_table(db, "role_versions"):
-                    linked_collision = any(db.execute("SELECT 1 FROM role_versions WHERE id=?", (v.id,)).fetchone() for v in record.versions)
+                    linked_collision = db.execute(
+                        """SELECT 1 FROM json_each(?) AS incoming
+                           WHERE EXISTS (SELECT 1 FROM role_versions WHERE id=incoming.value) LIMIT 1""",
+                        (encode([v.id for v in record.versions]),),
+                    ).fetchone() is not None
             else:
                 exists = db.execute("SELECT 1 FROM sessions WHERE id=?", (key,)).fetchone() is not None
                 if exists:
                     stored = stored_session(db, key, has_assignments=has_assignments, has_notes=has_notes, has_scorecards=has_scorecards)
                 else:
-                    ids = [a.id for a in record.answers] + ([record.draft.id] if record.draft else [])
-                    linked_collision = review_data.has_handoff_collision(db, record.handoff_notes) or any(
-                        db.execute("SELECT 1 FROM answers WHERE id=? UNION ALL SELECT 1 FROM session_drafts WHERE id=?", (aid, aid)).fetchone()
-                        for aid in ids
-                    )
+                    linked_collision = review_data.has_handoff_collision(db, record.handoff_notes) or _has_exchange_collision(db, record)
             state = "identical" if stored == record else "conflict" if exists or linked_collision else "new"
             totals[group][state] += 1
             if state == "new":
