@@ -13,7 +13,7 @@ function marker() {
   return Date.now() + "-" + nonce
 }
 
-export function draftEpoch(storage: Storage, sessionId: string, reserve = false): string {
+export function draftEpoch(storage: Storage, sessionId: string, reserve = false): string | null {
   if (reserve) {
     // Reserve both entries before accepting private text. A later sweep can invalidate
     // them by deletion even when storage has no room for a new marker.
@@ -21,7 +21,9 @@ export function draftEpoch(storage: Storage, sessionId: string, reserve = false)
       if (storage.getItem(key) === null) storage.setItem(key, marker())
     }
   }
-  return [storage.getItem(EPOCH), storage.getItem(EPOCH + ":" + sessionId)].join("/")
+  const workspace = storage.getItem(EPOCH)
+  const session = storage.getItem(EPOCH + ":" + sessionId)
+  return workspace && session ? workspace + "/" + session : null
 }
 
 /** Every entry carries the ISO `savedAt` it was written with. */
