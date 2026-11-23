@@ -99,9 +99,8 @@ def test_identity_and_evidence_are_verified(workspace):
     doc = json.loads(raw)
     doc["sessions"][0]["answers"][0]["result"]["passages"][0]["source_excerpt"] = "Different words"
     assert submit(client, "preview", json.dumps(doc).encode()).status_code == 422
-    assert (
-        submit(client, "preview", raw.replace(b'"version":1', b'"version":2,"version":1')).status_code == 422
-    )
+    duplicate_field = b'{"version":3,' + raw[1:]
+    assert submit(client, "preview", duplicate_field).json()["detail"] == "Duplicate JSON field."
     assert submit(client, "restore", raw, "a" * 64).status_code == 409
     assert client.get("/api/sessions").json() == []
 

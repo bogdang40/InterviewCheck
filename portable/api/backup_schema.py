@@ -1,6 +1,6 @@
 """Validate the versioned, local interview archive before it can enter the store."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 import math
 import json
 from typing import Annotated, Literal
@@ -12,6 +12,7 @@ from pydantic import (
 )
 
 from .backup_validation import check_session_chronology, unique, verify_records
+from .session_assignment import AssignmentPriority, SessionAssignmentInput
 
 LIMIT = 20 * 1024 * 1024
 LEGACY_MAX_DEPTH = 16
@@ -89,6 +90,9 @@ def _validate_legacy_tree(value: object) -> object:
 
 
 TZStamp = Annotated[str, AfterValidator(_require_tz)]
+AssignmentStamp = Annotated[
+    str, StringConstraints(max_length=64, pattern=r"^[^\p{Cc}]+$"), AfterValidator(_require_tz),
+]
 Span = Annotated[list[int], Field(min_length=2, max_length=2), AfterValidator(_valid_span)]
 LegacyDict = Annotated[dict[str, JsonValue] | None, BeforeValidator(_validate_legacy_tree)]
 
@@ -235,6 +239,33 @@ class SavedDraft(Record):
     updated_at: TZStamp
 
 
+class Assignment(Record):
+    assignee_email: Annotated[
+        str, Field(min_length=3, max_length=254), AfterValidator(SessionAssignmentInput.validate_assignee_email),
+    ]
+    assigned_by: Annotated[HistoricalText, StringConstraints(min_length=1, pattern=r"^[^\p{Cc}]+$")]
+    priority: AssignmentPriority
+    due_at: AssignmentStamp | None
+    updated_at: AssignmentStamp
+
+    @field_validator("assigned_by")
+    @classmethod
+    def nonblank_actor(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("An assignment needs an actor.")
+        return value
+
+    @field_validator("due_at")
+    @classmethod
+    def utc_due_at(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        try:
+            return datetime.fromisoformat(value).astimezone(timezone.utc).isoformat()
+        except OverflowError as exc:
+            raise ValueError("The assignment deadline exceeds the supported UTC range.") from exc
+
+
 class Session(Record):
     id: ID
     candidate: HistoricalText
@@ -248,6 +279,7 @@ class Session(Record):
     ended_at: TZStamp | None
     trashed_at: TZStamp | None = None
     draft: SavedDraft | None = None
+    assignment: Assignment | None = None
     answers: list[Answer] = Field(max_length=20000)
     tags: list[TagStr] = Field(default_factory=list, max_length=10)
     review_events: list[ReviewEvent] = Field(default_factory=list, max_length=20000)
@@ -262,7 +294,7 @@ class Session(Record):
 
 class Backup(Record):
     format: Literal["interviewcheck.workspace"]
-    version: Literal[1, 2]
+    version: Literal[1, 2, 3]
     roles: list[Role] = Field(max_length=4000)
     sessions: list[Session] = Field(max_length=5000)
 
@@ -273,6 +305,8 @@ class Backup(Record):
         for r in self.roles:
             unique((v.version_number for v in r.versions), "role version number")
         for s in self.sessions:
+            if ("assignment" in s.model_fields_set) != (self.version == 3):
+                raise ValueError("Only version 3 backups require an assignment field on every interview.")
             aids = {a.id for a in s.answers}
             for ev in s.review_events:
                 if ev.answer_id not in aids:

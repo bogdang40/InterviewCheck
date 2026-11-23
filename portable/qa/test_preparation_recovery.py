@@ -85,8 +85,13 @@ def test_permission_snapshot_and_browser_restore(workspace_url, browser_page, mo
         }
         held = c.put(route + "/draft", json=partial)
         held.raise_for_status()
+        reviewer = "calibration-reviewer@example.test"
+        assignment = c.put(route + "/assignment", json={
+            "assignee_email": reviewer, "priority": "high", "due_at": "2030-05-06T15:00:00Z",
+        }).raise_for_status().json()["assignment"]
         original = c.get(route).json()
         page.goto(workspace_url + "/data/")
+        expect(page.get_by_text("the file includes the assignee email", exact=False)).to_be_visible()
         page.get_by_label("Backup contents").select_option(sid)
         with page.expect_download() as download:
             page.get_by_role("link", name="Download backup").click()
@@ -95,6 +100,9 @@ def test_permission_snapshot_and_browser_restore(workspace_url, browser_page, mo
         backup = json.loads(file.read_bytes())
         assert [r["id"] for r in backup["roles"]] == [rid]
         assert [r["id"] for r in backup["sessions"]] == [sid]
+        assert backup["sessions"][0]["assignment"] == {
+            field: assignment[field] for field in ("assignee_email", "assigned_by", "priority", "due_at", "updated_at")
+        }
         target = tmp_path / "restored.sqlite"
         store.initialize(target)
         monkeypatch.setenv("INTERVIEWCHECK_DB", str(target))
@@ -103,15 +111,23 @@ def test_permission_snapshot_and_browser_restore(workspace_url, browser_page, mo
         assert c.get("/api/sessions").json() == []
         page.get_by_role("button", name="Preview restore").click()
         expect(page.get_by_role("heading", name="Restore preview")).to_be_visible()
+        expect(page.get_by_text("1 review assignment in this file", exact=False)).to_be_visible()
         assert c.get("/api/roles").json() == []
         page.get_by_role("button", name="Restore new records").click()
         expect(page.get_by_role("status").filter(has_text="Restored 1")).to_be_visible()
         assert c.get(route).json() == original
+        assert c.get(route + "/assignment").raise_for_status().json()["assignment"] == assignment
         assert c.get(route + "/draft").json() == held.json()
         assert "Private unfinished draft" not in c.get(route + "/report").text
         rerun = c.post(route + "/imports/webvtt", json={**imported, "request_id": str(uuid4())})
         rerun.raise_for_status()
         assert (rerun.json()["saved"], rerun.json()["answer_ids"]) == (0, captured.json()["answer_ids"])
+        page.goto(workspace_url + "/interviews/")
+        queue = page.get_by_role("region", name="Assignment queues")
+        queue.get_by_role("button", name="High priority", exact=False).click()
+        restored_link = queue.get_by_role("link", name="Oak restore", exact=False)
+        expect(restored_link).to_contain_text(reviewer)
+        expect(restored_link).to_have_attribute("href", f"/interviews/review/?id={sid}")
 
 
 def test_backup_size_through_real_ingress(workspace_url):
