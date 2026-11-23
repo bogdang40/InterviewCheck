@@ -7,7 +7,7 @@ from uuid import UUID, uuid4
 
 from fastapi import APIRouter, HTTPException, Path, Request
 
-from . import access, role_kits
+from . import access, role_kits, sql_script
 from .models import RoleRestoreInput
 
 router = APIRouter()
@@ -38,7 +38,7 @@ def _now() -> str:
 
 
 def migrate(db: sqlite3.Connection) -> None:
-    db.executescript(SCHEMA)
+    sql_script.execute(db, SCHEMA)
     prev_factory = db.row_factory
     db.row_factory = sqlite3.Row
     try:

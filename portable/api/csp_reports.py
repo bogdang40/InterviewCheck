@@ -8,7 +8,7 @@ from urllib.parse import SplitResult, urlsplit, urlunsplit
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse
 
-from . import model_admin, rate_limit, store
+from . import model_admin, rate_limit, sql_script, store
 
 MAX_BODY_BYTES = 8192
 MAX_STORED_REPORTS = 500
@@ -38,7 +38,7 @@ router = APIRouter(prefix="/api", tags=["csp-reports"])
 
 
 def migrate(db: sqlite3.Connection) -> None:
-    db.executescript(SCHEMA)
+    sql_script.execute(db, SCHEMA)
 
 
 def _clean_text(value: Any, *, max_len: int = 128) -> str:

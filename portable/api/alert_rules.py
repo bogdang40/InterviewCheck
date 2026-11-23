@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 import httpx
 from pydantic import Field, SecretStr, field_validator, model_validator
 
-from . import model_admin, model_budgets, model_telemetry, rate_limit, secret_box, ssrf_guard, store
+from . import model_admin, model_budgets, model_telemetry, rate_limit, secret_box, sql_script, ssrf_guard, store
 from .error_sanitizer import sanitize_error_text
 from .model_schemas import Capability
 from .models import Input
@@ -33,7 +33,7 @@ _WRITE = [Depends(model_admin.require_admin), Depends(rate_limit.limit(rate_limi
 _EVAL = [*_WRITE, Depends(rate_limit.limit(rate_limit.ADMIN_PROBE))]
 
 def migrate(db: sqlite3.Connection) -> None:
-    db.executescript(SCHEMA)
+    sql_script.execute(db, SCHEMA)
 
 def _check_name(value: str | None) -> str | None:
     if value is not None and any(ord(ch) < 32 or ord(ch) == 127 for ch in value):

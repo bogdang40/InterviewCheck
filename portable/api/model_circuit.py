@@ -9,7 +9,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Request
 from pydantic import Field, model_validator
 
-from . import model_registry, rate_limit, secret_box, store
+from . import model_registry, rate_limit, secret_box, sql_script, store
 from .error_sanitizer import sanitize_error_text
 from .models import Input
 
@@ -55,7 +55,7 @@ class CircuitPolicyInput(Input):
 
 
 def migrate(db: sqlite3.Connection) -> None:
-    db.executescript(SCHEMA)
+    sql_script.execute(db, SCHEMA)
     columns = {row[1] for row in db.execute("PRAGMA table_info(model_circuit_state)")}
     if "half_open_probe_until" not in columns:
         db.execute("ALTER TABLE model_circuit_state ADD COLUMN half_open_probe_until TEXT")

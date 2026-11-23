@@ -9,7 +9,7 @@ from uuid import uuid4
 
 from fastapi import HTTPException
 
-from . import answer_history, bulk_operations, lineage, model_registry, retention_policy, role_analytics, role_kits, role_versions, search_fts, session_scorecard
+from . import answer_history, bulk_operations, lineage, model_registry, retention_policy, role_analytics, role_kits, role_versions, search_fts, session_scorecard, sql_script
 from .role_kits import role_row, create_role
 from .models import EARLIER_ANSWER_NOTE, AnswerEdit, AnswerInput, ReviewInput, SessionInput
 
@@ -97,10 +97,12 @@ def initialize(path):
             os.close(os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600))
         except FileExistsError:
             pass  # Another local process initialized the same store.
-    with closing(sqlite3.connect(path)) as db:
-        db.execute("PRAGMA journal_mode=WAL")
-        db.executescript(SCHEMA)
-        db.execute("BEGIN IMMEDIATE")
+    with closing(sqlite3.connect(path)) as raw:
+        raw.execute("PRAGMA journal_mode=WAL")
+        raw.execute("BEGIN IMMEDIATE")
+        # One transaction covers the whole upgrade, so a failure leaves the previous schema.
+        db = sql_script.TransactionBoundConnection(raw)
+        sql_script.execute(db, SCHEMA)
         columns = {row[1] for row in db.execute("PRAGMA table_info(answers)")}
         if "import_origin" not in columns:
             db.execute("ALTER TABLE answers ADD COLUMN import_origin TEXT")

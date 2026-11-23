@@ -7,7 +7,7 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BeforeValidator, Field, StringConstraints
 
-from . import model_admin, prompt_framing, rate_limit, store
+from . import model_admin, prompt_framing, rate_limit, sql_script, store
 from .models import Input
 
 SLOTS = ("question_planning", "reference_spoken", "reference_talking_points", "reference_worked_example", "judge_rubric")
@@ -49,7 +49,7 @@ router = APIRouter(prefix="/api/admin/prompts", tags=["prompt-templates"])
 
 
 def migrate(db: sqlite3.Connection) -> None:
-    db.executescript(SCHEMA)
+    sql_script.execute(db, SCHEMA)
     now = store.timestamp()
     for slot in SLOTS:
         if db.execute("SELECT 1 FROM prompt_templates WHERE slot=?", (slot,)).fetchone() is not None:

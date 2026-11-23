@@ -6,6 +6,8 @@ import math
 import sqlite3
 from typing import Any
 
+from . import sql_script
+
 BUDGET_PARAM_DEFAULTS: dict[str, Any] = {
     "daily_token_limit": None,
     "monthly_cost_limit_usd": None,
@@ -41,7 +43,7 @@ class BudgetDecision:
 
 
 def migrate(db: sqlite3.Connection) -> None:
-    db.executescript(SCHEMA)
+    sql_script.execute(db, SCHEMA)
 
 
 def _utc_now() -> datetime:

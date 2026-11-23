@@ -7,6 +7,8 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException
 
+from . import sql_script
+
 router = APIRouter()
 
 SCHEMA = """
@@ -27,7 +29,7 @@ CREATE INDEX IF NOT EXISTS idx_review_events_answer ON answer_review_events(answ
 
 
 def migrate(db: sqlite3.Connection) -> None:
-    db.executescript(SCHEMA)
+    sql_script.execute(db, SCHEMA)
 
 
 def latest_reviewer_disposition(db: sqlite3.Connection, answer_id: str, reviewer_id: str) -> str | None:

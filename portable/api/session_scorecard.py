@@ -7,7 +7,7 @@ import sqlite3
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import Field, field_validator
 
-from . import access, prompt_framing, store
+from . import access, prompt_framing, sql_script, store
 from .models import Input
 
 router = APIRouter()
@@ -40,7 +40,7 @@ CREATE INDEX IF NOT EXISTS idx_handoff_notes_session
 
 
 def migrate(db: sqlite3.Connection) -> None:
-    db.executescript(SCHEMA)
+    sql_script.execute(db, SCHEMA)
 
 
 class ScorecardItemInput(Input):
