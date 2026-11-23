@@ -20,6 +20,7 @@ import { AuthService } from "./services/AuthService.js";
 import { BillingService } from "./services/BillingService.js";
 import { BillingWebhookService } from "./services/BillingWebhookService.js";
 import { EntitlementService } from "./services/EntitlementService.js";
+import { LoginThrottle } from "./services/LoginThrottle.js";
 import { PasswordHasher } from "./services/PasswordHasher.js";
 import { SecurityService } from "./services/SecurityService.js";
 import { TokenService } from "./services/TokenService.js";
@@ -99,6 +100,7 @@ export class Container {
       this.bootstrap,
       policy,
       this.totp,
+      new LoginThrottle(this.database),
       clock,
     );
 

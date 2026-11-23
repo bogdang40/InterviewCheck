@@ -161,7 +161,16 @@ export const MIGRATION_STEPS: readonly MigrationStep[] = [
       return statements;
     },
   },
+  {
+    version: 9,
+    statements: [
+      // Never written: per address limits live in memory, per account limits in login_email_windows.
+      `DROP TABLE IF EXISTS login_windows`,
+    ],
+  },
 ];
+
+export const LATEST_SCHEMA_VERSION = Math.max(...MIGRATION_STEPS.map((step) => step.version));
 
 export class MigrationRunner {
   constructor(private readonly steps: readonly MigrationStep[] = MIGRATION_STEPS) {}

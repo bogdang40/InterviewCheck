@@ -142,6 +142,31 @@ describe("auth flow over HTTP", () => {
     });
   });
 
+  it("throttles wrong passwords per account across client addresses without revealing whether the account exists", async () => {
+    harness.container.close();
+    harness = buildHarness({ TRUST_PROXY: true });
+    await post(harness.app, "/v1/auth/signup", { email: "victim@example.com", password: "a-long-password" });
+    const attempt = (email: string, password: string, i: number) =>
+      harness.app.request("/v1/auth/login", {
+        method: "POST",
+        headers: { "content-type": "application/json", "fly-client-ip": `198.51.100.${i + 1}` },
+        body: JSON.stringify({ email, password }),
+      });
+
+    for (const email of ["Victim@Example.com", "ghost@example.com"]) {
+      for (let i = 0; i < 10; i += 1) expect((await attempt(email, "wrong-long-password", i)).status).toBe(401);
+      const locked = await attempt(email, "wrong-long-password", 10);
+      expect(locked.status).toBe(429);
+      expect(await json(locked)).toEqual({ error: { code: "rate_limited", message: "Too many attempts. Try again in a minute." } });
+    }
+    expect((await attempt("victim@example.com", "a-long-password", 20)).status).toBe(429);
+    expect(harness.container.database.get("SELECT 1 FROM sqlite_master WHERE name = 'login_windows'")).toBeUndefined();
+
+    harness.clock.now = new Date(harness.clock.now.getTime() + 15 * 60_000 + 1);
+    expect((await attempt("victim@example.com", "a-long-password", 21)).status).toBe(200);
+    expect(harness.container.database.get("SELECT 1 FROM login_email_windows WHERE email = ?", "victim@example.com")).toBeUndefined();
+  });
+
   it("requires a bearer token on protected routes", async () => {
     expect((await get(harness.app, "/v1/me")).status).toBe(401);
     expect((await get(harness.app, "/v1/me", "mm_not_a_real_token_value_at_all_0000000000")).status).toBe(401);

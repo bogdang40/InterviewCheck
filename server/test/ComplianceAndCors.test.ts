@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { LATEST_SCHEMA_VERSION } from "../src/db/Migrations.js";
 import type { SignedInResponse } from "../src/services/AuthService.js";
 import { TotpService, type TotpSetupView } from "../src/services/TotpService.js";
 import { buildHarness, get, json, patch, post, type TestHarness } from "./support/TestContainer.js";
@@ -129,7 +130,7 @@ describe("M21-W3 CORS preflight rejection, security headers, and compliance summ
 
     const summary = JSON.parse(rawText) as ComplianceSummary;
     expect(summary).toEqual({
-      schemaVersion: 8,
+      schemaVersion: LATEST_SCHEMA_VERSION,
       usersTotal: 3,
       adminsTotal: 1,
       disabledUsersTotal: 1,
@@ -138,7 +139,7 @@ describe("M21-W3 CORS preflight rejection, security headers, and compliance summ
       activeApiTokensTotal: 1,
       auditChainOk: true,
     });
-    expect(harness.container.database.userVersion()).toBe(8);
+    expect(harness.container.database.userVersion()).toBe(LATEST_SCHEMA_VERSION);
 
     // Advance clock past 7-day token TTL while admin session (30d) stays active
     harness.clock.now = new Date(harness.clock.now.getTime() + 8 * 86_400_000);

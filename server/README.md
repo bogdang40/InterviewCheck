@@ -176,6 +176,9 @@ All JSON, all under `/v1`. Authenticated routes take `Authorization: Bearer <tok
 
 Errors are `{"error": {"code", "message"}}` with a meaningful status.
 Credential endpoints are rate limited to 10 attempts per minute per address,
+sign in additionally to 10 failed attempts (password or second factor) per
+email per 15 minutes from any address, which also answers `429 rate_limited`
+for emails that have no account,
 request bodies are capped at 256 KB, and webhook deliveries are applied
 from Stripe's current subscription state so out of order events cannot
 revive a cancelled plan.

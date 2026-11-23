@@ -228,7 +228,7 @@ describe("M15 security controls: sessions, scoped API tokens, and rate-limit con
       const res = await harness.app.request("/v1/auth/login", {
         method: "POST",
         headers: { "content-type": "application/json", "fly-client-ip": `2001:db8:abcd:0001::${i + 1}` },
-        body: JSON.stringify({ email: "nobody@example.com", password: "a-long-password" }),
+        body: JSON.stringify({ email: `nobody-${i}@example.com`, password: "a-long-password" }),
       });
       expect(res.status).toBe(401);
     }
@@ -236,14 +236,14 @@ describe("M15 security controls: sessions, scoped API tokens, and rate-limit con
     const blocked = await harness.app.request("/v1/auth/login", {
       method: "POST",
       headers: { "content-type": "application/json", "fly-client-ip": "2001:db8:abcd:1:9999::1" },
-      body: JSON.stringify({ email: "nobody@example.com", password: "a-long-password" }),
+      body: JSON.stringify({ email: "nobody-10@example.com", password: "a-long-password" }),
     });
     expect(blocked.status).toBe(429);
 
     const otherSubnet = await harness.app.request("/v1/auth/login", {
       method: "POST",
       headers: { "content-type": "application/json", "fly-client-ip": "2001:db8:abcd:2::1" },
-      body: JSON.stringify({ email: "nobody@example.com", password: "a-long-password" }),
+      body: JSON.stringify({ email: "nobody-11@example.com", password: "a-long-password" }),
     });
     expect(otherSubnet.status).toBe(401);
 
@@ -277,7 +277,7 @@ describe("M15 security controls: sessions, scoped API tokens, and rate-limit con
     const unblocked = await harness.app.request("/v1/auth/login", {
       method: "POST",
       headers: { "content-type": "application/json", "fly-client-ip": "2001:db8:abcd:1::55" },
-      body: JSON.stringify({ email: "nobody@example.com", password: "a-long-password" }),
+      body: JSON.stringify({ email: "nobody-12@example.com", password: "a-long-password" }),
     });
     expect(unblocked.status).toBe(401);
 

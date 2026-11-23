@@ -9,6 +9,7 @@ import { API_TOKEN_SCOPES, type ApiTokenRecord, type ApiTokenRepository, type Ap
 import type { AuditLogRepository } from "../repositories/AuditLogRepository.js";
 import type { SessionRepository } from "../repositories/SessionRepository.js";
 import type { UserRepository } from "../repositories/UserRepository.js";
+import { LOGIN_THROTTLE_POLICY } from "./LoginThrottle.js";
 
 export type LimiterName = "credential" | "adminRead" | "adminWrite" | "billing" | "totp";
 
@@ -39,7 +40,7 @@ export interface CreatedApiTokenView {
 }
 
 export interface RateLimitEntryView {
-  readonly source: "memory" | "login_windows" | "login_email_windows";
+  readonly source: "memory" | "login_email_windows";
   readonly limiter: string;
   readonly keyHash: string;
   readonly maskedKey: string;
@@ -57,9 +58,6 @@ export interface RateLimitClearFilter {
 }
 
 const VALID_SCOPE_SET = new Set<string>(API_TOKEN_SCOPES);
-const LOGIN_IP_WINDOW_MS = 60_000;
-const LOGIN_EMAIL_WINDOW_MS = 15 * 60_000;
-const LOGIN_WINDOW_MAX = 10;
 
 export class SecurityService {
   constructor(
@@ -206,8 +204,7 @@ export class SecurityService {
       }
     }
     const nowMs = this.clock().getTime();
-    this.collectDbWindows("login_windows", "address", LOGIN_IP_WINDOW_MS, nowMs, entries);
-    this.collectDbWindows("login_email_windows", "email", LOGIN_EMAIL_WINDOW_MS, nowMs, entries);
+    this.collectEmailWindows(nowMs, entries);
     return { entries, total: entries.length };
   }
 
@@ -235,8 +232,7 @@ export class SecurityService {
       }
 
       if (!filter.limiter || filter.limiter === "credential") {
-        cleared += this.clearDbWindows("login_windows", "address", targetHash, filter.key, normalizedKey);
-        cleared += this.clearDbWindows("login_email_windows", "email", targetHash, filter.key, normalizedKey);
+        cleared += this.clearEmailWindows(targetHash, filter.key, normalizedKey);
       }
 
       this.audit.record(
@@ -251,38 +247,33 @@ export class SecurityService {
     });
   }
 
-  private collectDbWindows(
-    table: "login_windows" | "login_email_windows",
-    column: "address" | "email",
-    windowMs: number,
-    nowMs: number,
-    out: RateLimitEntryView[],
-  ): void {
-    const rows = this.database.all<{ k: string; start: number; hits: number }>(`SELECT ${column} AS k, start, hits FROM ${table} WHERE start > ?`, nowMs - windowMs);
+  private collectEmailWindows(nowMs: number, out: RateLimitEntryView[]): void {
+    const { windowMs, maxFailures } = LOGIN_THROTTLE_POLICY;
+    const rows = this.database.all<{ k: string; start: number; hits: number }>("SELECT email AS k, start, hits FROM login_email_windows WHERE start > ?", nowMs - windowMs);
     for (const row of rows) {
       const resetAtMs = Number(row.start) + windowMs;
       out.push({
-        source: table,
+        source: "login_email_windows",
         limiter: "credential",
         keyHash: SecurityService.hashKey(row.k),
         maskedKey: SecurityService.maskKey(row.k),
         count: Number(row.hits),
-        max: LOGIN_WINDOW_MAX,
-        remaining: Math.max(0, LOGIN_WINDOW_MAX - Number(row.hits)),
+        max: maxFailures,
+        remaining: Math.max(0, maxFailures - Number(row.hits)),
         resetAt: new Date(resetAtMs).toISOString(),
         resetInSeconds: Math.max(1, Math.ceil((resetAtMs - nowMs) / 1000)),
       });
     }
   }
 
-  private clearDbWindows(table: "login_windows" | "login_email_windows", column: "address" | "email", targetHash?: string, rawKey?: string, normalizedKey?: string): number {
-    if (!targetHash && rawKey === undefined) return Number(this.database.run(`DELETE FROM ${table}`).changes);
-    const rows = this.database.all<{ k: string }>(`SELECT ${column} AS k FROM ${table}`);
+  private clearEmailWindows(targetHash?: string, rawKey?: string, normalizedKey?: string): number {
+    if (!targetHash && rawKey === undefined) return Number(this.database.run("DELETE FROM login_email_windows").changes);
+    const rows = this.database.all<{ k: string }>("SELECT email AS k FROM login_email_windows");
     let count = 0;
     for (const row of rows) {
       const hashMatches = targetHash ? SecurityService.hashKey(row.k) === targetHash : false;
       const keyMatches = rawKey !== undefined && (row.k === rawKey || row.k === normalizedKey);
-      if (hashMatches || keyMatches) count += Number(this.database.run(`DELETE FROM ${table} WHERE ${column} = ?`, row.k).changes);
+      if (hashMatches || keyMatches) count += Number(this.database.run("DELETE FROM login_email_windows WHERE email = ?", row.k).changes);
     }
     return count;
   }
