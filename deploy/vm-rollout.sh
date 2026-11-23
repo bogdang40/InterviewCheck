@@ -23,12 +23,22 @@ for name in IMAGE ACR SITE_ADDRESS BACKUP_ACCOUNT COMPOSE_B64 CADDY_B64 BACKUP_B
 done
 [ -f app.env ] || { echo "app.env is missing: run deploy/provision-azure.sh first"; exit 1; }
 
-echo "$COMPOSE_B64" | base64 -d > compose.yml
-echo "$BACKUP_B64" | base64 -d > backup.sh && chmod 755 backup.sh
 # Caddy reads its Caddyfile only when it starts or reloads. The new one waits in Caddyfile.next until
 # the new app is healthy (apply_caddyfile); only a first deploy, with no Caddyfile yet, starts on it.
 echo "$CADDY_B64" | base64 -d > Caddyfile.next
+CADDY_ID=$(docker inspect --format '{{.Image}}' interviewcheck-caddy-1 2>/dev/null || true)
+if [ -f Caddyfile ] && [ -n "$CADDY_ID" ] && ! cmp -s Caddyfile.next Caddyfile; then
+  # Checked with the running Caddy's own image before anything changes, so a bad file costs nothing.
+  log "validating the new Caddyfile with the running Caddy image ($CADDY_ID)"
+  if ! docker run --rm -e SITE_ADDRESS="$SITE_ADDRESS" -v "$DIR/Caddyfile.next:/etc/caddy/Caddyfile:ro" \
+      "$CADDY_ID" caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile; then
+    log "the new Caddyfile is not valid; nothing was changed and the current app and Caddy config keep running"
+    exit 1
+  fi
+fi
 [ -f Caddyfile ] || cp Caddyfile.next Caddyfile
+echo "$COMPOSE_B64" | base64 -d > compose.yml
+echo "$BACKUP_B64" | base64 -d > backup.sh && chmod 755 backup.sh
 mkdir -p data && chown 10001:10001 data
 cat > deploy.env <<EOF
 SITE_ADDRESS=$SITE_ADDRESS

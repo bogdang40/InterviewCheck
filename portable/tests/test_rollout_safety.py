@@ -20,7 +20,9 @@ FAKE_DOCKER = r"""#!/bin/bash
 printf '%s|%s\n' "${IMAGE:-}" "$*" >> "$DOCKER_LOG"
 case "$*" in
   *'{{.Config.Image}}'*) echo "$OLD_IMAGE" ;;
+  *'{{.Image}}'*caddy-1*) echo sha256:caddyid ;;
   *'{{.Image}}'*) echo sha256:oldid ;;
+  *"run --rm"*"caddy validate"*) exit "$CADDY_PRECHECK_EXIT" ;;
   *Health.Status*)
     if [ "$(cat "$STATE" 2>/dev/null)" = "$NEW_IMAGE" ] && [ "$NEW_HEALTHY" = 0 ]; then echo unhealthy; else echo healthy; fi ;;
   *"compose up"*) echo "$IMAGE" > "$STATE" ;;
@@ -51,7 +53,7 @@ def _tools(tmp_path: Path, extra: dict[str, str]) -> Path:
     return tools
 
 
-def rollout(tmp_path, *, new_healthy=True, validate_exit=0, edge_exit=0, caddyfile=NEW_CADDY):
+def rollout(tmp_path, *, new_healthy=True, precheck_exit=0, validate_exit=0, edge_exit=0, caddyfile=NEW_CADDY):
     work, units = tmp_path / "srv", tmp_path / "units"
     for folder in (work, units, work / "data"):
         folder.mkdir()
@@ -66,7 +68,8 @@ def rollout(tmp_path, *, new_healthy=True, validate_exit=0, edge_exit=0, caddyfi
     env = {**os.environ, "PATH": f"{tools}{os.pathsep}{os.environ['PATH']}", "IMAGE": NEW_IMAGE, "ACR": "fake",
            "SITE_ADDRESS": "site.test", "BACKUP_ACCOUNT": "fake", "DOCKER_LOG": str(log),
            "STATE": str(tmp_path / "running"), "OLD_IMAGE": OLD_IMAGE, "NEW_IMAGE": NEW_IMAGE,
-           "NEW_HEALTHY": "1" if new_healthy else "0", "CADDY_VALIDATE_EXIT": str(validate_exit)}
+           "NEW_HEALTHY": "1" if new_healthy else "0", "CADDY_VALIDATE_EXIT": str(validate_exit),
+           "CADDY_PRECHECK_EXIT": str(precheck_exit)}
     for key, value in {"COMPOSE_B64": "services: {}", "CADDY_B64": caddyfile, "BACKUP_B64": FAKE_BACKUP}.items():
         env[key] = base64.b64encode(value.encode()).decode()
     result = subprocess.run(["bash", str(script)], env=env, text=True, capture_output=True, cwd=tmp_path)
@@ -107,8 +110,28 @@ def test_changed_caddyfile_is_validated_and_reloaded_after_the_app_is_healthy(tm
 def test_unchanged_caddyfile_does_not_touch_caddy(tmp_path):
     result, work, calls = rollout(tmp_path, caddyfile=OLD_CADDY)
     assert result.returncode == 0, result.stdout + result.stderr
-    assert not [line for line in calls if "caddy caddy" in line]
+    assert not [line for line in calls if "caddy validate" in line or "caddy reload" in line]
     assert not (work / "Caddyfile.previous").exists()
+
+
+def test_invalid_caddyfile_stops_the_rollout_before_anything_changes(tmp_path):
+    result, work, calls = rollout(tmp_path, precheck_exit=1)
+    assert result.returncode == 1, result.stdout + result.stderr
+    precheck = [line for line in calls if "run --rm" in line]
+    assert len(precheck) == 1 and "Caddyfile.next:/etc/caddy/Caddyfile:ro sha256:caddyid caddy validate" in precheck[0]
+    assert "nothing was changed" in result.stdout
+    for step in ("pull", "compose up", "compose stop", "|tag ", "exec -T caddy"):
+        assert not [line for line in calls if step in line], step
+    assert not (work / "data/.backups").exists() and not (work / "compose.yml").exists()
+    assert (work / "Caddyfile").read_text() == OLD_CADDY
+    assert (work / "data/review.sqlite3").read_text() == "written by the new version"
+
+
+def test_valid_caddyfile_is_checked_first_then_applied_after_the_app(tmp_path):
+    result, work, calls = rollout(tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    precheck = next(i for i, c in enumerate(calls) if "run --rm" in c and "caddy validate" in c)
+    assert precheck < next(i for i, c in enumerate(calls) if "compose" in c and "pull" in c)
 
 
 def test_rejected_caddyfile_is_restored_and_the_app_rolls_back(tmp_path):
