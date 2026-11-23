@@ -111,6 +111,10 @@ Workable writes comments restricted to administrators when `WORKABLE_MEMBER_ID` 
 
 Each saved answer has one revision for the transcript, sources, disposition and note. The first revision is 1. A material change increments it. The browser sends its draft's `expected_revision` on PUT and PATCH. A stale request receives HTTP 409 and the header `X-InterviewCheck-Conflict: answer-revision`. Reloading the saved exchange shows its latest content alongside the editable draft. The reviewer can keep editing the draft against that version or discard it. This also applies before moving to the next pending review. Existing records receive revision 1 on upgrade. Clients that omit `expected_revision` keep their original update behavior.
 
+The scorecard editor sends the version it opened. If someone else saves first, the editor combines edits to different criteria and asks which score to keep for each criterion that both reviewers changed. Check the result and select **Save scorecard**. Unchanged criteria keep their original reviewer and update time. A rationale needs a rating before it can be saved.
+
+Local answer edits follow the saved draft or published exchange they belong to. Reverting all edits clears that editor's recovery copy. If an older app saved edits without recording the draft ID, open **Unlinked local draft** to inspect and copy or download the text. Moving an interview to Trash clears its local copies in this browser. Signing out clears local copies for the workspace.
+
 ## Import a WebVTT conversation
 
 Open a consented interview in progress and choose **Import transcript exchanges**. Select the candidate and each interviewer. The importer groups adjacent interviewer cues into prompts and candidate cues into answers. Other speakers interrupt a pair. The preview counts unassigned cues, standalone candidate turns and unanswered prompts. Inspect the question and answer text, edit either, and select the exchanges to save. The existing **Import a meeting transcript** control inside the exchange editor still imports one exchange.
@@ -159,6 +163,8 @@ The interview archive loads 25 summaries per page. Its URL preserves the candida
 
 Open **Interviews** to find reviews by assignee, priority or deadline. **Due soon** covers the next 48 hours, including the upper bound. Each page shows its position in the filtered queue. Moving to another page or filter clears the current selection; bulk changes apply only to the selected interviews on the displayed page. Interviews in Trash are excluded.
 
+When editing one assignment, leaving the displayed UTC date unchanged preserves the original time and precision. Changing the date sets the deadline to 23:59:59 UTC. A blank date clears the deadline. Bulk assignment replaces the deadline on every selected interview.
+
 ## Question origins
 
 A new exchange can have one explicit origin. Choose a **Planned question** to link its one based slot in this interview's frozen plan, or select **Parent exchange** to link a follow up. The **Ask this follow up** action fills the suggested question and selects its parent. Editing the question wording preserves the link. Select a different origin to replace it, or clear the current selection to remove it. An imported, manual or older exchange has no recorded lineage until an operator explicitly assigns one.
@@ -167,6 +173,8 @@ In the focused interview, **Question plan** shows how many slots have a recorded
 
 Clients can supply `parent_answer_id` or `planned_slot` when creating or updating an exchange or saved draft. Omit both on update to preserve the existing origin. Supplying either field sets the origin pair; explicit nulls clear it.
 
+
+Candidate comparisons use the saved question plan for each interview. If plans differ, each candidate's cell shows the prompt that applied at the time. Additional answers retain their slot and exchange link. Excerpts and reviewer notes require a new selection when the comparison moves to a different set or order of interviews.
 
 ## Workspace recovery
 
