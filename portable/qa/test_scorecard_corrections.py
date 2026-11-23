@@ -1,3 +1,5 @@
+from urllib.parse import parse_qs, urlsplit
+
 import httpx
 import pytest
 from playwright.sync_api import expect
@@ -45,9 +47,10 @@ def test_removal_is_reversible_and_last_grade_can_be_cleared(workspace_url, brow
         panel.get_by_role("button", name="Remove saved rating for Custom criterion").click()
         expect(page.get_by_test_id("scorecard-weighted-badge")).to_have_text("Score: Ungraded")
         assert [r["rationale"] for r in client.get(path).json()["items"]] == ["Saved rationale", "Custom rationale"]
-        with page.expect_response(lambda r: r.request.method == "PUT" and r.url.endswith(path)) as complete:
+        with page.expect_response(lambda r: r.request.method == "PUT" and urlsplit(r.url).path == path) as complete:
             panel.get_by_role("button", name="Save scorecard", exact=True).click()
         assert complete.value.ok and complete.value.request.post_data_json["items"] == []
+        assert parse_qs(urlsplit(complete.value.url).query) == {"include_handoff_notes": ["false"]}
         expect(panel.get_by_text("Scorecard saved.", exact=True)).to_be_visible()
         page.reload(wait_until="domcontentloaded")
         expect(panel.get_by_label("Rationale for Current template wording")).to_have_value("")

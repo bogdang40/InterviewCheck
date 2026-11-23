@@ -5,11 +5,11 @@ import hashlib
 import json
 import sqlite3
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import Field, field_validator
 from starlette.concurrency import run_in_threadpool
 
-from . import access, prompt_framing, sql_script, store
+from . import access, handoff_page, prompt_framing, sql_script, store
 from .models import Input
 from .scorecard_math import weighted_score_pct
 
@@ -150,7 +150,7 @@ def _scorecard_version(session_id, rubric, saved):
     return hashlib.sha256(content.encode()).hexdigest()
 
 
-def _load_scorecard_state(db: sqlite3.Connection, session_id: str) -> dict[str, Any]:
+def _load_scorecard_state(db: sqlite3.Connection, session_id: str, *, include_handoff_notes: bool = True) -> dict[str, Any]:
     store.get_summary(db, session_id)
     rubric = _load_role_rubric(db, session_id)
     saved_rows = _saved_scores(db, session_id)
@@ -180,40 +180,35 @@ def _load_scorecard_state(db: sqlite3.Connection, session_id: str) -> dict[str, 
         if cid not in seen:
             seen.add(cid)
             items.append(row)
-    notes = [
-        dict(row)
-        for row in db.execute(
-            """SELECT id, session_id, author_email, category, body, created_at
-               FROM session_handoff_notes WHERE session_id=? ORDER BY created_at DESC, id DESC""",
-            (session_id,),
-        ).fetchall()
-    ]
-    return {
+    state = {
         "session_id": session_id,
         "version": _scorecard_version(session_id, rubric, saved_rows),
         "items": items,
         "weighted_score_pct": weighted_score_pct(items),
-        "handoff_notes": notes,
+        "handoff_notes": handoff_page.all_notes(db, session_id) if include_handoff_notes else [],
     }
+    if not include_handoff_notes:
+        state["handoff_notes_paged"] = True
+    return state
 
 
 @router.get("/sessions/{sid}/scorecard")
-def get_scorecard(sid: UUID):
+def get_scorecard(sid: UUID, include_handoff_notes: bool = True):
     with store.connection() as db:
-        return _load_scorecard_state(db, str(sid))
+        return _load_scorecard_state(db, str(sid), include_handoff_notes=include_handoff_notes)
 
 
 @router.put("/sessions/{sid}/scorecard")
-async def save_scorecard(sid: UUID, payload: ScorecardSaveInput, request: Request):
+async def save_scorecard(sid: UUID, payload: ScorecardSaveInput, request: Request, include_handoff_notes: bool = True):
     _, actor_email = await access.optional_actor(request)
-    return await run_in_threadpool(_save_scorecard, str(sid), payload, actor_email)
+    return await run_in_threadpool(_save_scorecard, str(sid), payload, actor_email, include_handoff_notes)
 
 
 def _matches_saved_score(row, fields):
     return row is not None and all(row[name] == value for name, value in fields.items())
 
 
-def _save_scorecard(key: str, payload: ScorecardSaveInput, actor_email: str):
+def _save_scorecard(key: str, payload: ScorecardSaveInput, actor_email: str, include_handoff_notes: bool = True):
     now = store.timestamp()
     with store.connection(write=True) as db:
         store.get_summary(db, key)
@@ -225,7 +220,7 @@ def _save_scorecard(key: str, payload: ScorecardSaveInput, actor_email: str):
                                     headers={"X-InterviewCheck-Conflict": "scorecard-version"})
         values = [item.model_dump() for item in payload.items]
         if len(values) == len(previous) and all(_matches_saved_score(row, item) for row, item in zip(previous, values)):
-            return _load_scorecard_state(db, key)
+            return _load_scorecard_state(db, key, include_handoff_notes=include_handoff_notes)
         previous_by_id = {row["criterion_id"]: row for row in previous}
         db.execute("DELETE FROM session_scorecards WHERE session_id=?", (key,))
         for item, fields in zip(payload.items, values):
@@ -246,7 +241,14 @@ def _save_scorecard(key: str, payload: ScorecardSaveInput, actor_email: str):
                     prior["updated_at"] if unchanged else now,
                 ),
             )
-        return _load_scorecard_state(db, key)
+        return _load_scorecard_state(db, key, include_handoff_notes=include_handoff_notes)
+
+
+@router.get("/sessions/{sid}/handoff-notes")
+def list_handoff_notes(sid: UUID, category: HandoffCategory | None = None, limit: int = Query(default=20, ge=1, le=50),
+                       cursor: str = Query(default="", max_length=handoff_page.MAX_CURSOR)):
+    with store.connection() as db:
+        return handoff_page.read(db, str(sid), category, limit, cursor)
 
 
 @router.post("/sessions/{sid}/handoff-notes", status_code=201)

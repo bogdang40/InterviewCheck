@@ -115,6 +115,8 @@ The scorecard editor sends the version it opened. If someone else saves first, t
 
 To correct a grade entered by mistake, mark that saved rating for removal. The preview excludes the marked rating. Its rationale stays available for **Undo** until you save. After saving, a criterion in the current role appears ungraded. A criterion added only to this interview disappears. If another reviewer changed a marked rating, compare their edit with the proposed removal before saving again.
 
+The handoff panel loads 20 notes at a time. Select a category or browse older notes without losing a note you are writing or a score you are editing. The panel uses the saved note timestamp and ID for stable ordering. Paging affects only the panel. A workspace backup still carries all handoff notes for each included interview.
+
 Local answer edits follow the saved draft or published exchange they belong to. Reverting all edits clears that editor's recovery copy. If an older app saved edits without recording the draft ID, open **Unlinked local draft** to inspect and copy or download the text. Moving an interview to Trash clears its local copies in this browser. Signing out clears local copies for the workspace.
 
 ## Import a WebVTT conversation
