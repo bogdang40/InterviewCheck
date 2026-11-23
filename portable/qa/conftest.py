@@ -7,8 +7,8 @@ import time
 
 import pytest
 from playwright.sync_api import Error as PlaywrightError, sync_playwright
-import uvicorn
 
+from e2e_suite.harness import qa_server
 from next_frontend import can_bind, free_port, manifest_api_port, serve_next
 
 BROWSER_ARGS = ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"]
@@ -78,7 +78,7 @@ def workspace_url(tmp_path, monkeypatch, frontend):
 
     with socket.create_server(("127.0.0.1", api_port)) as listener:
         port = listener.getsockname()[1]
-        server = uvicorn.Server(uvicorn.Config(app, access_log=False, log_level="warning", timeout_keep_alive=300))
+        server = qa_server(app)
         thread = threading.Thread(target=server.run, kwargs={"sockets": [listener]}, daemon=True)
         thread.start()
         try:
