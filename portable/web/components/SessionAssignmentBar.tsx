@@ -146,7 +146,8 @@ export default function SessionAssignmentBar({ sessionId }: { sessionId: string 
 
         <label className="field">
           Priority
-          <select value={priority} disabled={loading || busy !== null} onChange={(e) => setPriority(e.target.value as AssignmentPriority)}>
+          <select aria-label="Priority" value={priority} disabled={loading || busy !== null}
+            onChange={(e) => setPriority(e.target.value as AssignmentPriority)}>
             <option value="low">Low</option>
             <option value="normal">Normal</option>
             <option value="high">High</option>
