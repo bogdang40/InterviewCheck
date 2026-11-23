@@ -162,7 +162,7 @@ def test_role_file_round_trips_at_field_limits(monkeypatch, tmp_path, character,
         export = source.get("/api/roles/" + role["id"] + "/export").raise_for_status()
         assert export_bytes <= len(export.content) <= 4 * 1024 * 1024
         assert export.json() == {
-            "format": "interviewcheck.role-kit", "version": 1, "role": {**payload, "id": role["id"]},
+            "format": "interviewcheck.role-kit", "version": 2, "role": {**payload, "id": role["id"], "rubric": []},
         }
 
     monkeypatch.setenv("INTERVIEWCHECK_DB", str(tmp_path / "role-destination.sqlite"))

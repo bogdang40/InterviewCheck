@@ -8,6 +8,7 @@ import JudgeAssist from "./JudgeAssist"
 import { Button } from "./ui/button"
 import { Textarea } from "./ui/textarea"
 import { formatDraftTimestamp, reviewDraftKey, useLocalDraftRecovery } from "@/lib/localDraftBuffer"
+import UnlinkedDraftCopy from "./UnlinkedDraftCopy"
 
 const ConflictReview = dynamic(() => import("./ConflictReview"), { ssr: false })
 
@@ -94,13 +95,14 @@ export default function Evidence({
     (b) => (b.note ?? b.text) === item.note && (b.disposition === undefined || b.disposition === item.disposition),
   )
   const restoreLocalDraft = () => {
-    if (!recovered) return
+    noteRef.current?.focus()
+    if (!recovered || !markRestored()) return
     setNote(recovered.note ?? recovered.text)
     if (recovered.disposition === "pending" || recovered.disposition === "explained" ||
       recovered.disposition === "unresolved" || recovered.disposition === "disclosed") {
       setDisposition(recovered.disposition)
     }
-    setSaved(false); markRestored()
+    setSaved(false)
   }
   useEffect(() => {
     if (!dirty && !busy && !conflict && initial.revision > item.revision) {
@@ -198,6 +200,7 @@ export default function Evidence({
           <pre>{JSON.stringify(item.legacy, null, 2)}</pre>
         </details>
       )}
+      <UnlinkedDraftCopy sessionId={sessionId} afterDiscard={() => noteRef.current?.focus()} />
       {recovered && (
         <section className="notice stack" role="region" aria-label="Local draft recovery" style={{ marginTop: "12px" }}>
           <div className="spread">
@@ -207,7 +210,7 @@ export default function Evidence({
           {stale && <p className="error" role="status">Server revision changed ({item.revision}) since base revision {recovered.baseRevision}.</p>}
           <div className="row">
             <Button type="button" size="sm" variant="outline" onClick={restoreLocalDraft}>Restore local edits</Button>
-            <Button type="button" size="sm" variant="ghost" onClick={clearLocalBuffer}>Discard local copy</Button>
+            <Button type="button" size="sm" variant="ghost" onClick={() => { clearLocalBuffer(); noteRef.current?.focus() }}>Discard local copy</Button>
           </div>
         </section>
       )}

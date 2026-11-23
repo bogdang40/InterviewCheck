@@ -2,11 +2,11 @@
 
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
-import { type FormEvent, useEffect, useMemo, useRef, useState } from "react"
+import { type FormEvent, useEffect, useId, useMemo, useRef, useState } from "react"
 import { ArrowRight, RefreshCw, Trash2, UserCheck } from "lucide-react"
-import { dateLabel, message } from "@/lib/api"
+import { message } from "@/lib/api"
 import {
-  bulkAssignSessions, fetchAssignmentQueue, isDueOverdue, toDueAtIso,
+  bulkAssignSessions, deadlineLabel, fetchAssignmentQueue, isDueOverdue, toDueAtIso,
   type AssignmentPriority, type AssignmentQueueFilters, type AssignmentQueueResponse,
 } from "@/lib/sessionAssignment"
 import WorkspaceError from "./WorkspaceError"
@@ -48,6 +48,7 @@ function navigate(mode: QueueMode, page: number, replace = false) {
 type QueueLoad = { key: string; data?: AssignmentQueueResponse; error?: string }
 
 export default function ArchiveAssignmentsStrip() {
+  const dueHelpId = useId()
   const params = useSearchParams()
   const mode = queueMode(params.get("queue"))
   const requestedPage = queuePage(params.get("queue_page"))
@@ -262,8 +263,8 @@ export default function ArchiveAssignmentsStrip() {
                 </select>
               </label>
               <label className="field">
-                Bulk due date
-                <Input type="date" value={bulkDueDate} disabled={bulkBusy !== null} onChange={(e) => setBulkDueDate(e.target.value)} />
+                Bulk due date (UTC)
+                <Input type="date" aria-describedby={dueHelpId} value={bulkDueDate} disabled={bulkBusy !== null} onChange={(e) => setBulkDueDate(e.target.value)} />
               </label>
               <div className="flex flex-wrap items-center gap-2">
                 <Button type="submit" size="sm" className="min-h-[44px] md:min-h-8" disabled={bulkBusy !== null}>
@@ -277,6 +278,7 @@ export default function ArchiveAssignmentsStrip() {
                   {bulkBusy === "clear" ? "Clearing..." : "Clear selected assignments"}
                 </Button>
               </div>
+              <small className="md:col-span-full" id={dueHelpId}>Assigning sets all selected deadlines to 23:59:59 UTC on this date. A blank date clears them.</small>
             </form>}
 
             {bulkStatus && <p role="status" aria-live="polite" className="notice">{bulkStatus}</p>}
@@ -309,7 +311,7 @@ export default function ArchiveAssignmentsStrip() {
                       </div>
                       <p className="muted text-xs break-all">
                         {item.assignee_email ? `Assigned to ${item.assignee_email}` : "Unassigned"}
-                        {item.due_at ? ` - Due ${dateLabel(item.due_at)}` : ""}
+                        {item.due_at && <> · Due <time dateTime={item.due_at}>{deadlineLabel(item.due_at)}</time></>}
                       </p>
                     </div>
                     <span className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--green-ink)] shrink-0">

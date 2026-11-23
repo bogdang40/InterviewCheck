@@ -21,6 +21,8 @@ export type CompareSlotCell = {
 
 export type CompareSlotRow = {
   slot: number | "unslotted" | string; label?: string; planned_question?: string | null
+  planned_questions?: Record<string, string | null>
+  owner_session_id?: string
   cells?: Record<string, CompareSlotCell | null>
   sessions?: Record<string, CompareSlotCell | null>
   answers?: Record<string, CompareSlotCell | null>
@@ -92,6 +94,6 @@ export function getSlotCell(row: CompareSlotRow, sessionId: string): CompareSlot
 export function formatSlotHeading(row: CompareSlotRow, index: number): string {
   if (row.label && row.label.trim()) return row.label
   if (row.slot === "unslotted") return "Unslotted"
-  if (typeof row.slot === "number") return `Question ${row.slot}`
+  if (typeof row.slot === "number") return `Question ${row.slot}${row.owner_session_id ? " (additional answer)" : ""}`
   return row.slot ? String(row.slot) : `Slot ${index + 1}`
 }

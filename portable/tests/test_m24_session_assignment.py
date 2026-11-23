@@ -138,6 +138,20 @@ def test_put_get_delete_assignment_and_suggested_reviewers(client):
     assert client.get(f"/api/sessions/{sid}/assignment").json()["assignment"] is None
 
 
+def test_priority_change_preserves_historical_deadline_until_the_instant_changes(client):
+    sid = _create_session(client)
+    path = f"/api/sessions/{sid}/assignment"
+    form = {"assignee_email": "reviewer@example.test", "priority": "normal", "due_at": "2030-03-10T00:30:00.123456Z"}
+    client.put(path, json=form).raise_for_status()
+    historical = "2030-03-09T17:30:00.123456-07:00"
+    with store.connection(write=True) as db:
+        db.execute("UPDATE session_assignments SET due_at=? WHERE session_id=?", (historical, sid))
+    retained = client.put(path, json={**form, "priority": "high"}).raise_for_status().json()["assignment"]
+    assert retained["due_at"] == historical and retained["priority"] == "high"
+    changed = client.put(path, json={**form, "due_at": "2030-03-09T17:30:00.123457-07:00"}).raise_for_status().json()
+    assert changed["assignment"]["due_at"] == "2030-03-10T00:30:00.123457+00:00"
+
+
 def test_assignment_404_and_422_validation(client):
     missing = str(uuid4())
     assert client.get(f"/api/sessions/{missing}/assignment").status_code == 404

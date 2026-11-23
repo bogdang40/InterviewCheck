@@ -2,9 +2,9 @@
 
 import { type FormEvent, useEffect, useId, useState } from "react"
 import { CalendarClock, Trash2, UserCheck } from "lucide-react"
-import { dateLabel, message } from "@/lib/api"
+import { message } from "@/lib/api"
 import {
-  clearSessionAssignment, fetchSessionAssignment, isDueOverdue, saveSessionAssignment,
+  clearSessionAssignment, deadlineLabel, fetchSessionAssignment, isDueOverdue, saveSessionAssignment,
   toDateInputValue, toDueAtIso, type AssignmentPriority, type SessionAssignment,
 } from "@/lib/sessionAssignment"
 import WorkspaceError from "./WorkspaceError"
@@ -22,6 +22,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export default function SessionAssignmentBar({ sessionId }: { sessionId: string }) {
   const datalistId = useId()
+  const dueHelpId = useId()
   const [assignment, setAssignment] = useState<SessionAssignment | null>(null)
   const [suggestions, setSuggestions] = useState<string[]>([])
   const [assigneeEmail, setAssigneeEmail] = useState("")
@@ -40,6 +41,7 @@ export default function SessionAssignmentBar({ sessionId }: { sessionId: string 
     setLoadError("")
     fetchSessionAssignment(sessionId, controller.signal)
       .then((res) => {
+        if (controller.signal.aborted) return
         setAssignment(res.assignment)
         setSuggestions(res.suggested_reviewers)
         setAssigneeEmail(res.assignment?.assignee_email ?? "")
@@ -62,7 +64,7 @@ export default function SessionAssignmentBar({ sessionId }: { sessionId: string 
     setStatusNotice("")
     try {
       const saved = await saveSessionAssignment(sessionId, {
-        assignee_email: trimmedEmail, priority, due_at: toDueAtIso(dueDate),
+        assignee_email: trimmedEmail, priority, due_at: toDueAtIso(dueDate, assignment?.due_at),
       })
       setAssignment(saved)
       setAssigneeEmail(saved.assignee_email)
@@ -115,7 +117,7 @@ export default function SessionAssignmentBar({ sessionId }: { sessionId: string 
               <>
                 <Badge variant="outline">
                   <CalendarClock className="size-3" aria-hidden="true" />
-                  Due {dateLabel(assignment.due_at)}
+                  Due <time dateTime={assignment.due_at}>{deadlineLabel(assignment.due_at)}</time>
                 </Badge>
                 {isDueOverdue(assignment.due_at) && <Badge variant="warning">Overdue</Badge>}
               </>
@@ -144,7 +146,8 @@ export default function SessionAssignmentBar({ sessionId }: { sessionId: string 
 
         <label className="field">
           Priority
-          <select value={priority} disabled={loading || busy !== null} onChange={(e) => setPriority(e.target.value as AssignmentPriority)}>
+          <select aria-label="Priority" value={priority} disabled={loading || busy !== null}
+            onChange={(e) => setPriority(e.target.value as AssignmentPriority)}>
             <option value="low">Low</option>
             <option value="normal">Normal</option>
             <option value="high">High</option>
@@ -152,8 +155,8 @@ export default function SessionAssignmentBar({ sessionId }: { sessionId: string 
         </label>
 
         <label className="field">
-          Due date
-          <Input type="date" value={dueDate} disabled={loading || busy !== null} onChange={(e) => setDueDate(e.target.value)} />
+          Due date (UTC)
+          <Input type="date" aria-describedby={dueHelpId} value={dueDate} disabled={loading || busy !== null} onChange={(e) => setDueDate(e.target.value)} />
         </label>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -169,6 +172,7 @@ export default function SessionAssignmentBar({ sessionId }: { sessionId: string 
           </Button>
         </div>
       </form>
+      <small id={dueHelpId}>Changing the date sets the deadline to 23:59:59 UTC. A blank date clears it.</small>
 
       {statusNotice && <p role="status" aria-live="polite" className="notice">{statusNotice}</p>}
       {actionError && <p role="alert" className="error">{actionError}</p>}

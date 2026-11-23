@@ -172,10 +172,10 @@ async def put_assignment(sid: UUID, payload: SessionAssignmentInput, request: Re
 
 def _save_assignment(key: str, payload: SessionAssignmentInput, actor_email: str):
     now = store.timestamp()
-    due_iso = payload.due_at.isoformat() if payload.due_at is not None else None
     with store.connection(write=True) as db:
         _require_active_session(db, key)
         migrate(db)
+        due_iso = _deadline_for_update(db, key, payload.due_at)
         db.execute(
             """INSERT INTO session_assignments(session_id, assignee_email, assigned_by, priority, due_at, updated_at)
                VALUES (?,?,?,?,?,?)
@@ -194,6 +194,21 @@ def _save_assignment(key: str, payload: SessionAssignmentInput, actor_email: str
             "updated_at": now,
         }
     }
+
+
+def _deadline_for_update(db: sqlite3.Connection, session_id: str, requested: datetime | None) -> str | None:
+    if requested is None:
+        return None
+    canonical = requested.isoformat()
+    row = db.execute("SELECT due_at FROM session_assignments WHERE session_id=?", (session_id,)).fetchone()
+    if row and isinstance(row["due_at"], str) and row["due_at"] != canonical:
+        # Earlier stores can retain the original offset or use Z for UTC.
+        try:
+            if datetime.fromisoformat(row["due_at"]) == requested:
+                return row["due_at"]
+        except ValueError:
+            pass  # A valid new deadline can replace an unreadable old value.
+    return canonical
 
 
 @router.delete("/sessions/{sid}/assignment")

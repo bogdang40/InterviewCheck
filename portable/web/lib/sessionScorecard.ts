@@ -29,12 +29,14 @@ export type HandoffNote = {
 }
 export type ScorecardState = {
   available: boolean
+  version: string | null
   items: ScorecardItem[]
   weighted_score_pct: number | null
   handoff_notes: HandoffNote[]
 }
 
 export class ScorecardApiError extends ApiError {}
+export class ScorecardVersionConflict extends ScorecardApiError {}
 
 function extractError(data: unknown, status: number): string {
   if (data && typeof data === "object") {
@@ -68,25 +70,42 @@ export function computeWeightedScorePct(items: ReadonlyArray<{ weight: number; r
 export async function fetchSessionScorecard(sessionId: string, signal?: AbortSignal): Promise<ScorecardState> {
   try {
     const data = await requestJson<Omit<ScorecardState, "available">>(`/api/sessions/${sessionId}/scorecard`, { signal })
+    if (!Array.isArray(data?.items)) throw new Error("The server returned an unreadable scorecard.")
     return {
       available: true,
-      items: Array.isArray(data.items) ? data.items : [],
+      version: typeof data.version === "string" && /^[a-f0-9]{64}$/.test(data.version) ? data.version : null,
+      items: data.items,
       weighted_score_pct: typeof data.weighted_score_pct === "number" ? data.weighted_score_pct : null,
       handoff_notes: Array.isArray(data.handoff_notes) ? data.handoff_notes : [],
     }
   } catch (error) {
     if (error instanceof ScorecardApiError && (error.status === 404 || error.status === 501)) {
-      return { available: false, items: [], weighted_score_pct: null, handoff_notes: [] }
+      return { available: false, version: null, items: [], weighted_score_pct: null, handoff_notes: [] }
     }
     throw error
   }
 }
 
-export function saveSessionScorecard(
+type SavedScorecard = { version: string; items: ScorecardItem[] }
+
+export async function saveSessionScorecard(
   sessionId: string,
   items: ScorecardSaveItem[],
-): Promise<{ items: ScorecardItem[]; weighted_score_pct: number | null }> {
-  return requestJson(`/api/sessions/${sessionId}/scorecard`, { method: "PUT", body: JSON.stringify({ items }) })
+  expectedVersion: string,
+): Promise<SavedScorecard> {
+  const data = await request<SavedScorecard>(`/api/sessions/${sessionId}/scorecard`, {
+    method: "PUT", json: { items, expected_version: expectedVersion },
+    toError: (response, body) => {
+      const reason = extractError(body, response.status)
+      return response.status === 409 && response.headers.get("X-InterviewCheck-Conflict") === "scorecard-version"
+        ? new ScorecardVersionConflict(response.status, reason)
+        : new ScorecardApiError(response.status, reason)
+    },
+  })
+  if (!Array.isArray(data?.items) || typeof data.version !== "string" || !/^[a-f0-9]{64}$/.test(data.version)) {
+    throw new Error("The server could not confirm the saved scorecard.")
+  }
+  return data
 }
 
 export function createHandoffNote(

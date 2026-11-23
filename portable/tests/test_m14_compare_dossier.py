@@ -77,7 +77,8 @@ def test_compare_2_to_6_candidates_slot_alignment_and_counts(client):
     }
     assert body["sessions"][1]["counts"]["unresolved"] == 1
     assert [row["slot"] for row in body["slots"]] == [1, 2, "unslotted"]
-    assert body["slots"][0]["planned_question"] == "Explain Raft."
+    assert body["slots"][0]["planned_question"] is None
+    assert body["slots"][0]["planned_questions"] == {s1["id"]: "Explain Raft.", s2["id"]: "Explain Raft.", s3["id"]: None}
     assert body["slots"][0]["cells"][s1["id"]]["passage_count"] == 1
     assert body["slots"][1]["cells"][s2["id"]] is None
     assert body["slots"][2]["cells"][s1["id"]]["answer_id"] == a1u["id"]
@@ -87,6 +88,54 @@ def test_compare_2_to_6_candidates_slot_alignment_and_counts(client):
     six_ids = [s1["id"], s2["id"], s3["id"]] + [_create_session(client, candidate=f"C{i}")["id"] for i in range(3)]
     res6 = client.post("/api/interviews/compare", json={"session_ids": six_ids})
     assert res6.status_code == 200 and len(res6.json()["sessions"]) == 6
+
+
+def test_comparison_keeps_each_interviews_plan_and_exchange_order(client):
+    shared, old, new = "Describe a failure.", "Assess <old> evidence.", "Assess new evidence."
+    role = _create_role(client, questions=[shared, old])
+    route = "/api/roles/" + role["id"]
+    ada = _create_session(client, candidate="Ada", role_id=role["id"])["id"]
+    client.put(route, json={"name": role["name"], "questions": [shared, new]}).raise_for_status()
+    grace = _create_session(client, candidate="Grace", role_id=role["id"])["id"]
+    client.put(route, json={"name": role["name"], "questions": [shared]}).raise_for_status()
+    lin = _create_session(client, candidate="Lin", role_id=role["id"])["id"]
+
+    first = _add_answer(client, ada, question="What did you observe?", slot=2)["id"]
+    extra = _add_answer(client, ada, question="Revisit the evidence.", slot=2)["id"]
+    free1 = _add_answer(client, grace, question="Independent Grace question.")["id"]
+    free2 = _add_answer(client, ada, question="Independent Ada question.")["id"]
+
+    ids = [ada, grace, lin]
+    def compare(order):
+        return client.post("/api/interviews/compare", json={"session_ids": order}).raise_for_status().json()
+
+    result = compare(ids)
+    reversed_result = compare(ids[::-1])
+    assert [s["id"] for s in reversed_result["sessions"]] == ids[::-1]
+    assert reversed_result["slots"] == result["slots"]
+    rows = result["slots"]
+    assert [r["slot"] for r in rows] == [1, 2, 2, "unslotted", "unslotted"]
+    assert rows[0]["planned_question"] == shared and "planned_questions" not in rows[0]
+    assert rows[1]["planned_question"] is None
+    assert rows[1]["planned_questions"] == {ada: old, grace: new, lin: None}
+    assert [r.get("owner_session_id") for r in rows[2:]] == [ada, grace, ada]
+    assert [c["answer_id"] for r in rows for c in r["cells"].values() if c] == [first, extra, free1, free2]
+
+    # The reports must attribute each snapshot prompt even if the reviewer asked a different question.
+    md = client.post("/api/interviews/compare/dossier", json={"session_ids": ids, "format": "markdown"}).raise_for_status().text
+    plan_section = md.split("### Slot 2\n", 1)[1].split("### Slot 2 (additional answer)", 1)[0]
+    assert "**Ada**\n\nPlanned question\n\n    " + old in plan_section
+    assert "Recorded question\n\n    What did you observe?" in plan_section
+    assert "**Grace**\n\nPlanned question\n\n    " + new + "\n\nNo recorded answer" in plan_section
+    assert "**Lin**\n\nNot in this interview plan." in plan_section
+    html = client.get("/api/interviews/compare/print", params={"ids": ",".join(ids)}).raise_for_status().text
+    assert "<h3>Ada</h3><p>Planned question: Assess &lt;old&gt; evidence.</p>" in html
+    assert f"<h3>Grace</h3><p>Planned question: {new}</p><p>No recorded answer.</p>" in html
+    assert "<h3>Lin</h3><p>Not in this interview plan.</p>" in html
+    for export in (md, html):
+        assert export.count("Revisit the evidence.") == 1
+        assert export.count("Independent Grace question.") == export.count("Independent Ada question.") == 1
+        assert PASSAGE not in export
 
 
 def test_compare_validation_422_and_missing_trashed_404(client):

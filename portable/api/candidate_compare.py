@@ -86,6 +86,36 @@ def _load_shared_rubric(db, sessions_out: list[dict[str, Any]]) -> list[dict[str
     return criteria
 
 
+def _comparison_slots(plans, planned_answers, unplanned_answers):
+    def owned_row(slot, sid, answer):
+        return {
+            "slot": slot, "owner_session_id": sid, "planned_question": None,
+            "cells": {key: answer if key == sid else None for key in plans},
+        }
+
+    rows = []
+    last_slot = max(max(map(len, plans.values())), max(planned_answers, default=0))
+    for number in range(1, last_slot + 1):
+        prompts = {sid: questions[number - 1] if number <= len(questions) else None for sid, questions in plans.items()}
+        distinct = set(prompts.values())
+        shared = distinct.pop() if len(distinct) == 1 else None
+        cells = dict.fromkeys(plans)
+        row = {"slot": number, "planned_question": shared, "cells": cells}
+        if shared is None:
+            row["planned_questions"] = prompts
+        rows.append(row)
+        # Answers arrive in recording order, independent of the requested candidate order.
+        for sid, answer in planned_answers.get(number, []):
+            if cells[sid] is None:
+                cells[sid] = answer
+            else:
+                extra = owned_row(number, sid, answer)
+                extra["planned_questions"] = {sid: prompts[sid]}
+                rows.append(extra)
+    rows.extend(owned_row("unslotted", sid, answer) for sid, answer in unplanned_answers)
+    return rows
+
+
 def _load_comparison(session_ids: list[UUID], *, include_excerpts: bool, include_notes: bool) -> dict[str, Any]:
     ordered_ids = [str(uid) for uid in session_ids]
     placeholders = ",".join("?" for _ in ordered_ids)
@@ -98,16 +128,16 @@ def _load_comparison(session_ids: list[UUID], *, include_excerpts: bool, include
         by_id = {row["id"]: row for row in session_rows}
         if len(by_id) != len(ordered_ids):
             raise HTTPException(404, "One or more interviews do not exist.")
+        private_columns = (", answer" if include_excerpts else "") + (", note" if include_notes else "")
         answer_rows = db.execute(
-            f"SELECT id, session_id, question, answer, result, status, disposition, note, planned_slot "
+            f"SELECT id, session_id, question, result, status, disposition, planned_slot{private_columns} "
             f"FROM answers WHERE session_id IN ({placeholders}) ORDER BY rowid",
             ordered_ids,
         ).fetchall()
 
         counts_by_sid = {sid: {k: 0 for k in _ZERO_COUNTS} for sid in ordered_ids}
-        planned_by_sid: dict[str, dict[int, dict[str, Any]]] = {sid: {} for sid in ordered_ids}
-        unslotted_by_sid: dict[str, list[dict[str, Any]]] = {sid: [] for sid in ordered_ids}
-        max_planned = 0
+        planned_answers = {}
+        unplanned_answers = []
 
         for arow in answer_rows:
             sid, counts = arow["session_id"], counts_by_sid[arow["session_id"]]
@@ -126,11 +156,10 @@ def _load_comparison(session_ids: list[UUID], *, include_excerpts: bool, include
             if include_notes:
                 cell["note"] = arow["note"] or ""
             slot = arow["planned_slot"]
-            if isinstance(slot, int) and slot >= 1 and slot not in planned_by_sid[sid]:
-                planned_by_sid[sid][slot] = cell
-                max_planned = max(max_planned, slot)
+            if isinstance(slot, int) and slot >= 1:
+                planned_answers.setdefault(slot, []).append((sid, cell))
             else:
-                unslotted_by_sid[sid].append(cell)
+                unplanned_answers.append((sid, cell))
 
         planned_lists: dict[str, list[str]] = {}
         sessions_out: list[dict[str, Any]] = []
@@ -138,7 +167,6 @@ def _load_comparison(session_ids: list[UUID], *, include_excerpts: bool, include
             srow = by_id[sid]
             questions = json.loads(srow["questions"]) if srow["questions"] else []
             planned_lists[sid] = questions
-            max_planned = max(max_planned, len(questions))
             counts = counts_by_sid[sid]
             lifecycle = "finished" if srow["ended_at"] else ("active" if srow["consent"] else "archived")
             sessions_out.append({
@@ -148,19 +176,16 @@ def _load_comparison(session_ids: list[UUID], *, include_excerpts: bool, include
                 "answer_count": counts["match"] + counts["no_match"] + counts["insufficient"], "counts": counts,
             })
 
-        slots_out: list[dict[str, Any]] = [{
-            "slot": n,
-            "planned_question": next((planned_lists[sid][n - 1] for sid in ordered_ids if n - 1 < len(planned_lists[sid])), None),
-            "cells": {sid: planned_by_sid[sid].get(n) for sid in ordered_ids},
-        } for n in range(1, max_planned + 1)]
-        for idx in range(max((len(unslotted_by_sid[sid]) for sid in ordered_ids), default=0)):
-            slots_out.append({
-                "slot": "unslotted",
-                "planned_question": None,
-                "cells": {sid: unslotted_by_sid[sid][idx] if idx < len(unslotted_by_sid[sid]) else None for sid in ordered_ids},
-            })
+        slots_out = _comparison_slots(planned_lists, planned_answers, unplanned_answers)
         rubric_criteria = _load_shared_rubric(db, sessions_out)
     return {"sessions": sessions_out, "slots": slots_out, "rubric_criteria": rubric_criteria}
+
+
+def _slot_title(slot):
+    if slot["slot"] == "unslotted":
+        return "Unslotted exchange"
+    title = f"Slot {slot['slot']}"
+    return title + " (additional answer)" if "owner_session_id" in slot else title
 
 
 def _render_markdown(data: dict[str, Any]) -> str:
@@ -190,19 +215,31 @@ def _render_markdown(data: dict[str, Any]) -> str:
                 lines.extend(["Red flags", "", report.literal("\n".join(crit["red_flags"])), ""])
     lines.extend(["## Question slot comparison", ""])
     for slot in data["slots"]:
-        slot_title = "Unslotted exchange" if slot["slot"] == "unslotted" else f"Slot {slot['slot']}"
-        lines.extend([f"### {slot_title}", ""])
+        lines.extend([f"### {_slot_title(slot)}", ""])
         if slot["planned_question"]:
             lines.extend(["Planned question", "", report.literal(slot["planned_question"]), ""])
         for s in sessions:
+            if "owner_session_id" in slot and slot["owner_session_id"] != s["id"]:
+                continue
             cell = slot["cells"][s["id"]]
+            lines.extend([f"**{report.heading(s['candidate'])}**", ""])
+            prompts = slot.get("planned_questions")
+            if prompts is not None:
+                prompt = prompts[s["id"]]
+                if prompt is None:
+                    lines.extend(["Not in this interview plan.", ""])
+                    if cell is None:
+                        continue
+                else:
+                    lines.extend(["Planned question", "", report.literal(prompt), ""])
             if cell is None:
-                lines.extend([f"**{report.heading(s['candidate'])}**: No recorded answer", ""])
+                lines.extend(["No recorded answer", ""])
                 continue
             lines.extend([
-                f"**{report.heading(s['candidate'])}**: status={cell['status']}, disposition={cell['disposition']}, passages={cell['passage_count']}",
-                "", "Question", "", report.literal(cell["question"]), "",
+                f"status={cell['status']}, disposition={cell['disposition']}, passages={cell['passage_count']}", "",
             ])
+            if prompts is None or prompts[s["id"]] != cell["question"]:
+                lines.extend(["Recorded question", "", report.literal(cell["question"]), ""])
             if "excerpt" in cell:
                 lines.extend(["Answer excerpt", "", report.literal(cell["excerpt"]), ""])
             if cell.get("note"):
@@ -229,19 +266,31 @@ def _render_html(data: dict[str, Any]) -> str:
         rubric_html = f"<section><h2>Shared role rubric</h2>{items}</section>"
     slot_articles = []
     for slot in data["slots"]:
-        heading = "Unslotted exchange" if slot["slot"] == "unslotted" else f"Slot {slot['slot']}"
+        heading = _slot_title(slot)
         planned = f"<p>Planned question: {escape(slot['planned_question'])}</p>" if slot["planned_question"] else ""
         cells = []
         for s in sessions:
-            cell = slot["cells"][s["id"]]
-            if cell is None:
-                cells.append(f"<div><h3>{escape(s['candidate'])}</h3><p>No recorded answer.</p></div>")
+            if "owner_session_id" in slot and slot["owner_session_id"] != s["id"]:
                 continue
+            cell = slot["cells"][s["id"]]
+            prompt_html = ""
+            prompts = slot.get("planned_questions")
+            if prompts is not None:
+                prompt = prompts[s["id"]]
+                prompt_html = (f"<p>Planned question: {escape(prompt)}</p>" if prompt is not None
+                               else "<p>Not in this interview plan.</p>")
+            if cell is None:
+                empty = "" if prompts is not None and prompts[s["id"]] is None else "<p>No recorded answer.</p>"
+                cells.append(f"<div><h3>{escape(s['candidate'])}</h3>{prompt_html}{empty}</div>")
+                continue
+            question_html = ""
+            if prompts is None or prompts[s["id"]] != cell["question"]:
+                question_html = f"<p>Recorded question: {escape(cell['question'])}</p>"
             extra = (f"<p>Excerpt: {escape(cell['excerpt'])}</p>" if "excerpt" in cell else "") + (
                 f"<p>Note: {escape(cell['note'])}</p>" if cell.get("note") else ""
             )
             cells.append(
-                f"<div><h3>{escape(s['candidate'])}</h3><p>{escape(cell['question'])}</p>"
+                f"<div><h3>{escape(s['candidate'])}</h3>{prompt_html}{question_html}"
                 f"<p>Status: {escape(cell['status'])}, Disposition: {escape(cell['disposition'])}, Passages: {cell['passage_count']}</p>{extra}</div>"
             )
         slot_articles.append(f"<article><h2>{escape(heading)}</h2>{planned}{''.join(cells)}</article>")
