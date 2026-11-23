@@ -1,10 +1,10 @@
-import { useEffect } from "react"
+import { useIsomorphicLayoutEffect } from "./useIsomorphicLayoutEffect"
 
 const INTERVIEW_PROMPT = "Discard unsaved interview changes and leave this page?"
 
 /** Ask before a pending edit is lost to navigation or a page reload. */
 export function useDraftGuard(dirty: boolean, prompt = INTERVIEW_PROMPT, retainsDraft?: (destination: URL) => boolean) {
-  useEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     if (!dirty) return
     const confirmLeave = () => window.confirm(prompt)
     const beforeUnload = (event: BeforeUnloadEvent) => {

@@ -1,6 +1,7 @@
 """The review route protects all editor drafts once and retains assignments between questions."""
 import httpx
 from playwright.sync_api import expect
+import pytest
 
 
 def test_assignment_navigation_guard_and_local_discard(workspace_url, browser_page):
@@ -104,3 +105,64 @@ def test_assignment_reload_warns_and_save_or_discard_releases_the_guard(workspac
         leave.click()
         expect(page).to_have_url(workspace_url + "/")
         assert prompts == ["beforeunload"]
+
+
+@pytest.mark.parametrize("handoff_draft", [False, True], ids=["exchange-only", "independent-handoff"])
+def test_document_navigation_when_saved_exchange_first_appears(workspace_url, browser_page, handoff_draft):
+    page = browser_page
+    with httpx.Client(base_url=workspace_url, headers={"X-InterviewCheck": "1"}) as client:
+        sid = client.post("/api/sessions", json={
+            "candidate": "Saved exchange fixture", "role": "Engineer", "policy": "Notes permitted.", "consent": True,
+        }).raise_for_status().json()["id"]
+        page.goto(f"{workspace_url}/interviews/review/?id={sid}")
+        question = "Which measurement did you check?"
+        answer = "I checked the sample interval."
+        page.get_by_role("textbox", name="Question", exact=True).fill(question)
+        page.get_by_role("textbox", name="Candidate answer", exact=True).fill(answer)
+        save = page.get_by_role("button", name="Save and compare", exact=True)
+        handoff = page.get_by_role("textbox", name="Handoff note", exact=True)
+        dialogs = []
+
+        def dismiss(dialog):
+            dialogs.append(dialog.type)
+            dialog.dismiss()
+
+        page.on("dialog", dismiss)
+        if handoff_draft:
+            handoff.fill("Independent unfinished handoff.")
+        else:
+            page.route(f"**/api/sessions/{sid}/answers", lambda route: route.fulfill(
+                status=503, json={"detail": "Temporary fixture save failure."},
+            ), times=1)
+            save.click()
+            expect(page.get_by_role("alert").filter(has_text="Temporary fixture save failure.")).to_be_visible()
+            with page.expect_event("dialog"):
+                page.evaluate("() => setTimeout(() => location.assign('/roles/'), 0)")
+            assert dialogs == ["beforeunload"]
+            dialogs.clear()
+
+        # Leave the document at the first DOM commit exposing the saved answer.
+        # Polling for a ready control here would give a stale guard time to disappear.
+        page.evaluate("""answer => {
+            const observer = new MutationObserver(() => {
+                if (document.querySelector('article.evidence > .transcript-text')?.textContent !== answer) return;
+                observer.disconnect();
+                const check = new Event('beforeunload', { cancelable: true });
+                window.dispatchEvent(check);
+                sessionStorage.setItem('qa-guard-at-commit', String(check.defaultPrevented));
+                location.assign('/roles/');
+            });
+            observer.observe(document.body, {childList: true, subtree: true});
+        }""", answer)
+        if handoff_draft:
+            with page.expect_event("dialog"):
+                save.click()
+            assert dialogs == ["beforeunload"]
+            expect(handoff).to_have_value("Independent unfinished handoff.")
+        else:
+            save.click()
+            expect(page).to_have_url(workspace_url + "/roles/")
+            assert dialogs == []
+        assert page.evaluate("sessionStorage.getItem('qa-guard-at-commit')") == ("true" if handoff_draft else "false")
+        stored = client.get(f"/api/sessions/{sid}").raise_for_status().json()["answers"]
+        assert [(item["question"], item["answer"]) for item in stored] == [(question, answer)]

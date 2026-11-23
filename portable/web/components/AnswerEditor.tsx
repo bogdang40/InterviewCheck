@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react"
+import { useRef, useState, type FormEvent } from "react"
 import dynamic from "next/dynamic"
 import { Plus, Trash2, ScanText } from "lucide-react"
 import { api, message, DraftConflict, type Draft, type QuestionOrigin, RevisionConflict, type Answer, type Interview, type Source } from "@/lib/api"
@@ -11,6 +11,7 @@ import { DraftConflictView } from "./SavedDraft"
 import TranscriptImport from "./TranscriptImport"
 import { noQuestionOrigin, originOf, OriginPicker } from "./QuestionLineage"
 import { editorDraftKey, formatDraftTimestamp, useLocalDraftRecovery } from "@/lib/localDraftBuffer"
+import { useIsomorphicLayoutEffect } from "@/lib/useIsomorphicLayoutEffect"
 import UnlinkedDraftCopy from "./UnlinkedDraftCopy"
 
 const Capture = dynamic(() => import("./Capture"), { ssr: false })
@@ -57,7 +58,7 @@ export default function AnswerEditor({
     answer !== (initial?.answer ?? baseline?.answer ?? "") ||
     sourcesJson !== JSON.stringify(initial?.references ?? baseline?.references ?? [])
   const dirty = contentDirty || draftConflict || conflict || capturePending || generating || !!busy
-  useEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     onDirty("editor", dirty)
     return () => onDirty("editor", false)
   }, [onDirty, dirty])
