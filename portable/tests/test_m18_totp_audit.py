@@ -8,7 +8,7 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 import pytest
 
-from api import access, account_db, rate_limit, secret_box, totp_service
+from api import access, account_db, rate_limit, totp_service
 from api.account_server import app as standalone
 from api.main import app
 
@@ -155,8 +155,7 @@ def test_totp_lifecycle_aad_and_proxy_routes(env, monkeypatch):
         enc = db.execute("SELECT secret_enc FROM user_totp WHERE user_id=?", (member_id,)).fetchone()["secret_enc"]
         db.execute("INSERT INTO user_totp(user_id,secret_enc,enabled,verified_at,created_at) VALUES (?,?,1,?,?)",
                    (admin["user"]["id"], enc, fixed_ms, fixed_ms))
-        with pytest.raises(secret_box.SecretBoxError):
-            totp_service.verify_login_factor(db, admin["user"]["id"], code, fixed_ms)
+        assert totp_service.verify_login_factor(db, admin["user"]["id"], code, fixed_ms) is None
         db.execute("DELETE FROM user_totp WHERE user_id=?", (admin["user"]["id"],))
 
     # Regenerate requires valid TOTP in a newer 30s step
