@@ -5,6 +5,10 @@ import type { BillingEvent, CheckoutRequest, GatewaySubscription, StripeGateway 
 import { CheckoutExpiryRejected } from "./StripeGateway.js";
 import { StripeSubscriptionMapper } from "./StripeSubscriptionMapper.js";
 
+/** Well under the SDK default of 80 seconds so a stalled Stripe call cannot pin a request for minutes. */
+const STRIPE_TIMEOUT_MS = 12_000;
+const STRIPE_MAX_NETWORK_RETRIES = 2;
+
 export class StripeSdkGateway implements StripeGateway {
   private readonly stripe: Stripe;
 
@@ -13,7 +17,7 @@ export class StripeSdkGateway implements StripeGateway {
     private readonly webhookSecret: string | undefined,
     private readonly priceIds: readonly string[],
   ) {
-    this.stripe = new Stripe(secretKey, { typescript: true });
+    this.stripe = new Stripe(secretKey, { typescript: true, timeout: STRIPE_TIMEOUT_MS, maxNetworkRetries: STRIPE_MAX_NETWORK_RETRIES });
   }
 
   get isConfigured(): boolean {

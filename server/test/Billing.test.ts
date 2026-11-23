@@ -1,7 +1,9 @@
+import Stripe from "stripe";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SignedInResponse } from "../src/services/AuthService.js";
 import type { AccessSnapshot } from "../src/services/EntitlementService.js";
 import { CheckoutExpiryRejected, type GatewaySubscription } from "../src/stripe/StripeGateway.js";
+import { StripeSdkGateway } from "../src/stripe/StripeSdkGateway.js";
 import { buildHarness, get, json, post, type TestHarness } from "./support/TestContainer.js";
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -266,6 +268,45 @@ describe("billing", () => {
     expect(html).toContain("interviewcheck://billing/success");
     expect(html).toContain("check whether your subscription is active");
   });
+
+  it("uses an explicit Stripe timeout and retry budget", () => {
+    const sdk = (new StripeSdkGateway("sk_test_x", "whsec_x", []) as unknown as { stripe: { getApiField(key: string): unknown } }).stripe;
+    expect(sdk.getApiField("timeout")).toBe(12_000);
+    expect(sdk.getApiField("maxNetworkRetries")).toBe(2);
+  });
+
+  it("maps Stripe connection, rate limit and API errors to billing_unavailable", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const checkout = vi.spyOn(harness.gateway, "createCheckoutSession");
+    const cases: Array<[Error, number]> = [
+      [new Stripe.errors.StripeConnectionError({ message: "connect ECONNREFUSED" }), 503],
+      [new Stripe.errors.StripeRateLimitError({ message: "rate limited" }), 503],
+      [new Stripe.errors.StripeAPIError({ message: "stripe exploded" }), 502],
+    ];
+    for (const [error, status] of cases) {
+      checkout.mockRejectedValueOnce(error);
+      harness.clock.now = new Date(harness.clock.now.getTime() + 3_600_000);
+      const res = await post(harness.app, "/v1/billing/checkout", { plan: "monthly" }, token);
+      expect(res.status).toBe(status);
+      expect(await json(res)).toMatchObject({ error: { code: "billing_unavailable" } });
+    }
+
+    checkout.mockRejectedValueOnce(new Stripe.errors.StripeInvalidRequestError({ message: "bad param" }));
+    harness.clock.now = new Date(harness.clock.now.getTime() + 3_600_000);
+    expect((await post(harness.app, "/v1/billing/checkout", { plan: "monthly" }, token)).status).toBe(500);
+    expect(errorSpy).toHaveBeenCalled();
+  });
+
+  it("answers a webhook with 503 when Stripe cannot be reached so Stripe retries it", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const sub = liveSubscription("cus_any", { id: "sub_down" });
+    vi.spyOn(harness.gateway, "retrieveSubscription").mockRejectedValueOnce(new Stripe.errors.StripeConnectionError({ message: "timeout" }));
+    harness.gateway.nextEvent = { id: "evt_down", type: "subscription.changed", subscription: sub };
+    const res = await harness.app.request("/v1/billing/webhook", { method: "POST", body: "{}" });
+    expect(res.status).toBe(503);
+    expect(harness.container.stripeEvents.isApplied("evt_down")).toBe(false);
+  });
 });
 
 describe("stripe event ledger", () => {
@@ -316,4 +357,5 @@ describe("stripe event ledger", () => {
     expect(await json(await harness.app.request("/v1/billing/webhook", { method: "POST", body: "{}" }))).toMatchObject({ handled: true });
     expect(harness.container.stripeEvents.isApplied("evt_ledger")).toBe(true);
   });
+
 });

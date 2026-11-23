@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { secureHeaders } from "hono/secure-headers";
 import type { Container } from "../Container.js";
+import { StripeErrorTranslator } from "../stripe/StripeErrorTranslator.js";
 import { HttpError } from "./HttpError.js";
 import type { AuthEnv } from "./middleware/Authenticate.js";
 import { AdminRoutes } from "./routes/AdminRoutes.js";
@@ -134,6 +135,11 @@ export class AppFactory {
           c.header("X-InterviewCheck-TOTP", "required");
         }
         return c.json(error.toBody(), error.status as 400);
+      }
+      const billing = StripeErrorTranslator.toHttpError(error);
+      if (billing) {
+        console.warn(`[server] ${c.req.method} billing provider unavailable (${error.constructor.name})`);
+        return c.json(billing.toBody(), billing.status as 502);
       }
       const code = (error as { code?: unknown }).code;
       const safeCode = typeof code === "string" && /^[A-Z0-9_]{1,40}$/.test(code) ? ` (${code})` : "";
