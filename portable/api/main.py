@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
 
 from . import (
     access,
@@ -65,15 +66,19 @@ from .session_workflow import router as session_workflow
 from .transcript_import import router as transcript_import
 
 
+def open_databases():
+    if embedded_enabled():
+        from .account_db import check_database
+        check_database()
+    store.initialize(store.db_path())
+
+
 @asynccontextmanager
 async def lifespan(_):
     rate_limit.reset_all()
     model_execution.reset_quotas()
     validate_runtime_exposure()  # Validate configured web exposure before opening the database.
-    if embedded_enabled():
-        from .account_db import check_database
-        check_database()
-    store.initialize(store.db_path())
+    await run_in_threadpool(open_databases)
     if secret_box.key_source() == "file":
         try:
             secret_box.active_key_id()
@@ -154,8 +159,12 @@ def revise(sid: UUID, aid: UUID, item: AnswerEdit, actor=Depends(mutation_actor)
 @workspace.patch("/sessions/{sid}/answers/{aid}")
 async def review(sid: UUID, aid: UUID, item: ReviewInput, request: Request, history_actor=Depends(mutation_actor)):
     actor = await access.optional_actor(request)
+    return await run_in_threadpool(save_review, str(sid), str(aid), item, actor, history_actor)
+
+
+def save_review(sid: str, aid: str, item: ReviewInput, actor, history_actor):
     with store.connection(write=True) as db:
-        return store.update_review(db, str(sid), str(aid), item, actor=actor, history_actor=history_actor)
+        return store.update_review(db, sid, aid, item, actor=actor, history_actor=history_actor)
 
 
 @workspace.get("/sessions/{sid}/report")
@@ -174,6 +183,10 @@ def roles():
 @workspace.post("/roles", status_code=201)
 async def new_role(item: RoleInput, request: Request):
     _, actor_email = await access.optional_actor(request)
+    return await run_in_threadpool(save_new_role, item, actor_email)
+
+
+def save_new_role(item: RoleInput, actor_email: str):
     with store.connection(write=True) as db:
         return store.create_role(db, item, created_by=actor_email)
 
@@ -181,6 +194,10 @@ async def new_role(item: RoleInput, request: Request):
 @workspace.post("/roles/import")
 async def import_exported_role(document: dict, request: Request):
     _, actor_email = await access.optional_actor(request)
+    return await run_in_threadpool(save_imported_role, document, actor_email)
+
+
+def save_imported_role(document: dict, actor_email: str):
     with store.connection(write=True) as db:
         try:
             added, role = import_role(db, document)

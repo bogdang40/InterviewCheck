@@ -7,6 +7,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BeforeValidator, Field, field_validator, model_validator
+from starlette.concurrency import run_in_threadpool
 
 from . import access, assignment_queue, store
 from .models import Input, RequestID
@@ -147,8 +148,11 @@ def _suggested_reviewers(db: sqlite3.Connection, actor_email: str) -> list[str]:
 
 @router.get("/sessions/{sid}/assignment")
 async def get_assignment(sid: UUID, request: Request):
-    key = str(sid)
     _, actor_email = await access.optional_actor(request)
+    return await run_in_threadpool(_read_assignment, str(sid), actor_email)
+
+
+def _read_assignment(key: str, actor_email: str):
     with store.connection() as db:
         _require_active_session(db, key)
         row = None
@@ -162,8 +166,11 @@ async def get_assignment(sid: UUID, request: Request):
 
 @router.put("/sessions/{sid}/assignment")
 async def put_assignment(sid: UUID, payload: SessionAssignmentInput, request: Request):
-    key = str(sid)
     _, actor_email = await access.optional_actor(request)
+    return await run_in_threadpool(_save_assignment, str(sid), payload, actor_email)
+
+
+def _save_assignment(key: str, payload: SessionAssignmentInput, actor_email: str):
     now = store.timestamp()
     due_iso = payload.due_at.isoformat() if payload.due_at is not None else None
     with store.connection(write=True) as db:
@@ -202,6 +209,10 @@ def delete_assignment(sid: UUID):
 @router.post("/interviews/assignments/bulk")
 async def bulk_assignments(payload: BulkSessionAssignmentInput, request: Request):
     _, actor_email = await access.optional_actor(request)
+    return await run_in_threadpool(_save_bulk_assignments, payload, actor_email)
+
+
+def _save_bulk_assignments(payload: BulkSessionAssignmentInput, actor_email: str):
     ids = [str(item) for item in payload.session_ids]
     placeholders = ",".join("?" for _ in ids)
     now = store.timestamp()
@@ -258,6 +269,10 @@ async def list_assignments(
     page: int = Query(default=1, ge=1),
 ):
     _, viewer_email = await access.optional_actor(request)
+    return await run_in_threadpool(_read_queue_page, viewer_email, assignee, priority, due, limit, page)
+
+
+def _read_queue_page(viewer_email: str, assignee: str, priority: str, due: str, limit: int, page: int):
     with store.connection() as db:
         return assignment_queue.read_page(
             db, viewer=viewer_email, assignee=assignee, priority=priority, due=due, limit=limit, page=page,

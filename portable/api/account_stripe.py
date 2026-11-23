@@ -6,6 +6,7 @@ from urllib.parse import urlsplit
 from uuid import uuid4
 
 from fastapi import HTTPException
+from starlette.concurrency import run_in_threadpool
 
 from . import account_db as store
 from .provider_http import fetch_json, setting
@@ -120,7 +121,7 @@ async def create_link(user, plan=None, *, portal=False, request_id):
         raise HTTPException(400, "This plan is unavailable.")
     base = origin() + "/v1/billing/return"
     uid = user["id"]
-    attempt = None if portal else checkout_attempt(uid, plan, base)
+    attempt = None if portal else await run_in_threadpool(checkout_attempt, uid, plan, base)
     if attempt and attempt["url"]:
         return {"url": attempt["url"]}
     customer = user["stripe_customer_id"]
@@ -129,11 +130,7 @@ async def create_link(user, plan=None, *, portal=False, request_id):
     if not customer:
         data = await stripe_request("POST", "customers", fields={"email": user["email"], "metadata[userId]": uid},
                                     key="interviewcheck-customer:" + uid)
-        customer = resource_id(data.get("id"), "cus_")
-        with store.connection(write=True) as db:
-            db.execute("UPDATE users SET stripe_customer_id=COALESCE(stripe_customer_id,?),updated_at=? WHERE id=?",
-                       (customer, store.now(), uid))
-            customer = db.execute("SELECT stripe_customer_id FROM users WHERE id=?", (uid,)).fetchone()[0]
+        customer = await run_in_threadpool(_save_customer, uid, resource_id(data.get("id"), "cus_"))
     if portal:
         data = await stripe_request("POST", "billing_portal/sessions", fields={"customer": customer, "return_url": base + "?status=portal"},
                                     key=f"interviewcheck-portal:{uid}:{request_id}")
@@ -145,7 +142,7 @@ async def create_link(user, plan=None, *, portal=False, request_id):
             if attempt["expires_at"] - store.now() / 1000 > 1860:
                 raise
             # An exact idempotent retry reached Stripe validation instead of returning a saved session.
-            attempt = checkout_attempt(uid, plan, base, replace_pending=attempt["request_id"])
+            attempt = await run_in_threadpool(checkout_attempt, uid, plan, base, replace_pending=attempt["request_id"])
             if attempt["url"]:
                 return {"url": attempt["url"]}
             data = await checkout_session(uid, customer, attempt, prices[plan])
@@ -154,8 +151,19 @@ async def create_link(user, plan=None, *, portal=False, request_id):
     link = data.get("url", "")
     if not isinstance(link, str) or urlsplit(link).scheme != "https" or urlsplit(link).netloc != host:
         raise HTTPException(502, "Stripe returned an invalid billing URL.")
+    await run_in_threadpool(_record_link, uid, plan, portal, request_id, link)
+    return {"url": link}
+
+
+def _save_customer(uid, customer):
+    with store.connection(write=True) as db:
+        db.execute("UPDATE users SET stripe_customer_id=COALESCE(stripe_customer_id,?),updated_at=? WHERE id=?",
+                   (customer, store.now(), uid))
+        return db.execute("SELECT stripe_customer_id FROM users WHERE id=?", (uid,)).fetchone()[0]
+
+
+def _record_link(uid, plan, portal, request_id, link):
     with store.connection(write=True) as db:
         if not portal:
             db.execute("UPDATE checkout_requests SET url=? WHERE user_id=? AND request_id=?", (link, uid, request_id))
         store.audit(db, "billing.portal" if portal else "billing.checkout_started", uid, uid, {"plan": plan})
-    return {"url": link}

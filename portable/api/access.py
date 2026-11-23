@@ -7,6 +7,7 @@ from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field, SecretStr
+from starlette.concurrency import run_in_threadpool
 from starlette.requests import HTTPConnection
 
 from . import rate_limit
@@ -161,16 +162,24 @@ async def require_entitlement(request: HTTPConnection):
     return account["user"]
 
 
+def _embedded_user(token: str) -> dict[str, Any] | None:
+    """Authenticate with the embedded access database; None when that database does not exist."""
+    from . import account_auth, account_db
+    if not account_db.database().is_file():
+        return None
+    user, _ = account_auth.authenticate(f"Bearer {token}")
+    return user
+
+
 async def require_admin_session(request: HTTPConnection) -> tuple[dict[str, Any], str]:
     token = request.cookies.get(COOKIE)
     if not token:
         raise HTTPException(401, "Sign in with an administrator account.")
     enabled = account_enabled()
     if not enabled or embedded_enabled():
-        from . import account_auth, account_db
-        if not account_db.database().is_file():
+        user = await run_in_threadpool(_embedded_user, token)
+        if user is None:
             raise HTTPException(401, "Sign in with an administrator account.")
-        user, _ = account_auth.authenticate(f"Bearer {token}")
         if user.get("disabled"):
             raise HTTPException(401, "Session expired. Sign in again.")
         if enabled:
@@ -197,10 +206,9 @@ async def optional_actor(request: HTTPConnection) -> tuple[str, str]:
         return ("local-operator", "local-operator")
     try:
         if embedded_enabled():
-            from . import account_auth, account_db
-            if not account_db.database().is_file():
+            user = await run_in_threadpool(_embedded_user, token)
+            if user is None:
                 return ("local-operator", "local-operator")
-            user, _ = account_auth.authenticate(f"Bearer {token}")
         else:
             cached = getattr(request.state, "_access_snapshot", None)
             if cached is not None:

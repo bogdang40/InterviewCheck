@@ -7,6 +7,7 @@ from urllib.parse import SplitResult, urlsplit, urlunsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse
+from starlette.concurrency import run_in_threadpool
 
 from . import model_admin, rate_limit, sql_script, store
 
@@ -149,22 +150,26 @@ async def collect_csp_report(request: Request) -> Response:
         raise HTTPException(400, "Invalid CSP report payload.") from exc
     reports = _extract_reports(media_type, payload)
     if reports:
-        now = store.timestamp()
-        with store.connection(write=True) as db:
-            migrate(db)
-            db.executemany(
-                """INSERT INTO csp_violations(
-                    received_at, document_uri, violated_directive, effective_directive,
-                    blocked_uri, source_file, line_number, column_number, disposition, status_code
-                ) VALUES (?,?,?,?,?,?,?,?,?,?)""",
-                [(now, r["document_uri"], r["violated_directive"], r["effective_directive"], r["blocked_uri"],
-                  r["source_file"], r["line_number"], r["column_number"], r["disposition"], r["status_code"]) for r in reports],
-            )
-            db.execute(
-                "DELETE FROM csp_violations WHERE id NOT IN (SELECT id FROM csp_violations ORDER BY id DESC LIMIT ?)",
-                (MAX_STORED_REPORTS,),
-            )
+        await run_in_threadpool(_store_reports, reports)
     return Response(status_code=204)
+
+
+def _store_reports(reports: list[dict[str, Any]]) -> None:
+    now = store.timestamp()
+    with store.connection(write=True) as db:
+        migrate(db)
+        db.executemany(
+            """INSERT INTO csp_violations(
+                received_at, document_uri, violated_directive, effective_directive,
+                blocked_uri, source_file, line_number, column_number, disposition, status_code
+            ) VALUES (?,?,?,?,?,?,?,?,?,?)""",
+            [(now, r["document_uri"], r["violated_directive"], r["effective_directive"], r["blocked_uri"],
+              r["source_file"], r["line_number"], r["column_number"], r["disposition"], r["status_code"]) for r in reports],
+        )
+        db.execute(
+            "DELETE FROM csp_violations WHERE id NOT IN (SELECT id FROM csp_violations ORDER BY id DESC LIMIT ?)",
+            (MAX_STORED_REPORTS,),
+        )
 
 
 @router.get("/admin/security/csp-reports", dependencies=[Depends(model_admin.require_admin), Depends(rate_limit.limit(rate_limit.ADMIN_READ))])

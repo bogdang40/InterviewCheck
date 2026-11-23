@@ -6,6 +6,7 @@ from typing import Any, Literal
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response
+from starlette.concurrency import run_in_threadpool
 
 from . import alert_rules, exports, model_admin, rate_limit, store
 
@@ -184,6 +185,14 @@ def export_deliveries(
 
 @router.post("/{delivery_id}/retry", dependencies=_RETRY)
 async def retry_delivery(delivery_id: int = Path(..., ge=1, le=2**63 - 1), actor: dict = Depends(model_admin.require_admin)):
+    rule = await run_in_threadpool(_retry_target, delivery_id)
+    event_key = f"retry:{delivery_id}:{uuid4().hex[:8]}"
+    payload = alert_rules._event_payload(rule, "alert.retry", event_key, store.timestamp(), []) | {"retried_delivery_id": delivery_id}
+    ok, http_status, err = await alert_rules._deliver(rule, payload, "alert.retry", event_key)
+    return await run_in_threadpool(_record_retry, actor, delivery_id, rule, event_key, ok, http_status, err)
+
+
+def _retry_target(delivery_id: int) -> sqlite3.Row:
     with store.connection() as db:
         if not (_has_table(db, "alert_deliveries") and _has_table(db, "alert_rules")):
             raise HTTPException(404, "Alert delivery not found.")
@@ -195,10 +204,10 @@ async def retry_delivery(delivery_id: int = Path(..., ge=1, le=2**63 - 1), actor
             raise HTTPException(404, "Alert rule not found.")
         if not rule["enabled"]:
             raise HTTPException(409, "Cannot retry delivery for a disabled alert rule.")
+    return rule
 
-    event_key = f"retry:{delivery_id}:{uuid4().hex[:8]}"
-    payload = alert_rules._event_payload(rule, "alert.retry", event_key, store.timestamp(), []) | {"retried_delivery_id": delivery_id}
-    ok, http_status, err = await alert_rules._deliver(rule, payload, "alert.retry", event_key)
+
+def _record_retry(actor: dict, delivery_id: int, rule: sqlite3.Row, event_key: str, ok: bool, http_status: int | None, err: str | None):
     post_commit: list = []
     with store.connection(write=True) as db:
         if db.execute("SELECT 1 FROM alert_rules WHERE id=?", (rule["id"],)).fetchone() is None:

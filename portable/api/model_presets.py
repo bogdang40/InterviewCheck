@@ -5,6 +5,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import Field, model_validator
+from starlette.concurrency import run_in_threadpool
 
 from . import model_admin, model_probe, model_registry, rate_limit, secret_box, store
 from .error_sanitizer import sanitize_error_text
@@ -151,8 +152,7 @@ def _scrub_probe_outcome(outcome: model_probe.ProbeOutcome, api_key: str) -> mod
 )
 async def batch_probe_models(item: BatchProbeInput, actor: dict = Depends(model_admin.require_admin)):
     ids = [str(mid) for mid in item.model_ids]
-    with store.connection() as db:
-        rows = [dict(model_registry.get_row(db, mid)) for mid in ids]
+    rows = await run_in_threadpool(_model_rows, ids)
 
     semaphore = asyncio.Semaphore(MAX_BATCH_PROBE_CONCURRENCY)
 
@@ -177,7 +177,8 @@ async def batch_probe_models(item: BatchProbeInput, actor: dict = Depends(model_
 
         outcome = _scrub_probe_outcome(outcome, api_key)
         try:
-            updated = model_admin._persist_probe(
+            updated = await run_in_threadpool(
+                model_admin._persist_probe,
                 actor,
                 model_uuid,
                 outcome,
@@ -205,26 +206,35 @@ async def batch_probe_models(item: BatchProbeInput, actor: dict = Depends(model_
     results = list(await asyncio.gather(*(_probe_one(row) for row in rows)))
     ok_count = sum(1 for entry in results if entry["ok"])
     error_count = len(results) - ok_count
-    post_commit: list = []
     details = {
         "model_ids": ids,
         "probed": len(results),
         "ok_count": ok_count,
         "error_count": error_count,
     }
-    with store.connection(write=True) as db:
-        model_admin._record_audit(
-            db,
-            actor=actor,
-            action="admin.model.batch_probe",
-            model_uuid=ids[0],
-            details=details,
-            post_commit=post_commit,
-        )
-    model_admin._flush_account_audits(post_commit)
+    await run_in_threadpool(_audit_batch, actor, ids[0], details)
     return {
         "probed": len(results),
         "ok_count": ok_count,
         "error_count": error_count,
         "results": results,
     }
+
+
+def _model_rows(ids: list[str]) -> list[dict[str, Any]]:
+    with store.connection() as db:
+        return [dict(model_registry.get_row(db, mid)) for mid in ids]
+
+
+def _audit_batch(actor: dict, model_uuid: str, details: dict[str, Any]) -> None:
+    post_commit: list = []
+    with store.connection(write=True) as db:
+        model_admin._record_audit(
+            db,
+            actor=actor,
+            action="admin.model.batch_probe",
+            model_uuid=model_uuid,
+            details=details,
+            post_commit=post_commit,
+        )
+    model_admin._flush_account_audits(post_commit)

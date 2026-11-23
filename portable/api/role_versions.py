@@ -6,6 +6,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, HTTPException, Path, Request
+from starlette.concurrency import run_in_threadpool
 
 from . import access, role_kits, sql_script
 from .models import RoleRestoreInput
@@ -201,10 +202,13 @@ def version_detail(rid: UUID, version_number: int = Path(ge=1, le=2**63 - 1)):
 async def restore_version(
     rid: UUID, item: RoleRestoreInput, request: Request, version_number: int = Path(ge=1, le=2**63 - 1)
 ):
+    _, actor_email = await access.optional_actor(request)
+    return await run_in_threadpool(_restore_version, str(rid), item, version_number, actor_email)
+
+
+def _restore_version(key: str, item: RoleRestoreInput, version_number: int, actor_email: str):
     from . import store
 
-    key = str(rid)
-    _, actor_email = await access.optional_actor(request)
     with store.connection(write=True) as db:
         existing = db.execute("SELECT * FROM roles WHERE id=?", (key,)).fetchone()
         if existing is None:

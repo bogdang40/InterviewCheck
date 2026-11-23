@@ -40,6 +40,10 @@ async def status(request: Request):
         if not entitled:
             return {"access": account_on, "inviteRequired": invite_req, "signedIn": signed_in}
         signed_in = True
+    return await run_in_threadpool(_service_status, account_on, invite_req, signed_in)
+
+
+def _service_status(account_on: bool, invite_req: bool, signed_in: bool) -> dict:
     calendars = [name for name in ("google", "microsoft") if oauth_tokens.available(name)]
     if all(configured(key) for key in MAIL_SETTINGS):
         calendars.append("imap")
