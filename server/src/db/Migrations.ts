@@ -8,6 +8,11 @@ export interface MigrationStep {
 /**
  * Append only ladder, mirrored on PRAGMA user_version exactly like the macOS
  * app's SessionDatabase. Never edit a shipped step; add a new one.
+ *
+ * The schema is shared with the Python account service
+ * (portable/api/account_db.py, VERSION), which refuses a newer user_version
+ * and uses tables this server does not (login_windows). A new step needs the
+ * same version and tables on both sides; derived state stays out of it.
  */
 export const MIGRATION_STEPS: readonly MigrationStep[] = [
   {
@@ -160,30 +165,6 @@ export const MIGRATION_STEPS: readonly MigrationStep[] = [
       }
       return statements;
     },
-  },
-  {
-    version: 9,
-    statements: [
-      // Never written: per address limits live in memory, per account limits in login_email_windows.
-      `DROP TABLE IF EXISTS login_windows`,
-    ],
-  },
-  {
-    version: 10,
-    statements: [
-      // Single row. last_* is the verified prefix of the chain; result_* is the outcome of the latest run.
-      `CREATE TABLE IF NOT EXISTS audit_chain_checkpoint (
-        id INTEGER PRIMARY KEY CHECK (id = 1),
-        last_id INTEGER NOT NULL,
-        last_hash TEXT,
-        verified_count INTEGER NOT NULL,
-        legacy_count INTEGER NOT NULL,
-        result_ok INTEGER NOT NULL CHECK (result_ok IN (0, 1)),
-        result_first_broken_id INTEGER,
-        result_mode TEXT NOT NULL,
-        result_at INTEGER NOT NULL
-      )`,
-    ],
   },
 ];
 

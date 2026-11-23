@@ -160,7 +160,8 @@ describe("auth flow over HTTP", () => {
       expect(await json(locked)).toEqual({ error: { code: "rate_limited", message: "Too many attempts. Try again in a minute." } });
     }
     expect((await attempt("victim@example.com", "a-long-password", 20)).status).toBe(429);
-    expect(harness.container.database.get("SELECT 1 FROM sqlite_master WHERE name = 'login_windows'")).toBeUndefined();
+    // login_windows belongs to the Python account service's per address limiter; this server leaves it alone.
+    expect(harness.container.database.get("SELECT 1 FROM sqlite_master WHERE name = 'login_windows'")).toBeDefined();
 
     harness.clock.now = new Date(harness.clock.now.getTime() + 15 * 60_000 + 1);
     expect((await attempt("victim@example.com", "a-long-password", 21)).status).toBe(200);

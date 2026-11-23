@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { Database } from "../src/db/Database.js";
-import { LATEST_SCHEMA_VERSION, MIGRATION_STEPS, MigrationRunner } from "../src/db/Migrations.js";
+import { MIGRATION_STEPS, MigrationRunner } from "../src/db/Migrations.js";
 
 const V6_INDEXES = [
   "idx_users_created_id",
@@ -51,7 +51,7 @@ describe("account database migrations", () => {
     const db = openMemoryDb();
     new MigrationRunner().run(db);
 
-    expect(db.userVersion()).toBe(LATEST_SCHEMA_VERSION);
+    expect(db.userVersion()).toBe(8);
     const indexes = indexNames(db);
     for (const name of V6_INDEXES) {
       expect(indexes.has(name)).toBe(true);
@@ -97,7 +97,7 @@ describe("account database migrations", () => {
     new MigrationRunner().run(db);
     new MigrationRunner().run(db);
 
-    expect(db.userVersion()).toBe(LATEST_SCHEMA_VERSION);
+    expect(db.userVersion()).toBe(8);
     const indexes = indexNames(db);
     for (const name of V6_INDEXES) {
       expect(indexes.has(name)).toBe(true);
@@ -140,7 +140,7 @@ describe("account database migrations", () => {
     new MigrationRunner().run(db);
     new MigrationRunner().run(db);
 
-    expect(db.userVersion()).toBe(LATEST_SCHEMA_VERSION);
+    expect(db.userVersion()).toBe(8);
     expect(tableNames(db).has("user_totp")).toBe(true);
     expect(tableNames(db).has("user_backup_codes")).toBe(true);
     expect(indexNames(db).has("idx_backup_codes_user")).toBe(true);
@@ -173,7 +173,7 @@ describe("account database migrations", () => {
     );
     dbA.setUserVersion(4);
     new MigrationRunner().run(dbA);
-    expect(dbA.userVersion()).toBe(LATEST_SCHEMA_VERSION);
+    expect(dbA.userVersion()).toBe(8);
     expect(totpColumns(dbA).has("last_used_step")).toBe(true);
     expect(dbA.get<{ n: number }>("SELECT COUNT(*) AS n FROM users")?.n).toBe(1);
     expect(dbA.get<{ n: number }>("SELECT COUNT(*) AS n FROM audit_log")?.n).toBe(1);
@@ -200,7 +200,7 @@ describe("account database migrations", () => {
     expect(dbB.userVersion()).toBe(7);
 
     new MigrationRunner().run(dbB);
-    expect(dbB.userVersion()).toBe(LATEST_SCHEMA_VERSION);
+    expect(dbB.userVersion()).toBe(8);
     expect(totpColumns(dbB).has("last_used_step")).toBe(true);
     expect(auditColumns(dbB).has("prev_hash")).toBe(true);
     expect(auditColumns(dbB).has("entry_hash")).toBe(true);
@@ -237,7 +237,7 @@ describe("account database migrations", () => {
 
   it("rejects databases newer than the supported schema version", () => {
     const db = openMemoryDb();
-    db.setUserVersion(LATEST_SCHEMA_VERSION + 1);
+    db.setUserVersion(9);
     expect(() => new MigrationRunner().run(db)).toThrow("This account database version is unsupported.");
   });
 });

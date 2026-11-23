@@ -95,6 +95,7 @@ export class Container {
     this.subscriptions = new SubscriptionRepository(this.database);
     this.audit = new AuditLogRepository(this.database);
     this.auditCheckpoints = new AuditCheckpointRepository(this.database);
+    this.auditCheckpoints.ensureTable();
     this.auditVerifier = new AuditChainVerifier(this.audit, this.auditCheckpoints, clock);
     this.stripeEvents = new StripeEventRepository(this.database);
 

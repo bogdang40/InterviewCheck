@@ -67,6 +67,16 @@ describe("incremental audit chain verification", () => {
     expect((await get(harness.app, "/v1/admin/audit/verify?full=maybe", adminToken)).status).toBe(400);
   });
 
+  it("treats a missing checkpoint table as verify from the first row and recreates it", async () => {
+    record(2);
+    expect((await verify()).ok).toBe(true);
+    harness.container.database.exec("DROP TABLE audit_chain_checkpoint");
+    expect(harness.container.auditVerifier.lastResult()).toBeNull();
+    harness.container.database.run("UPDATE audit_log SET details = ? WHERE id = 1", '{"tampered":true}');
+    expect(await verify()).toMatchObject({ ok: false, mode: "incremental", firstBrokenId: 1 });
+    expect(harness.container.auditVerifier.lastResult()).toMatchObject({ ok: false, firstBrokenId: 1 });
+  });
+
   it("walks the table in bounded batches and yields between them", async () => {
     record(6);
     const yields = vi.fn(async () => {});
