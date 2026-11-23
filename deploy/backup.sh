@@ -29,11 +29,22 @@ print("Verified both hosted database backups.")
 PY
 
 LOCAL="$DIR/data/.backups/$NAME"
+# The uncompressed copy is only a staging step; the archive below is the local copy that is kept.
+trap 'rm -rf "$LOCAL"' EXIT
 tar -C "$LOCAL" -czf "$LOCAL.tar.gz" .
-az login --identity --output none
-az storage blob upload --auth-mode login --account-name "$BACKUP_ACCOUNT" \
-  --container-name backups --name "$NAME.tar.gz" --file "$LOCAL.tar.gz" --overwrite --output none
-rm -rf "$LOCAL"
-# Keep a week of local copies too; Azure Storage keeps 30 days (lifecycle rule).
+
+# Housekeeping runs before the upload so a failing upload cannot stop it.
+# Keep a week of local archives; Azure Storage keeps 30 days (lifecycle rule).
 find "$DIR/data/.backups" -maxdepth 1 -name '*.tar.gz' -mtime +7 -delete
+# Staging folders left by runs that stopped before their cleanup (none is older than a few minutes otherwise).
+find "$DIR/data/.backups" -mindepth 1 -maxdepth 1 -type d -mtime +1 -exec rm -rf {} +
+# Database files of versions that failed a rollout (vm-rollout.sh), kept 30 days for inspection.
+find "$DIR/data" -mindepth 1 -maxdepth 1 -type d -name '.failed-*' -mtime +30 -exec rm -rf {} +
+
+az login --identity --output none
+if ! az storage blob upload --auth-mode login --account-name "$BACKUP_ACCOUNT" \
+  --container-name backups --name "$NAME.tar.gz" --file "$LOCAL.tar.gz" --overwrite --output none; then
+  echo "backup upload FAILED: $NAME.tar.gz is only on this VM ($LOCAL.tar.gz)" >&2
+  exit 1
+fi
 echo "backup uploaded: $NAME.tar.gz"
