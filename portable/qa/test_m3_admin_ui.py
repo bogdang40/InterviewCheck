@@ -18,6 +18,7 @@ from e2e_suite.harness import (  # noqa: E402
     assert_no_horizontal_overflow,
     signup_user,
 )
+from e2e_suite.network_quiet import InFlightRequests  # noqa: E402
 
 ADMIN_EMAIL = "admin-m3@example.test"
 MEMBER_EMAIL = "member-m3@example.test"
@@ -106,6 +107,7 @@ def test_admin_unauthenticated_and_non_admin_gates_emit_zero_errors(tmp_path, mo
 def test_admin_models_crud_ssrf_probe_toggle_accounts_audit_and_password_rotation(m3_workspace, m3_browser):
     _bootstrap_users(m3_workspace)
     ctx, page, collector = _new_page(m3_browser, DESKTOP_VIEWPORT)
+    in_flight = InFlightRequests(page)
     secret_key = "sk-m3-synthetic-key-4321"
     try:
         # Sign in via /admin/
@@ -203,11 +205,14 @@ def test_admin_models_crud_ssrf_probe_toggle_accounts_audit_and_password_rotatio
         pw_form.get_by_label("Current password").fill(ADMIN_PASS)
         pw_form.get_by_label("New password", exact=True).fill(NEW_ADMIN_PASS)
         pw_form.get_by_label("Confirm new password").fill(NEW_ADMIN_PASS)
+        # Rotation revokes the current session; a page request still loading with it would be refused (401).
+        in_flight.wait_until_quiet()
         pw_form.get_by_role("button", name="Update password").click()
         expect(pw_form.get_by_role("status")).to_contain_text("Password updated")
         collector.assert_clean()
 
-        # Verify new password works after sign out
+        # Verify new password works after sign out, once the refresh that rotation started has finished
+        in_flight.wait_until_quiet()
         page.get_by_role("button", name="Sign out", exact=True).click()
         expect(page.get_by_label("Operator email")).to_be_visible()
         page.get_by_label("Operator email").fill(ADMIN_EMAIL)
