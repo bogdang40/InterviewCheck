@@ -1,6 +1,7 @@
 """Multi-reviewer calibration tracking and role-level review analytics."""
 from collections import defaultdict
 from datetime import datetime, timezone
+import json
 import sqlite3
 from typing import Any
 from uuid import UUID
@@ -8,6 +9,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException
 
 from . import sql_script
+from .retention_anonymizer import anonymized_candidate_label
 
 router = APIRouter()
 
@@ -198,6 +200,45 @@ def roles_analytics():
     return {"roles": per_role, "totals": {"role_count": len(role_rows), **totals}, "reviewer_summary": global_reviewers}
 
 
+def _snapshot_prompts(db, answers):
+    """Read each relevant saved plan once and retain just the slots used by these answers."""
+    needed = defaultdict(set)
+    for row in answers:
+        slot = row["planned_slot"]
+        if type(slot) is int and slot > 0:
+            needed[row["session_id"]].add(slot)
+    prompts = {}
+    ids = list(needed)
+    if not ids:
+        return prompts
+    has_anonymizations = db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='session_anonymizations'").fetchone()
+    # Retention keeps aggregate counts. Do not add historical prompt text to its detail.
+    anonymized_filter = ("AND NOT EXISTS (SELECT 1 FROM session_anonymizations x WHERE x.session_id=c.session_id)"
+                         if has_anonymizations else "")
+    for start in range(0, len(ids), 500):
+        chunk = ids[start:start + 500]
+        marks = ",".join("?" for _ in chunk)
+        rows = db.execute(
+            f"""SELECT c.session_id,s.candidate,c.questions FROM session_context c JOIN sessions s ON s.id=c.session_id
+                WHERE c.session_id IN ({marks}) {anonymized_filter}""",
+            chunk,
+        )
+        for sid, candidate, raw in rows:
+            # Older JSON backups retain the redacted label but omit the local
+            # retention receipt. Keep that record's display on recorded wording.
+            if candidate == anonymized_candidate_label(sid):
+                continue
+            try:
+                plan = json.loads(raw) if raw else []
+            except (ValueError, TypeError, RecursionError):
+                continue
+            if isinstance(plan, list):
+                for slot in needed[sid]:
+                    if slot <= len(plan) and isinstance(plan[slot - 1], str) and plan[slot - 1].strip():
+                        prompts[sid, slot] = plan[slot - 1]
+    return prompts
+
+
 @router.get("/roles/{rid}/calibration")
 def role_calibration(rid: UUID):
     from . import store
@@ -223,29 +264,33 @@ def role_calibration(rid: UUID):
                JOIN session_context c ON c.session_id=e.session_id WHERE c.role_id=? ORDER BY e.id ASC""",
             (key,),
         ).fetchall()
+        prompts = _snapshot_prompts(db, answer_rows)
 
     summary, reviewers, disagreed_map = _compute_metrics(session_rows, answer_rows, event_rows)
-    by_slot: dict[tuple[bool, int, str], list[sqlite3.Row]] = defaultdict(list)
+    by_question: dict[tuple[int | None, str, str], list[sqlite3.Row]] = defaultdict(list)
     answers_by_id = {row["id"]: row for row in answer_rows}
     for row in answer_rows:
         slot = row["planned_slot"]
-        by_slot[(slot is None, int(slot) if slot is not None else 0, row["question"] if slot is None else "")].append(row)
+        prompt = prompts.get((row["session_id"], slot))
+        group = (slot, "planned", prompt) if prompt is not None else (slot, "recorded", row["question"])
+        by_question[group].append(row)
 
     question_breakdown = []
-    for (no_slot, slot_num, _), rows in sorted(
-        by_slot.items(), key=lambda item: (item[0][0], item[0][1], item[1][0]["question"].casefold())
-    ):
-        slot_ids = {r["id"] for r in rows}
-        slot_metrics, _, _ = _compute_metrics([], rows, [e for e in event_rows if e["answer_id"] in slot_ids])
+    def group_order(key):
+        slot, source, question = key
+        return slot is None, slot or 0, question.casefold(), question, source
+
+    for slot, source, question in sorted(by_question, key=group_order):
+        rows = by_question[slot, source, question]
+        slot_metrics, _, _ = _compute_metrics([], rows, [])
         question_breakdown.append({
-            "planned_slot": None if no_slot else slot_num,
-            "question": rows[0]["question"],
+            "planned_slot": slot, "question_source": source, "question": question,
             **{k: slot_metrics[k] for k in (
                 "answer_count", "match_count", "no_match_count", "insufficient_count", "match_rate_pct",
                 "explained_count", "unresolved_count", "disclosed_count", "concern_count", "pending_count",
-                "pass_rate_pct", "concern_rate_pct",
+                "reviewed_count", "pass_rate_pct", "concern_rate_pct",
             )},
-            "disagreement_count": slot_metrics["multi_reviewer_disagreements"],
+            "disagreement_count": sum(row["id"] in disagreed_map for row in rows),
         })
 
     disagreements_out = []

@@ -121,8 +121,9 @@ def test_m12_role_calibration_analytics_and_disagreements(e2e_workspace, desktop
     panel.get_by_role("button", name="Inspect calibration").click()
     expect(panel.get_by_role("heading", name=f"Reviewer spread for {role['name']}")).to_be_visible()
     expect(panel.get_by_role("heading", name="Question breakdown")).to_be_visible()
-    expect(panel).to_contain_text("Q1: How do you avoid deadlocks?")
-    expect(panel).to_contain_text("Disagreements 1")
+    question = panel.get_by_role("list", name="Question breakdown").get_by_role("listitem").filter(has_text="How do you avoid deadlocks?")
+    expect(question).to_contain_text("Question 1 · Saved plan")
+    expect(question).to_contain_text("Disagreements 1")
     collector.assert_clean()
 
 

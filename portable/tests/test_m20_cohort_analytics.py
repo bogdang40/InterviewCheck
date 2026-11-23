@@ -83,6 +83,7 @@ def test_defensive_when_tags_and_scorecards_tables_absent(client):
     assert body["summary"] == {
         "session_count": 0, "active_count": 0, "finished_count": 0, "archived_count": 0,
         "answer_count": 0, "reviewed_count": 0, "pass_rate_pct": 0.0, "concern_rate_pct": 0.0,
+        "explained_count": 0, "concern_count": 0,
         "avg_scorecard_pct": None, "scored_session_count": 0,
     }
     assert [b["count"] for b in body["score_buckets"]] == [0, 0, 0, 0, 0]
@@ -124,6 +125,7 @@ def test_cohort_analytics_metrics_buckets_timeline_and_filters(client):
     assert full["summary"] == {
         "session_count": 3, "active_count": 1, "finished_count": 1, "archived_count": 1,
         "answer_count": 5, "reviewed_count": 4, "pass_rate_pct": 50.0, "concern_rate_pct": 50.0,
+        "explained_count": 2, "concern_count": 2,
         "avg_scorecard_pct": 53.3, "scored_session_count": 3,
     }
     buckets = {item["range"]: item["count"] for item in full["score_buckets"]}
@@ -134,8 +136,10 @@ def test_cohort_analytics_metrics_buckets_timeline_and_filters(client):
         {"date": "2026-10-03", "sessions": 1, "finished": 0, "explained": 1, "concerns": 0},
     ]
     assert full["tag_breakdown"] == [
-        {"tag": "power", "session_count": 3, "pass_rate_pct": 50.0, "avg_scorecard_pct": 53.3},
-        {"tag": "priority", "session_count": 2, "pass_rate_pct": 33.3, "avg_scorecard_pct": 70.0},
+        {"tag": "power", "session_count": 3, "pass_rate_pct": 50.0, "avg_scorecard_pct": 53.3,
+         "reviewed_count": 4, "explained_count": 2},
+        {"tag": "priority", "session_count": 2, "pass_rate_pct": 33.3, "avg_scorecard_pct": 70.0,
+         "reviewed_count": 3, "explained_count": 1},
     ]
     by_sid = {row["session_id"]: row for row in full["candidates"]}
     assert set(by_sid.keys()) == {s_fin, s_act, s_arch}

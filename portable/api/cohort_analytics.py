@@ -208,6 +208,7 @@ def _compute_cohort(db: sqlite3.Connection, parsed: dict[str, Any], *, candidate
             "session_count": len(matched), "active_count": lc_counts["active"],
             "finished_count": lc_counts["finished"], "archived_count": lc_counts["archived"],
             "answer_count": total_answers, "reviewed_count": reviewed_total,
+            "explained_count": total_explained, "concern_count": total_concerns,
             "pass_rate_pct": _pct(total_explained, reviewed_total),
             "concern_rate_pct": _pct(total_concerns, reviewed_total),
             "avg_scorecard_pct": round(sum(scored) / len(scored), 1) if scored else None,
@@ -218,6 +219,7 @@ def _compute_cohort(db: sqlite3.Connection, parsed: dict[str, Any], *, candidate
         "tag_breakdown": [
             {
                 "tag": t, "session_count": item["session_count"],
+                "explained_count": item["explained"], "reviewed_count": item["reviewed"],
                 "pass_rate_pct": _pct(item["explained"], item["reviewed"]),
                 "avg_scorecard_pct": round(sum(item["scores"]) / len(item["scores"]), 1) if item["scores"] else None,
             }

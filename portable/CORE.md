@@ -157,9 +157,13 @@ A note dispatched to an external ATS before removal cannot be recalled here. An 
 
 ## Find records
 
-Quick search sends a literal query to the authenticated service by POST. It matches role names, candidate names, session roles, questions and answers, and excludes private notes, source texts and credentials. Exact and prefix title matches take precedence over answer body matches. A search response includes up to 50 distinct records with a bounded excerpt of the matching field. Trashed sessions and their answers are excluded.
+Quick search sends a literal query to the authenticated service by POST. It matches role names, candidate names, session roles, questions and answers, and excludes private notes, source texts and credentials. Exact and prefix title matches take precedence over answer body matches. The palette pages through matching records while keeping its search term and page history in memory. The **Data** page can also browse interviews or search by candidate or role before downloading a single interview.
+
+API clients can request up to 50 distinct results per response. Send an empty `cursor` to start a paged search. Send the returned `next_cursor` with the same literal and record types to read the next page. A null continuation marks the end. Each request reads the current workspace, so edits and moves to Trash can change later results. Clients that omit `cursor` keep the original response shape.
 
 The interview archive loads 25 summaries per page. Its URL preserves the candidate or role filter, capture state, evidence status, sort and page. The home page returns full counts alongside up to ten sessions awaiting review and five active sessions. Each queued link opens the first pending match in capture order. Existing clients can still read the original session list endpoint.
+
+In role calibration, each numbered question is grouped by its slot and the prompt saved with the interview. Editing the recorded wording of an answer keeps it in its planned group. An older interview with no usable plan, or one displayed as anonymized, uses its recorded wording. Role and cohort review percentages use human-reviewed answers as their denominator. A group with no reviewed answers has no measured percentage.
 
 ## Assignment queues
 

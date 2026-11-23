@@ -71,9 +71,10 @@ export type RolesAnalyticsResponse = {
   reviewer_summary: ReviewerSummary[]
 }
 
-export type QuestionCalibrationItem = Omit<RoleMetricsSummary, "session_count" | "finished_count" | "reviewed_count" | "multi_reviewer_disagreements"> & {
+export type QuestionCalibrationItem = Omit<RoleMetricsSummary, "session_count" | "finished_count" | "multi_reviewer_disagreements"> & {
   planned_slot: number | null
   question: string
+  question_source: "planned" | "recorded"
   disagreement_count: number
 }
 

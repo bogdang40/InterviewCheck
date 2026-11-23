@@ -148,7 +148,7 @@ def test_m20_data_cohort_analytics_filters_charts_and_exports(e2e_workspace, des
     hist = cohort.get_by_label("Scorecard distribution histogram")
     expect(hist).to_contain_text("40-60%")
     expect(hist).to_contain_text("80-100%")
-    tag_table = cohort.get_by_role("table", name="Cohort performance by tag")
+    tag_table = cohort.get_by_role("table", name="Cohort review outcomes by tag")
     expect(tag_table).to_contain_text("systems")
     expect(tag_table).to_contain_text("priority")
     expect(tag_table.get_by_text("trashed-only")).to_have_count(0)
