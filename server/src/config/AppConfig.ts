@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { KeyMaterial } from "../crypto/KeyMaterial.js";
 import { TRUSTED_PROXY_HEADERS } from "../http/middleware/ClientAddressResolver.js";
+import { ProductionConfigRules } from "./ProductionConfigRules.js";
 
 /**
  * Typed, validated process configuration. Everything the server needs from
@@ -39,6 +40,7 @@ const retiredKeys = optionalSecret.transform((value, context) => {
 });
 
 const schema = z.object({
+  NODE_ENV: z.string().trim().optional(),
   HOST: z.string().trim().min(1).default("0.0.0.0"),
   PORT: z.coerce.number().int().min(1).max(65535).default(8787),
   PUBLIC_BASE_URL: z.string().url().default("http://localhost:8787"),
@@ -73,8 +75,10 @@ export type AppConfig = Readonly<z.infer<typeof schema>>;
 export class AppConfigLoader {
   static fromEnvironment(env: NodeJS.ProcessEnv = process.env): AppConfig {
     const parsed = schema.safeParse(env);
-    if (!parsed.success) {
-      const issues = parsed.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`);
+    const issues = parsed.success
+      ? ProductionConfigRules.issues(parsed.data)
+      : parsed.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`);
+    if (!parsed.success || issues.length > 0) {
       throw new Error(`Invalid server configuration:\n  ${issues.join("\n  ")}`);
     }
     return Object.freeze(parsed.data);

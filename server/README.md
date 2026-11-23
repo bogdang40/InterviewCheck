@@ -211,6 +211,12 @@ end without network access.
 container with a persistent volume for `DATABASE_PATH` works. Set
 `PUBLIC_BASE_URL` to the public origin so Stripe return pages resolve.
 
+The image sets `NODE_ENV=production`, and then the server refuses to start
+unless `PUBLIC_BASE_URL` is an `https` origin and the four Stripe values
+(`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_MONTHLY`,
+`STRIPE_PRICE_ANNUAL`) are either all set or all empty. The `fly secrets set`
+line in `fly.toml` satisfies both.
+
 Run one account service writer per database. Before upgrading an existing paid
 service, pause checkout and take a consistent SQLite backup. Let existing
 Checkout Sessions expire or close them in Stripe. Compare active subscriptions
