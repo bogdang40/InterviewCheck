@@ -1,6 +1,5 @@
 """Configurable data retention policies, PII anonymization, and trash purge engine."""
 from datetime import datetime, timedelta, timezone
-import json
 import sqlite3
 from typing import Any
 from uuid import uuid4
@@ -10,9 +9,10 @@ from pydantic import Field
 
 from . import rate_limit, store
 from .models import Input
+from .retention_anonymizer import REDACTED_TEXT, SessionAnonymizer
+from .session_purge import purge_session
 
 MAX_RETENTION_DAYS = 3650
-REDACTED_TEXT = "[Redacted by retention policy]"
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS retention_policies (
@@ -41,12 +41,6 @@ CREATE TABLE IF NOT EXISTS session_anonymizations (
   anonymized_by TEXT NOT NULL
 );
 """
-
-_PURGE_CHILD_TABLES = (
-    "answer_review_events", "session_scorecards", "session_handoff_notes",
-    "session_anonymizations", "session_tags", "session_drafts", "ats_access_versions",
-    "note_exports", "transcript_imports", "answers", "session_context", "session_trash",
-)
 
 router = APIRouter(prefix="/api/admin/compliance", tags=["compliance-retention"])
 
@@ -125,54 +119,6 @@ def _load_policy(db: sqlite3.Connection) -> dict[str, Any]:
     return _public_policy(db.execute("SELECT * FROM retention_policies WHERE id='default'").fetchone())
 
 
-def _scrub_result_json(raw: str) -> str:
-    try:
-        data = json.loads(raw) if raw else {}
-    except (TypeError, ValueError):
-        return raw
-    if not isinstance(data, dict):
-        return raw
-    passages = data.get("passages")
-    if isinstance(passages, list):
-        data["passages"] = [
-            {**item, "answer_excerpt": REDACTED_TEXT} if isinstance(item, dict) and "answer_excerpt" in item else item
-            for item in passages
-        ]
-    if isinstance(data.get("follow_up"), str) and "You said" in data["follow_up"]:
-        data["follow_up"] = REDACTED_TEXT
-    return json.dumps(data, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
-
-
-def _anonymize_session(
-    db: sqlite3.Connection, sid: str, *, preserve_scorecard_aggregates: bool, actor_email: str, now_iso: str,
-) -> None:
-    db.execute("UPDATE sessions SET candidate=?, legacy=NULL WHERE id=?", (f"Candidate [Anonymized {sid[:8]}]", sid))
-    for arow in db.execute("SELECT id, result FROM answers WHERE session_id=?", (sid,)).fetchall():
-        db.execute(
-            "UPDATE answers SET answer=?, note='', legacy=NULL, import_origin=NULL, result=? WHERE id=?",
-            (REDACTED_TEXT, _scrub_result_json(arow["result"]), arow["id"]),
-        )
-    for table in ("session_drafts", "transcript_imports"):
-        if _has_table(db, table):
-            db.execute(f"DELETE FROM {table} WHERE session_id=?", (sid,))
-    if not preserve_scorecard_aggregates:
-        if _has_table(db, "session_scorecards"):
-            db.execute("UPDATE session_scorecards SET rationale='' WHERE session_id=?", (sid,))
-        if _has_table(db, "session_handoff_notes"):
-            db.execute("UPDATE session_handoff_notes SET body='' WHERE session_id=?", (sid,))
-    db.execute(
-        "INSERT INTO session_anonymizations(session_id, anonymized_at, anonymized_by) VALUES (?,?,?)",
-        (sid, now_iso, actor_email),
-    )
-
-
-def _purge_trashed_session(db: sqlite3.Connection, sid: str) -> None:
-    for table in _PURGE_CHILD_TABLES:
-        if _has_table(db, table):
-            db.execute(f"DELETE FROM {table} WHERE session_id=?", (sid,))
-    db.execute("DELETE FROM sessions WHERE id=?", (sid,))
-
-
 def execute_retention_job(
     db: sqlite3.Connection, *, dry_run: bool, actor_email: str, now: datetime | str | None = None,
 ) -> dict[str, Any]:
@@ -204,8 +150,8 @@ def execute_retention_job(
                 anon_ids.append(str(row["id"]))
         if not dry_run:
             for sid in anon_ids:
-                _anonymize_session(
-                    db, sid, preserve_scorecard_aggregates=preserve_agg, actor_email=actor_email, now_iso=now_iso,
+                SessionAnonymizer(db, sid).run(
+                    preserve_scorecard_aggregates=preserve_agg, actor_email=actor_email, now_iso=now_iso,
                 )
 
     purge_ids: list[str] = []
@@ -219,7 +165,7 @@ def execute_retention_job(
                 purge_ids.append(str(row["session_id"]))
         if not dry_run:
             for sid in purge_ids:
-                _purge_trashed_session(db, sid)
+                purge_session(db, sid)
 
     run_id = str(uuid4())
     db.execute(

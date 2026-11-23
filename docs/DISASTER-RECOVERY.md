@@ -98,7 +98,7 @@ Workspace JSON backups recover review records (`roles`, `sessions`, `answers`, `
 
 ## 4. Model Secret Key Rotation Recovery
 
-Model API keys in `connected_models` use `secret_box` `v1:` or `v2:<key_id>:` authenticated envelopes tied to `aad=model_id`.
+Model API keys in `connected_models` (`aad=model_id`), webhook signing secrets in `alert_rules` (`aad=rule_id`) and TOTP secrets in the account database `user_totp` (`aad=user_id`) use `secret_box` `v1:` or `v2:<key_id>:` authenticated envelopes under the same master key. Rotation covers all three.
 
 1. If restoring a database encrypted with an older master key, set the active key in `INTERVIEWCHECK_MODEL_SECRET_KEY` and list retired key(s) in `INTERVIEWCHECK_MODEL_SECRET_KEY_PREVIOUS` (comma-separated) before starting the service.
 2. Run a non-mutating dry run first to verify every stored credential decrypts cleanly:
@@ -107,7 +107,7 @@ Model API keys in `connected_models` use `secret_box` `v1:` or `v2:<key_id>:` au
    PYTHONPATH=. python -m api.key_rotation --db /data/review.sqlite3 --dry-run --json
    ```
    When recovering from retired key files or env keys directly via CLI, pass `--old-key-file <path>` or `--old-key-env <secret>`.
-3. Execute the atomic rotation to re-encrypt all rows into `v2:<active_key_id>:` envelopes inside a single SQLite transaction:
+3. Execute the rotation to re-encrypt all rows into `v2:<active_key_id>:` envelopes, in one transaction per database (a rerun finishes a partial rotation):
    ```sh
    PYTHONPATH=. python -m api.key_rotation --db /data/review.sqlite3 --json
    ```

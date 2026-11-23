@@ -2,6 +2,7 @@
 import base64
 import hashlib
 import hmac
+import logging
 import re
 import secrets
 import struct
@@ -17,6 +18,7 @@ TOTP_PERIOD_S = 30
 TOTP_DIGITS = 6
 BACKUP_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 BACKUP_COUNT = 8
+LOG = logging.getLogger(__name__)
 
 
 class TotpCodeInput(BaseModel):
@@ -111,12 +113,21 @@ def is_enabled(db, user_id: str) -> bool:
     return bool(row and row["enabled"] == 1)
 
 
+def _match_stored_secret(secret_enc: str, user_id: str, raw_code: str, ts: int) -> int | None:
+    # An undecryptable secret must not lock the account out of its backup codes.
+    try:
+        secret = secret_box.decrypt_secret(secret_enc, aad=user_id)
+    except secret_box.SecretBoxError:
+        LOG.error("Stored TOTP secret for user %s could not be decrypted; only backup codes can sign in.", user_id)
+        return None
+    return match_totp_step(secret, raw_code, ts)
+
+
 def verify_login_factor(db, user_id: str, raw_code: str, ts: int) -> str | None:
     row = db.execute("SELECT secret_enc, enabled, last_used_step FROM user_totp WHERE user_id=?", (user_id,)).fetchone()
     if not row or row["enabled"] != 1:
         return None
-    secret = secret_box.decrypt_secret(row["secret_enc"], aad=user_id)
-    step = match_totp_step(secret, raw_code, ts)
+    step = _match_stored_secret(row["secret_enc"], user_id, raw_code, ts)
     if step is not None:
         if row["last_used_step"] is not None and step <= row["last_used_step"]:
             return None
