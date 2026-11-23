@@ -141,6 +141,7 @@
 .search-footer {
   padding: 0;
 }
+.search-page-controls { display: flex; flex-wrap: wrap; gap: 6px; }
 .search-shortcuts-btn {
   display: inline-flex;
   align-items: center;
@@ -230,6 +231,7 @@
   .search-footer-row {
     flex-wrap: wrap;
   }
+  .search-page-controls button { min-height: 44px; }
   .shortcut-row {
     grid-template-columns: minmax(0, 1fr);
     gap: 6px;

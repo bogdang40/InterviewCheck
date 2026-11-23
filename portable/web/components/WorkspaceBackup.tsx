@@ -3,13 +3,11 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { ArchiveRestore, Download, FileCheck2 } from "lucide-react"
 import Link from "next/link"
-import { useWorkspaceSearch } from "@/lib/search"
-import { useResource } from "@/lib/workspace"
-import { dateLabel, message, type Session } from "@/lib/api"
+import { message } from "@/lib/api"
 import { extractApiError } from "@/lib/adminModels"
 import { Button } from "./ui/button"
 import { Input } from "./ui/input"
-import WorkspaceError from "./WorkspaceError"
+import BackupInterviewPicker from "./BackupInterviewPicker"
 
 type Counts = { new: number; identical: number; conflict: number }
 type Preview = {
@@ -49,18 +47,7 @@ async function submitFile(
 }
 
 export default function WorkspaceBackup() {
-  const sessions = useResource<{ items: Session[]; total: number }>("interviews/feed?page_size=20")
-  const [term, setTerm] = useState("")
-  const [chosenLabel, setChosenLabel] = useState("")
-  const search = useWorkspaceSearch(term, true, "session")
-  const options =
-    term.trim().length >= 2
-      ? (search.result?.items ?? []).map((r) => ({ id: r.id, label: r.label + " · " + r.snippet }))
-      : (sessions.data?.items ?? []).map((s) => ({
-          id: s.id,
-          label: s.candidate + " · " + s.role + " · " + dateLabel(s.created_at),
-        }))
-  const [scope, setScope] = useState("")
+  const [listRevision, setListRevision] = useState(0)
   const fileInput = useRef<HTMLInputElement>(null)
   const [hydrated, setHydrated] = useState(false)
   const [file, setFile] = useState<File>()
@@ -85,7 +72,6 @@ export default function WorkspaceBackup() {
     const preselected = fileInput.current?.files?.[0]
     if (preselected) selectFile(preselected)
   }, [selectFile])
-  if (sessions.error) return <WorkspaceError text={sessions.error} retry={sessions.reload} />
   const applyAllowed = preview && !preview.conflicts.length && preview.roles.new + preview.sessions.new > 0
   async function submit(action: "preview" | "restore") {
     if (busy || !file || (action === "restore" && !applyAllowed)) return
@@ -103,7 +89,7 @@ export default function WorkspaceBackup() {
         setFile(undefined)
         setExpectedSha256("")
         if (fileInput.current) fileInput.current.value = ""
-        sessions.reload()
+        setListRevision(n => n + 1)
       }
     } catch (e) {
       setError(message(e))
@@ -129,49 +115,7 @@ export default function WorkspaceBackup() {
           and the update time. For each review assignment, the file includes the assignee email, who assigned
           the review, its priority, due date and last update.
         </p>
-        {(sessions.data?.total ?? 0) > 20 && (
-          <label className="field">
-            Find an interview
-            <Input
-              type="search"
-              value={term}
-              onChange={(e) => setTerm(e.target.value)}
-              placeholder="Enter a candidate or role"
-            />
-          </label>
-        )}
-        {search.error && (
-          <p className="error" role="alert">
-            {search.error}
-          </p>
-        )}
-        <label className="field">
-          Backup contents
-          <select
-            value={scope}
-            onChange={(e) => {
-              setScope(e.target.value)
-              setChosenLabel(e.target.selectedOptions[0].text)
-            }}
-          >
-            <option value="">Entire workspace</option>
-            {scope && !options.some((o) => o.id === scope) && <option value={scope}>{chosenLabel}</option>}
-            {options.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <Button asChild>
-          <a
-            href={"/api/backups/workspace" + (scope ? "?session_id=" + encodeURIComponent(scope) : "")}
-            download
-          >
-            <Download aria-hidden="true" />
-            Download backup
-          </a>
-        </Button>
+        <BackupInterviewPicker revision={listRevision} />
         <small>Accounts, credentials, billing and delivery history stay in their original stores.</small>
         <Link className="text-action" href="/trash/">
           Open Trash

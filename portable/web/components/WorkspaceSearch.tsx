@@ -4,8 +4,9 @@ import Link from "next/link"
 import { BriefcaseBusiness, FileText, Laptop, MessageSquareText, Moon, Search, Sun, X } from "lucide-react"
 import { lazy, Suspense, useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyEvent } from "react"
 import type * as CommandPaletteModule from "@/lib/commandPalette"
-import { resultURL, useWorkspaceSearch } from "@/lib/search"
+import { resultURL, searchIdentity, SEARCH_PAGE_SIZE, useWorkspaceSearch } from "@/lib/search"
 import { useAccountStatus } from "@/lib/useAccountStatus"
+import SearchPageControls from "./SearchPageControls"
 
 const ShortcutHelpModal = lazy(() => import("./ShortcutHelpModal"))
 
@@ -36,7 +37,6 @@ export default function WorkspaceSearch({
   const [open, setOpen] = useState(false),
     [shortcutOpen, setShortcutOpen] = useState(false),
     [paletteMod, setPaletteMod] = useState<typeof CommandPaletteModule | null>(null),
-    [query, setQuery] = useState(""),
     [active, setActive] = useState(0)
   const shortcutOpenRef = useRef(false)
   shortcutOpenRef.current = shortcutOpen
@@ -44,11 +44,27 @@ export default function WorkspaceSearch({
     title = useId()
   const { isAdmin: fallbackIsAdmin } = useAccountStatus(undefined, isAdminProp === undefined)
   const isAdmin = isAdminProp ?? fallbackIsAdmin
-  const { result, error, pending } = useWorkspaceSearch(query, open)
+  const search = useWorkspaceSearch(open)
+  const { query, setQuery, result, error, pending } = search
   const commands = open && paletteMod ? paletteMod.filterPaletteCommands(query, isAdmin) : []
   const records = result?.items ?? []
   const totalCount = commands.length + records.length
-  const activeIndex = totalCount > 0 ? Math.min(active, totalCount - 1) : 0
+  const activeIndex = active < totalCount ? active : -1
+  const recordIds = records.map(row => row.id)
+  const focusRecords = useRef(false)
+  useEffect(() => {
+    if (!focusRecords.current || !result) return
+    focusRecords.current = false
+    setActive(commands.length)
+    document.getElementById(list + commands.length)?.scrollIntoView({ block: "nearest" })
+  }, [result, commands.length, list])
+
+  function navigateResults(changePage: () => void) {
+    setActive(commands.length)
+    focusRecords.current = true
+    changePage()
+    input.current?.focus()
+  }
 
   function loadPalette() {
     if (!paletteMod) void import("@/lib/commandPalette").then(setPaletteMod)
@@ -127,13 +143,19 @@ export default function WorkspaceSearch({
   }, [])
 
   function key(e: ReactKeyEvent<HTMLInputElement>) {
+    if (!e.nativeEvent.isComposing && ((e.key === "PageDown" && search.hasNext) || (e.key === "PageUp" && search.pageNumber > 1))) {
+      e.preventDefault()
+      navigateResults(e.key === "PageDown" ? search.next : search.previous)
+      return
+    }
     if (!totalCount) return
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault()
-      const next = (activeIndex + (e.key === "ArrowDown" ? 1 : -1) + totalCount) % totalCount
+      const next = activeIndex < 0 ? (e.key === "ArrowDown" ? 0 : totalCount - 1)
+        : (activeIndex + (e.key === "ArrowDown" ? 1 : -1) + totalCount) % totalCount
       setActive(next)
       document.getElementById(list + next)?.scrollIntoView({ block: "nearest" })
-    } else if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+    } else if (e.key === "Enter" && activeIndex >= 0 && !e.nativeEvent.isComposing) {
       e.preventDefault()
       document.getElementById(list + activeIndex)?.click()
     }
@@ -147,11 +169,12 @@ export default function WorkspaceSearch({
         ? commands.length
           ? `${commands.length} ${commands.length === 1 ? "command" : "commands"}. Type 2+ characters to search records.`
           : "Type 2+ characters to search records."
+        : (search.hasNext || search.pageNumber > 1)
+          ? records.length ? `Page ${search.pageNumber}. Records ${(search.pageNumber - 1) * SEARCH_PAGE_SIZE + 1} to ${(search.pageNumber - 1) * SEARCH_PAGE_SIZE + records.length}.`
+            : `Page ${search.pageNumber}. No records remain on this page.`
         : !totalCount
           ? "No matching commands or records."
-          : result?.has_more
-            ? "Showing commands and first 20 records. Refine your search."
-            : `${totalCount} ${totalCount === 1 ? "result" : "results"}. Use arrow keys and Enter.`)
+          : `${totalCount} ${totalCount === 1 ? "result" : "results"}. Use arrow keys and Enter.`)
 
   return (
     <>
@@ -176,6 +199,7 @@ export default function WorkspaceSearch({
           if (dialog.current?.open || !openCycleRef.current) return
           openCycleRef.current = false
           setOpen(false)
+          focusRecords.current = false
           setQuery("")
           setActive(0)
           const shouldRestore = !navigatingRef.current
@@ -208,12 +232,12 @@ export default function WorkspaceSearch({
             aria-autocomplete="list"
             aria-expanded={totalCount > 0}
             aria-controls={list}
-            aria-activedescendant={totalCount > 0 ? list + activeIndex : undefined}
+            aria-activedescendant={activeIndex >= 0 ? list + activeIndex : undefined}
             placeholder="Search interviews, roles, or run a command"
             autoComplete="off"
             maxLength={160}
             value={query}
-            onChange={(e) => { setQuery(e.target.value); setActive(0) }}
+            onChange={(e) => { focusRecords.current = false; setQuery(e.target.value); setActive(0) }}
             onKeyDown={key}
           />
           <button type="button" aria-label="Close search" onClick={() => dialog.current?.close()}>
@@ -243,7 +267,11 @@ export default function WorkspaceSearch({
             return (
               <Link id={list + index} key={r.kind + r.id} role="option" aria-selected={index === activeIndex} tabIndex={-1} prefetch={false} href={resultURL(r)} className="search-hit" onMouseMove={() => setActive(index)} onClick={() => { navigatingRef.current = true; dialog.current?.close() }}>
                 <Icon size={17} aria-hidden="true" />
-                <span><b>{r.label}</b><small>{r.snippet}</small></span>
+                <span><b>{r.label || "Untitled record"}</b>
+                  {r.kind === "answer" && <small>{r.snippet}</small>}
+                  <small title={r.id}><span aria-hidden="true">{searchIdentity(r, recordIds)}</span>
+                    <span className="sr-only">{searchIdentity(r)}</span></small>
+                </span>
                 <em>{r.kind === "session" ? "Interview" : r.kind === "answer" ? "Exchange" : "Role"}</em>
               </Link>
             )
@@ -251,6 +279,9 @@ export default function WorkspaceSearch({
         </div>
         <div className="search-footer-row">
           <p className="search-footer" role="status">{footerText}</p>
+          <SearchPageControls label="Search record pages" page={search.pageNumber} hasNext={search.hasNext}
+            previous={() => navigateResults(search.previous)} next={() => navigateResults(search.next)} />
+          {error && <button type="button" className="search-shortcuts-btn" onClick={() => navigateResults(search.retry)}>Retry search</button>}
           <button type="button" className="search-shortcuts-btn" onClick={openShortcutHelp}>
             Shortcuts <kbd>?</kbd>
           </button>
