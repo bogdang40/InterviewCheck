@@ -72,6 +72,13 @@ final class DualStreamDeepgramService: ObservableObject {
     let maxPendingChunks = 100
 
     let stateLock = NSLock()
+    /// Serializes every audio write with the ready flush. Recursive, so a
+    /// send completion that runs at once on this thread cannot deadlock.
+    let sendLock = NSRecursiveLock()
+    /// Writes one message to a socket; tests replace it to see the order.
+    var transmit: (URLSessionWebSocketTask, URLSessionWebSocketTask.Message, @escaping (Error?) -> Void) -> Void = {
+        socket, message, completion in socket.send(message, completionHandler: completion)
+    }
     var micMetrics = DualStreamMetrics()
     var systemMetrics = DualStreamMetrics()
 
@@ -152,63 +159,42 @@ final class DualStreamDeepgramService: ObservableObject {
     ///
     /// Expected format: PCM16 (Int16), 48kHz, mono
     func sendMicAudio(_ data: Data) {
-        let chunk = PendingAudioChunk(data: data, capturedAt: clock(for: .microphone).captureStart(
-            ofBytes: data.count, arrivedAt: uptime()))
-        let socket = stateLock.withLock { micWebSocket }
-        guard let socket = socket else {
-            enqueuePendingAudio(chunk, source: .microphone)
-            return
-        }
-
-        guard isReady(.microphone) else {
-            enqueuePendingAudio(chunk, source: .microphone)
-            return
-        }
-
-        clock(for: .microphone).recordSent(byteCount: data.count, capturedAt: chunk.capturedAt)
-        let message = URLSessionWebSocketTask.Message.data(data)
-        socket.send(message) { [weak self] error in
-            guard let self, self.isCurrentSocket(socket, source: .microphone) else { return }
-            if let error = error {
-                if DeepgramStreamCore.isCancellation(error) { return }
-                self.logDebug("[Mic] Send error: \(DeepgramStreamCore.errorSummary(error))")
-                self.updateMetricError(source: .microphone, message: DeepgramStreamCore.errorSummary(error))
-                return
-            }
-            self.incrementSentChunks(source: .microphone)
-            self.markReadyIfNeeded(.microphone)
-        }
+        sendAudio(data, source: .microphone)
     }
 
     /// Send system audio data (uses diarization for speaker identification)
     ///
     /// Expected format: PCM16 (Int16), 48kHz, mono
     func sendSystemAudio(_ data: Data) {
-        let chunk = PendingAudioChunk(data: data, capturedAt: clock(for: .systemAudio).captureStart(
+        sendAudio(data, source: .systemAudio)
+    }
+
+    /// Queues or sends one chunk. Deciding and sending happen under
+    /// `sendLock`, the lock the ready flush holds, so live audio can never
+    /// reach the socket ahead of audio queued before the stream was ready.
+    func sendAudio(_ data: Data, source: AudioSource) {
+        let streamClock = clock(for: source)
+        let chunk = PendingAudioChunk(data: data, capturedAt: streamClock.captureStart(
             ofBytes: data.count, arrivedAt: uptime()))
-        let socket = stateLock.withLock { systemWebSocket }
-        guard let socket = socket else {
-            enqueuePendingAudio(chunk, source: .systemAudio)
+        sendLock.lock()
+        defer { sendLock.unlock() }
+        let socket = stateLock.withLock { source == .microphone ? micWebSocket : systemWebSocket }
+        guard let socket, isReady(source) else {
+            enqueuePendingAudio(chunk, source: source)
             return
         }
 
-        guard isReady(.systemAudio) else {
-            enqueuePendingAudio(chunk, source: .systemAudio)
-            return
-        }
-
-        clock(for: .systemAudio).recordSent(byteCount: data.count, capturedAt: chunk.capturedAt)
-        let message = URLSessionWebSocketTask.Message.data(data)
-        socket.send(message) { [weak self] error in
-            guard let self, self.isCurrentSocket(socket, source: .systemAudio) else { return }
+        streamClock.recordSent(byteCount: data.count, capturedAt: chunk.capturedAt)
+        transmit(socket, .data(data)) { [weak self] error in
+            guard let self, self.isCurrentSocket(socket, source: source) else { return }
             if let error = error {
                 if DeepgramStreamCore.isCancellation(error) { return }
-                self.logDebug("[System] Send error: \(DeepgramStreamCore.errorSummary(error))")
-                self.updateMetricError(source: .systemAudio, message: DeepgramStreamCore.errorSummary(error))
+                self.logDebug("[\(source.displayName)] Send error: \(DeepgramStreamCore.errorSummary(error))")
+                self.updateMetricError(source: source, message: DeepgramStreamCore.errorSummary(error))
                 return
             }
-            self.incrementSentChunks(source: .systemAudio)
-            self.markReadyIfNeeded(.systemAudio)
+            self.incrementSentChunks(source: source)
+            self.markReadyIfNeeded(source)
         }
     }
 
@@ -248,6 +234,8 @@ final class DualStreamDeepgramService: ObservableObject {
     }
 
     func markReadyIfNeeded(_ source: AudioSource) {
+        // Ready and flushed in one step, shared with `sendAudio`.
+        sendLock.lock()
         let shouldUpdate: Bool = stateLock.withLock {
             switch source {
             case .microphone:
@@ -260,6 +248,8 @@ final class DualStreamDeepgramService: ObservableObject {
                 return true
             }
         }
+        if shouldUpdate { flushPendingAudio(for: source) }
+        sendLock.unlock()
 
         guard shouldUpdate else { return }
 
@@ -269,8 +259,6 @@ final class DualStreamDeepgramService: ObservableObject {
         case .systemAudio:
             updateSystemState(.connected)
         }
-
-        flushPendingAudio(for: source)
     }
 
     func clock(for source: AudioSource) -> StreamClock {
@@ -292,6 +280,7 @@ final class DualStreamDeepgramService: ObservableObject {
         pendingAudioLock.unlock()
     }
 
+    /// Sends the queued audio in order; callers hold `sendLock`.
     func flushPendingAudio(for source: AudioSource) {
         let socket = stateLock.withLock {
             source == .microphone ? micWebSocket : systemWebSocket
@@ -315,8 +304,7 @@ final class DualStreamDeepgramService: ObservableObject {
         let streamClock = clock(for: source)
         for chunk in pending {
             streamClock.recordSent(byteCount: chunk.data.count, capturedAt: chunk.capturedAt)
-            let message = URLSessionWebSocketTask.Message.data(chunk.data)
-            socket.send(message) { _ in }
+            transmit(socket, .data(chunk.data)) { _ in }
         }
     }
 
