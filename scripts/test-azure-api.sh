@@ -31,15 +31,20 @@ payload='{
   "max_tokens": 16
 }'
 
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+
 echo "Sending request..."
-curl -sS -D /tmp/azure_api_test_headers.txt \
+status=$(curl -sS -o "$work/body.txt" -w '%{http_code}' \
   -H "Content-Type: application/json" \
   -H "api-key: ${api_key}" \
   -d "${payload}" \
-  "${url}" \
-  -o /tmp/azure_api_test_body.txt
-
-status=$(awk 'NR==1 {print $2}' /tmp/azure_api_test_headers.txt)
+  "${url}") || status=000
 echo "HTTP status: ${status}"
 echo "Response body:"
-cat /tmp/azure_api_test_body.txt
+cat "$work/body.txt" 2>/dev/null || true
+echo
+case "$status" in
+  2??) ;;
+  *) echo "Azure request failed with HTTP status ${status}." >&2; exit 1 ;;
+esac

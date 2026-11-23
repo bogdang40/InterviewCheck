@@ -4,7 +4,7 @@
 # with `az login` (subscription owner) and `gh auth login` (repo admin).
 #
 # Creates, in one resource group:
-#   - a small Ubuntu VM (Docker + Caddy, data on its own disk, no SSH port open)
+#   - a small Ubuntu VM (Docker + Caddy, data on the VM's OS disk, no SSH port open)
 #   - an Azure Container Registry the workflow pushes images to
 #   - a storage account for nightly database backups (kept 30 days)
 #   - an Entra app that GitHub Actions signs in as (OIDC, no stored password)

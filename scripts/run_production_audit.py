@@ -214,12 +214,16 @@ def check_web_bundle_budget(root: Path) -> AuditCheck:
 
 
 def run_audit(
-    root: Path, *, with_dr: bool = False, strict_prod: bool = False, with_bundle: bool = False
+    root: Path, *, with_dr: bool = False, strict_prod: bool = False, with_bundle: bool = False,
+    env_file: Path | None = None,
 ) -> dict[str, Any]:
     root = Path(root).resolve()
     deploy_cmd = [sys.executable, str(root / "scripts" / "check_deploy_config.py"), "--json", "--root", str(root)]
     if strict_prod:
         deploy_cmd.append("--strict-prod")
+    if env_file is not None:
+        # Without it, --strict-prod checks this shell's environment instead of the deployment's app.env.
+        deploy_cmd += ["--env-file", str(Path(env_file).resolve())]
     checks: list[AuditCheck] = [
         _run_subprocess_check("source_size_backend", [sys.executable, str(root / "scripts" / "check-source-size.py")], root=root),
         check_web_and_docs_line_limit(root),
@@ -250,9 +254,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--with-dr", action="store_true", help="Include scripts/dr_drill.py verification.")
     parser.add_argument("--with-bundle", action="store_true", help="Validate built portable/web/out/ bundle size and tokens.")
     parser.add_argument("--strict-prod", action="store_true", help="Pass --strict-prod to check_deploy_config.py.")
+    parser.add_argument("--env-file", type=Path, default=None,
+                        help="With --strict-prod: the deployment's app.env to check (otherwise this shell's environment).")
     parser.add_argument("--root", type=Path, default=ROOT, help="Repository root directory.")
     args = parser.parse_args(argv)
-    report = run_audit(args.root, with_dr=args.with_dr, strict_prod=args.strict_prod, with_bundle=args.with_bundle)
+    report = run_audit(args.root, with_dr=args.with_dr, strict_prod=args.strict_prod, with_bundle=args.with_bundle,
+                       env_file=args.env_file)
     if args.as_json:
         print(json.dumps(report, indent=2))
     else:
