@@ -1,4 +1,5 @@
 import { ApiError, errorMessage, request } from "./http"
+import { announceAssignmentChange } from "./assignmentChanges"
 
 export type AssignmentPriority = "low" | "normal" | "high"
 
@@ -27,6 +28,7 @@ export type AssignmentQueueResponse = {
   filtered: number
   limit: number
   viewer_email: string
+  next_transition_ms: number | null
   counts: AssignmentQueueCounts
   due_counts: AssignmentDueCounts
   items: AssignmentQueueItem[]
@@ -123,6 +125,7 @@ export async function saveSessionAssignment(sessionId: string, payload: SessionA
     `/api/sessions/${encodeURIComponent(sessionId)}/assignment`,
     { method: "PUT", json: { ...payload, expected_version: version }, toError: assignmentError },
   )
+  announceAssignmentChange()
   return { assignment: data.assignment, version: validAssignmentVersion(data.version) ? data.version : null }
 }
 
@@ -132,6 +135,7 @@ export async function clearSessionAssignment(sessionId: string, version: string)
     `/api/sessions/${encodeURIComponent(sessionId)}/assignment?expected_version=${encodeURIComponent(version)}`,
     { method: "DELETE", toError: assignmentError },
   )
+  announceAssignmentChange()
   return { assignment: null, version: validAssignmentVersion(data.version) ? data.version : null }
 }
 
@@ -139,7 +143,7 @@ export async function fetchAssignmentQueue(
   filters: AssignmentQueueFilters = {},
   signal?: AbortSignal,
 ): Promise<AssignmentQueueResponse> {
-  const params = new URLSearchParams({ include_versions: "true" })
+  const params = new URLSearchParams({ include_versions: "true", include_transition: "true" })
   if (filters.assignee) params.set("assignee", filters.assignee)
   if (filters.priority) params.set("priority", filters.priority)
   if (filters.due) params.set("due", filters.due)
@@ -160,6 +164,8 @@ export async function fetchAssignmentQueue(
     filtered: data?.filtered ?? data?.items?.length ?? 0,
     limit: data?.limit ?? filters.limit ?? 50,
     viewer_email: typeof data?.viewer_email === "string" ? data.viewer_email : "",
+    next_transition_ms: typeof data?.next_transition_ms === "number" && Number.isSafeInteger(data.next_transition_ms) &&
+      data.next_transition_ms > 0 ? data.next_transition_ms : null,
     counts: {
       assigned_to_me: data?.counts?.assigned_to_me ?? 0,
       high_priority: data?.counts?.high_priority ?? 0,
@@ -184,6 +190,7 @@ export async function bulkAssignSessions(
     "/api/interviews/assignments/bulk",
     { method: "POST", json: payload, toError: assignmentError },
   )
+  announceAssignmentChange()
   return {
     action: data?.action === "clear" ? "clear" : "assign",
     updated: typeof data?.updated === "number" ? data.updated : 0,

@@ -303,17 +303,19 @@ async def list_assignments(
     limit: int = Query(default=50, ge=1, le=200),
     page: int = Query(default=1, ge=1),
     include_versions: bool = False,
+    include_transition: bool = False,
 ):
     _, viewer_email = await access.optional_actor(request)
-    return await run_in_threadpool(_read_queue_page, viewer_email, assignee, priority, due, limit, page, include_versions)
+    return await run_in_threadpool(_read_queue_page, viewer_email, assignee, priority, due, limit, page,
+                                   include_versions, include_transition)
 
 
 def _read_queue_page(viewer_email: str, assignee: str, priority: str, due: str, limit: int, page: int,
-                     include_versions: bool = False):
+                     include_versions: bool = False, include_transition: bool = False):
     with store.connection() as db:
         result = assignment_queue.read_page(
             db, viewer=viewer_email, assignee=assignee, priority=priority, due=due, limit=limit, page=page,
-            has_assignments=_has_table(db, "session_assignments"), now=datetime.now(timezone.utc),
+            has_assignments=_has_table(db, "session_assignments"), now=datetime.now(timezone.utc), include_transition=include_transition,
         )
     if include_versions:
         for row in result["items"]:
