@@ -209,6 +209,10 @@ async def save_scorecard(sid: UUID, payload: ScorecardSaveInput, request: Reques
     return await run_in_threadpool(_save_scorecard, str(sid), payload, actor_email)
 
 
+def _matches_saved_score(row, fields):
+    return row is not None and all(row[name] == value for name, value in fields.items())
+
+
 def _save_scorecard(key: str, payload: ScorecardSaveInput, actor_email: str):
     now = store.timestamp()
     with store.connection(write=True) as db:
@@ -219,11 +223,14 @@ def _save_scorecard(key: str, payload: ScorecardSaveInput, actor_email: str):
             if current_version != payload.expected_version:
                 raise HTTPException(409, "The saved scorecard changed. Review the latest scores before saving.",
                                     headers={"X-InterviewCheck-Conflict": "scorecard-version"})
+        values = [item.model_dump() for item in payload.items]
+        if len(values) == len(previous) and all(_matches_saved_score(row, item) for row, item in zip(previous, values)):
+            return _load_scorecard_state(db, key)
         previous_by_id = {row["criterion_id"]: row for row in previous}
         db.execute("DELETE FROM session_scorecards WHERE session_id=?", (key,))
-        for item in payload.items:
+        for item, fields in zip(payload.items, values):
             prior = previous_by_id.get(item.criterion_id)
-            unchanged = prior is not None and all(prior[k] == v for k, v in item.model_dump().items())
+            unchanged = _matches_saved_score(prior, fields)
             db.execute(
                 """INSERT INTO session_scorecards(
                        session_id, criterion_id, criterion_label, weight, rating, rationale, updated_by, updated_at
