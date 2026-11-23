@@ -8,7 +8,7 @@ export default function ComparisonScorecards({ sessions, includeRationales }: {
 }) {
   return (
     <section className={styles.section} aria-labelledby="saved-scorecards-heading">
-      <h2 id="saved-scorecards-heading">Saved interview scorecards</h2>
+      <h2 id="saved-scorecards-heading" tabIndex={-1}>Saved interview scorecards</h2>
       <p className="muted">Each weighted score uses the criteria, ratings and weights saved for that interview.</p>
       <div className={styles.cardsGrid}>
         {sessions.map(({ id, candidate, role, created_at, scorecard }) => (

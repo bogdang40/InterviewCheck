@@ -154,7 +154,7 @@ export default function ComparisonPicker({ open, committed, known, apply, cancel
             onChange={(event) => toggle(row, event.target.checked)} />
           <span className={styles.pickerMeta}><strong>{candidateName(row)}</strong>
             <small>{row.role || "No role"} · {lifecycleText[lifecycle(row)]} · {dateLabel(row.created_at)} · {idLabel(row.id, visibleIds)}</small></span>
-          <Badge variant="outline">{row.answer_count} answers</Badge>
+          <Badge variant="outline">{row.answer_count} {row.answer_count === 1 ? "answer" : "answers"}</Badge>
         </label>
       </li>)}
     </ul>}

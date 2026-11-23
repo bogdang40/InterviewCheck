@@ -4,41 +4,29 @@ import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Download, Printer, RotateCcw, SlidersHorizontal } from "lucide-react"
-import { dateLabel, message, statusText } from "@/lib/api"
+import { message, statusText } from "@/lib/api"
 import {
   buildComparePageUrl, buildComparePrintUrl, compareInterviews, downloadCompareDossier,
-  formatSlotHeading, getSlotCell, parseCompareIds, type CompareCounts, type CompareResponse,
+  formatSlotHeading, getSlotCell, parseCompareIds, type CompareResponse,
   type CompareSessionSummary, type CompareSlotRow,
 } from "@/lib/compareInterviews"
-import { lifecycleText, type Lifecycle } from "@/lib/interview-list"
 import { interviewURL } from "@/lib/workspace"
 import ComparisonScorecards from "./ComparisonScorecards"
+import ComparisonCandidateCard from "./ComparisonCandidateCard"
 import WorkspaceError from "./WorkspaceError"
 import { Badge } from "./ui/badge"
 import { Button } from "./ui/button"
 import ComparisonPicker from "./ComparisonPicker"
 import styles from "./CompareDossierView.module.css"
 
-const COUNT_BADGES: Array<[keyof CompareCounts, string, "success" | "destructive" | "warning" | "secondary" | "outline"]> = [
-  ["match", "Match", "success"], ["no_match", "No match", "destructive"], ["insufficient", "Limited", "warning"],
-  ["pending", "Pending", "secondary"], ["explained", "Explained", "outline"],
-  ["unresolved", "Unresolved", "outline"], ["disclosed", "Disclosed", "outline"],
-]
-
-const statusVariant = (status: string) =>
-  status === "match" ? ("success" as const) : status === "no_match" ? ("destructive" as const) : ("warning" as const)
-
-const lifecycleLabel = (value: string) =>
-  value in lifecycleText ? lifecycleText[value as Lifecycle] : value || "Unknown"
-
-function InterviewQuestionCell({ session, row, includeExcerpts, includeNotes }: {
-  session: CompareSessionSummary; row: CompareSlotRow; includeExcerpts: boolean; includeNotes: boolean
+function InterviewQuestionCell({ session, row, rowHeader, includeExcerpts, includeNotes }: {
+  session: CompareSessionSummary; row: CompareSlotRow; rowHeader: string; includeExcerpts: boolean; includeNotes: boolean
 }) {
   const answer = getSlotCell(row, session.id)
   const prompt = row.planned_questions?.[session.id]
   const otherInterview = row.owner_session_id !== undefined && row.owner_session_id !== session.id
   return (
-    <td>
+    <td headers={`${rowHeader} compare-column-${session.id}`}>
       <div className={styles.cellStack}>
         <strong className={styles.mobileCandidate} aria-hidden="true">{session.candidate || "Unnamed candidate"}</strong>
         {prompt === null && <p className={styles.cellMeta}>Not in this interview plan.</p>}
@@ -50,11 +38,11 @@ function InterviewQuestionCell({ session, row, includeExcerpts, includeNotes }: 
         </span>}
         {answer && <>
           <div className={styles.countsList}>
-            <Badge variant={statusVariant(answer.status)}>{statusText[answer.status as keyof typeof statusText] || answer.status}</Badge>
+            <span className={`status ${answer.status}`}>{statusText[answer.status as keyof typeof statusText] || answer.status}</span>
             <Badge variant="outline">{answer.disposition}</Badge>
           </div>
-          {prompt !== answer.question && <p className={styles.cellQuestion}>
-            {row.planned_questions && <span className={styles.promptLabel}>Recorded question</span>}{answer.question}
+          {(prompt ?? row.planned_question) !== answer.question && <p className={styles.cellQuestion}>
+            {(row.planned_questions || row.planned_question) && <span className={styles.promptLabel}>Recorded question</span>}{answer.question}
           </p>}
           <span className={styles.cellMeta}>{answer.passage_count} {answer.passage_count === 1 ? "passage" : "passages"}</span>
           {includeExcerpts && answer.excerpt && <blockquote className={styles.excerpt}>{answer.excerpt}</blockquote>}
@@ -164,6 +152,13 @@ function CandidateComparison({ parsed }: { parsed: ReturnType<typeof parseCompar
         )}
       </header>
 
+      {data && <nav className={styles.sectionLinks} aria-label="Comparison sections">
+        <a href="#compare-cards-heading">Candidates</a>
+        {includeScorecards && <a href="#saved-scorecards-heading">Scorecards</a>}
+        <a href="#compare-matrix-heading">Questions</a>
+        {!!data.rubric_criteria?.length && <a href="#compare-rubric-heading">Role rubric</a>}
+      </nav>}
+
       {(parsed.ignoredCount > 0 || parsed.truncatedCount > 0) && (
         <p className="notice" role="status">
           {parsed.ignoredCount > 0 && `Ignored ${parsed.ignoredCount} invalid interview ID(s). `}
@@ -198,37 +193,16 @@ function CandidateComparison({ parsed }: { parsed: ReturnType<typeof parseCompar
       {data && (
         <>
           <section className={styles.section} aria-labelledby="compare-cards-heading">
-            <h2 id="compare-cards-heading">Candidates ({data.sessions.length})</h2>
+            <h2 id="compare-cards-heading" tabIndex={-1}>Candidates ({data.sessions.length})</h2>
             <div className={styles.cardsGrid}>
-              {data.sessions.map((session) => (
-                <article key={session.id} className={`panel ${styles.candidateCard}`}>
-                  <div className={styles.cardHead}>
-                    <div>
-                      <Link className={styles.cardTitle} href={interviewURL(session.id)}>
-                        {session.candidate || "Unnamed candidate"}
-                      </Link>
-                      <p className={styles.cardMeta}>{session.role || "No role assigned"}</p>
-                    </div>
-                    <Badge variant="outline">{lifecycleLabel(session.lifecycle)}</Badge>
-                  </div>
-                  <p className={styles.cardMeta}>
-                    {dateLabel(session.created_at)} · {session.consent ? "Consent recorded" : "No consent"} · {session.answer_count} answers
-                  </p>
-                  {session.policy && <p className={styles.policyText}>Policy: {session.policy}</p>}
-                  <div className={styles.countsList}>
-                    {COUNT_BADGES.map(([key, label, variant]) => (
-                      <Badge key={key} variant={variant}>{label} {session.counts[key]}</Badge>
-                    ))}
-                  </div>
-                </article>
-              ))}
+              {data.sessions.map(session => <ComparisonCandidateCard key={session.id} session={session} />)}
             </div>
           </section>
 
           {includeScorecards && <ComparisonScorecards sessions={data.sessions} includeRationales={includeRationales} />}
 
           <section className={`panel ${styles.section}`} aria-labelledby="compare-matrix-heading">
-            <h2 id="compare-matrix-heading">Question-slot matrix</h2>
+            <h2 id="compare-matrix-heading" tabIndex={-1}>Question-slot matrix</h2>
             {data.slots.some(row => row.owner_session_id) && <p className="muted">
               Additional answers follow their planned question in recorded order. Unslotted exchanges appear last in recorded order.
             </p>}
@@ -240,17 +214,17 @@ function CandidateComparison({ parsed }: { parsed: ReturnType<typeof parseCompar
                   <thead>
                     <tr>
                       <th scope="col" className={styles.slotCellHead}>Question slot</th>
-                      {data.sessions.map((s) => <th key={s.id} scope="col">{s.candidate || "Unnamed candidate"}</th>)}
+                      {data.sessions.map((s) => <th key={s.id} id={`compare-column-${s.id}`} scope="col">{s.candidate || "Unnamed candidate"}</th>)}
                     </tr>
                   </thead>
                   <tbody>
                     {data.slots.map((row, idx) => (
                       <tr key={`${String(row.slot)}-${idx}`}>
-                        <th scope="row" className={styles.slotCellHead}>
+                        <th id={`compare-row-${idx}`} scope="row" className={styles.slotCellHead}>
                           <div>{formatSlotHeading(row, idx)}</div>
                           {row.planned_question && <p className={styles.cellMeta}>{row.planned_question}</p>}
                         </th>
-                        {data.sessions.map(session => <InterviewQuestionCell key={session.id} session={session} row={row}
+                        {data.sessions.map(session => <InterviewQuestionCell key={session.id} session={session} row={row} rowHeader={`compare-row-${idx}`}
                           includeExcerpts={includeExcerpts} includeNotes={includeNotes} />)}
                       </tr>
                     ))}
@@ -262,7 +236,7 @@ function CandidateComparison({ parsed }: { parsed: ReturnType<typeof parseCompar
 
           {data.rubric_criteria && data.rubric_criteria.length > 0 && (
             <section className={`panel ${styles.section}`} aria-labelledby="compare-rubric-heading">
-              <h2 id="compare-rubric-heading">Shared role rubric criteria</h2>
+              <h2 id="compare-rubric-heading" tabIndex={-1}>Shared role rubric criteria</h2>
               <p className="muted">Current guidance from the shared role definition.</p>
               <div className={styles.rubricGrid}>
                 {data.rubric_criteria.map((item, idx) => (
