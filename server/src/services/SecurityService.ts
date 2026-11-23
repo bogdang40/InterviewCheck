@@ -11,7 +11,7 @@ import type { SessionRepository } from "../repositories/SessionRepository.js";
 import type { UserRepository } from "../repositories/UserRepository.js";
 import { LOGIN_THROTTLE_POLICY } from "./LoginThrottle.js";
 
-export type LimiterName = "credential" | "adminRead" | "adminWrite" | "billing" | "totp";
+export type LimiterName = "credential" | "adminRead" | "adminWrite" | "billing" | "totp" | "apiToken";
 
 export interface SessionView {
   readonly id: string;
@@ -58,6 +58,7 @@ export interface RateLimitClearFilter {
 }
 
 const VALID_SCOPE_SET = new Set<string>(API_TOKEN_SCOPES);
+export const MAX_ACTIVE_API_TOKENS_PER_USER = 25;
 
 export class SecurityService {
   constructor(
@@ -114,6 +115,9 @@ export class SecurityService {
       if (!currentUser || currentUser.disabled) throw new HttpError(403, "account_disabled", "This account has been disabled.");
       if (scopes.includes("admin:models") && currentUser.role !== "admin") {
         throw new HttpError(403, "forbidden", "Admin role is required for the admin:models scope.");
+      }
+      if (this.apiTokens.countActiveForUser(currentUser.id, now) >= MAX_ACTIVE_API_TOKENS_PER_USER) {
+        throw new HttpError(409, "token_limit_reached", `At most ${MAX_ACTIVE_API_TOKENS_PER_USER} active API tokens are allowed. Revoke one first.`);
       }
       const created = this.apiTokens.create({ userId: currentUser.id, name: input.name, tokenPrefix, tokenHash, scopes, expiresAt }, now);
       this.audit.record(

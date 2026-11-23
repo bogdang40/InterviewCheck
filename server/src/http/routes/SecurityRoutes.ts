@@ -2,12 +2,14 @@ import { Hono } from "hono";
 import type { AuthService } from "../../services/AuthService.js";
 import type { SecurityService } from "../../services/SecurityService.js";
 import { authenticate, type AuthEnv } from "../middleware/Authenticate.js";
+import { rateLimitUser, type FixedWindowRateLimiter } from "../middleware/RateLimit.js";
 import { parseJsonBody, parseParams } from "../RequestParsing.js";
 import { createApiTokenSchema, uuidParamSchema } from "../Schemas.js";
 
 export interface SecurityRouteDeps {
   auth: AuthService;
   security: SecurityService;
+  apiTokenLimiter: FixedWindowRateLimiter;
 }
 
 export class SecurityRoutes {
@@ -28,7 +30,7 @@ export class SecurityRoutes {
       c.json(deps.security.listApiTokens(c.get("user"))),
     );
 
-    router.post("/auth/tokens", requireSession, async (c) => {
+    router.post("/auth/tokens", requireSession, rateLimitUser(deps.apiTokenLimiter), async (c) => {
       const body = await parseJsonBody(c, createApiTokenSchema);
       return c.json(deps.security.createApiToken(c.get("user"), body), 201);
     });

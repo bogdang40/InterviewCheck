@@ -91,7 +91,7 @@ export const adminRevokeSessionsSchema = z.object({
   sessionId: z.string().uuid("Invalid session id.").optional(),
 });
 
-export const LIMITER_NAMES = ["credential", "adminRead", "adminWrite", "billing", "totp"] as const;
+export const LIMITER_NAMES = ["credential", "adminRead", "adminWrite", "billing", "totp", "apiToken"] as const;
 
 export const adminRateLimitQuerySchema = z.object({
   limiter: z.enum(LIMITER_NAMES).optional(),

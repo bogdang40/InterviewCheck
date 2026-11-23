@@ -174,8 +174,15 @@ All JSON, all under `/v1`. Authenticated routes take `Authorization: Bearer <tok
 | GET | `/admin/users?q=&limit=&cursor=` | admin | paginated users with entitlement |
 | GET | `/admin/users/:id` | admin | one user |
 | PATCH | `/admin/users/:id` | admin | `{role?, disabled?, complimentaryUntil?}` |
+| GET | `/auth/tokens` | user | the user's API tokens (metadata only) |
+| POST | `/auth/tokens` | user | `{name, scopes, ttlDays?}` mints a token; 10 per minute per user, at most 25 active (`409 token_limit_reached`) |
+| DELETE | `/auth/tokens/:id` | user | revokes one token |
 | POST | `/admin/users/:id/reset-totp` | admin | removes the user's two factor setup and revokes their sessions |
 | GET | `/admin/audit?limit=` | admin | recent audit entries |
+
+API tokens (`ic_tok_...`) can be minted and revoked, but no route accepts
+them for authentication yet. They are revoked when the user changes their
+password and when an admin disables the account.
 
 Errors are `{"error": {"code", "message"}}` with a meaningful status.
 Credential endpoints are rate limited to 10 attempts per minute per address,

@@ -3,6 +3,7 @@ import type { Database } from "../db/Database.js";
 import { AuthSessionRules, type AuthSession } from "../domain/Session.js";
 import { EmailNormalizer, type User } from "../domain/User.js";
 import { HttpError } from "../http/HttpError.js";
+import type { ApiTokenRepository } from "../repositories/ApiTokenRepository.js";
 import type { AuditLogRepository } from "../repositories/AuditLogRepository.js";
 import type { SessionRepository } from "../repositories/SessionRepository.js";
 import type { UserRepository } from "../repositories/UserRepository.js";
@@ -37,6 +38,7 @@ export class AuthService {
     private readonly database: Database,
     private readonly users: UserRepository,
     private readonly sessions: SessionRepository,
+    private readonly apiTokens: ApiTokenRepository,
     private readonly audit: AuditLogRepository,
     private readonly hasher: PasswordHasher,
     private readonly tokens: TokenService,
@@ -159,7 +161,8 @@ export class AuthService {
       if (!current || current.disabled) throw new HttpError(403, "account_disabled", "This account has been disabled.");
       const updated = this.users.update(current.id, { passwordHash }, now);
       this.sessions.revokeAllForUser(current.id, now);
-      this.audit.record({ actorUserId: current.id, action: "auth.password_change", targetUserId: current.id }, now);
+      const revokedApiTokens = this.apiTokens.revokeAllForUser(current.id, now);
+      this.audit.record({ actorUserId: current.id, action: "auth.password_change", targetUserId: current.id, details: { revokedApiTokens } }, now);
       return this.issueSession(updated, request.session.deviceName, now);
     });
   }

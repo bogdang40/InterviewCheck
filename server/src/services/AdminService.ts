@@ -3,6 +3,7 @@ import type { Database } from "../db/Database.js";
 import type { PublicUser, User, UserRole } from "../domain/User.js";
 import type { Entitlement } from "../domain/Entitlement.js";
 import { HttpError } from "../http/HttpError.js";
+import type { ApiTokenRepository } from "../repositories/ApiTokenRepository.js";
 import type { AuditEntry, AuditFilter, AuditLogRepository, AuditPage } from "../repositories/AuditLogRepository.js";
 import type { SessionRepository } from "../repositories/SessionRepository.js";
 import type { SubscriptionRepository } from "../repositories/SubscriptionRepository.js";
@@ -44,6 +45,7 @@ export class AdminService {
     private readonly audit: AuditLogRepository,
     private readonly entitlements: EntitlementService,
     private readonly totp: TotpRepository,
+    private readonly apiTokens: ApiTokenRepository,
     private readonly clock: () => Date = () => new Date(),
   ) {}
 
@@ -68,6 +70,7 @@ export class AdminService {
       const updated = this.users.update(target.id, patch, now);
       const roleChanged = patch.role !== undefined && patch.role !== target.role;
       if (patch.disabled === true || roleChanged) this.sessions.revokeAllForUser(target.id, now);
+      if (patch.disabled === true) this.apiTokens.revokeAllForUser(target.id, now);
       this.audit.record({
         actorUserId: currentActor.id,
         action: "admin.update_user",

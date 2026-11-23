@@ -88,6 +88,7 @@ export class AppFactory {
       SecurityRoutes.build({
         auth: container.auth,
         security: container.security,
+        apiTokenLimiter: container.apiTokenLimiter,
       }),
     );
     api.route(

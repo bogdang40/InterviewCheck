@@ -61,6 +61,7 @@ export class Container {
   readonly adminWriteLimiter: FixedWindowRateLimiter;
   readonly billingLimiter: FixedWindowRateLimiter;
   readonly totpLimiter: FixedWindowRateLimiter;
+  readonly apiTokenLimiter: FixedWindowRateLimiter;
 
   constructor(
     readonly config: AppConfig,
@@ -93,6 +94,7 @@ export class Container {
       this.database,
       this.users,
       this.sessions,
+      this.apiTokens,
       this.audit,
       hasher,
       new TokenService(),
@@ -127,13 +129,14 @@ export class Container {
       clock,
     );
 
-    this.admin = new AdminService(this.database, this.users, this.sessions, this.subscriptions, this.audit, this.entitlements, this.totpCodes, clock);
+    this.admin = new AdminService(this.database, this.users, this.sessions, this.subscriptions, this.audit, this.entitlements, this.totpCodes, this.apiTokens, clock);
     this.clientAddress = ClientAddressResolver.fromConfig(config);
     this.credentialLimiter = new FixedWindowRateLimiter({ windowMs: 60_000, max: 10 });
     this.adminReadLimiter = new FixedWindowRateLimiter({ windowMs: 60_000, max: 120 });
     this.adminWriteLimiter = new FixedWindowRateLimiter({ windowMs: 60_000, max: 40 });
     this.billingLimiter = new FixedWindowRateLimiter({ windowMs: 60_000, max: 20 });
     this.totpLimiter = new FixedWindowRateLimiter({ windowMs: 60_000, max: 10 });
+    this.apiTokenLimiter = new FixedWindowRateLimiter({ windowMs: 60_000, max: 10 });
     this.security = new SecurityService(
       this.database,
       this.users,
@@ -146,6 +149,7 @@ export class Container {
         adminWrite: this.adminWriteLimiter,
         billing: this.billingLimiter,
         totp: this.totpLimiter,
+        apiToken: this.apiTokenLimiter,
       },
       clock,
     );
