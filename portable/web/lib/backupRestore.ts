@@ -11,7 +11,9 @@ export type BackupPreview = {
 export type BackupOperation = { action: "preview" } | { action: "restore"; preview: BackupPreview }
 
 const invalid = "The workspace returned an invalid restore preview. Preview the file again."
-const uncertain = "The restore may have completed. Preview the same file again to check which records are present."
+export class UncertainRestoreError extends Error {
+  constructor() { super("The restore may have completed. Preview the same file again to check which records are present.") }
+}
 const hex = /^[a-f\d]{64}$/i
 const uuid = /^[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/
 const reviewCounts = ["assignments", "handoff_notes", "scorecard_items"] as const
@@ -129,32 +131,34 @@ export async function submitBackup(file: File, expected: string, operation: Back
     headers["X-Backup-Preview"] = operation.preview.fingerprint
   }
 
+  const replyError = (previewMessage: string) => operation.action === "restore" ? new UncertainRestoreError() : new Error(previewMessage)
   let response: Response
   try {
     const url = operation.action === "preview" ? "/api/backups/preview?include_conflict_reasons=true" : "/api/backups/restore"
     response = await fetch(url, { method: "POST", headers, body: file, signal, cache: "no-store", redirect: "error" })
   } catch {
-    throw new Error(operation.action === "restore" ? uncertain : "The preview could not reach the workspace. Preview the file again.")
+    throw replyError("The preview could not reach the workspace. Preview the file again.")
   }
   if (response.status >= 500 || response.status === 408) {
-    throw new Error(operation.action === "restore" ? uncertain : `The workspace could not preview the file (HTTP ${response.status}). Preview it again.`)
+    throw replyError(`The workspace could not preview the file (HTTP ${response.status}). Preview it again.`)
   }
   const mime = response.headers.get("Content-Type")?.split(";", 1)[0].trim().toLowerCase()
   if (response.ok && mime !== "application/json") {
     void response.body?.cancel().catch(() => {})
-    throw new Error(operation.action === "restore" ? uncertain : invalid)
+    throw replyError(invalid)
   }
   const body: unknown = await response.json().catch(() => null)
   if (response.status >= 400 && response.status < 500 && rejection(body)) {
     throw new Error(errorMessage(body, response.status))
   }
+  let result: BackupPreview
   try {
     if (response.status !== 200 || response.redirected) throw new Error(invalid)
-    const result = parseReply(body, digest, response.headers.get("X-Backup-SHA256"))
-    if (operation.action === "restore" && !confirmsFile(operation.preview, result)) throw new Error(uncertain)
-    return result
+    result = parseReply(body, digest, response.headers.get("X-Backup-SHA256"))
   } catch (error) {
-    if (operation.action === "restore") throw new Error(uncertain)
+    if (operation.action === "restore") throw new UncertainRestoreError()
     throw error
   }
+  if (operation.action === "restore" && !confirmsFile(operation.preview, result)) throw new UncertainRestoreError()
+  return result
 }

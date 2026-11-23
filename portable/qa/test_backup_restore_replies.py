@@ -95,8 +95,12 @@ def test_only_material_checksum_edits_invalidate_the_plan(workspace_url, browser
     page = browser_page
     path, _, plan = archive
     writes = []
+    feed_reads = []
     page.on("request", lambda req: writes.append(req.method) if urlsplit(req.url).path == RESTORE else None)
+    page.on("request", lambda req: feed_reads.append(req.method) if urlsplit(req.url).path == "/api/interviews/feed" else None)
     picker = open_file(page, workspace_url, path)
+    expect(page.get_by_label("Backup contents")).to_have_attribute("aria-busy", "false")
+    initial_reads = len(feed_reads)
     checksum = page.get_by_label("Expected SHA-256 checksum (optional)")
     preview = page.get_by_role("button", name="Preview restore", exact=True)
     valid = plan["fingerprint"]
@@ -109,11 +113,13 @@ def test_only_material_checksum_edits_invalidate_the_plan(workspace_url, browser
     no_apply(page)
     expect(page.get_by_role("heading", name="Restore preview")).to_have_count(0)
     assert picker.evaluate("(el) => el.files[0]?.name") == path.name
+    preview.click()
+    expect(restore_alert(page)).to_contain_text("does not match the selected file")
     checksum.fill(valid)
     no_apply(page)
     preview.click()
     expect(apply(page)).to_be_enabled()
-    assert writes == []
+    assert writes == [] and len(feed_reads) == initial_reads
 
 
 def test_capped_conflict_sample_preserves_valid_historical_labels(workspace_url, browser_page, archive):
@@ -195,6 +201,11 @@ def test_older_server_reply_without_download_header_or_review_counts(workspace_u
 def test_lost_or_invalid_reply_after_commit_requires_read_only_repreview(workspace_url, browser_page, archive, failure):
     page = browser_page
     path, sid, plan = archive
+    previous = ""
+    if failure == "disconnect":
+        with httpx.Client(base_url=workspace_url, headers=HEADERS) as client:
+            previous = client.post("/api/sessions", json={"candidate": "Previously selected", "role": "Reviewer",
+                                   "policy": "Manual", "consent": True}).raise_for_status().json()["id"]
     page.add_init_script("""(() => {
       const normal = window.fetch.bind(window);
       window.fetch = async (input, init) => {
@@ -215,6 +226,11 @@ def test_lost_or_invalid_reply_after_commit_requires_read_only_repreview(workspa
     calls = []
     page.on("request", lambda r: calls.append(r) if urlsplit(r.url).path in (RESTORE, PREVIEW) else None)
     picker = open_file(page, workspace_url, path)
+    scope = page.get_by_label("Backup contents")
+    expect(scope).to_have_attribute("aria-busy", "false")
+    expect(scope.locator(f'option[value="{sid}"]')).to_have_count(0)
+    if previous:
+        scope.select_option(previous)
     page.evaluate("(failure) => { window.restoreFailure = failure }", failure)
     expected = page.get_by_label("Expected SHA-256 checksum (optional)")
     expected.fill(plan["fingerprint"].upper())
@@ -223,7 +239,7 @@ def test_lost_or_invalid_reply_after_commit_requires_read_only_repreview(workspa
     apply(page).click()
     expect(page.locator("html")).to_have_attribute("data-restore-committed", "true")
     with httpx.Client(base_url=workspace_url, headers=HEADERS) as client:
-        assert [item["id"] for item in client.get("/api/sessions").raise_for_status().json()] == [sid]
+        assert {item["id"] for item in client.get("/api/sessions").raise_for_status().json()} == ({sid, previous} if previous else {sid})
     page.evaluate("document.dispatchEvent(new Event('end-restore-reply'))")
     notice = restore_alert(page)
     expect(notice).to_contain_text(re.compile(r"may have completed|outcome.*unknown", re.I))
@@ -234,6 +250,14 @@ def test_lost_or_invalid_reply_after_commit_requires_read_only_repreview(workspa
     preview.click()
     expect(page.get_by_text("All records are already present.", exact=True)).to_be_visible()
     no_apply(page)
+    expect(scope.locator(f'option[value="{sid}"]')).to_have_count(1)
+    expect(scope).to_have_value(previous)
+    if previous:
+        expect(page.get_by_role("link", name="Download backup for this interview")).to_have_attribute(
+            "href", f"/api/backups/workspace?session_id={previous}")
+    scope.select_option(sid)
+    expect(page.get_by_role("link", name="Download backup for this interview")).to_have_attribute(
+        "href", f"/api/backups/workspace?session_id={sid}")
     assert [urlsplit(req.url).path for req in calls] == [PREVIEW, RESTORE, PREVIEW]
     assert [urlsplit(req.url).query for req in calls] == [PREVIEW_QUERY, "", PREVIEW_QUERY]
     assert calls[1].headers["x-backup-preview"] == plan["fingerprint"]

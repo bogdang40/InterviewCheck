@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { ArchiveRestore, Download, FileCheck2 } from "lucide-react"
 import Link from "next/link"
 import { message } from "@/lib/api"
-import { canRestore, submitBackup, type BackupOperation, type BackupPreview } from "@/lib/backupRestore"
+import { canRestore, submitBackup, UncertainRestoreError, type BackupOperation, type BackupPreview } from "@/lib/backupRestore"
 import { Button } from "./ui/button"
 import { Input } from "./ui/input"
 import BackupInterviewPicker from "./BackupInterviewPicker"
@@ -35,6 +35,7 @@ function conflictLabel(label: string, kind: "roles" | "sessions") {
 
 export default function WorkspaceBackup() {
   const [listRevision, setListRevision] = useState(0)
+  const refreshAfterUncertainRestore = useRef(false)
   const fileInput = useRef<HTMLInputElement>(null)
   const active = useRef<AbortController | null>(null)
   const [hydrated, setHydrated] = useState(false)
@@ -77,8 +78,13 @@ export default function WorkspaceBackup() {
     try {
       const result = await submitBackup(file, expectedSha256, operation, controller.signal)
       if (active.current !== controller) return
-      if (action === "preview") setPreview(result)
-      else {
+      if (action === "preview") {
+        setPreview(result)
+        if (refreshAfterUncertainRestore.current) {
+          refreshAfterUncertainRestore.current = false
+          setListRevision(n => n + 1)
+        }
+      } else {
         setSuccess(
           `Restored ${result.sessions.new} interviews and ${result.roles.new} roles. Skipped ${result.sessions.identical + result.roles.identical} identical records.`,
         )
@@ -86,10 +92,12 @@ export default function WorkspaceBackup() {
         setFile(undefined)
         setExpectedSha256("")
         if (fileInput.current) fileInput.current.value = ""
+        refreshAfterUncertainRestore.current = false
         setListRevision(n => n + 1)
       }
     } catch (e) {
       if (active.current !== controller) return
+      if (e instanceof UncertainRestoreError) refreshAfterUncertainRestore.current = true
       setError(message(e))
       setPreview(undefined)
     } finally {
