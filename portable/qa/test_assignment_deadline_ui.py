@@ -83,3 +83,32 @@ def test_bulk_assignment_replaces_selected_deadlines(workspace_url, browser_page
             for _, path in records:
                 expected = f"{day}T23:59:59+00:00" if day else None
                 assert client.get(path).json()["assignment"]["due_at"] == expected
+
+
+@pytest.mark.parametrize(("legacy", "canonical"), [
+    ("2030-03-10T23:45:01.123456", "2030-03-10T23:45:01.123456+00:00"),
+    ("2030-03-10 23:45:01.123456", "2030-03-10T23:45:01.123456+00:00"),
+    ("2030-03-10", "2030-03-10T00:00:00+00:00"),
+])
+def test_legacy_utc_deadline_can_be_saved_and_backed_up(workspace_url, qa_browser, legacy, canonical):
+    from api import store
+
+    with httpx.Client(base_url=workspace_url, headers={"X-InterviewCheck": "1"}) as client:
+        sid, path = create_assigned(client, "Legacy UTC fixture")
+        with store.connection(write=True) as db:
+            db.execute("UPDATE session_assignments SET due_at=? WHERE session_id=?", (legacy, sid))
+        context = qa_browser.new_context(timezone_id="America/Los_Angeles")
+        try:
+            page = context.new_page()
+            page.goto(f"{workspace_url}/interviews/review/?id={sid}")
+            bar = page.get_by_role("region", name="Session assignment")
+            expect(bar.get_by_label("Due date (UTC)")).to_have_value("2030-03-10")
+            bar.get_by_label("Priority", exact=True).select_option("low")
+            with page.expect_response(lambda res: res.request.method == "PUT" and res.url.endswith("/assignment")) as saved:
+                bar.get_by_role("button", name="Save assignment").click()
+            assert saved.value.ok
+            assert client.get(path).raise_for_status().json()["assignment"]["due_at"] == canonical
+            backup = client.get("/api/backups/workspace", params={"session_id": sid}).raise_for_status().content
+            assert client.post("/api/backups/preview", content=backup).raise_for_status().json()["sessions"]["identical"] == 1
+        finally:
+            context.close()

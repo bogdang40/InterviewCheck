@@ -53,16 +53,23 @@ export type BulkSessionAssignmentResult = {
   cleared_ids?: string[]
 }
 
+function deadlineInstant(value: string): string {
+  // The queue treats old dates without an offset as UTC. Keep the original
+  // fractional seconds for writes; JavaScript Date would round to milliseconds.
+  const naive = /^(\d{4}-\d{2}-\d{2})(?:[T ](\d{2}:\d{2}(?::\d{2}(?:[.,]\d+)?)?))?$/.exec(value)
+  return naive ? `${naive[1]}T${(naive[2] ?? "00:00:00").replace(",", ".")}Z` : value
+}
+
 export function toDueAtIso(dateValue: string, storedDeadline?: string | null): string | null {
   const trimmed = dateValue.trim()
   if (!trimmed) return null
-  if (storedDeadline && toDateInputValue(storedDeadline) === trimmed) return storedDeadline
+  if (storedDeadline && toDateInputValue(storedDeadline) === trimmed) return deadlineInstant(storedDeadline)
   return /^\d{4}-\d{2}-\d{2}$/.test(trimmed) ? `${trimmed}T23:59:59Z` : trimmed
 }
 
 export function toDateInputValue(isoValue: string | null | undefined): string {
   if (!isoValue) return ""
-  const instant = new Date(isoValue)
+  const instant = new Date(deadlineInstant(isoValue))
   return Number.isFinite(instant.getTime()) ? instant.toISOString().slice(0, 10) : ""
 }
 
@@ -72,13 +79,13 @@ const utcDeadline = new Intl.DateTimeFormat(undefined, {
 })
 
 export function deadlineLabel(isoValue: string): string {
-  const instant = new Date(isoValue)
+  const instant = new Date(deadlineInstant(isoValue))
   return Number.isFinite(instant.getTime()) ? `${utcDeadline.format(instant)} UTC` : "Unknown deadline"
 }
 
 export function isDueOverdue(dueAt: string | null | undefined, nowMs = Date.now()): boolean {
   if (!dueAt) return false
-  const parsed = Date.parse(dueAt)
+  const parsed = Date.parse(deadlineInstant(dueAt))
   return Number.isFinite(parsed) && parsed < nowMs
 }
 
