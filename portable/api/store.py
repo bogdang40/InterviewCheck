@@ -120,6 +120,8 @@ def initialize(path):
         from . import session_assignment
         session_assignment.migrate(db)
         retention_policy.migrate(db)
+        from . import admin_audit_outbox
+        admin_audit_outbox.migrate(db)
         # Freeze plans for workspaces created before role IDs were recorded. Only
         # an unambiguous title can recover the original plan from that edition.
         db.execute("""INSERT OR IGNORE INTO session_context(session_id,role_id,questions,ended_at)

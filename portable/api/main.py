@@ -12,6 +12,7 @@ from starlette.concurrency import run_in_threadpool
 
 from . import (
     access,
+    admin_audit_outbox,
     alert_history,
     alert_rules,
     ats_notes,
@@ -71,6 +72,7 @@ def open_databases():
         from .account_db import check_database
         check_database()
     store.initialize(store.db_path())
+    admin_audit_outbox.deliver_pending()  # Entries queued before a crash or while the access database was unavailable.
 
 
 @asynccontextmanager
