@@ -6,7 +6,9 @@
 #   SITE_ADDRESS    public host name Caddy serves
 #   BACKUP_ACCOUNT  storage account for nightly database backups
 #   COMPOSE_B64, CADDY_B64, BACKUP_B64  base64 of deploy/compose.yml, deploy/Caddyfile, deploy/backup.sh
-# Prints ROLLOUT_OK on success; the workflow fails without it.
+# Success means: the new app is healthy, Caddy runs the new Caddyfile, and HTTPS through Caddy serves
+# the app. Any failure after the new app starts rolls back (see rollback). Prints ROLLOUT_OK on success;
+# the workflow fails without it.
 # run-command starts scripts with /bin/sh; rerun this whole file (variables included) under bash.
 [ -n "${BASH_VERSION:-}" ] || exec /bin/bash "$0" "$@"
 set -euo pipefail
@@ -14,16 +16,30 @@ DIR=/srv/interviewcheck
 cd "$DIR"
 
 log() { echo "[rollout] $*"; }
+compose() { local image=$1; shift; IMAGE="$image" SITE_ADDRESS="$SITE_ADDRESS" docker compose "$@"; }
 
 for name in IMAGE ACR SITE_ADDRESS BACKUP_ACCOUNT COMPOSE_B64 CADDY_B64 BACKUP_B64; do
   [ -n "${!name:-}" ] || { echo "missing $name"; exit 1; }
 done
 [ -f app.env ] || { echo "app.env is missing: run deploy/provision-azure.sh first"; exit 1; }
 
+# Caddy reads its Caddyfile only when it starts or reloads. The new one waits in Caddyfile.next until
+# the new app is healthy (apply_caddyfile); only a first deploy, with no Caddyfile yet, starts on it.
+echo "$CADDY_B64" | base64 -d > Caddyfile.next
+CADDY_ID=$(docker inspect --format '{{.Image}}' interviewcheck-caddy-1 2>/dev/null || true)
+if [ -f Caddyfile ] && [ -n "$CADDY_ID" ] && ! cmp -s Caddyfile.next Caddyfile; then
+  # Checked with the running Caddy's own image before anything changes, so a bad file costs nothing.
+  log "validating the new Caddyfile with the running Caddy image ($CADDY_ID)"
+  if ! docker run --rm -e SITE_ADDRESS="$SITE_ADDRESS" -v "$DIR/Caddyfile.next:/etc/caddy/Caddyfile:ro" \
+      "$CADDY_ID" caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile; then
+    log "the new Caddyfile is not valid; nothing was changed and the current app and Caddy config keep running"
+    exit 1
+  fi
+fi
+[ -f Caddyfile ] || cp Caddyfile.next Caddyfile
 echo "$COMPOSE_B64" | base64 -d > compose.yml
-echo "$CADDY_B64" | base64 -d > Caddyfile
 echo "$BACKUP_B64" | base64 -d > backup.sh && chmod 755 backup.sh
-mkdir -p data backups && chown 10001:10001 data
+mkdir -p data && chown 10001:10001 data
 cat > deploy.env <<EOF
 SITE_ADDRESS=$SITE_ADDRESS
 BACKUP_ACCOUNT=$BACKUP_ACCOUNT
@@ -57,14 +73,21 @@ az login --identity --output none
 az acr login --name "$ACR" --output none
 
 CURRENT=$(docker inspect --format '{{.Config.Image}}' interviewcheck-app-1 2>/dev/null || true)
-log "current: ${CURRENT:-none}; new: $IMAGE"
+CURRENT_ID=$(docker inspect --format '{{.Image}}' interviewcheck-app-1 2>/dev/null || true)
+log "current: ${CURRENT:-none} (${CURRENT_ID:-no image}); new: $IMAGE"
 if [ -z "$CURRENT" ] && { [ -e data/review.sqlite3 ] || [ -e data/access.sqlite3 ]; }; then
   log "existing databases have no identified application container; recover the previous container and verify a backup before retrying"
   exit 1
 fi
+# Roll back to the exact image that was running: a rebuild of the same commit can move CURRENT's tag.
+ROLLBACK_IMAGE=""
+if [ -n "$CURRENT_ID" ]; then
+  ROLLBACK_IMAGE=interviewcheck-web:previous
+  docker tag "$CURRENT_ID" "$ROLLBACK_IMAGE"
+fi
 
 log "pulling"
-IMAGE="$IMAGE" SITE_ADDRESS="$SITE_ADDRESS" docker compose pull --quiet
+compose "$IMAGE" pull --quiet
 
 # Keep a copy of the databases from just before the new version starts (schema upgrades).
 # PRE is that copy's local archive; a rollback puts it back (see below).
@@ -89,17 +112,46 @@ wait_healthy() {  # up to about three minutes
   return 1
 }
 
-log "starting"
-IMAGE="$IMAGE" SITE_ADDRESS="$SITE_ADDRESS" docker compose up -d --remove-orphans
+caddy_cmd() { compose "$IMAGE" exec -T caddy caddy "$1" --config /etc/caddy/Caddyfile --adapter caddyfile; }
 
-if ! wait_healthy; then
-  log "new version is not healthy; last log lines:"
+CADDY_SWAPPED=""
+apply_caddyfile() {
+  cmp -s Caddyfile.next Caddyfile && return 0
+  log "the Caddyfile changed; validating and reloading Caddy (previous file: Caddyfile.previous)"
+  cp -p Caddyfile Caddyfile.previous || return 1
+  # Write in place: the container's single file bind mount follows this inode, not the path.
+  cat Caddyfile.next > Caddyfile || return 1
+  CADDY_SWAPPED=1
+  caddy_cmd validate && caddy_cmd reload
+}
+
+restore_caddyfile() {
+  [ -n "$CADDY_SWAPPED" ] || return 0
+  log "restoring the previous Caddyfile"
+  cat Caddyfile.previous > Caddyfile
+  caddy_cmd reload || log "Caddy did not reload the previous Caddyfile; check it by hand"
+}
+
+edge_serves() {  # HTTPS through the local Caddy, with the real certificate and host name
+  for _ in $(seq 1 10); do
+    if curl -fsS -o /dev/null --max-time 10 --resolve "$SITE_ADDRESS:443:127.0.0.1" "https://$SITE_ADDRESS/api/readyz" &&
+       curl -fsS -o /dev/null --max-time 10 --resolve "$SITE_ADDRESS:443:127.0.0.1" "https://$SITE_ADDRESS/"; then
+      return 0
+    fi
+    sleep 3
+  done
+  return 1
+}
+
+rollback() {
+  log "$1; last log lines:"
   docker logs --tail 40 interviewcheck-app-1 2>&1 || true
-  if [ -n "$CURRENT" ]; then
+  restore_caddyfile
+  if [ -n "$ROLLBACK_IMAGE" ]; then
     # The failed version may have upgraded the database schema before it stopped. The previous
     # version must not run on that, so put back the copy taken just before the new version started.
-    # The failed version's files are kept in data/.failed-<time> for inspection, never deleted here.
-    IMAGE="$CURRENT" SITE_ADDRESS="$SITE_ADDRESS" docker compose stop app || true
+    # The failed version's files are kept in data/.failed-<time> (backup.sh removes them after 30 days).
+    compose "$ROLLBACK_IMAGE" stop app || true
     if [ -n "$PRE" ]; then
       kept="data/.failed-$(date -u +%Y%m%dT%H%M%SZ)"
       log "restoring the databases from $PRE (failed version's files: $kept)"
@@ -110,13 +162,20 @@ if ! wait_healthy; then
     else
       log "no pre-deploy backup from this rollout; the previous version starts on the current files"
     fi
-    log "rolling back to $CURRENT"
-    IMAGE="$CURRENT" SITE_ADDRESS="$SITE_ADDRESS" docker compose up -d
+    log "rolling back to $CURRENT ($CURRENT_ID)"
+    compose "$ROLLBACK_IMAGE" up -d
     if wait_healthy; then log "previous version is healthy again"; else log "previous version is NOT healthy"; fi
     docker rmi "$IMAGE" >/dev/null 2>&1 || true
   fi
   exit 1
-fi
+}
+
+log "starting"
+compose "$IMAGE" up -d --remove-orphans
+
+wait_healthy || rollback "new version is not healthy"
+apply_caddyfile || rollback "Caddy did not accept the new Caddyfile"
+edge_serves || rollback "https://$SITE_ADDRESS did not answer through Caddy"
 
 echo "$IMAGE" > deployed-image
 # Each image is about 1.7 GB on a 30 GB disk: keep only this one and the previous one.

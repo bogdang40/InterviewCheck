@@ -32,7 +32,14 @@ def _rec(results: list[EdgeCheck], cid: str, ok: bool, status: int, detail: str)
     results.append(EdgeCheck(id=cid, ok=bool(ok), status=int(status), detail=detail))
 
 
-async def run_edge_checks(client: httpx.AsyncClient, *, mode: str, target: str) -> dict[str, Any]:
+def _app_unreached(response: httpx.Response) -> bool:
+    """True for the empty reply Caddy gives a host it does not serve; the app labels every reply it sends."""
+    return response.status_code < 500 and not response.content and "permissions-policy" not in response.headers
+
+
+async def run_edge_checks(client: httpx.AsyncClient, *, mode: str, target: str, edge: bool = False) -> dict[str, Any]:
+    """With edge=True the target is the public Caddy edge, which answers some probes before the app can:
+    it serves only its own host name and replaces X-Forwarded-Host and X-InterviewCheck-Client-IP."""
     results: list[EdgeCheck] = []
 
     r_cors_cross = await client.options(
@@ -49,8 +56,9 @@ async def run_edge_checks(client: httpx.AsyncClient, *, mode: str, target: str) 
          r_cors_same.status_code, f"OPTIONS preflight returned {r_cors_same.status_code} (ACAO={acao_same!r}).{pre_note}")
 
     r_host = await client.get("/api/health", headers={"Host": "evil.example"})
-    _rec(results, "host_injection", r_host.status_code == 400, r_host.status_code,
-         f"Invalid Host header returned {r_host.status_code} (expected 400).")
+    host_ok = r_host.status_code == 400 or (edge and _app_unreached(r_host))
+    _rec(results, "host_injection", host_ok, r_host.status_code,
+         f"Invalid Host header returned {r_host.status_code} (expected 400{', or an empty reply from the edge' if edge else ''}).")
 
     r_origin = await client.post("/api/sessions", json={}, headers={"Origin": "https://evil.example", "X-InterviewCheck": "1"})
     _rec(results, "origin_spoofing", r_origin.status_code == 403, r_origin.status_code,
@@ -60,19 +68,21 @@ async def run_edge_checks(client: httpx.AsyncClient, *, mode: str, target: str) 
     _rec(results, "csrf_header_enforcement", r_csrf.status_code == 403, r_csrf.status_code,
          f"POST without X-InterviewCheck header returned {r_csrf.status_code} (expected 403).")
 
+    # At the edge a 200 means the proxy replaced the spoofed header; a spoofed value reaching the app is a 400.
+    proxy_ok = {200, 400} if edge else {400}
     r_dup_comma = await client.get("/api/health", headers={"X-Forwarded-Host": "127.0.0.1:3000, evil.example"})
-    _rec(results, "duplicate_proxy_header_comma", r_dup_comma.status_code == 400, r_dup_comma.status_code,
-         f"Comma-joined X-Forwarded-Host returned {r_dup_comma.status_code} (expected 400).")
+    _rec(results, "duplicate_proxy_header_comma", r_dup_comma.status_code in proxy_ok, r_dup_comma.status_code,
+         f"Comma-joined X-Forwarded-Host returned {r_dup_comma.status_code} (expected {' or '.join(map(str, sorted(proxy_ok)))}).")
 
     r_dup_host = await client.get("/api/health", headers=[("x-forwarded-host", "127.0.0.1:3000"), ("x-forwarded-host", "evil.example")])
     host_note = " Pre-M21-W3 ASGI reads first header only." if r_dup_host.status_code == 200 else ""
-    _rec(results, "duplicate_proxy_header_multi_host", r_dup_host.status_code == 400, r_dup_host.status_code,
-         f"Duplicate X-Forwarded-Host headers returned {r_dup_host.status_code} (expected 400).{host_note}")
+    _rec(results, "duplicate_proxy_header_multi_host", r_dup_host.status_code in proxy_ok, r_dup_host.status_code,
+         f"Duplicate X-Forwarded-Host headers returned {r_dup_host.status_code} (expected {' or '.join(map(str, sorted(proxy_ok)))}).{host_note}")
 
     r_dup_ip = await client.get("/api/health", headers=[("x-interviewcheck-client-ip", "203.0.113.10"), ("x-interviewcheck-client-ip", "203.0.113.11")])
     ip_note = " Pre-M21-W3 ASGI reads first header only." if r_dup_ip.status_code == 200 else ""
-    _rec(results, "duplicate_proxy_header_multi_ip", r_dup_ip.status_code == 400, r_dup_ip.status_code,
-         f"Duplicate X-InterviewCheck-Client-IP headers returned {r_dup_ip.status_code} (expected 400).{ip_note}")
+    _rec(results, "duplicate_proxy_header_multi_ip", r_dup_ip.status_code in proxy_ok, r_dup_ip.status_code,
+         f"Duplicate X-InterviewCheck-Client-IP headers returned {r_dup_ip.status_code} (expected {' or '.join(map(str, sorted(proxy_ok)))}).{ip_note}")
 
     r_ok = await client.get("/api/health")
     hdrs = r_ok.headers
@@ -89,11 +99,23 @@ async def run_edge_checks(client: httpx.AsyncClient, *, mode: str, target: str) 
         missing.append("Content-Security-Policy(frame-ancestors 'none')")
     if "access-control-allow-origin" in hdrs:
         missing.append("unexpected Access-Control-Allow-Origin")
+    if edge and "max-age=" not in (hdrs.get("strict-transport-security") or ""):
+        missing.append("Strict-Transport-Security")
+    if edge and "server" in hdrs:
+        missing.append("unexpected Server")
     _rec(
         results, "mandatory_security_headers", r_ok.status_code == 200 and not missing, r_ok.status_code,
         "All mandatory security headers verified." if (r_ok.status_code == 200 and not missing)
         else f"Header issues: {', '.join(missing) or f'status={r_ok.status_code}'}",
     )
+
+    if edge:
+        # The page's own CSP (with its script hashes) must reach the browser, not the proxy's default.
+        r_page = await client.get("/")
+        page_csp = r_page.headers.get("content-security-policy") or ""
+        _rec(results, "edge_keeps_app_csp", r_page.status_code == 200 and "script-src" in page_csp, r_page.status_code,
+             "The home page carries the app's Content-Security-Policy." if "script-src" in page_csp
+             else f"The home page CSP is not the app's: {page_csp!r}.")
 
     errors = [f"{item.id}: {item.detail}" for item in results if not item.ok]
     return {"ok": not errors, "mode": mode, "target": target, "checks": [asdict(item) for item in results], "errors": errors}
@@ -131,18 +153,18 @@ async def _run_asgi_async(app_obj: Any = None) -> dict[str, Any]:
             tmp_dir.cleanup()
 
 
-async def _run_base_url_async(base_url: str) -> dict[str, Any]:
+async def _run_base_url_async(base_url: str, edge: bool = False) -> dict[str, Any]:
     target = base_url.rstrip("/")
     async with httpx.AsyncClient(base_url=target, timeout=10.0, follow_redirects=False) as client:
-        return await run_edge_checks(client, mode="base-url", target=target)
+        return await run_edge_checks(client, mode="edge" if edge else "base-url", target=target, edge=edge)
 
 
 def run_asgi(app_obj: Any = None) -> dict[str, Any]:
     return asyncio.run(_run_asgi_async(app_obj))
 
 
-def run_base_url(base_url: str) -> dict[str, Any]:
-    return asyncio.run(_run_base_url_async(base_url))
+def run_base_url(base_url: str, edge: bool = False) -> dict[str, Any]:
+    return asyncio.run(_run_base_url_async(base_url, edge))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -150,11 +172,15 @@ def main(argv: list[str] | None = None) -> int:
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--base-url", help="Target live server base URL (e.g. http://127.0.0.1:8000).")
     group.add_argument("--asgi", action="store_true", help="Run checks directly against FastAPI ASGI app.")
+    parser.add_argument("--edge", action="store_true",
+                        help="With --base-url: the target is the public HTTPS edge (Caddy) in front of the app.")
     parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON report.")
     args = parser.parse_args(argv)
+    if args.edge and not args.base_url:
+        parser.error("--edge requires --base-url")
 
     try:
-        report = run_asgi() if args.asgi else run_base_url(args.base_url)
+        report = run_asgi() if args.asgi else run_base_url(args.base_url, edge=args.edge)
     except httpx.HTTPError as exc:
         report = {"ok": False, "mode": "base-url", "target": args.base_url, "checks": [], "errors": [f"HTTP error ({type(exc).__name__}): {exc}"]}
 

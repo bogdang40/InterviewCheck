@@ -16,14 +16,25 @@ GitHub main ──CI (Linux job passes)──▶ deploy.yml ──image──▶
 
 ## What deploys, and when
 
-- Every push to `main` that touches `portable/`, `server/`, `deploy/` or the workflows runs **Portable interview
-  workspace** (CI). When its Linux job passes, **Deploy web workspace** builds `deploy/Dockerfile`, pushes it to
-  the registry tagged with the commit, and runs `deploy/vm-rollout.sh` on the VM.
+- Every push to `main` that touches `portable/`, `server/`, `scripts/`, `deploy/`, `package.json`, `.dockerignore`
+  or `.github/workflows/portable.yml` runs **Portable interview workspace** (CI). A push that changes only other
+  files (docs, or `deploy.yml` alone) runs neither CI nor a deploy. When the Linux job passes, **Deploy web
+  workspace** builds `deploy/Dockerfile`, pushes it to the registry tagged with the commit (or reuses the image
+  if that tag is already there), and runs `deploy/vm-rollout.sh` on the VM.
+- Deploys go out in commit order. A deploy for an older commit skips itself (and succeeds) when a newer commit
+  on `main` touches CI's paths, because that commit's own deploy follows.
 - The Windows CI job does not gate deploys. Production is Linux, and that job has flaky upload tests.
-- The rollout backs up both databases, starts the new image, and waits for its health check. If the new
-  version is not healthy within about three minutes, it puts back the databases from that pre-deploy backup
-  (the failed version may already have changed the schema), starts the previous image, and the workflow fails.
-  The failed version's database files are kept in `/srv/interviewcheck/data/.failed-<UTC time>`.
+- Before anything on the VM changes, a changed `deploy/Caddyfile` is validated in a throwaway container of the
+  running Caddy image; an invalid file stops the rollout there. The rollout then backs up both databases, starts the new image, and waits for its health check (`/api/readyz`).
+  Then, if `deploy/Caddyfile` changed, it validates the new file inside the Caddy container and reloads Caddy
+  (the file before it stays in `/srv/interviewcheck/Caddyfile.previous`). Last, it checks HTTPS through Caddy on
+  the VM itself. If any of these fails, it puts back the previous Caddyfile and the databases from that
+  pre-deploy backup (the failed version may already have changed the schema), starts the exact image that was
+  running before (by image ID, tagged `interviewcheck-web:previous` on the VM), and the workflow fails. The
+  failed version's database files are kept in `/srv/interviewcheck/data/.failed-<UTC time>` for 30 days.
+- After the rollout the workflow checks the site from outside Azure, then runs
+  `scripts/verify_edge_security.py --edge` against it. A failure there marks the run failed but does not roll
+  back: the VM already confirmed the new version serves HTTPS.
 - After a successful rollout the VM keeps only the new image and the previous one (each is about 1.7 GB on a
   30 GB disk). Older images stay in the registry.
 - Manual deploy of the current `main`: Actions → **Deploy web workspace** → **Run workflow**, or
@@ -38,6 +49,9 @@ empty data folder and adds an interview, then starts the PR's image on that same
 production. The PR fails if the image does not become healthy or the interview does not survive. The Linux test
 job cannot catch this: it uses the CI machine's own Python and SQLite, not the image's. On Nov 19 2026, merged
 code needed an SQLite feature the image did not have, and every deploy failed until the base image changed.
+`deploy/edge-smoke.sh` then puts `deploy/Caddyfile`, under the Caddy image `compose.yml` pins, in front of the PR's
+image over local HTTP: it validates the file, checks Caddy's defaults on an unlabelled response, checks that the
+app's own CSP and Referrer-Policy get through, and runs `scripts/verify_edge_security.py --edge`.
 
 ## Files
 
@@ -47,8 +61,8 @@ code needed an SQLite feature the image did not have, and every deploy failed un
 | `.dockerignore` | Only `package.json` and `portable/` (without tests, QA, local builds and data) go into the image |
 | `deploy/compose.yml` | App + Caddy, host networking so the app's listeners stay on loopback |
 | `deploy/Caddyfile` | HTTPS, security headers, 26 MB body limit, slow-request timeouts, client-IP header replacement |
-| `deploy/vm-rollout.sh` | Runs on the VM for each deploy (pull, backup, start, health wait, rollback) |
-| `deploy/backup.sh` | SQLite online backup of both databases, uploaded to Azure Storage |
+| `deploy/vm-rollout.sh` | Runs on the VM for each deploy (pull, backup, start, health wait, Caddy reload, HTTPS check, rollback) |
+| `deploy/backup.sh` | SQLite online backup of both databases, uploaded to Azure Storage; removes old local leftovers |
 | `deploy/cloud-init.yaml` | First boot: Docker, Azure CLI, swap |
 | `deploy/provision-azure.sh` | One-time creation of every Azure resource and the GitHub settings |
 
@@ -79,11 +93,24 @@ Approximate cost: VM ~$15/month, registry ~$5, public IP ~$4, disk ~$2.50, stora
   and ports 3000/8000 are never published.
 
 To add provider keys (OpenAI, Deepgram, Stripe, calendars; see `portable/CONNECTIONS.md`), append them to
-`app.env` and restart:
+`app.env` and restart the app. Run this in bash: `read -s` keeps the key out of the terminal and the shell
+history, and the key reaches Azure only inside a file readable by you alone (edit the line by hand instead if
+the variable is already in `app.env`):
 
 ```sh
-az vm run-command invoke -g interviewcheck-rg -n interviewcheck-vm --command-id RunShellScript --scripts \
-  "cd /srv/interviewcheck && echo 'OPENAI_API_KEY=...' >> app.env && docker compose --env-file deploy.env up -d --force-recreate app"
+read -rs -p 'OPENAI_API_KEY: ' key; echo
+script=$(mktemp)
+{
+  printf 'KEY_LINE=%q\n' "OPENAI_API_KEY=$key"
+  cat <<'EOF'
+cd /srv/interviewcheck && printf '%s\n' "$KEY_LINE" >> app.env
+IMAGE=$(cat deployed-image) docker compose --env-file deploy.env up -d --force-recreate app
+EOF
+} > "$script"
+unset key
+az vm run-command invoke -g interviewcheck-rg -n interviewcheck-vm --command-id RunShellScript \
+  --scripts "@$script" --query "value[0].message" -o tsv
+rm -f "$script"
 ```
 
 `docker compose` on the VM needs `IMAGE` and `SITE_ADDRESS` in its environment. For manual commands, use:
@@ -95,7 +122,7 @@ az vm run-command invoke -g interviewcheck-rg -n interviewcheck-vm --command-id 
 - **Backups:** nightly at 07:30 UTC (`systemctl list-timers interviewcheck-backup.timer`) and before each deploy.
   Blobs are `backups/<UTC time>-<nightly|pre-deploy>.tar.gz`, containing `review.sqlite3` and `access.sqlite3`.
 - **Restore:** stop all application writers. Extract the selected backup into a new empty directory and verify both database files with SQLite integrity checks. Move the current database files and their matching `-wal` and `-shm` sidecars together into a quarantine directory. Install only the verified backup files in `/srv/interviewcheck/data` with owner uid 10001, then start the compatible application image. Old WAL files can override a restored main database even when its integrity check passes.
-- **Upgrade recovery:** an existing deployment must complete and upload both database backups before the new image starts. A failed predeployment backup stops the rollout. Automatic image rollback does not roll back database migrations. For an incompatible schema change, restore the verified pair and use the matching earlier image before resuming writes.
+- **Upgrade recovery:** an existing deployment must complete and upload both database backups before the new image starts. A failed predeployment backup stops the rollout. An automatic rollback also puts back both databases from that predeployment backup, so writes made in the minutes the new version ran are only in `data/.failed-<UTC time>`. A rollback started by hand (below) does not restore databases: for an incompatible schema change, restore the verified pair and use the matching earlier image before resuming writes.
 - **Rollback:** Actions → **Deploy web workspace** → **Run workflow** on an older commit is not possible (main
   only). Instead, revert the commit on `main`, or start an earlier image on the VM (run `az login --identity`
   and `az acr login --name <acr>` first if it has to be pulled again):

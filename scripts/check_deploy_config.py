@@ -83,7 +83,7 @@ def validate_dockerfile(root: Path, results: list[CheckResult]) -> None:
         ("dockerfile.user_app", bool(re.search(r"^\s*USER\s+app\b", text, re.MULTILINE)), "Requires non-root USER app."),
         ("dockerfile.useradd", bool(re.search(r"\buseradd\b.*\bapp\b", text)), "Requires explicit app user creation."),
         ("dockerfile.healthcheck", bool(re.search(r"^\s*HEALTHCHECK\b", text, re.MULTILINE)), "Requires HEALTHCHECK instruction."),
-        ("dockerfile.health_url", "/api/health" in text, "Requires /api/health probe inside HEALTHCHECK."),
+        ("dockerfile.health_url", "/api/readyz" in text, "Requires the /api/readyz probe inside HEALTHCHECK."),
     ]
     for cid, ok, detail in checks:
         _check(results, cid, rel, ok, detail)

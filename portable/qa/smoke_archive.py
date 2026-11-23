@@ -7,6 +7,7 @@ from pathlib import Path
 import shutil
 import signal
 import socket
+import stat
 import subprocess
 import sys
 from tempfile import TemporaryDirectory
@@ -51,6 +52,9 @@ def smoke(archive):
         destination = Path(directory)
         with zipfile.ZipFile(archive) as bundle:
             assert bundle.testzip() is None
+            # extractall does not apply mode bits, so check the launcher's recorded mode directly.
+            launcher_mode = stat.S_IMODE(bundle.getinfo("InterviewCheck/start.sh").external_attr >> 16)
+            assert launcher_mode == 0o755, f"start.sh is packaged with mode {launcher_mode:o}, expected 755."
             bundle.extractall(destination)
         root = destination / "InterviewCheck"
         assert not (root / "web/package.json").exists()
@@ -93,6 +97,11 @@ def smoke(archive):
                     assert denied.code == 401
                 else:
                     raise AssertionError("Embedded account mode allowed access before sign in.")
+                # The public sample review loads api/sample_cases.json and must work before sign in.
+                sample = Request(base + "/api/sample/preview", data=json.dumps({"case_id": "checkout"}).encode(),
+                                 headers={"Content-Type": "application/json", "X-InterviewCheck": "1"})
+                with urlopen(sample, timeout=8) as response:
+                    assert response.status == 200 and json.load(response)["status"], "Sample review failed."
                 browser = build_opener(HTTPCookieProcessor(CookieJar()))
                 account = {"email": "release@example.invalid", "password": "Synthetic-release-fixture"}
                 headers = {"Content-Type": "application/json", "X-InterviewCheck": "1"}
@@ -108,7 +117,8 @@ def smoke(archive):
                 assert (root / "data/access.sqlite3").exists()
             finally:
                 stop_launcher(process, (port,))
-    print("Release launched without Node.js. Health, browser entry, embedded signup and durable interview creation passed.")
+    print("Release launched without Node.js. Launcher mode, health, browser entry, public sample review, "
+          "embedded signup and durable interview creation passed.")
 
 
 if __name__ == "__main__":

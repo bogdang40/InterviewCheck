@@ -21,12 +21,16 @@
 
 	header {
 		Strict-Transport-Security "max-age=31536000"
-		X-Content-Type-Options "nosniff"
-		X-Frame-Options "DENY"
-		Content-Security-Policy "frame-ancestors 'none'"
-		Referrer-Policy "same-origin"
 		-Server
 	}
+
+	# The app labels its own responses (per page hashed CSP, Referrer-Policy no-referrer), so these
+	# are defaults only. Each "?" sits in its own directive because Caddy applies a block's "?"
+	# fields only when every one of them is absent.
+	header ?X-Content-Type-Options "nosniff"
+	header ?X-Frame-Options "DENY"
+	header ?Content-Security-Policy "frame-ancestors 'none'"
+	header ?Referrer-Policy "no-referrer"
 
 	reverse_proxy 127.0.0.1:3000 {
 		# Always overwrite the client address with the one Caddy saw; the app trusts this

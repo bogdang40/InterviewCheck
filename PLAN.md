@@ -1,3 +1,6 @@
+> **Historical document.** This was the working plan for the portable edition and is no longer kept up to date.
+> [README.md](README.md) supersedes it; read that for how InterviewCheck works today.
+
 # InterviewCheck portable edition
 
 ## Working prompt
