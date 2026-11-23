@@ -89,3 +89,16 @@ def test_live_audio_transcript_requires_transfer_and_application(workspace_url, 
     page.get_by_role("button", name="Use this excerpt").click()
     expect(save).to_be_enabled()
     expect(page.get_by_role("textbox", name="Candidate answer")).to_have_value("First pass. " + transcript + " " + tail)
+
+
+def test_gateway_error_page_shows_a_readable_capture_error(workspace_url, browser_page):
+    form = {"candidate": "Gateway fixture", "role": "Engineer", "policy": "Notes allowed.", "consent": True}
+    response = httpx.post(workspace_url + "/api/sessions", headers={"X-InterviewCheck": "1"}, json=form)
+    response.raise_for_status()
+    page = browser_page
+    page.route("**/api/integrations/status", lambda route: route.fulfill(
+        status=502, content_type="text/html", body="<html><body>Bad gateway</body></html>"))
+    page.goto(workspace_url + "/interviews/review/?id=" + response.json()["id"])
+    page.get_by_text("Capture audio", exact=True).click()
+    expect(page.get_by_text("Request failed (HTTP 502).", exact=True)).to_be_visible()
+    expect(page.get_by_text(re.compile("Unexpected token|JSON"))).to_have_count(0)

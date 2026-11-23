@@ -47,6 +47,7 @@ export default function InterviewView({ session, answerId, changed, onTransition
   const [followUp, setFollowUp] = useState("")
   const [firstOrigin,setFirstOrigin] = useState<QuestionOrigin>()
   const [dirty, setDirty] = useState<Set<string>>(() => new Set())
+  const [scorecardDirty, setScorecardDirty] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
   const focusTarget = useRef<HTMLDivElement>(null)
@@ -56,7 +57,8 @@ export default function InterviewView({ session, answerId, changed, onTransition
   const selected = answerId ? session.answers.find((a) => a.id === answerId) : session.answers[0]
   const index = selected ? session.answers.indexOf(selected) : -1
   const next = selected && nextPending(session.answers, selected.id)
-  const blocked = dirty.size > 0 || busy
+  const unsaved = dirty.size > 0 || scorecardDirty
+  const blocked = unsaved || busy
   const pending = session.answers.filter(needsReview).length
   const capabilities = useScoringCapabilities()
 
@@ -69,7 +71,7 @@ export default function InterviewView({ session, answerId, changed, onTransition
       return updated
     })
   }, [])
-  useDraftGuard(dirty.size > 0)
+  useDraftGuard(unsaved)
   const moveExchange = (delta: -1 | 1) => {
     if (edit || blocked) return "Save or discard changes before switching exchanges."
     const idx = index < 0 ? 0 : index + delta
@@ -212,7 +214,7 @@ export default function InterviewView({ session, answerId, changed, onTransition
           {pending === 1 ? "match" : "matches"}
         </span>
       </div>
-      {dirty.size > 0 && (
+      {unsaved && (
         <p className="notice" role="status">
           Save or discard your changes before switching questions, finishing or exporting.
         </p>
@@ -316,7 +318,7 @@ export default function InterviewView({ session, answerId, changed, onTransition
           </div>
         </div>
       </fieldset>
-      <SessionScorecardPanel key={`scorecard-${session.id}`} sessionId={session.id} />
+      <SessionScorecardPanel key={`scorecard-${session.id}`} sessionId={session.id} onDirtyChange={setScorecardDirty} />
       {!dirty.size && <ATSNote key={session.id} session={session} />}
       <div className="record-management"><MoveToTrash sessionId={session.id} candidate={session.candidate} disabled={blocked}/></div>
     </>

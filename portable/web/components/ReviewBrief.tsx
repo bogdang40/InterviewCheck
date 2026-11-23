@@ -70,8 +70,8 @@ export default function ReviewBrief({ sessionId }: { sessionId: string }) {
         body: JSON.stringify({ ...selection, preview_sha256: current.preview_sha256 }),
       })
       if (!response.ok) {
-        const data = await response.json()
-        throw new Error(data.detail || "The download could not be prepared.")
+        const data = await response.json().catch(() => ({}))
+        throw new Error(typeof data.detail === "string" ? data.detail : "The download could not be prepared.")
       }
       const url = URL.createObjectURL(await response.blob())
       const link = document.createElement("a")

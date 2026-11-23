@@ -3,6 +3,7 @@ import { ArrowRight, BriefcaseBusiness, Copy, History, Plus } from "lucide-react
 import { api, message, RoleConflict, type PermittedMaterial } from "@/lib/api"
 import type { CalibratedRole, RubricCriterion } from "@/lib/roleCalibration"
 import { cloneRole } from "@/lib/roleTemplates"
+import { useDraftGuard } from "@/lib/useDraftGuard"
 import ReloadRole from "./ReloadRole"
 import ResourcePolicy from "./ResourcePolicy"
 import RoleFileActions from "./RoleFileActions"
@@ -13,6 +14,9 @@ import RoleAnalyticsPanel from "./RoleAnalyticsPanel"
 import { Button } from "./ui/button"
 import { Input } from "./ui/input"
 import { Textarea } from "./ui/textarea"
+
+type RoleFormFields = [string, string, string, PermittedMaterial[], string, RubricCriterion[], string]
+const roleFormSnapshot = (fields: RoleFormFields) => JSON.stringify(fields)
 
 export default function Roles({
   roles,
@@ -27,6 +31,7 @@ export default function Roles({
 }) {
   const authoringVersion = useRef(0)
   const savedQuestions = useRef<string[]>([])
+  const openedSnapshot = useRef("")
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
   const [policy, setPolicy] = useState("")
@@ -48,6 +53,9 @@ export default function Roles({
   const [cloneError, setCloneError] = useState("")
 
   const historyRole = roles.find((r) => r.id === historyRoleId) ?? null
+  const formDirty = adding &&
+    roleFormSnapshot([name, description, policy, materials, questions, rubric, changeNote]) !== openedSnapshot.current
+  useDraftGuard(formDirty, "Discard unsaved role changes and leave this page?")
 
   async function handleClone(role: CalibratedRole) {
     if (cloningId || busy || generating) return
@@ -83,6 +91,10 @@ export default function Roles({
     setQuestions(role?.questions.join("\n") ?? "")
     setRubric(role?.rubric ?? [])
     setChangeNote("")
+    openedSnapshot.current = roleFormSnapshot([
+      role?.name ?? "", role?.description ?? "", role?.policy ?? "", role?.permitted_sources ?? [],
+      role?.questions.join("\n") ?? "", role?.rubric ?? [], "",
+    ])
   }
 
   async function save(e: FormEvent<HTMLFormElement>) {

@@ -3,6 +3,7 @@
 import { useEffect, useState, type FormEvent } from "react"
 import { ChevronDown, ChevronUp, ClipboardCheck, MessageSquarePlus, Plus, Trash2 } from "lucide-react"
 import { dateLabel, message } from "@/lib/api"
+import { useReportDirty, type DirtyReporter } from "@/lib/dirtyTracking"
 import {
   computeWeightedScorePct, createHandoffNote, deleteHandoffNote, fetchSessionScorecard, saveSessionScorecard,
   type HandoffNote, type HandoffNoteCategory, type ScorecardItem,
@@ -19,11 +20,19 @@ const CATEGORY_CLASS: Record<HandoffNoteCategory, string> = {
   observation: "", follow_up: styles.cat_follow_up, decision: styles.cat_decision, concern: styles.cat_concern,
 }
 
-export default function SessionScorecardPanel({ sessionId }: { sessionId: string }) {
+function mergeSavedItems(prev: ScorecardItem[], saved: ScorecardItem[]): ScorecardItem[] {
+  const byId = new Map(saved.map((row) => [row.criterion_id, row]))
+  const merged = prev.map((row) => byId.get(row.criterion_id) ?? row)
+  for (const row of saved) { if (!merged.some((m) => m.criterion_id === row.criterion_id)) merged.push(row) }
+  return merged
+}
+
+export default function SessionScorecardPanel({ sessionId, onDirtyChange }: { sessionId: string; onDirtyChange?: DirtyReporter }) {
   const [expanded, setExpanded] = useState(true)
   const [loading, setLoading] = useState(true)
   const [available, setAvailable] = useState(true)
   const [items, setItems] = useState<ScorecardItem[]>([])
+  const [savedItemsKey, setSavedItemsKey] = useState("[]")
   const [serverWeightedPct, setServerWeightedPct] = useState<number | null>(null)
   const [notes, setNotes] = useState<HandoffNote[]>([])
   const [newCriterion, setNewCriterion] = useState("")
@@ -42,7 +51,7 @@ export default function SessionScorecardPanel({ sessionId }: { sessionId: string
     fetchSessionScorecard(sessionId, controller.signal)
       .then((res) => {
         if (controller.signal.aborted) return
-        setAvailable(res.available); setItems(res.items)
+        setAvailable(res.available); setItems(res.items); setSavedItemsKey(JSON.stringify(res.items))
         setServerWeightedPct(res.weighted_score_pct); setNotes(res.handoff_notes)
       })
       .catch((err) => { if (!controller.signal.aborted) setError(message(err)) })
@@ -51,6 +60,8 @@ export default function SessionScorecardPanel({ sessionId }: { sessionId: string
   }, [sessionId])
 
   const liveWeightedPct = computeWeightedScorePct(items) ?? serverWeightedPct
+  const dirty = !loading && (JSON.stringify(items) !== savedItemsKey || noteBody.trim() !== "")
+  useReportDirty(dirty, onDirtyChange)
 
   function updateItem(criterionId: string, patch: Partial<ScorecardItem>) {
     setStatus(""); setError("")
@@ -93,12 +104,9 @@ export default function SessionScorecardPanel({ sessionId }: { sessionId: string
         weight: Math.min(100, Math.max(1, Math.round(it.weight || 1))), rating: it.rating as number, rationale: it.rationale,
       }))
       const saved = await saveSessionScorecard(sessionId, payload)
-      setItems((prev) => {
-        const byId = new Map(saved.items.map((row) => [row.criterion_id, row]))
-        const merged = prev.map((row) => byId.get(row.criterion_id) ?? row)
-        for (const row of saved.items) { if (!merged.some((m) => m.criterion_id === row.criterion_id)) merged.push(row) }
-        return merged
-      })
+      // Edits made while the request was in flight stay unsaved, so compare against what was sent.
+      setSavedItemsKey(JSON.stringify(mergeSavedItems(items, saved.items)))
+      setItems((prev) => mergeSavedItems(prev, saved.items))
       setServerWeightedPct(saved.weighted_score_pct); setStatus("Scorecard saved.")
     } catch (err) { setError(message(err)) } finally { setSavingScorecard(false) }
   }

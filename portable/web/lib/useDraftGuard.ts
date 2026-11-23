@@ -1,10 +1,12 @@
 import { useEffect } from "react"
 
-/** Ask before a pending interview edit is lost to navigation or a page reload. */
-export function useDraftGuard(dirty: boolean) {
+const INTERVIEW_PROMPT = "Discard unsaved interview changes and leave this page?"
+
+/** Ask before a pending edit is lost to navigation or a page reload. */
+export function useDraftGuard(dirty: boolean, prompt = INTERVIEW_PROMPT) {
   useEffect(() => {
     if (!dirty) return
-    const confirmLeave = () => window.confirm("Discard unsaved interview changes and leave this page?")
+    const confirmLeave = () => window.confirm(prompt)
     const beforeUnload = (event: BeforeUnloadEvent) => {
       event.preventDefault()
       event.returnValue = ""
@@ -44,5 +46,5 @@ export function useDraftGuard(dirty: boolean) {
       navigation?.removeEventListener("navigate", traverse)
       document.removeEventListener("click", click, true)
     }
-  }, [dirty])
+  }, [dirty, prompt])
 }

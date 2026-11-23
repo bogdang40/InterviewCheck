@@ -207,7 +207,7 @@ def test_admin_accounts_role_promotion_disable_and_cross_context_token_revocatio
         # Promote member to administrator and verify member's prior session token is revoked.
         admin_page.get_by_label("Search accounts").fill(MEMBER_EMAIL)
         admin_page.get_by_role("button", name="Search", exact=True).click()
-        expect(admin_page.locator("tbody tr")).to_have_count(1)
+        expect(admin_page.get_by_role("tabpanel").locator("tbody tr")).to_have_count(1)
         member_row = admin_page.get_by_role("row").filter(has_text=MEMBER_EMAIL)
         member_row.get_by_role("button", name="Manage").click()
         expect(admin_page.get_by_role("heading", name=f"Edit {MEMBER_EMAIL}")).to_be_visible()
@@ -289,7 +289,7 @@ def test_admin_audit_log_tab_records_and_filters_model_and_account_events(e2e_wo
 
     page.get_by_label("Category").select_option("all")
     page.get_by_label("Filter events").fill("audit-trail-model")
-    expect(page.locator("tbody tr")).to_have_count(3)
+    expect(page.get_by_role("tabpanel").locator("tbody tr")).to_have_count(3)
     assert "sk-audit-key-5555" not in page.content()
     collector.assert_clean()
 

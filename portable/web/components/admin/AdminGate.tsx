@@ -9,6 +9,7 @@ import { submit, type ProviderStatus } from "@/lib/integrations"
 import { sweepLocalDrafts } from "@/lib/localDraftSweep"
 import { submitAccessAuth } from "@/lib/totpApi"
 import { notifyAccountChanged, type AccountSnapshot } from "@/lib/useAccountStatus"
+import WorkspaceError from "../WorkspaceError"
 
 export function AdminGate({
   loading,
@@ -18,6 +19,7 @@ export function AdminGate({
   onSignedIn,
   onSignedOut,
   onError,
+  onRetry,
 }: {
   loading: boolean
   status: ProviderStatus | null
@@ -26,6 +28,7 @@ export function AdminGate({
   onSignedIn: (account: AccountSnapshot) => void
   onSignedOut: () => void
   onError: (msg: string) => void
+  onRetry: () => void
 }) {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -68,6 +71,7 @@ export function AdminGate({
 
   async function handleSignOut() {
     setBusy(true)
+    onError("")
     try {
       await submit("logout")
       sweepLocalDrafts()
@@ -76,6 +80,8 @@ export function AdminGate({
       setTotpRequired(false)
       notifyAccountChanged()
       onSignedOut()
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "Sign out failed.")
     } finally {
       setBusy(false)
     }
@@ -86,6 +92,16 @@ export function AdminGate({
       <section className="panel stack" role="status">
         <h1>Model administration</h1>
         <p className="muted">Checking administrator access…</p>
+      </section>
+    )
+  }
+
+  if (!status && error) {
+    return (
+      <section className="panel stack admin-gate-card">
+        <span className="eyebrow">ADMINISTRATION</span>
+        <h1>Model administration</h1>
+        <WorkspaceError text={error} retry={onRetry} />
       </section>
     )
   }
@@ -192,6 +208,11 @@ export function AdminGate({
       <p className="muted">
         Signed in as <strong>{account.email}</strong>. An administrator role is required to open this console.
       </p>
+      {error && (
+        <p role="alert" className="error">
+          {error}
+        </p>
+      )}
       <div className="row">
         <Button type="button" variant="outline" disabled={busy} onClick={() => void handleSignOut()}>
           Sign out

@@ -107,16 +107,16 @@ def test_m8_audit_filtering_pagination_export_and_auth(e2e_workspace, desktop_pa
 
     # Preserve initial visibility of admin.model.create before filtering.
     expect(page.get_by_text("admin.model.create").first).to_be_visible()
-    total_rows = page.locator("tbody tr").count()
+    total_rows = page.get_by_role("tabpanel").locator("tbody tr").count()
     assert total_rows >= 25
 
     # Cursor pagination via Page size + Load older.
     page.get_by_label("Page size").select_option("20")
-    expect(page.locator("tbody tr")).to_have_count(20)
+    expect(page.get_by_role("tabpanel").locator("tbody tr")).to_have_count(20)
     load_older = page.get_by_role("button", name="Load older")
     expect(load_older).to_be_visible()
     load_older.click()
-    expect(page.locator("tbody tr")).to_have_count(total_rows)
+    expect(page.get_by_role("tabpanel").locator("tbody tr")).to_have_count(total_rows)
     expect(load_older).to_have_count(0)
 
     # Category filter.
@@ -131,19 +131,19 @@ def test_m8_audit_filtering_pagination_export_and_auth(e2e_workspace, desktop_pa
     # Literal % / _ search and SQLi resistance.
     q_input = page.get_by_label("Filter events")
     q_input.fill("100%")
-    expect(page.locator("tbody tr")).to_have_count(1)
-    expect(page.locator("tbody")).to_contain_text("alpha_100%")
+    expect(page.get_by_role("tabpanel").locator("tbody tr")).to_have_count(1)
+    expect(page.get_by_role("tabpanel").locator("tbody")).to_contain_text("alpha_100%")
     q_input.fill("alpha_")
-    expect(page.locator("tbody tr")).to_have_count(1)
+    expect(page.get_by_role("tabpanel").locator("tbody tr")).to_have_count(1)
     q_input.fill("' OR 1=1 --")
     expect(page.get_by_text("No audit events match the selected filter.")).to_be_visible()
     q_input.fill("")
 
     # Action and Actor ID filters.
     page.get_by_label("Action").fill("admin.model.probe")
-    expect(page.locator("tbody tr")).to_have_count(1)
+    expect(page.get_by_role("tabpanel").locator("tbody tr")).to_have_count(1)
     page.get_by_label("Actor ID").fill(actor_a)
-    expect(page.locator("tbody tr")).to_have_count(1)
+    expect(page.get_by_role("tabpanel").locator("tbody tr")).to_have_count(1)
     page.get_by_role("button", name="Clear filters").click()
     expect(page.get_by_text("admin.model.create").first).to_be_visible()
 
@@ -153,12 +153,12 @@ def test_m8_audit_filtering_pagination_export_and_auth(e2e_workspace, desktop_pa
     expect(page.locator('p[role="alert"]')).to_contain_text("From date must be on or before To date.")
     page.get_by_label("From date").fill("2026-11-10")
     page.get_by_label("To date").fill("2026-11-10")
-    expect(page.locator("tbody tr")).to_have_count(2)
+    expect(page.get_by_role("tabpanel").locator("tbody tr")).to_have_count(2)
     page.get_by_role("button", name="Clear filters").click()
 
     # Export CSV with formula neutralization and UTF-8 BOM.
     q_input.fill("@SUM")
-    expect(page.locator("tbody tr")).to_have_count(1)
+    expect(page.get_by_role("tabpanel").locator("tbody tr")).to_have_count(1)
     export_csv_btn = page.get_by_role("button", name="Export CSV")
     expect(export_csv_btn).to_be_enabled()
     with page.expect_download() as csv_dl:

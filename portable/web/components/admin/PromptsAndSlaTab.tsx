@@ -13,6 +13,7 @@ import {
   type CircuitState, type ModelSlaRow, type PromptSlot, type PromptTemplate, type PromptVersion, type SlaFleetSummary,
 } from "@/lib/adminPromptsSla"
 import { formatLatency } from "@/lib/adminTelemetry"
+import { useReportDirty, type DirtyReporter } from "@/lib/dirtyTracking"
 import styles from "./PromptsAndSlaTab.module.css"
 
 const CIRCUIT_BADGE: Record<CircuitState, { label: string; variant: "success" | "destructive" | "warning" }> = {
@@ -37,7 +38,9 @@ function UnifiedDiffView({ diff }: { diff: string }) {
   )
 }
 
-export function PromptsAndSlaTab({ models, onAuthInvalid }: { models: ConnectedModel[]; onAuthInvalid: (msg: string) => void }) {
+export function PromptsAndSlaTab({ models, onAuthInvalid, onDirtyChange }: {
+  models: ConnectedModel[]; onAuthInvalid: (msg: string) => void; onDirtyChange?: DirtyReporter
+}) {
   const modelById = useMemo(() => new Map(models.map((m) => [m.id, m])), [models])
   const [slaAvailable, setSlaAvailable] = useState(true)
   const [slaLoading, setSlaLoading] = useState(true)
@@ -164,6 +167,11 @@ export function PromptsAndSlaTab({ models, onAuthInvalid }: { models: ConnectedM
     }
   }, [loadSla, loadPrompts])
   const activeTemplate = templates.find((t) => t.slot === selectedSlot) ?? null
+  const promptDirty = Boolean(activeTemplate) && (systemPrompt !== activeTemplate?.system_prompt
+    || outputRule !== activeTemplate?.output_rule || changeNote.trim() !== "")
+  const policyDirty = Boolean(editingPolicy) && (thresholdRaw !== String(editingPolicy?.circuit.consecutive_threshold)
+    || cooldownRaw !== String(editingPolicy?.circuit.cooldown_seconds) || slaTargetRaw !== String(editingPolicy?.sla_target_ms))
+  useReportDirty(promptDirty || policyDirty, onDirtyChange)
 
   async function handleResetCircuit(row: ModelSlaRow) {
     setBusyKey(`reset:${row.model_id}`); setSlaError(""); setStatusMsg("")

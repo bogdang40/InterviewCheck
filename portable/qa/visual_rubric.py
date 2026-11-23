@@ -134,6 +134,17 @@ AUDIT_JS = """() => {
         height: Number(r.height.toFixed(1)),
       });
     }
+  } else if (window.matchMedia("(pointer: coarse)").matches) {
+    // Touch tablets keep the desktop layout, so only shared buttons carry the 44px minimum there.
+    for (const el of document.querySelectorAll('[data-slot="button"]')) {
+      if (!isVisible(el)) continue;
+      const r = el.getBoundingClientRect();
+      const iconOnly = (el.getAttribute("data-size") || "").startsWith("icon");
+      if (r.height < 43.5 || (iconOnly && r.width < 43.5)) touchTargetFailures.push({
+        tag: el.tagName, text: (el.getAttribute("aria-label") || el.textContent || "").trim().slice(0, 40),
+        height: Number(r.height.toFixed(1)), width: Number(r.width.toFixed(1)),
+      });
+    }
   }
   const tableFailures = [];
   if (window.innerWidth <= 480) {
@@ -223,7 +234,7 @@ def record_passes_rubric(record: dict) -> list[str]:
         failures.append(f"overlapping controls ({max(record.get('overlap_count', 0), len(overlaps))})")
     failures.extend(_contrast_failures(record))
     if record.get("touch_target_failures"):
-        failures.append(f"mobile touch targets < 44px ({len(record['touch_target_failures'])})")
+        failures.append(f"touch targets < 44px ({len(record['touch_target_failures'])})")
     if record.get("table_failures"):
         failures.append(f"mobile table overflow/squish ({len(record['table_failures'])})")
     c_errs, p_errs, s_errs = record.get("console_errors") or [], record.get("page_errors") or [], record.get("server_errors") or []
