@@ -1,13 +1,16 @@
 """Static guards for the delivery path: Caddy headers, workflow pins and ordering, release contents, edge checks."""
 import asyncio
 import importlib.util
+import os
 from pathlib import Path
 import re
 import stat
+import subprocess
 import sys
 import zipfile
 
 import httpx
+import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 APP_OWNED_HEADERS = {"content-security-policy", "referrer-policy", "x-content-type-options", "x-frame-options"}
@@ -136,3 +139,15 @@ def test_edge_mode_accepts_proxy_answers_and_requires_the_app_csp():
     overwritten = _edge_report("frame-ancestors 'none'", referrer="same-origin")
     failed = {error.split(":", 1)[0] for error in overwritten["errors"]}
     assert failed == {"edge_keeps_app_csp", "mandatory_security_headers"}
+
+
+@pytest.mark.skipif(os.name == "nt", reason="CI runs deploy/edge-smoke.sh with Bash on Linux.")
+def test_edge_smoke_runs_the_caddy_image_compose_pins():
+    script = (ROOT / "deploy/edge-smoke.sh").read_text(encoding="utf-8")
+    compose = (ROOT / "deploy/compose.yml").read_text(encoding="utf-8")
+    pinned = re.search(r"^\s*image:\s*(caddy:\S+)", compose, re.MULTILINE).group(1)
+    assert pinned.split(":", 1)[1] not in script, "edge-smoke.sh must read the Caddy tag from compose.yml"
+    line = next(entry for entry in script.splitlines() if entry.startswith("CADDY=$("))
+    out = subprocess.run(["bash", "-c", line + '\nprintf %s "$CADDY"'], cwd=ROOT, text=True, capture_output=True)
+    assert out.returncode == 0 and out.stdout == pinned, out
+    assert "deploy/edge-smoke.sh interviewcheck-web:new" in (ROOT / ".github/workflows/portable.yml").read_text()

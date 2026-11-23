@@ -110,3 +110,5 @@ jobs:
           tags: interviewcheck-web:new
           cache-from: type=gha
       - run: deploy/image-smoke.sh interviewcheck-web:base interviewcheck-web:new
+      # deploy/Caddyfile under the pinned Caddy, in front of this image: what production runs, over local HTTP.
+      - run: deploy/edge-smoke.sh interviewcheck-web:new

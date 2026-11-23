@@ -24,7 +24,8 @@ GitHub main ──CI (Linux job passes)──▶ deploy.yml ──image──▶
 - Deploys go out in commit order. A deploy for an older commit skips itself (and succeeds) when a newer commit
   on `main` touches CI's paths, because that commit's own deploy follows.
 - The Windows CI job does not gate deploys. Production is Linux, and that job has flaky upload tests.
-- The rollout backs up both databases, starts the new image, and waits for its health check (`/api/readyz`).
+- Before anything on the VM changes, a changed `deploy/Caddyfile` is validated in a throwaway container of the
+  running Caddy image; an invalid file stops the rollout there. The rollout then backs up both databases, starts the new image, and waits for its health check (`/api/readyz`).
   Then, if `deploy/Caddyfile` changed, it validates the new file inside the Caddy container and reloads Caddy
   (the file before it stays in `/srv/interviewcheck/Caddyfile.previous`). Last, it checks HTTPS through Caddy on
   the VM itself. If any of these fails, it puts back the previous Caddyfile and the databases from that
@@ -48,6 +49,9 @@ empty data folder and adds an interview, then starts the PR's image on that same
 production. The PR fails if the image does not become healthy or the interview does not survive. The Linux test
 job cannot catch this: it uses the CI machine's own Python and SQLite, not the image's. On Nov 19 2026, merged
 code needed an SQLite feature the image did not have, and every deploy failed until the base image changed.
+`deploy/edge-smoke.sh` then puts `deploy/Caddyfile`, under the Caddy image `compose.yml` pins, in front of the PR's
+image over local HTTP: it validates the file, checks Caddy's defaults on an unlabelled response, checks that the
+app's own CSP and Referrer-Policy get through, and runs `scripts/verify_edge_security.py --edge`.
 
 ## Files
 
