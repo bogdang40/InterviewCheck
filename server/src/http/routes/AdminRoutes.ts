@@ -1,8 +1,8 @@
 import { Hono, type Context } from "hono";
 import type { ZodTypeAny, z } from "zod";
 import type { Database } from "../../db/Database.js";
-import type { AuditLogRepository } from "../../repositories/AuditLogRepository.js";
 import type { AdminService } from "../../services/AdminService.js";
+import type { AuditChainVerifier } from "../../services/AuditChainVerifier.js";
 import type { AuthService } from "../../services/AuthService.js";
 import type { SecurityService } from "../../services/SecurityService.js";
 import { HttpError } from "../HttpError.js";
@@ -11,6 +11,7 @@ import { rateLimit, type ClientAddressResolver, type FixedWindowRateLimiter } fr
 import { parseJsonBody, parseParams, parseQuery } from "../RequestParsing.js";
 import {
   adminAuditQuerySchema,
+  adminAuditVerifyQuerySchema,
   adminListQuerySchema,
   adminPatchSchema,
   adminRateLimitQuerySchema,
@@ -21,7 +22,7 @@ import {
 export interface AdminRouteDeps {
   auth: AuthService;
   admin: AdminService;
-  audit: AuditLogRepository;
+  auditVerifier: AuditChainVerifier;
   security: SecurityService;
   database: Database;
   adminReadLimiter: FixedWindowRateLimiter;
@@ -134,13 +135,15 @@ export class AdminRoutes {
       );
     });
 
-    router.get("/admin/audit/verify", readGuard, (c) =>
-      c.json(deps.audit.verifyChain(), 200, { "Cache-Control": "no-store" }),
-    );
+    router.get("/admin/audit/verify", readGuard, async (c) => {
+      const { full } = parseQuery(c, adminAuditVerifyQuerySchema);
+      return c.json(await deps.auditVerifier.verify(full ? "full" : "incremental"), 200, { "Cache-Control": "no-store" });
+    });
 
     router.get("/admin/compliance/summary", readGuard, (c) => {
       const count = (sql: string, ...p: Array<string | number>) => Number(deps.database.get<{ n: number }>(sql, ...p)?.n ?? 0);
       const hasTable = (t: string) => Boolean(deps.database.get("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", t));
+      const lastVerification = deps.auditVerifier.lastResult();
       const sid = c.get("session")?.id;
       const nowMs = (sid ? deps.database.get<{ last_seen_at: number }>("SELECT last_seen_at FROM sessions WHERE id = ?", sid)?.last_seen_at : undefined) ?? Date.now();
       return c.json({
@@ -151,7 +154,9 @@ export class AdminRoutes {
         totpEnabledUsersTotal: hasTable("user_totp") ? count("SELECT COUNT(*) AS n FROM user_totp WHERE enabled = 1") : 0,
         activeSessionsTotal: count("SELECT COUNT(*) AS n FROM sessions WHERE revoked_at IS NULL AND expires_at > ?", nowMs),
         activeApiTokensTotal: hasTable("api_tokens") ? count("SELECT COUNT(*) AS n FROM api_tokens WHERE revoked_at IS NULL AND (expires_at IS NULL OR expires_at > ?)", nowMs) : 0,
-        auditChainOk: deps.audit.verifyChain().ok,
+        // The last recorded verification; GET /admin/audit/verify runs a new one.
+        auditChainOk: lastVerification?.ok ?? null,
+        auditChainVerifiedAt: lastVerification?.verifiedAt ?? null,
       }, 200, { "Cache-Control": "no-store" });
     });
 

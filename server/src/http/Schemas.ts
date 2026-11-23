@@ -65,6 +65,11 @@ export const adminAuditQuerySchema = z.object({
   limit: strictLimitSchema.optional(),
 });
 
+export const adminAuditVerifyQuerySchema = z.object({
+  full: z.enum(["true", "false", "1", "0"], { message: "full must be true or false." }).optional()
+    .transform((value) => value === "true" || value === "1"),
+});
+
 export const uuidParamSchema = z.object({
   id: z.string().uuid("Invalid id."),
 });

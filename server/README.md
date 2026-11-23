@@ -179,6 +179,8 @@ All JSON, all under `/v1`. Authenticated routes take `Authorization: Bearer <tok
 | DELETE | `/auth/tokens/:id` | user | revokes one token |
 | POST | `/admin/users/:id/reset-totp` | admin | removes the user's two factor setup and revokes their sessions |
 | GET | `/admin/audit?limit=` | admin | recent audit entries |
+| GET | `/admin/audit/verify?full=` | admin | checks the audit hash chain from the last checkpoint; `full=true` rechecks every row |
+| GET | `/admin/compliance/summary` | admin | counts plus the last audit verification (`auditChainOk`, `auditChainVerifiedAt`, both null until the first run) |
 
 API tokens (`ic_tok_...`) can be minted and revoked, but no route accepts
 them for authentication yet. They are revoked when the user changes their

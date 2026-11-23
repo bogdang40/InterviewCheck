@@ -1,0 +1,78 @@
+import type { Database } from "../db/Database.js";
+
+export type AuditVerificationMode = "incremental" | "full";
+
+/** The verified prefix of the audit chain: every row up to lastId checked out. */
+export interface AuditChainPosition {
+  readonly lastId: number;
+  readonly lastHash: string | null;
+  readonly verifiedCount: number;
+  readonly legacyCount: number;
+}
+
+export interface AuditVerificationOutcome {
+  readonly ok: boolean;
+  readonly firstBrokenId: number | null;
+  readonly mode: AuditVerificationMode;
+  readonly at: Date;
+}
+
+export interface AuditCheckpoint {
+  readonly position: AuditChainPosition;
+  readonly outcome: AuditVerificationOutcome;
+}
+
+interface CheckpointRow {
+  last_id: number;
+  last_hash: string | null;
+  verified_count: number;
+  legacy_count: number;
+  result_ok: number;
+  result_first_broken_id: number | null;
+  result_mode: string;
+  result_at: number;
+}
+
+export class AuditCheckpointRepository {
+  constructor(private readonly db: Database) {}
+
+  find(): AuditCheckpoint | null {
+    const row = this.db.get<CheckpointRow>(
+      "SELECT last_id, last_hash, verified_count, legacy_count, result_ok, result_first_broken_id, result_mode, result_at FROM audit_chain_checkpoint WHERE id = 1",
+    );
+    if (!row) return null;
+    return {
+      position: {
+        lastId: Number(row.last_id),
+        lastHash: row.last_hash,
+        verifiedCount: Number(row.verified_count),
+        legacyCount: Number(row.legacy_count),
+      },
+      outcome: {
+        ok: Number(row.result_ok) === 1,
+        firstBrokenId: row.result_first_broken_id === null ? null : Number(row.result_first_broken_id),
+        mode: row.result_mode === "full" ? "full" : "incremental",
+        at: new Date(Number(row.result_at)),
+      },
+    };
+  }
+
+  save(checkpoint: AuditCheckpoint): void {
+    const { position, outcome } = checkpoint;
+    this.db.run(
+      `INSERT INTO audit_chain_checkpoint (id, last_id, last_hash, verified_count, legacy_count, result_ok, result_first_broken_id, result_mode, result_at)
+       VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET last_id = excluded.last_id, last_hash = excluded.last_hash,
+         verified_count = excluded.verified_count, legacy_count = excluded.legacy_count, result_ok = excluded.result_ok,
+         result_first_broken_id = excluded.result_first_broken_id, result_mode = excluded.result_mode, result_at = excluded.result_at`,
+      position.lastId,
+      position.lastHash,
+      position.verifiedCount,
+      position.legacyCount,
+      outcome.ok ? 1 : 0,
+      outcome.firstBrokenId,
+      outcome.mode,
+      outcome.at.getTime(),
+    );
+  }
+}

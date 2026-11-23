@@ -310,7 +310,7 @@ describe("M18 TOTP 2FA and audit hash chain", () => {
     expect((await get(harness.app, "/v1/admin/audit/verify")).status).toBe(401);
     expect((await get(harness.app, "/v1/admin/audit/verify", memberToken)).status).toBe(403);
 
-    const verifyRes = await get(harness.app, "/v1/admin/audit/verify", adminToken);
+    const verifyRes = await get(harness.app, "/v1/admin/audit/verify?full=true", adminToken);
     expect(verifyRes.status).toBe(200);
     expect(verifyRes.headers.get("cache-control")).toBe("no-store");
     const initial = await json<AuditChainVerification>(verifyRes);
@@ -335,8 +335,8 @@ describe("M18 TOTP 2FA and audit hash chain", () => {
 
     // Tamper with details on row 1 -> detects break at row 1
     harness.container.database.run("UPDATE audit_log SET details = ? WHERE id = ?", '{"role":"tampered"}', first.id);
-    const brokenDetails = await json<AuditChainVerification>(await get(harness.app, "/v1/admin/audit/verify", adminToken));
-    expect(brokenDetails).toEqual({
+    const brokenDetails = await json<AuditChainVerification>(await get(harness.app, "/v1/admin/audit/verify?full=true", adminToken));
+    expect(brokenDetails).toMatchObject({
       ok: false,
       verifiedCount: 0,
       legacyUnchainedCount: 0,
@@ -352,7 +352,7 @@ describe("M18 TOTP 2FA and audit hash chain", () => {
     harness.container.audit.record({ actorUserId: memberId, action: "post_v8.one", targetUserId: memberId }, harness.clock.now);
     harness.container.audit.record({ actorUserId: memberId, action: "post_v8.two", targetUserId: memberId }, harness.clock.now);
 
-    const withLegacy = await json<AuditChainVerification>(await get(harness.app, "/v1/admin/audit/verify", adminToken));
+    const withLegacy = await json<AuditChainVerification>(await get(harness.app, "/v1/admin/audit/verify?full=true", adminToken));
     expect(withLegacy.ok).toBe(true);
     expect(withLegacy.legacyUnchainedCount).toBe(1);
     expect(withLegacy.verifiedCount).toBe(2);
@@ -361,8 +361,8 @@ describe("M18 TOTP 2FA and audit hash chain", () => {
     // Deleting middle chained row breaks the chain at the subsequent row
     const chainedIds = harness.container.database.all<{ id: number }>("SELECT id FROM audit_log WHERE entry_hash IS NOT NULL ORDER BY id ASC");
     harness.container.database.run("DELETE FROM audit_log WHERE id = ?", chainedIds[0]!.id);
-    const deletedRowCheck = await json<AuditChainVerification>(await get(harness.app, "/v1/admin/audit/verify", adminToken));
-    expect(deletedRowCheck).toEqual({
+    const deletedRowCheck = await json<AuditChainVerification>(await get(harness.app, "/v1/admin/audit/verify?full=true", adminToken));
+    expect(deletedRowCheck).toMatchObject({
       ok: false,
       verifiedCount: 0,
       legacyUnchainedCount: 1,
@@ -377,7 +377,7 @@ describe("M18 TOTP 2FA and audit hash chain", () => {
       "INSERT INTO audit_log (at, actor_user_id, action, target_user_id, details, prev_hash, entry_hash) VALUES (2000, 'u1', 'injected.unchained', 'u1', NULL, NULL, NULL)",
     );
     const injected = harness.container.database.get<{ id: number }>("SELECT id FROM audit_log WHERE action = 'injected.unchained'")!;
-    const injectedCheck = await json<AuditChainVerification>(await get(harness.app, "/v1/admin/audit/verify", adminToken));
+    const injectedCheck = await json<AuditChainVerification>(await get(harness.app, "/v1/admin/audit/verify?full=true", adminToken));
     expect(injectedCheck).toMatchObject({ ok: false, verifiedCount: 1, firstBrokenId: injected.id });
   });
 });

@@ -168,6 +168,23 @@ export const MIGRATION_STEPS: readonly MigrationStep[] = [
       `DROP TABLE IF EXISTS login_windows`,
     ],
   },
+  {
+    version: 10,
+    statements: [
+      // Single row. last_* is the verified prefix of the chain; result_* is the outcome of the latest run.
+      `CREATE TABLE IF NOT EXISTS audit_chain_checkpoint (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        last_id INTEGER NOT NULL,
+        last_hash TEXT,
+        verified_count INTEGER NOT NULL,
+        legacy_count INTEGER NOT NULL,
+        result_ok INTEGER NOT NULL CHECK (result_ok IN (0, 1)),
+        result_first_broken_id INTEGER,
+        result_mode TEXT NOT NULL,
+        result_at INTEGER NOT NULL
+      )`,
+    ],
+  },
 ];
 
 export const LATEST_SCHEMA_VERSION = Math.max(...MIGRATION_STEPS.map((step) => step.version));

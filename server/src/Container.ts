@@ -7,6 +7,7 @@ import { EntitlementResolver } from "./domain/Entitlement.js";
 import { PlanCatalog } from "./domain/Subscription.js";
 import { ClientAddressResolver, FixedWindowRateLimiter } from "./http/middleware/RateLimit.js";
 import { ApiTokenRepository } from "./repositories/ApiTokenRepository.js";
+import { AuditCheckpointRepository } from "./repositories/AuditCheckpointRepository.js";
 import { AuditLogRepository } from "./repositories/AuditLogRepository.js";
 import { CheckoutRepository } from "./repositories/CheckoutRepository.js";
 import { SessionRepository } from "./repositories/SessionRepository.js";
@@ -16,6 +17,7 @@ import { TotpRepository } from "./repositories/TotpRepository.js";
 import { UserRepository } from "./repositories/UserRepository.js";
 import { AdminBootstrap } from "./services/AdminBootstrap.js";
 import { AdminService } from "./services/AdminService.js";
+import { AuditChainVerifier } from "./services/AuditChainVerifier.js";
 import { AuthService } from "./services/AuthService.js";
 import { BillingService } from "./services/BillingService.js";
 import { BillingWebhookService } from "./services/BillingWebhookService.js";
@@ -44,6 +46,8 @@ export class Container {
   readonly totpCodes: TotpRepository;
   readonly subscriptions: SubscriptionRepository;
   readonly audit: AuditLogRepository;
+  readonly auditCheckpoints: AuditCheckpointRepository;
+  readonly auditVerifier: AuditChainVerifier;
   readonly stripeEvents: StripeEventRepository;
   readonly entitlements: EntitlementService;
   readonly bootstrap: AdminBootstrap;
@@ -80,6 +84,8 @@ export class Container {
     this.totpCodes = new TotpRepository(this.database);
     this.subscriptions = new SubscriptionRepository(this.database);
     this.audit = new AuditLogRepository(this.database);
+    this.auditCheckpoints = new AuditCheckpointRepository(this.database);
+    this.auditVerifier = new AuditChainVerifier(this.audit, this.auditCheckpoints, clock);
     this.stripeEvents = new StripeEventRepository(this.database);
 
     const resolver = new EntitlementResolver({ pastDueGraceDays: policy.pastDueGraceDays, offlineGraceDays: policy.offlineGraceDays });

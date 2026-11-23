@@ -12,7 +12,8 @@ interface ComplianceSummary {
   totpEnabledUsersTotal: number;
   activeSessionsTotal: number;
   activeApiTokensTotal: number;
-  auditChainOk: boolean;
+  auditChainOk: boolean | null;
+  auditChainVerifiedAt: string | null;
 }
 
 describe("M21-W3 CORS preflight rejection, security headers, and compliance summary", () => {
@@ -110,6 +111,7 @@ describe("M21-W3 CORS preflight rejection, security headers, and compliance summ
     expect(tokenRes.status).toBe(201);
     const createdToken = await json<{ token: string }>(tokenRes);
 
+    expect((await get(harness.app, "/v1/admin/audit/verify", adminToken)).status).toBe(200);
     const res = await get(harness.app, "/v1/admin/compliance/summary", adminToken);
     expect(res.status).toBe(200);
     expect(res.headers.get("cache-control")).toBe("no-store");
@@ -138,6 +140,7 @@ describe("M21-W3 CORS preflight rejection, security headers, and compliance summ
       activeSessionsTotal: 2,
       activeApiTokensTotal: 1,
       auditChainOk: true,
+      auditChainVerifiedAt: harness.clock.now.toISOString(),
     });
     expect(harness.container.database.userVersion()).toBe(LATEST_SCHEMA_VERSION);
 
@@ -147,8 +150,9 @@ describe("M21-W3 CORS preflight rejection, security headers, and compliance summ
     expect(afterExpiry.activeApiTokensTotal).toBe(0);
     expect(afterExpiry.activeSessionsTotal).toBe(2);
 
-    // Tamper audit_log and verify auditChainOk flips to false
+    // Tamper audit_log; the summary reports the next full verification, which finds it
     harness.container.database.run("UPDATE audit_log SET details = ? WHERE id = 1", '{"tampered":true}');
+    expect((await get(harness.app, "/v1/admin/audit/verify?full=true", adminToken)).status).toBe(200);
     const tampered = await json<ComplianceSummary>(await get(harness.app, "/v1/admin/compliance/summary", adminToken));
     expect(tampered.auditChainOk).toBe(false);
   });

@@ -107,7 +107,7 @@ export class AppFactory {
       AdminRoutes.build({
         auth: container.auth,
         admin: container.admin,
-        audit: container.audit,
+        auditVerifier: container.auditVerifier,
         security: container.security,
         database: container.database,
         adminReadLimiter: container.adminReadLimiter,
