@@ -3,6 +3,7 @@ from urllib.parse import parse_qs, urlsplit
 
 import httpx
 from playwright.sync_api import expect
+import pytest
 
 
 def seed(client, count):
@@ -83,7 +84,8 @@ def test_panel_note_pages_preserve_drafts_and_recover_focus(workspace_url, brows
         assert all(set(parse_qs(url.query)) <= {"category", "limit", "cursor"} for method, url in calls if method == "GET" and url.path == path)
 
 
-def test_changed_filters_ignore_late_note_replies_and_hide_denied_content(workspace_url, browser_page):
+@pytest.mark.parametrize("status", [402, 403])
+def test_changed_filters_ignore_late_note_replies_and_hide_denied_content(workspace_url, browser_page, status):
     page = browser_page
     with httpx.Client(base_url=workspace_url, headers={"X-InterviewCheck": "1"}) as client:
         sid, path, _, concern = seed(client, 2)
@@ -122,7 +124,7 @@ def test_changed_filters_ignore_late_note_replies_and_hide_denied_content(worksp
     page.evaluate("document.dispatchEvent(new Event('release-note-page'))")
     expect(notes.get_by_text(concern["body"])).to_be_visible()
     expect(composer).to_be_focused()
-    page.route(f"**{path}?*", lambda route: route.fulfill(status=403, json={"detail": "Denied."}))
+    page.route(f"**{path}?*", lambda route: route.fulfill(status=status, json={"detail": "Denied."}))
     selector.select_option("decision")
     expect(notes.get_by_role("alert")).to_contain_text("no longer have access")
     expect(notes.get_by_role("listitem")).to_have_count(0)

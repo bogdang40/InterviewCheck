@@ -113,6 +113,8 @@ Each saved answer has one revision for the transcript, sources, disposition and 
 
 The scorecard editor sends the version it opened. If someone else saves first, the editor combines edits to different criteria and asks which score to keep for each criterion that both reviewers changed. Check the result and select **Save scorecard**. Unchanged criteria keep their original reviewer and update time. A rationale needs a rating before it can be saved.
 
+If a reconciliation request temporarily fails, the scorecard and assignment editors keep the open proposal. If access is denied, the affected editor clears its private fields. Reload that editor after access returns to see the current saved values.
+
 To correct a grade entered by mistake, mark that saved rating for removal. The preview excludes the marked rating. Its rationale stays available for **Undo** until you save. After saving, a criterion in the current role appears ungraded. A criterion added only to this interview disappears. If another reviewer changed a marked rating, compare their edit with the proposed removal before saving again.
 
 The handoff panel loads 20 notes at a time. Select a category or browse older notes without losing a note you are writing or a score you are editing. The panel uses the saved note timestamp and ID for stable ordering. Paging affects only the panel. A workspace backup still carries all handoff notes for each included interview.

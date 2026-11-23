@@ -4,7 +4,7 @@ import Link from "next/link"
 import { type FormEvent, useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import { ArrowRight, RefreshCw, Trash2, UserCheck } from "lucide-react"
 import { message } from "@/lib/api"
-import { ApiError } from "@/lib/http"
+import { ApiError, isAccessDenied } from "@/lib/http"
 import {
   AssignmentConflict, bulkAssignSessions, deadlineLabel, isDueOverdue, toDueAtIso, validAssignmentVersion,
   type AssignmentPriority, type AssignmentQueueResponse,
@@ -144,7 +144,7 @@ export default function ArchiveAssignmentsStrip() {
       queue.refresh()
     } catch (err) {
       if (epoch !== accessEpoch.current) return
-      if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+      if (isAccessDenied(err)) {
         queue.denyAccess(err)
         return
       }

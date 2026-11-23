@@ -3,6 +3,7 @@ import { MessageSquarePlus, Trash2 } from "lucide-react"
 import { message } from "@/lib/api"
 import { useReportDirty, type DirtyReporter } from "@/lib/dirtyTracking"
 import { useDeferredFocus } from "@/lib/useDeferredFocus"
+import { isAccessDenied } from "@/lib/http"
 import {
   createHandoffNote, deleteHandoffNote, fetchHandoffPage, fetchSessionScorecard, HANDOFF_PAGE_SIZE,
   ScorecardApiError, type HandoffNote, type HandoffNoteCategory, type HandoffPage, type ScorecardState,
@@ -36,8 +37,10 @@ function newestFirst(a: HandoffNote, b: HandoffNote) {
 
 function accessError(err: unknown) {
   if (!(err instanceof ScorecardApiError)) return ""
-  if (err.status === 401) return "Sign in to view handoff notes."
-  if (err.status === 403) return "You no longer have access to these handoff notes."
+  if (isAccessDenied(err)) {
+    if (err.status === 401) return "Sign in to view handoff notes."
+    return "You no longer have access to these handoff notes."
+  }
   return err.status === 404 ? "This interview or handoff note is unavailable. Check whether the interview is in Trash." : ""
 }
 

@@ -10,6 +10,15 @@ export class ApiError extends Error {
   }
 }
 
+export function isAccessDenied(error: unknown): error is ApiError & { status: 401 | 402 | 403 } {
+  return error instanceof ApiError && (error.status === 401 || error.status === 402 || error.status === 403)
+}
+
+/** A missing resource or unavailable endpoint also requires a new read before the editor can be reused. */
+export function isResourceUnavailable(error: unknown): boolean {
+  return isAccessDenied(error) || (error instanceof ApiError && (error.status === 404 || error.status === 501))
+}
+
 export type ApiErrorType = new (status: number, message: string, code?: string) => ApiError
 
 export type HttpOptions = RequestInit & {

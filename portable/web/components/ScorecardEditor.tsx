@@ -2,6 +2,7 @@ import { useEffect, useId, useMemo, useState } from "react"
 import { Plus } from "lucide-react"
 import { message } from "@/lib/api"
 import { useReportDirty, type DirtyReporter } from "@/lib/dirtyTracking"
+import { isResourceUnavailable } from "@/lib/http"
 import { reconcileScores, sameScores, undoScoreRemoval, type ScoreConflict } from "@/lib/scorecardDraft"
 import {
   computeWeightedScorePct, fetchSessionScorecard, saveSessionScorecard, ScorecardVersionConflict,
@@ -14,8 +15,9 @@ import styles from "./SessionScorecardPanel.module.css"
 
 export type ScorePreview = { pct: number | null; unsaved: boolean }
 
-export default function ScorecardEditor({ sessionId, initial, onDirty, onScore }: {
+export default function ScorecardEditor({ sessionId, initial, onDirty, onScore, onUnavailable }: {
   sessionId: string; initial: ScorecardState; onDirty: DirtyReporter; onScore: (score: ScorePreview) => void
+  onUnavailable: (source: "read" | "write") => void
 }) {
   const prefix = useId()
   const [baseline, setBaseline] = useState<Pick<ScorecardState, "items" | "version">>(initial)
@@ -104,7 +106,7 @@ export default function ScorecardEditor({ sessionId, initial, onDirty, onScore }
     setBusy(true); setError(""); setStatus(""); setNeedsRefresh(true)
     try {
       const latest = await fetchSessionScorecard(sessionId)
-      if (!latest.available || !latest.version) throw new Error("A current scorecard version is unavailable.")
+      if (!latest.available || !latest.version) { onUnavailable("read"); return }
       const merged = reconcileScores(baseline.items, rows, latest.items, removals)
       setBaseline(latest); setRows(merged.rows); setConflicts(merged.conflicts); setNeedsRefresh(false)
       setRemovals(merged.pendingRemovals)
@@ -113,7 +115,10 @@ export default function ScorecardEditor({ sessionId, initial, onDirty, onScore }
       else if (alreadySaved) setStatus("The saved scorecard already reflects your changes.")
       else setStatus("Saved scores refreshed. Review the combined scorecard before saving.")
       setFocusId(`${prefix}-${merged.conflicts.length ? "resolve" : merged.rows.length ? "save" : "name"}`)
-    } catch (err) { setError(message(err)) } finally { setBusy(false) }
+    } catch (err) {
+      if (isResourceUnavailable(err)) onUnavailable("read")
+      else setError(message(err))
+    } finally { setBusy(false) }
   }
 
   async function save() {
@@ -137,6 +142,7 @@ export default function ScorecardEditor({ sessionId, initial, onDirty, onScore }
       if (!saved.items.length) setFocusId(`${prefix}-name`)
     } catch (err) {
       if (err instanceof ScorecardVersionConflict) await refresh()
+      else if (isResourceUnavailable(err)) onUnavailable("write")
       else setError(message(err))
     } finally { setBusy(false) }
   }

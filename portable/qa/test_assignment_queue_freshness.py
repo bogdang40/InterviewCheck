@@ -5,6 +5,7 @@ from urllib.parse import parse_qs, urlsplit
 
 import httpx
 from playwright.sync_api import expect
+import pytest
 
 
 def create(client, name):
@@ -158,7 +159,8 @@ def test_background_page_clamp_returns_removed_pager_focus(workspace_url, browse
         assert len(reads) == count + 1
 
 
-def test_denied_background_read_clears_private_rows_and_selection(workspace_url, browser_page):
+@pytest.mark.parametrize("status", [402, 403])
+def test_denied_background_read_clears_private_rows_and_selection(workspace_url, browser_page, status):
     page = browser_page
     with httpx.Client(base_url=workspace_url, headers={"X-InterviewCheck": "1"}) as client:
         create(client, "Private queue fixture")
@@ -173,7 +175,7 @@ def test_denied_background_read_clears_private_rows_and_selection(workspace_url,
     box.check()
     email = queue.get_by_label("Bulk assignee email")
     email.fill("private-draft@example.test")
-    pending[0].fulfill(status=403, json={"detail": "Fixture access denied."})
+    pending[0].fulfill(status=status, json={"detail": "Fixture access denied."})
     expect(queue.get_by_role("alert")).to_contain_text("Fixture access denied.")
     expect(queue.get_by_role("link", name="Account")).to_be_visible()
     expect(queue.get_by_role("link", name=re.compile("Private queue fixture"))).to_have_count(0)

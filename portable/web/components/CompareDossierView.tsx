@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { Download, Printer, RotateCcw, SlidersHorizontal } from "lucide-react"
 import { message, statusText } from "@/lib/api"
-import { ApiError } from "@/lib/http"
+import { isResourceUnavailable } from "@/lib/http"
 import {
   buildComparePageUrl, buildComparePrintUrl, compareInterviews, downloadCompareDossier,
   formatSlotHeading, getSlotCell, parseCompareIds, type CompareInput, type CompareResponse,
@@ -23,10 +23,6 @@ import styles from "./CompareDossierView.module.css"
 type ComparisonRead = { input: CompareInput; attempt: number }
 type ReadResult = { read: ComparisonRead; data?: CompareResponse; error?: string; unavailable?: boolean }
 type FileResult = { read: ComparisonRead; state: "preparing" | "started" | "failed"; text?: string }
-
-function unavailable(error: unknown) {
-  return error instanceof ApiError && [401, 402, 403, 404].includes(error.status)
-}
 
 function InterviewQuestionCell({ session, row, rowHeader, includeExcerpts, includeNotes }: {
   session: CompareSessionSummary; row: CompareSlotRow; rowHeader: string; includeExcerpts: boolean; includeNotes: boolean
@@ -102,7 +98,7 @@ function CandidateComparison({ parsed }: { parsed: ReturnType<typeof parseCompar
     compareInterviews(read.input, controller.signal)
       .then((data) => { if (!controller.signal.aborted) setResult({ read, data }) })
       .catch((err) => {
-        if (!controller.signal.aborted) setResult({ read, error: message(err), unavailable: unavailable(err) })
+        if (!controller.signal.aborted) setResult({ read, error: message(err), unavailable: isResourceUnavailable(err) })
       })
     return () => controller.abort()
   }, [read])
@@ -145,7 +141,7 @@ function CandidateComparison({ parsed }: { parsed: ReturnType<typeof parseCompar
       if (!controller.signal.aborted) setFile({ read, state: "started", text: `Download started for ${filename}.` })
     } catch (err) {
       if (!controller.signal.aborted) {
-        if (unavailable(err)) {
+        if (isResourceUnavailable(err)) {
           setFile(null)
           setResult({ read, error: message(err), unavailable: true })
         } else setFile({ read, state: "failed", text: message(err) })

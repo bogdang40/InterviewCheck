@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { message } from "./api"
-import { ApiError } from "./http"
+import { type ApiError, isAccessDenied } from "./http"
 import { onAssignmentChange } from "./assignmentChanges"
 import { fetchAssignmentQueue, type AssignmentQueueFilters, type AssignmentQueueResponse } from "./sessionAssignment"
 
@@ -106,7 +106,7 @@ export function useAssignmentQueue(isFrozen: () => boolean, beforeBackgroundUpda
       } catch (err) {
         if (!current()) return
         queued = false // A failed background read waits for a new signal or an explicit refresh.
-        if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+        if (isAccessDenied(err)) {
           deny(err)
         } else if (background && latest.current?.key === key && latest.current.data) {
           if (isFrozen()) defer()

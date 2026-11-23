@@ -4,6 +4,7 @@ import { type FormEvent, useCallback, useEffect, useId, useRef, useState } from 
 import { CalendarClock, Trash2, UserCheck } from "lucide-react"
 import { message } from "@/lib/api"
 import { useReportDirty, type DirtyReporter } from "@/lib/dirtyTracking"
+import { isResourceUnavailable } from "@/lib/http"
 import {
   AssignmentConflict, clearSessionAssignment, deadlineLabel, fetchSessionAssignment, isDueOverdue, saveSessionAssignment,
   toDateInputValue, toDueAtIso, type AssignmentPriority, type SessionAssignment, type SessionAssignmentResponse,
@@ -59,10 +60,11 @@ export default function SessionAssignmentBar({ sessionId, onDirtyChange }: { ses
   const [dueDate, setDueDate] = useState("")
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState("")
+  const [accessIssue, setAccessIssue] = useState("")
   const [actionError, setActionError] = useState("")
   const [statusNotice, setStatusNotice] = useState("")
   const [busy, setBusy] = useState<"save" | "clear" | "reload" | null>(null)
-  const [refreshSeq, setRefreshSeq] = useState(0)
+  const [read, setRead] = useState({ attempt: 0, verify: false })
   const edited = assigneeEmail.trim().toLowerCase() !== (assignment?.assignee_email ?? "").trim().toLowerCase() ||
     priority !== (assignment?.priority ?? "normal") || dueDate !== toDateInputValue(assignment?.due_at)
   useReportDirty(!!review || (!loading && edited), onDirtyChange)
@@ -76,6 +78,18 @@ export default function SessionAssignmentBar({ sessionId, onDirtyChange }: { ses
     setReview(null)
   }, [])
 
+  const withhold = useCallback((source: "read" | "write") => {
+    accept(null, null)
+    setSuggestions([])
+    setActionError("")
+    setStatusNotice("")
+    setLoadError("")
+    setAccessIssue(source === "write" ? "The assignment change was refused. Reload the assignment before editing again."
+      : "The assignment is unavailable. Reload it to check current access.")
+  }, [accept])
+
+  function reload(verify = false) { setRead(old => ({ attempt: old.attempt + 1, verify })) }
+
   useEffect(() => {
     const controller = new AbortController()
     setLoading(true)
@@ -83,13 +97,19 @@ export default function SessionAssignmentBar({ sessionId, onDirtyChange }: { ses
     fetchSessionAssignment(sessionId, controller.signal)
       .then((res) => {
         if (controller.signal.aborted) return
+        if (read.verify && !res.version) { setLoadError("The server did not return a current assignment version."); return }
         accept(res.assignment, res.version)
         setSuggestions(res.suggested_reviewers)
+        setAccessIssue("")
       })
-      .catch((err) => { if (!(err instanceof DOMException && err.name === "AbortError")) setLoadError(message(err)) })
+      .catch(err => {
+        if (controller.signal.aborted) return
+        if (isResourceUnavailable(err)) withhold("read")
+        else setLoadError(message(err))
+      })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
-  }, [sessionId, refreshSeq, accept])
+  }, [sessionId, read, accept, withhold])
 
   useEffect(() => { if (review?.latest) reviewHeading.current?.focus() }, [review?.latest])
 
@@ -99,7 +119,7 @@ export default function SessionAssignmentBar({ sessionId, onDirtyChange }: { ses
     setActionError("")
     try {
       const latest = await fetchSessionAssignment(sessionId)
-      if (!latest.version) throw new Error("The server did not return an assignment version. Reload the latest assignment before continuing.")
+      if (!latest.version) { withhold("read"); return }
       setSuggestions(latest.suggested_reviewers)
       setAssignment(latest.assignment)
       setVersion(latest.version)
@@ -111,7 +131,8 @@ export default function SessionAssignmentBar({ sessionId, onDirtyChange }: { ses
         setReview({ ...change, latest })
       }
     } catch (err) {
-      setActionError(message(err))
+      if (isResourceUnavailable(err)) withhold("read")
+      else setActionError(message(err))
     } finally {
       setBusy(null)
     }
@@ -131,6 +152,7 @@ export default function SessionAssignmentBar({ sessionId, onDirtyChange }: { ses
       if (review) requestAnimationFrame(() => emailField.current?.focus())
     } catch (err) {
       if (err instanceof AssignmentConflict) await reloadConflict({ before, proposed })
+      else if (isResourceUnavailable(err)) withhold("write")
       else setActionError(message(err))
     } finally {
       setBusy(null)
@@ -154,7 +176,11 @@ export default function SessionAssignmentBar({ sessionId, onDirtyChange }: { ses
     requestAnimationFrame(() => emailField.current?.focus())
   }
 
-  if (loadError) return <WorkspaceError text={loadError} retry={() => setRefreshSeq((n) => n + 1)} showAccount={false} />
+  if (accessIssue) return <section className="panel inset stack" aria-label="Session assignment">
+    <p role="alert" className="error">{accessIssue} {loadError}</p>
+    <Button type="button" variant="outline" disabled={loading || !!busy} onClick={() => reload(true)}>Reload assignment</Button>
+  </section>
+  if (loadError) return <WorkspaceError text={loadError} retry={() => reload()} showAccount={false} />
   const locked = loading || !!busy || !!review || !version
   const latest = review?.latest
 
@@ -236,7 +262,7 @@ export default function SessionAssignmentBar({ sessionId, onDirtyChange }: { ses
 
       {!loading && !version && !review && <div className="notice stack" role="status">
         The server did not return an assignment version. Refresh before making changes.
-        <Button variant="outline" size="sm" onClick={() => setRefreshSeq(n => n + 1)}>Refresh assignment</Button>
+        <Button variant="outline" size="sm" onClick={() => reload()}>Refresh assignment</Button>
       </div>}
       {review && <section className="notice stack" aria-label="Assignment conflict">
         <h3 ref={reviewHeading} tabIndex={-1}>Review assignment changes</h3>
