@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react"
-import { Download } from "lucide-react"
 import { api, message } from "@/lib/api"
 import type { FeedPage } from "@/lib/bulkArchive"
 import { cursorPageStatus, searchIdentity, SEARCH_PAGE_SIZE, useWorkspaceSearch } from "@/lib/search"
 import { useDeferredFocus } from "@/lib/useDeferredFocus"
 import { Button } from "./ui/button"
 import { Input } from "./ui/input"
+import BackupDownloadLink from "./BackupDownloadLink"
 import SearchPageControls from "./SearchPageControls"
 
 type Choice = { id: string; candidate: string; role?: string; created_at?: string }
@@ -100,10 +100,6 @@ export default function BackupInterviewPicker({ revision }: { revision: number }
     </p>}
     <SearchPageControls label="Backup interview pages" page={page} hasNext={hasNext}
       previous={() => navigate(false)} next={() => navigate(true)} />
-    <Button asChild>
-      <a href={"/api/backups/workspace" + (choice ? "?session_id=" + encodeURIComponent(choice.id) : "")} download>
-        <Download aria-hidden="true" />Download backup
-      </a>
-    </Button>
+    <BackupDownloadLink key={choice?.id ?? "workspace"} sessionId={choice?.id ?? null} />
   </>
 }

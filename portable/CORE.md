@@ -194,6 +194,8 @@ Use **Change interviews** to select up to six interviews across archive pages or
 
 Open **Data** to download a whole workspace or one interview and its linked role. The JSON contains private interview records, permitted material, review notes, saved drafts and their provenance. A whole workspace includes interviews already in Trash. Account credentials, billing, external send history and operation tokens are outside this archive.
 
+The download link names the selected scope. Before handing the file to the browser, the app checks the filename and compares the received bytes with the SHA-256 checksum from the server. Open **Backup checksum** to copy the verified value and keep it separately for a later restore. A failed download keeps the selection available for retry. Selecting a different scope cancels a transfer that is still being verified.
+
 Versions 3 and later record the current assignment for each interview, including interviews in Trash. An assignment contains the assignee email, who assigned it, its priority, its deadline if set, and the time of the last assignment change. An unassigned interview has an explicit null assignment.
 
 Versions 4 and later also save private panel handoff notes, including each note's ID, author, category, text and creation time. A note whose text was erased by retention stays empty. Restoring a version 1, 2 or 3 file preserves existing handoff notes on matching interviews. Such files cannot recover handoff notes into an empty workspace.
