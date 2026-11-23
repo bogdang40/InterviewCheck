@@ -1,6 +1,7 @@
 """Per-session rubric scorecards and structured panel handoff notes."""
 from typing import Any, Literal
 from uuid import UUID, uuid4
+import hashlib
 import json
 import sqlite3
 
@@ -70,6 +71,7 @@ class ScorecardItemInput(Input):
 
 class ScorecardSaveInput(Input):
     items: list[ScorecardItemInput] = Field(max_length=25)
+    expected_version: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
     @field_validator("items")
     @classmethod
@@ -146,17 +148,29 @@ def _compute_weighted_score_pct(items: list[dict[str, Any]]) -> float | None:
     return round((weighted_sum / (total_weight * 5)) * 100, 1)
 
 
-def _load_scorecard_state(db: sqlite3.Connection, session_id: str) -> dict[str, Any]:
-    store.get_summary(db, session_id)
-    saved_rows = db.execute(
+def _saved_scores(db: sqlite3.Connection, session_id: str) -> list[dict[str, Any]]:
+    rows = db.execute(
         """SELECT criterion_id, criterion_label, weight, rating, rationale, updated_by, updated_at
            FROM session_scorecards WHERE session_id=? ORDER BY rowid""",
         (session_id,),
-    ).fetchall()
-    saved_by_id = {row["criterion_id"]: dict(row) for row in saved_rows}
+    )
+    return [dict(row) for row in rows]
+
+
+def _scorecard_version(session_id, rubric, saved):
+    # Bind the revision to the rubric the reviewer opened and the ordered saved scores.
+    content = json.dumps([session_id, rubric, saved], sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(content.encode()).hexdigest()
+
+
+def _load_scorecard_state(db: sqlite3.Connection, session_id: str) -> dict[str, Any]:
+    store.get_summary(db, session_id)
+    rubric = _load_role_rubric(db, session_id)
+    saved_rows = _saved_scores(db, session_id)
+    saved_by_id = {row["criterion_id"]: row for row in saved_rows}
     items: list[dict[str, Any]] = []
     seen: set[str] = set()
-    for crit in _load_role_rubric(db, session_id):
+    for crit in rubric:
         cid = crit["criterion_id"]
         if cid in seen:
             continue
@@ -178,7 +192,7 @@ def _load_scorecard_state(db: sqlite3.Connection, session_id: str) -> dict[str, 
         cid = row["criterion_id"]
         if cid not in seen:
             seen.add(cid)
-            items.append(dict(row))
+            items.append(row)
     notes = [
         dict(row)
         for row in db.execute(
@@ -189,6 +203,7 @@ def _load_scorecard_state(db: sqlite3.Connection, session_id: str) -> dict[str, 
     ]
     return {
         "session_id": session_id,
+        "version": _scorecard_version(session_id, rubric, saved_rows),
         "items": items,
         "weighted_score_pct": _compute_weighted_score_pct(items),
         "handoff_notes": notes,
@@ -211,8 +226,17 @@ def _save_scorecard(key: str, payload: ScorecardSaveInput, actor_email: str):
     now = store.timestamp()
     with store.connection(write=True) as db:
         store.get_summary(db, key)
+        previous = _saved_scores(db, key)
+        if payload.expected_version is not None:
+            current_version = _scorecard_version(key, _load_role_rubric(db, key), previous)
+            if current_version != payload.expected_version:
+                raise HTTPException(409, "The saved scorecard changed. Review the latest scores before saving.",
+                                    headers={"X-InterviewCheck-Conflict": "scorecard-version"})
+        previous_by_id = {row["criterion_id"]: row for row in previous}
         db.execute("DELETE FROM session_scorecards WHERE session_id=?", (key,))
         for item in payload.items:
+            prior = previous_by_id.get(item.criterion_id)
+            unchanged = prior is not None and all(prior[k] == v for k, v in item.model_dump().items())
             db.execute(
                 """INSERT INTO session_scorecards(
                        session_id, criterion_id, criterion_label, weight, rating, rationale, updated_by, updated_at
@@ -224,8 +248,8 @@ def _save_scorecard(key: str, payload: ScorecardSaveInput, actor_email: str):
                     item.weight,
                     item.rating,
                     item.rationale,
-                    actor_email,
-                    now,
+                    prior["updated_by"] if unchanged else actor_email,
+                    prior["updated_at"] if unchanged else now,
                 ),
             )
         return _load_scorecard_state(db, key)
