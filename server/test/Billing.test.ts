@@ -180,12 +180,22 @@ describe("billing", () => {
     expect(harness.container.stripeEvents.isApplied("evt_wrong_customer")).toBe(false);
   });
 
-  it("rejects webhooks for unknown customers without recording a receipt", async () => {
+  it("acknowledges webhooks for customers with no linked user, recording the receipt and an audit entry", async () => {
     const stranger = liveSubscription("cus_unknown", { id: "sub_x", metadataUserId: null });
     harness.gateway.seedSubscription(stranger);
     harness.gateway.nextEvent = { id: "evt_x", type: "subscription.changed", subscription: stranger };
-    expect((await harness.app.request("/v1/billing/webhook", { method: "POST", body: "{}" })).status).toBe(422);
-    expect(harness.container.stripeEvents.isApplied("evt_x")).toBe(false);
+    const res = await harness.app.request("/v1/billing/webhook", { method: "POST", body: "{}" });
+    expect(res.status).toBe(200);
+    expect(await json(res)).toEqual({ received: true, handled: false, type: "subscription.changed" });
+    expect(harness.container.stripeEvents.isApplied("evt_x")).toBe(true);
+    expect(harness.container.subscriptions.findById("sub_x")).toBeNull();
+    const audit = harness.container.audit.search({ action: "billing.unlinked_customer" }).entries;
+    expect(audit).toHaveLength(1);
+    expect(audit[0]!.details).toMatchObject({ eventId: "evt_x", customerId: "cus_unknown", subscriptionId: "sub_x" });
+
+    harness.gateway.nextEvent = { id: "evt_x", type: "subscription.changed", subscription: stranger };
+    expect(await json(await harness.app.request("/v1/billing/webhook", { method: "POST", body: "{}" }))).toMatchObject({ handled: false });
+    expect(harness.container.audit.search({ action: "billing.unlinked_customer" }).entries).toHaveLength(1);
   });
 
   it("rejects an in flight change if cancellation commits during the Stripe read", async () => {

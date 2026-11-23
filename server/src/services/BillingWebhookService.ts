@@ -41,13 +41,22 @@ export class BillingWebhookService {
     }
 
     const now = this.clock();
-    const handled = this.events.apply(event.id, event.type, now, () => {
+    let linked = true;
+    const applied = this.events.apply(event.id, event.type, now, () => {
       if (this.subscriptions.version(id) !== version) {
         throw new HttpError(503, "subscription_changed", "Concurrent subscription change. Retry this event.");
       }
       const current = this.subscriptions.findById(id);
       const user = this.users.findByStripeCustomerId(customerId) ?? (current ? this.users.findById(current.userId) : null);
       const owner = subscription.metadataUserId ?? eventSubscription?.metadataUserId;
+      // No account knows this customer or subscription. Retrying cannot change that, and a 4xx makes Stripe retry for
+      // days and eventually disable the endpoint, so record the receipt and leave an audit trail for follow up.
+      if (!user && !current) {
+        linked = false;
+        this.audit.record({ actorUserId: null, action: "billing.unlinked_customer",
+          details: { eventId: event.id, type: event.type, customerId, subscriptionId: id, claimedUserId: owner ?? checkout?.clientReferenceId ?? null } }, now);
+        return;
+      }
       if (!user || (owner && owner !== user.id) || (checkout?.clientReferenceId && checkout.clientReferenceId !== user.id)
           || (current && current.userId !== user.id) || (current?.stripeCustomerId && current.stripeCustomerId !== customerId)) {
         throw new HttpError(422, "unknown_customer", "Unknown or inconsistent billing customer.");
@@ -69,6 +78,6 @@ export class BillingWebhookService {
       }
       this.subscriptions.advanceVersion(id);
     });
-    return { handled, type: event.type };
+    return { handled: applied && linked, type: event.type };
   }
 }
