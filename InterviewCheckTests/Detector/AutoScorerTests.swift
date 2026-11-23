@@ -82,6 +82,9 @@ final class AutoScorerTests: XCTestCase {
         XCTAssertEqual(report.interview.scoredFrom, .transcript)
         XCTAssertEqual(report.interview.externalRef, "zoom:m1")
         XCTAssertEqual(report.questions.count, 2)
+        XCTAssertNil(report.interview.consentConfirmedAt, "nobody confirmed the notice for a background score")
+        XCTAssertFalse(InterviewReportComposer.markdown(report).contains("Candidate notified: yes"))
+        XCTAssertTrue(InterviewReportComposer.markdown(report).contains("Candidate notified: \(ConsentNotice.notConfirmed)"))
 
         manager.reloadCache()
         XCTAssertEqual(manager.recordings.first?.interviewID, report.interview.id)

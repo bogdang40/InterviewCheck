@@ -191,7 +191,7 @@ final class DetectorRenderTests: XCTestCase {
         }
         let words = sample
         analyzer.transcribe = { _ in words }
-        analyzer.start(file: URL(fileURLWithPath: "/tmp/interview.wav"), candidateName: "Ana", role: nil)
+        analyzer.start(file: URL(fileURLWithPath: "/tmp/interview.wav"), candidateName: "Ana", role: nil, consentConfirmedAt: Date())
         for _ in 0..<100 where analyzer.step != .chooseSpeaker { try await Task.sleep(nanoseconds: 20_000_000) }
         try await RenderHarness.render("native-recording-speakers", size: CGSize(width: 560, height: 360)) {
             AnalyzeRecordingView(analyzer: analyzer).background(Color(nsColor: .windowBackgroundColor))

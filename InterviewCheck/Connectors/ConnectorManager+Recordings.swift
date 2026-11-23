@@ -33,7 +33,7 @@ extension ConnectorManager {
     /// Downloads a meeting's audio (or video, or transcript) and starts the
     /// analysis. Downloads go to a temporary folder deleted afterwards.
     func analyze(_ recording: ExternalRecording, with analyzer: RecordingAnalyzer, candidateName: String,
-                 role: RoleProfile?) async throws {
+                 role: RoleProfile?, consentConfirmedAt: Date?) async throws {
         guard let source = try makeConnector(recording.source) as? RecordingSource else {
             throw ConnectorError.unsupported("\(recording.source.descriptor.name) has no recordings.")
         }
@@ -55,9 +55,10 @@ extension ConnectorManager {
                 analyzer.meetingStart = recording.startedAt
                 if file.kind == .transcript {
                     analyzer.startTranscript(file: local, candidateName: candidateName, role: role,
-                                             recordingID: recording.id, cleanup: folder)
+                                             consentConfirmedAt: consentConfirmedAt, recordingID: recording.id, cleanup: folder)
                 } else {
-                    analyzer.start(file: local, candidateName: candidateName, role: role, recordingID: recording.id, cleanup: folder)
+                    analyzer.start(file: local, candidateName: candidateName, role: role,
+                                   consentConfirmedAt: consentConfirmedAt, recordingID: recording.id, cleanup: folder)
                 }
                 return
             } catch {

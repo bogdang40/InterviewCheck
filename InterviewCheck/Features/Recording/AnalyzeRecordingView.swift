@@ -14,6 +14,7 @@ struct AnalyzeRecordingView: View {
     @State private var candidateName = ""
     @State private var roleID: String? = RoleStore.shared.selectedRoleID
     @State private var consent = false
+    @State private var consentConfirmedAt: Date?
     @State private var isImporting = false
 
     var body: some View {
@@ -76,6 +77,7 @@ struct AnalyzeRecordingView: View {
                 ForEach(roles.roles) { Text($0.displayTitle).tag(Optional($0.id)) }
             }
             Toggle("The candidate agreed to this interview being recorded, transcribed and checked", isOn: $consent)
+                .onChange(of: consent) { _, confirmed in consentConfirmedAt = confirmed ? Date() : nil }
             Text("Audio or video files (Zoom, Meet, Teams and Webex recordings work). Uses your Deepgram and AI keys.")
                 .font(.caption).foregroundStyle(.secondary)
         }
@@ -91,13 +93,15 @@ struct AnalyzeRecordingView: View {
                         meetingError = nil
                         Task {
                             do {
-                                try await connectors.analyze(meeting, with: analyzer, candidateName: candidateName, role: role)
+                                try await connectors.analyze(meeting, with: analyzer, candidateName: candidateName,
+                                                             role: role, consentConfirmedAt: consentConfirmedAt ?? Date())
                             } catch {
                                 meetingError = error.localizedDescription
                             }
                         }
                     } else if let file {
-                        analyzer.start(file: file, candidateName: candidateName, role: role)
+                        analyzer.start(file: file, candidateName: candidateName, role: role,
+                                       consentConfirmedAt: consentConfirmedAt ?? Date())
                     }
                 }
             }

@@ -361,7 +361,7 @@ struct ReportDetail: View {
             Text(interview.candidateName.isEmpty ? "Candidate" : interview.candidateName)
                 .font(.largeTitle.weight(.semibold))
             Text([interview.roleTitle, interview.startedAt.formatted(date: .long, time: .shortened),
-                  interview.consentConfirmedAt == nil ? "notice not recorded" : "candidate notified"]
+                  ConsentNotice.headline(interview.consentConfirmedAt)]
                     .filter { !$0.isEmpty }.joined(separator: " \u{00B7} "))
                 .foregroundStyle(.secondary)
             if let overall = interview.overallPercent {

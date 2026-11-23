@@ -31,7 +31,7 @@ final class RecordingFallbackTests: XCTestCase {
             files: [ExternalFile(kind: .audio, filename: "x.mp3", url: URL(string: "https://webexapis.com/v1/recordings/R1")!, needsAuth: true),
                     ExternalFile(kind: .transcript, filename: "x.vtt", url: URL(string: "https://webexapis.com/v1/meetingTranscripts/T1/download")!, needsAuth: true)])
         let analyzer = RecordingAnalyzer()
-        try await manager.analyze(recording, with: analyzer, candidateName: "Ana Diaz", role: nil)
+        try await manager.analyze(recording, with: analyzer, candidateName: "Ana Diaz", role: nil, consentConfirmedAt: nil)
         XCTAssertEqual(analyzer.step, .chooseSpeaker, "scored from the transcript instead")
         XCTAssertEqual(analyzer.speakers.map(\.name), ["Sam Lead", "Ana Diaz"])
     }

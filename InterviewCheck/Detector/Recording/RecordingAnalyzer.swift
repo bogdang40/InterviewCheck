@@ -40,6 +40,9 @@ final class RecordingAnalyzer: ObservableObject {
     private var task: Task<Void, Never>?
     private var scoredFrom = ScoredFrom.recording
     private var recordingID: String?
+    /// When the interviewer confirmed the candidate was told; nil when
+    /// nobody confirmed it (background scoring).
+    private var consentConfirmedAt: Date?
     /// When the meeting happened, for recordings from a connector.
     var meetingStart: Date?
     var database: SessionDatabase = .shared
@@ -75,11 +78,14 @@ final class RecordingAnalyzer: ObservableObject {
 
     /// Step 1: read and transcribe the file. `recordingID` links a meeting
     /// recording from a connector; `cleanup` is a download folder to delete.
-    func start(file: URL, candidateName: String, role: RoleProfile?, recordingID: String? = nil, cleanup: URL? = nil) {
+    /// `consentConfirmedAt` is stored in the report as given, never invented.
+    func start(file: URL, candidateName: String, role: RoleProfile?, consentConfirmedAt: Date?,
+               recordingID: String? = nil, cleanup: URL? = nil) {
         self.fileURL = file
         self.candidateName = candidateName
         self.role = role
         self.recordingID = recordingID
+        self.consentConfirmedAt = consentConfirmedAt
         scoredFrom = .recording
         candidateMatchedByName = false
         task = Task { @MainActor in
@@ -107,10 +113,12 @@ final class RecordingAnalyzer: ObservableObject {
 
     /// Step 1 for a meeting transcript (WebVTT with speaker names): no
     /// Deepgram call; words are spread evenly over each line's time.
-    func startTranscript(file: URL, candidateName: String, role: RoleProfile?, recordingID: String? = nil, cleanup: URL? = nil) {
+    func startTranscript(file: URL, candidateName: String, role: RoleProfile?, consentConfirmedAt: Date?,
+                         recordingID: String? = nil, cleanup: URL? = nil) {
         self.candidateName = candidateName
         self.role = role
         self.recordingID = recordingID
+        self.consentConfirmedAt = consentConfirmedAt
         scoredFrom = .transcript
         defer { if let cleanup { try? FileManager.default.removeItem(at: cleanup) } }
         guard let text = try? String(contentsOf: file, encoding: .utf8) else {
@@ -214,7 +222,7 @@ final class RecordingAnalyzer: ObservableObject {
         var interview = InterviewRecord(
             id: UUID().uuidString, workspaceID: role?.id, roleTitle: role?.displayTitle ?? "",
             candidateName: candidateName.trimmingCharacters(in: .whitespaces),
-            consentConfirmedAt: Date(), startedAt: created,
+            consentConfirmedAt: consentConfirmedAt, startedAt: created,
             // No end until every answer is scored: a run cut short is then
             // finished by crash recovery instead of looking complete.
             endedAt: nil, scoredFrom: scoredFrom

@@ -88,7 +88,9 @@ final class AutoScorer {
                 ?? roles.roles.first { $0.name.caseInsensitiveCompare(job.title) == .orderedSame }
         }
         do {
-            try await manager.analyze(recording, with: analyzer, candidateName: interview.candidate?.name ?? "", role: role)
+            // Nobody confirmed the candidate was told, so no consent time is stored.
+            try await manager.analyze(recording, with: analyzer, candidateName: interview.candidate?.name ?? "",
+                                      role: role, consentConfirmedAt: nil)
         } catch {
             return nil
         }
