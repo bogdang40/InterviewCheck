@@ -29,6 +29,19 @@ def seed(client):
     return sessions, answers
 
 
+def test_search_launcher_before_hydration(workspace_url, qa_browser):
+    page = qa_browser.new_page(java_script_enabled=False)
+    try:
+        page.goto(workspace_url + "/roles/")
+        trigger = page.get_by_role("button", name="Search workspace", exact=True)
+        expect(trigger).to_be_disabled()
+        assert trigger.get_attribute("disabled") is not None
+        assert trigger.get_attribute("aria-keyshortcuts") is None
+        expect(trigger.locator("kbd")).to_have_count(0)
+    finally:
+        page.close()
+
+
 def test_keyboard_palette_pages_to_exact_session_and_exchange(workspace_url, browser_page):
     page = browser_page
     with httpx.Client(base_url=workspace_url, headers={"X-InterviewCheck": "1"}) as client:
@@ -36,9 +49,13 @@ def test_keyboard_palette_pages_to_exact_session_and_exchange(workspace_url, bro
     searches = []
     page.on("request", lambda req: searches.append(req) if urlsplit(req.url).path == "/api/search" else None)
     page.goto(workspace_url + "/roles/")
+    trigger = page.get_by_role("button", name="Search workspace", exact=True)
+    expect(trigger).to_be_enabled()
+    expect(trigger).to_have_attribute("aria-keyshortcuts", "Meta+k Control+k")
     page.keyboard.press("Control+k")
     dialog = page.get_by_role("dialog", name="Search workspace")
-    query = dialog.get_by_role("combobox")
+    query = dialog.get_by_role("combobox", name="Search workspace records", exact=True)
+    expect(query).to_be_focused()
     query.fill("Interviews")
     expect(dialog.get_by_role("status")).to_contain_text("Page 1. 20 records shown.")
     command = dialog.get_by_role("option", name=re.compile("Go to Interviews"))

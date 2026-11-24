@@ -6,6 +6,7 @@ import { lazy, Suspense, useEffect, useId, useRef, useState, type KeyboardEvent 
 import type * as CommandPaletteModule from "@/lib/commandPalette"
 import { cursorPageStatus, resultURL, searchIdentity, useWorkspaceSearch } from "@/lib/search"
 import { useAccountStatus } from "@/lib/useAccountStatus"
+import { useIsomorphicLayoutEffect } from "@/lib/useIsomorphicLayoutEffect"
 import SearchPageControls from "./SearchPageControls"
 
 const ShortcutHelpModal = lazy(() => import("./ShortcutHelpModal"))
@@ -35,6 +36,7 @@ export default function WorkspaceSearch({
   const navigatingRef = useRef(false)
   const openCycleRef = useRef(false)
   const [open, setOpen] = useState(false),
+    [shortcutReady, setShortcutReady] = useState(false),
     [shortcutOpen, setShortcutOpen] = useState(false),
     [paletteMod, setPaletteMod] = useState<typeof CommandPaletteModule | null>(null),
     [active, setActive] = useState(0)
@@ -111,7 +113,7 @@ export default function WorkspaceSearch({
     if (cmd.kind === "help") openShortcutHelp()
   }
 
-  useEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     function hotkey(e: KeyboardEvent) {
       if (
         (e.metaKey || e.ctrlKey) &&
@@ -145,6 +147,7 @@ export default function WorkspaceSearch({
       }
     }
     document.addEventListener("keydown", hotkey)
+    setShortcutReady(true)
     return () => document.removeEventListener("keydown", hotkey)
   }, [])
 
@@ -189,13 +192,14 @@ export default function WorkspaceSearch({
         type="button"
         className={compact ? "search-launch compact" : "search-launch"}
         aria-label="Search workspace"
-        aria-keyshortcuts="Meta+k Control+k"
+        disabled={!shortcutReady}
+        aria-keyshortcuts={shortcutReady ? "Meta+k Control+k" : undefined}
         onMouseEnter={loadPalette}
         onFocus={loadPalette}
         onClick={show}
       >
         <Search size={16} aria-hidden="true" />
-        {!compact && <span className="search-label">Search <kbd>Ctrl / ⌘ K</kbd></span>}
+        {!compact && <span className="search-label">Search {shortcutReady && <kbd>Ctrl / ⌘ K</kbd>}</span>}
       </button>
       <dialog
         ref={dialog}
