@@ -113,6 +113,12 @@ Each saved answer has one revision for the transcript, sources, disposition and 
 
 The scorecard editor sends the version it opened. If someone else saves first, the editor combines edits to different criteria and asks which score to keep for each criterion that both reviewers changed. Check the result and select **Save scorecard**. Unchanged criteria keep their original reviewer and update time. A rationale needs a rating before it can be saved.
 
+If a reconciliation request temporarily fails, the scorecard and assignment editors keep the open proposal. If access is denied, the affected editor clears its private fields. Reload that editor after access returns to see the current saved values.
+
+To correct a grade entered by mistake, mark that saved rating for removal. The preview excludes the marked rating. Its rationale stays available for **Undo** until you save. After saving, a criterion in the current role appears ungraded. A criterion added only to this interview disappears. If another reviewer changed a marked rating, compare their edit with the proposed removal before saving again.
+
+The handoff panel loads 20 notes at a time. Select a category or browse older notes without losing a note you are writing or a score you are editing. The panel uses the saved note timestamp and ID for stable ordering. Paging affects only the panel. A workspace backup still carries all handoff notes for each included interview.
+
 Local answer edits follow the saved draft or published exchange they belong to. Reverting all edits clears that editor's recovery copy. If an older app saved edits without recording the draft ID, open **Unlinked local draft** to inspect and copy or download the text. Moving an interview to Trash clears its local copies in this browser. Signing out clears local copies for the workspace.
 
 ## Import a WebVTT conversation
@@ -155,15 +161,23 @@ A note dispatched to an external ATS before removal cannot be recalled here. An 
 
 ## Find records
 
-Quick search sends a literal query to the authenticated service by POST. It matches role names, candidate names, session roles, questions and answers, and excludes private notes, source texts and credentials. Exact and prefix title matches take precedence over answer body matches. A search response includes up to 50 distinct records with a bounded excerpt of the matching field. Trashed sessions and their answers are excluded.
+Quick search sends a literal query to the authenticated service by POST. It matches role names, candidate names, session roles, questions and answers, and excludes private notes, source texts and credentials. Exact and prefix title matches take precedence over answer body matches. The palette pages through matching records while keeping its search term and page history in memory. The **Data** page can also browse interviews or search by candidate or role before downloading a single interview.
+
+API clients can request up to 50 distinct results per response. Send an empty `cursor` to start a paged search. Send the returned `next_cursor` with the same literal and record types to read the next page. A null continuation marks the end. Each request reads the current workspace, so edits and moves to Trash can change later results. Clients that omit `cursor` keep the original response shape.
 
 The interview archive loads 25 summaries per page. Its URL preserves the candidate or role filter, capture state, evidence status, sort and page. The home page returns full counts alongside up to ten sessions awaiting review and five active sessions. Each queued link opens the first pending match in capture order. Existing clients can still read the original session list endpoint.
+
+In role calibration, each numbered question is grouped by its slot and the prompt saved with the interview. Editing the recorded wording of an answer keeps it in its planned group. An older interview with no usable plan, or one displayed as anonymized, uses its recorded wording. Role and cohort review percentages use human-reviewed answers as their denominator. A group with no reviewed answers has no measured percentage.
 
 ## Assignment queues
 
 Open **Interviews** to find reviews by assignee, priority or deadline. **Due soon** covers the next 48 hours, including the upper bound. Each page shows its position in the filtered queue. Moving to another page or filter clears the current selection; bulk changes apply only to the selected interviews on the displayed page. Interviews in Trash are excluded.
 
+An open queue refreshes when a deadline enters **Due soon** or becomes overdue. Selecting interviews for a bulk edit holds the displayed rows and their saved versions until you finish or clear the selection.
+
 When editing one assignment, leaving the displayed UTC date unchanged preserves the original time and precision. Changing the date sets the deadline to 23:59:59 UTC. A blank date clears the deadline. Bulk assignment replaces the deadline on every selected interview.
+
+Assignment changes in the browser use the version displayed for each interview. When another reviewer changes an assignment first, compare the current assignment with your proposed change before saving. For a bulk change, a conflict leaves every selected interview unchanged. Review the refreshed page and select the intended interviews again. The form keeps the entered assignee, priority and date.
 
 ## Question origins
 
@@ -176,9 +190,15 @@ Clients can supply `parent_answer_id` or `planned_slot` when creating or updatin
 
 Candidate comparisons use the saved question plan for each interview. If plans differ, each candidate's cell shows the prompt that applied at the time. Additional answers retain their slot and exchange link. Excerpts and reviewer notes require a new selection when the comparison moves to a different set or order of interviews.
 
+Changing what to include requests a fresh comparison and cancels a Markdown download that is still being prepared. If access is denied, use **Retry comparison** after access is restored.
+
+Use **Change interviews** to select up to six interviews across archive pages or searches. Select **Include saved scorecards** to compare the recorded criteria, weights and ratings in selection order. **Include reviewer rationales** also shares the rationale text in the comparison, printout and Markdown download. Each interview's weighted percentage uses only criteria with a saved rating. Percentages round to one decimal place, with exact ties rounded to the even tenth. An interview with no ratings is ungraded.
+
 ## Workspace recovery
 
 Open **Data** to download a whole workspace or one interview and its linked role. The JSON contains private interview records, permitted material, review notes, saved drafts and their provenance. A whole workspace includes interviews already in Trash. Account credentials, billing, external send history and operation tokens are outside this archive.
+
+The download link names the selected scope. Before handing the file to the browser, the app checks the filename and compares the received bytes with the SHA-256 checksum from the server. Open **Backup checksum** to copy the verified value and keep it separately for a later restore. A failed download keeps the selection available for retry. Selecting a different scope cancels a transfer that is still being verified.
 
 Versions 3 and later record the current assignment for each interview, including interviews in Trash. An assignment contains the assignee email, who assigned it, its priority, its deadline if set, and the time of the last assignment change. An unassigned interview has an explicit null assignment.
 
@@ -189,5 +209,9 @@ Version 5 also saves rubric scorecard entries for each interview in display orde
 Versions 1 and 2 did not record assignments. Restoring an older file into a fresh workspace leaves its interviews unassigned. Restoring the same file over an otherwise identical interview preserves the assignment already in the workspace.
 
 Select a local backup and choose **Preview restore**. The server checks the format, graph, word matches and snapshot against the file and compares stable record IDs with the target. The preview lists new records, identical records, conflicts, saved drafts and the number of assignments, handoff notes and rubric scores in the file. If a recorded assignment, handoff note or rubric scorecard entry differs from the target, the entire restore stops. A handoff note ID already attached to another interview also blocks the restore. On explicit **Restore new records**, the server checks the same file and database again inside one write transaction. A fresh Trash operation version is issued for each restored trashed interview.
+
+If the connection drops while restoring, the server may already have saved the records. The selected file stays in the form. Choose **Preview restore** again to see which records are present. An identical record is skipped if you restore again.
+
+For up to 20 conflicting records, the preview lists the parts that differ, such as the assignment or saved scorecard. A scorecard difference can include reviewer attribution or its update time. Clients can request these categories with `include_conflict_reasons=true` on the preview endpoint.
 
 JSON restore has a 20 MiB file limit. Export smaller sets as individual interviews where appropriate. For a complete large deployment, use SQLite's consistent backup procedure and retain any separate account database under the operator's storage policy. The service does not automatically delete backup files when an interview is purged.

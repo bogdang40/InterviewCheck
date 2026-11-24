@@ -10,6 +10,11 @@ export type CompareSessionSummary = {
   id: string; candidate: string; role: string; role_id: string | null
   lifecycle: string; created_at: string; ended_at: string | null
   consent: boolean; policy: string; answer_count: number; counts: CompareCounts
+  scorecard?: {
+    rated_count: number
+    weighted_score_pct: number | null
+    items: { criterion_id: string; criterion_label: string; weight: number; rating: number; rationale?: string }[]
+  }
 }
 
 export type CompareSlotCell = {
@@ -39,7 +44,10 @@ export type CompareResponse = {
   rubric_criteria?: CompareRubricCriterion[]
 }
 
-export type CompareInput = { session_ids: string[]; include_excerpts: boolean; include_notes: boolean }
+export type CompareInput = {
+  session_ids: string[]; include_excerpts: boolean; include_notes: boolean
+  include_scorecards?: boolean; include_rationales?: boolean
+}
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -67,12 +75,16 @@ export function buildComparePageUrl(ids: string[]): string {
 
 export function buildComparePrintUrl(
   ids: string[],
-  options?: { includeExcerpts?: boolean; includeNotes?: boolean },
+  options?: { includeExcerpts?: boolean; includeNotes?: boolean; includeScorecards?: boolean; includeRationales?: boolean },
 ): string {
   const clean = ids.filter((id) => UUID_RE.test(id)).slice(0, 6)
   const parts = ["ids=" + clean.map(encodeURIComponent).join(",")]
   if (options?.includeExcerpts) parts.push("include_excerpts=true")
   if (options?.includeNotes) parts.push("include_notes=true")
+  if (options?.includeScorecards) {
+    parts.push("include_scorecards=true")
+    if (options.includeRationales) parts.push("include_rationales=true")
+  }
   return "/api/interviews/compare/print?" + parts.join("&")
 }
 
@@ -80,9 +92,9 @@ export function compareInterviews(input: CompareInput, signal?: AbortSignal): Pr
   return request<CompareResponse>("/api/interviews/compare", { method: "POST", json: input, signal })
 }
 
-export async function downloadCompareDossier(input: CompareInput): Promise<string> {
-  const response = await send("/api/interviews/compare/dossier", { method: "POST", json: { ...input, format: "markdown" } })
-  return downloadResponse(response, "candidate-comparison.md")
+export async function downloadCompareDossier(input: CompareInput, signal?: AbortSignal): Promise<string> {
+  const response = await send("/api/interviews/compare/dossier", { method: "POST", json: { ...input, format: "markdown" }, signal })
+  return downloadResponse(response, "candidate-comparison.md", signal)
 }
 
 export function getSlotCell(row: CompareSlotRow, sessionId: string): CompareSlotCell | null {

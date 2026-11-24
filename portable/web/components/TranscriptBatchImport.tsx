@@ -1,8 +1,9 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useRef, useState } from "react"
 import { api, message } from "@/lib/api"
 import { readCues, transcriptSelection, type Cue } from "@/lib/transcript"
+import { useIsomorphicLayoutEffect } from "@/lib/useIsomorphicLayoutEffect"
 import { Button } from "./ui/button"
 import { TranscriptBatchSelection } from "./TranscriptBatchSelection"
 import styles from "./TranscriptBatchImport.module.css"
@@ -32,7 +33,7 @@ export default function TranscriptBatchImport({
   const [success, setSuccess] = useState("")
   const request = useRef<{ selection: string; id: string } | null>(null)
   const dirty = !!file || busy
-  useEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     onDirty("transcript-import", dirty)
     return () => onDirty("transcript-import", false)
   }, [onDirty, dirty])

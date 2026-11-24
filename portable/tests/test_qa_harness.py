@@ -207,24 +207,26 @@ def test_resolve_start_api_port_handles_explicit_bindable_and_busy_ports(tmp_pat
 
 def test_uvicorn_keep_alive_exceeds_default_five_seconds():
     import ast
+    import inspect
     import re
+    from textwrap import dedent
+
+    from e2e_suite import harness
+
+    config = harness.qa_server("api.main:app").config
+    assert config.timeout_keep_alive == 300
+    assert config.timeout_graceful_shutdown is not None and 0 < config.timeout_graceful_shutdown < 10
+
+    # Check wiring, independent of where the shared factory defines its configuration.
+    for fixture in (inspect.unwrap(qa_conftest.workspace_url), harness.IsolatedWorkspace.start):
+        tree = ast.parse(dedent(inspect.getsource(fixture)))
+        assert any(
+            isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+            and fixture.__globals__.get(node.func.id) is harness.qa_server
+            for node in ast.walk(tree)
+        ), f"{fixture.__qualname__} must construct its server with the tested QA factory"
 
     portable_root = QA_DIR.parent
-    for rel in ("qa/e2e_suite/harness.py", "qa/conftest.py"):
-        tree = ast.parse((portable_root / rel).read_text(encoding="utf-8"))
-        configs = [
-            node for node in ast.walk(tree)
-            if isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Attribute)
-            and node.func.attr == "Config"
-        ]
-        assert configs, f"No uvicorn.Config call found in {rel}"
-        for call in configs:
-            kw = {k.arg: k.value for k in call.keywords if k.arg}
-            assert "timeout_keep_alive" in kw, f"Missing timeout_keep_alive in {rel}:{call.lineno}"
-            assert isinstance(kw["timeout_keep_alive"], ast.Constant)
-            assert int(kw["timeout_keep_alive"].value) > 5
-
     for rel in ("web-runtime.mjs", "run.py"):
         text = (portable_root / rel).read_text(encoding="utf-8")
         match = re.search(r"""["']--timeout-keep-alive["']\s*,\s*["'](\d+)["']""", text)

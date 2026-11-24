@@ -22,6 +22,8 @@
 .data-panel small {
   color: var(--muted);
 }
+.data-panel select { max-width: 100%; }
+.backup-choice-id { overflow-wrap: anywhere; }
 .restore-plan {
   display: grid;
   gap: 12px;

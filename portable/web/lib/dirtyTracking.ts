@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useRef, useState } from "react"
+import { useIsomorphicLayoutEffect } from "./useIsomorphicLayoutEffect"
 
 export type DirtyReporter = (dirty: boolean) => void
 
@@ -29,10 +30,10 @@ export function useDirtyRegistry() {
   return { anyDirty: dirtyKeys.size > 0, reporterFor }
 }
 
-/** Report an editor's unsaved state to its parent, and clear it when the editor unmounts. */
+/** Keep the navigation guard in sync with the committed editors before the browser can leave. */
 export function useReportDirty(dirty: boolean, report?: DirtyReporter) {
-  useEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     report?.(dirty)
   }, [dirty, report])
-  useEffect(() => () => report?.(false), [report])
+  useIsomorphicLayoutEffect(() => () => report?.(false), [report])
 }

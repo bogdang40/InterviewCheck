@@ -1,4 +1,5 @@
-import { request } from "./http"
+import { ApiError, errorMessage, request } from "./http"
+import { announceAssignmentChange } from "./assignmentChanges"
 
 export type AssignmentPriority = "low" | "normal" | "high"
 
@@ -7,13 +8,14 @@ export type SessionAssignment = {
   priority: AssignmentPriority; due_at: string | null; updated_at: string
 }
 
-export type SessionAssignmentResponse = { assignment: SessionAssignment | null; suggested_reviewers: string[] }
+export type SessionAssignmentResponse = { assignment: SessionAssignment | null; version: string | null; suggested_reviewers: string[] }
 export type SessionAssignmentInput = { assignee_email: string; priority?: AssignmentPriority; due_at?: string | null }
 
 export type AssignmentQueueItem = {
   session_id: string; candidate: string; role: string; lifecycle: string; review_count: number
   assignee_email: string | null; assigned_by: string | null; priority: AssignmentPriority | string
   due_at: string | null; updated_at: string | null
+  assignment_version?: string
 }
 
 export type DueFilter = "" | "overdue" | "soon"
@@ -26,6 +28,7 @@ export type AssignmentQueueResponse = {
   filtered: number
   limit: number
   viewer_email: string
+  next_transition_ms: number | null
   counts: AssignmentQueueCounts
   due_counts: AssignmentDueCounts
   items: AssignmentQueueItem[]
@@ -40,6 +43,7 @@ export type AssignmentQueueFilters = {
 
 export type BulkSessionAssignmentInput = {
   session_ids: string[]
+  expected_versions: Record<string, string>
   action: "assign" | "clear"
   assignee_email?: string | null
   priority?: AssignmentPriority
@@ -89,37 +93,57 @@ export function isDueOverdue(dueAt: string | null | undefined, nowMs = Date.now(
   return Number.isFinite(parsed) && parsed < nowMs
 }
 
+export function validAssignmentVersion(value: unknown): value is string {
+  return typeof value === "string" && /^[a-f0-9]{64}$/.test(value)
+}
+
+export class AssignmentConflict extends ApiError {}
+
+function assignmentError(response: Response, data: unknown) {
+  if (response.status === 409 && response.headers.get("X-InterviewCheck-Conflict") === "assignment-version") {
+    const detail = (data as { detail?: { message?: unknown } } | null)?.detail
+    return new AssignmentConflict(409, typeof detail?.message === "string" ? detail.message : "The assignment changed.")
+  }
+  return new ApiError(response.status, errorMessage(data, response.status))
+}
+
 export async function fetchSessionAssignment(sessionId: string, signal?: AbortSignal): Promise<SessionAssignmentResponse> {
   const data = await request<Partial<SessionAssignmentResponse>>(
-    `/api/sessions/${encodeURIComponent(sessionId)}/assignment`,
+    `/api/sessions/${encodeURIComponent(sessionId)}/assignment?include_version=true`,
     { method: "GET", signal },
   )
   return {
     assignment: data?.assignment ?? null,
+    version: validAssignmentVersion(data?.version) ? data.version : null,
     suggested_reviewers: Array.isArray(data?.suggested_reviewers) ? data.suggested_reviewers : [],
   }
 }
 
-export async function saveSessionAssignment(sessionId: string, payload: SessionAssignmentInput): Promise<SessionAssignment> {
-  const data = await request<{ assignment: SessionAssignment }>(
+export async function saveSessionAssignment(sessionId: string, payload: SessionAssignmentInput, version: string) {
+  if (!validAssignmentVersion(version)) throw new Error("Refresh the assignment before saving changes.")
+  const data = await request<{ assignment: SessionAssignment; version?: string }>(
     `/api/sessions/${encodeURIComponent(sessionId)}/assignment`,
-    { method: "PUT", body: JSON.stringify(payload) },
+    { method: "PUT", json: { ...payload, expected_version: version }, toError: assignmentError },
   )
-  return data.assignment
+  announceAssignmentChange()
+  return { assignment: data.assignment, version: validAssignmentVersion(data.version) ? data.version : null }
 }
 
-export function clearSessionAssignment(sessionId: string): Promise<{ cleared: boolean; session_id: string }> {
-  return request<{ cleared: boolean; session_id: string }>(
-    `/api/sessions/${encodeURIComponent(sessionId)}/assignment`,
-    { method: "DELETE" },
+export async function clearSessionAssignment(sessionId: string, version: string) {
+  if (!validAssignmentVersion(version)) throw new Error("Refresh the assignment before clearing it.")
+  const data = await request<{ version?: string }>(
+    `/api/sessions/${encodeURIComponent(sessionId)}/assignment?expected_version=${encodeURIComponent(version)}`,
+    { method: "DELETE", toError: assignmentError },
   )
+  announceAssignmentChange()
+  return { assignment: null, version: validAssignmentVersion(data.version) ? data.version : null }
 }
 
 export async function fetchAssignmentQueue(
   filters: AssignmentQueueFilters = {},
   signal?: AbortSignal,
 ): Promise<AssignmentQueueResponse> {
-  const params = new URLSearchParams()
+  const params = new URLSearchParams({ include_versions: "true", include_transition: "true" })
   if (filters.assignee) params.set("assignee", filters.assignee)
   if (filters.priority) params.set("priority", filters.priority)
   if (filters.due) params.set("due", filters.due)
@@ -140,6 +164,8 @@ export async function fetchAssignmentQueue(
     filtered: data?.filtered ?? data?.items?.length ?? 0,
     limit: data?.limit ?? filters.limit ?? 50,
     viewer_email: typeof data?.viewer_email === "string" ? data.viewer_email : "",
+    next_transition_ms: typeof data?.next_transition_ms === "number" && Number.isSafeInteger(data.next_transition_ms) &&
+      data.next_transition_ms > 0 ? data.next_transition_ms : null,
     counts: {
       assigned_to_me: data?.counts?.assigned_to_me ?? 0,
       high_priority: data?.counts?.high_priority ?? 0,
@@ -156,10 +182,15 @@ export async function fetchAssignmentQueue(
 export async function bulkAssignSessions(
   payload: BulkSessionAssignmentInput,
 ): Promise<BulkSessionAssignmentResult> {
+  if (Object.keys(payload.expected_versions).length !== payload.session_ids.length ||
+      payload.session_ids.some(id => !validAssignmentVersion(payload.expected_versions[id]))) {
+    throw new Error("Refresh the queue and reselect the interviews before changing assignments.")
+  }
   const data = await request<Partial<BulkSessionAssignmentResult>>(
     "/api/interviews/assignments/bulk",
-    { method: "POST", body: JSON.stringify(payload) },
+    { method: "POST", json: payload, toError: assignmentError },
   )
+  announceAssignmentChange()
   return {
     action: data?.action === "clear" ? "clear" : "assign",
     updated: typeof data?.updated === "number" ? data.updated : 0,

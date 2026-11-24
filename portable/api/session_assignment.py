@@ -10,6 +10,7 @@ from pydantic import BeforeValidator, Field, field_validator, model_validator
 from starlette.concurrency import run_in_threadpool
 
 from . import access, assignment_queue, store
+from .assignment_versions import AssignmentVersion, AssignmentVersions, require_versions, version_for
 from .models import Input, RequestID
 
 router = APIRouter()
@@ -66,6 +67,7 @@ def _parse_due_at(value: Any) -> Any:
 
 
 class SessionAssignmentInput(Input):
+    expected_version: AssignmentVersion | None = None
     assignee_email: str = Field(min_length=3, max_length=254)
     priority: AssignmentPriority = "normal"
     due_at: Annotated[datetime, BeforeValidator(_parse_due_at)] | None = None
@@ -90,6 +92,7 @@ class SessionAssignmentInput(Input):
 
 class BulkSessionAssignmentInput(Input):
     session_ids: list[RequestID] = Field(min_length=1, max_length=50)
+    expected_versions: AssignmentVersions | None = Field(default=None, max_length=50)
     action: BulkAction = "assign"
     assignee_email: str | None = Field(default=None, min_length=3, max_length=254)
     priority: AssignmentPriority = "normal"
@@ -108,6 +111,8 @@ class BulkSessionAssignmentInput(Input):
     def validate_bulk_request(self):
         if len({str(item) for item in self.session_ids}) != len(self.session_ids):
             raise ValueError("Duplicate session IDs are not permitted.")
+        if self.expected_versions is not None and set(self.expected_versions) != {str(item) for item in self.session_ids}:
+            raise ValueError("Provide the assignment version for each selected session and no additional sessions.")
         if self.assignee_email is not None:
             cleaned = _clean_email(self.assignee_email)
             if cleaned is None:
@@ -147,12 +152,12 @@ def _suggested_reviewers(db: sqlite3.Connection, actor_email: str) -> list[str]:
 
 
 @router.get("/sessions/{sid}/assignment")
-async def get_assignment(sid: UUID, request: Request):
+async def get_assignment(sid: UUID, request: Request, include_version: bool = False):
     _, actor_email = await access.optional_actor(request)
-    return await run_in_threadpool(_read_assignment, str(sid), actor_email)
+    return await run_in_threadpool(_read_assignment, str(sid), actor_email, include_version)
 
 
-def _read_assignment(key: str, actor_email: str):
+def _read_assignment(key: str, actor_email: str, include_version: bool = False):
     with store.connection() as db:
         _require_active_session(db, key)
         row = None
@@ -161,7 +166,10 @@ def _read_assignment(key: str, actor_email: str):
                 "SELECT session_id, assignee_email, assigned_by, priority, due_at, updated_at FROM session_assignments WHERE session_id=?",
                 (key,),
             ).fetchone()
-        return {"assignment": _row_to_assignment(row), "suggested_reviewers": _suggested_reviewers(db, actor_email)}
+        response = {"assignment": _row_to_assignment(row), "suggested_reviewers": _suggested_reviewers(db, actor_email)}
+        if include_version:
+            response["version"] = version_for(key, row)
+        return response
 
 
 @router.put("/sessions/{sid}/assignment")
@@ -174,6 +182,8 @@ def _save_assignment(key: str, payload: SessionAssignmentInput, actor_email: str
     now = store.timestamp()
     with store.connection(write=True) as db:
         _require_active_session(db, key)
+        if payload.expected_version is not None:
+            require_versions(db, {key: payload.expected_version})
         migrate(db)
         due_iso = _deadline_for_update(db, key, payload.due_at)
         db.execute(
@@ -184,7 +194,7 @@ def _save_assignment(key: str, payload: SessionAssignmentInput, actor_email: str
                  priority=excluded.priority, due_at=excluded.due_at, updated_at=excluded.updated_at""",
             (key, payload.assignee_email, actor_email, payload.priority, due_iso, now),
         )
-    return {
+    response = {
         "assignment": {
             "session_id": key,
             "assignee_email": payload.assignee_email,
@@ -194,6 +204,9 @@ def _save_assignment(key: str, payload: SessionAssignmentInput, actor_email: str
             "updated_at": now,
         }
     }
+    if payload.expected_version is not None:
+        response["version"] = version_for(key, response["assignment"])
+    return response
 
 
 def _deadline_for_update(db: sqlite3.Connection, session_id: str, requested: datetime | None) -> str | None:
@@ -212,13 +225,18 @@ def _deadline_for_update(db: sqlite3.Connection, session_id: str, requested: dat
 
 
 @router.delete("/sessions/{sid}/assignment")
-def delete_assignment(sid: UUID):
+def delete_assignment(sid: UUID, expected_version: AssignmentVersion | None = None):
     key = str(sid)
     with store.connection(write=True) as db:
         _require_active_session(db, key)
+        if expected_version is not None:
+            require_versions(db, {key: expected_version})
         if _has_table(db, "session_assignments"):
             db.execute("DELETE FROM session_assignments WHERE session_id=?", (key,))
-    return {"cleared": True, "session_id": key}
+    response = {"cleared": True, "session_id": key}
+    if expected_version is not None:
+        response["version"] = version_for(key, None)
+    return response
 
 
 @router.post("/interviews/assignments/bulk")
@@ -242,6 +260,8 @@ def _save_bulk_assignments(payload: BulkSessionAssignmentInput, actor_email: str
         }
         if len(found) != len(ids):
             raise HTTPException(404, "One or more sessions do not exist.")
+        if payload.expected_versions is not None:
+            require_versions(db, payload.expected_versions)
         if payload.action == "clear":
             if _has_table(db, "session_assignments"):
                 db.execute(
@@ -282,14 +302,22 @@ async def list_assignments(
     due: DueFilter = "",
     limit: int = Query(default=50, ge=1, le=200),
     page: int = Query(default=1, ge=1),
+    include_versions: bool = False,
+    include_transition: bool = False,
 ):
     _, viewer_email = await access.optional_actor(request)
-    return await run_in_threadpool(_read_queue_page, viewer_email, assignee, priority, due, limit, page)
+    return await run_in_threadpool(_read_queue_page, viewer_email, assignee, priority, due, limit, page,
+                                   include_versions, include_transition)
 
 
-def _read_queue_page(viewer_email: str, assignee: str, priority: str, due: str, limit: int, page: int):
+def _read_queue_page(viewer_email: str, assignee: str, priority: str, due: str, limit: int, page: int,
+                     include_versions: bool = False, include_transition: bool = False):
     with store.connection() as db:
-        return assignment_queue.read_page(
+        result = assignment_queue.read_page(
             db, viewer=viewer_email, assignee=assignee, priority=priority, due=due, limit=limit, page=page,
-            has_assignments=_has_table(db, "session_assignments"), now=datetime.now(timezone.utc),
+            has_assignments=_has_table(db, "session_assignments"), now=datetime.now(timezone.utc), include_transition=include_transition,
         )
+    if include_versions:
+        for row in result["items"]:
+            row["assignment_version"] = version_for(row["session_id"], row)
+    return result

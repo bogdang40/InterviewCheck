@@ -12,6 +12,7 @@ from fastapi.responses import Response, StreamingResponse
 from starlette.background import BackgroundTask
 
 from . import exports, store
+from .scorecard_math import percentage_from_totals
 
 router = APIRouter()
 LifecycleFilter = Literal["", "active", "finished", "archived"]
@@ -101,7 +102,7 @@ def _load_scorecard_pcts(db: sqlite3.Connection, session_ids: list[str]) -> dict
                 acc = totals.setdefault(row["session_id"], [0, 0])
                 acc[0] += rating * weight
                 acc[1] += weight
-    return {sid: round((ws / (tw * 5)) * 100.0, 1) for sid, (ws, tw) in totals.items() if tw > 0}
+    return {sid: percentage_from_totals(ws, tw) for sid, (ws, tw) in totals.items() if tw > 0}
 
 
 def _load_answer_counts(db: sqlite3.Connection, session_ids: list[str]) -> dict[str, dict[str, int]]:
@@ -166,7 +167,7 @@ def _compute_cohort(db: sqlite3.Connection, parsed: dict[str, Any], *, candidate
     scored: list[float] = []
     timeline_map: dict[str, dict[str, int]] = defaultdict(lambda: {"sessions": 0, "finished": 0, "explained": 0, "concerns": 0})
     tag_stats: dict[str, dict[str, Any]] = defaultdict(lambda: {"session_count": 0, "explained": 0, "reviewed": 0, "scores": []})
-    candidates_all: list[dict[str, Any]] = []
+    candidates: list[dict[str, Any]] = []
 
     for row, created_dt in matched:
         sid = row["id"]
@@ -195,11 +196,12 @@ def _compute_cohort(db: sqlite3.Connection, parsed: dict[str, Any], *, candidate
             ts["reviewed"] += reviewed
             if score_pct is not None:
                 ts["scores"].append(score_pct)
-        candidates_all.append({
-            "session_id": sid, "candidate": row["candidate"], "role": row["role"], "role_id": row["role_id"],
-            "lifecycle": lc, "created_at": row["created_at"], "ended_at": row["ended_at"], "tags": tags,
-            **ac, "weighted_score_pct": score_pct,
-        })
+        if candidate_limit is None or len(candidates) < candidate_limit:
+            candidates.append({
+                "session_id": sid, "candidate": row["candidate"], "role": row["role"], "role_id": row["role_id"],
+                "lifecycle": lc, "created_at": row["created_at"], "ended_at": row["ended_at"], "tags": tags,
+                **ac, "weighted_score_pct": score_pct,
+            })
 
     reviewed_total = total_explained + total_concerns
     return {
@@ -207,6 +209,7 @@ def _compute_cohort(db: sqlite3.Connection, parsed: dict[str, Any], *, candidate
             "session_count": len(matched), "active_count": lc_counts["active"],
             "finished_count": lc_counts["finished"], "archived_count": lc_counts["archived"],
             "answer_count": total_answers, "reviewed_count": reviewed_total,
+            "explained_count": total_explained, "concern_count": total_concerns,
             "pass_rate_pct": _pct(total_explained, reviewed_total),
             "concern_rate_pct": _pct(total_concerns, reviewed_total),
             "avg_scorecard_pct": round(sum(scored) / len(scored), 1) if scored else None,
@@ -217,12 +220,13 @@ def _compute_cohort(db: sqlite3.Connection, parsed: dict[str, Any], *, candidate
         "tag_breakdown": [
             {
                 "tag": t, "session_count": item["session_count"],
+                "explained_count": item["explained"], "reviewed_count": item["reviewed"],
                 "pass_rate_pct": _pct(item["explained"], item["reviewed"]),
                 "avg_scorecard_pct": round(sum(item["scores"]) / len(item["scores"]), 1) if item["scores"] else None,
             }
             for t, item in sorted(tag_stats.items(), key=lambda e: (-e[1]["session_count"], e[0].casefold(), e[0]))[:20]
         ],
-        "candidates": candidates_all[:candidate_limit] if candidate_limit is not None else candidates_all,
+        "candidates": candidates,
     }
 
 

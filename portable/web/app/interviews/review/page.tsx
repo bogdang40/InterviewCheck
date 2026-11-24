@@ -1,6 +1,6 @@
 "use client"
 
-import { Suspense } from "react"
+import { Suspense, useState } from "react"
 import dynamic from "next/dynamic"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
@@ -9,6 +9,7 @@ import InterviewView from "@/components/InterviewView"
 import WorkspaceError from "@/components/WorkspaceError"
 import type { Answer, Interview } from "@/lib/api"
 import { useResource } from "@/lib/workspace"
+import { useDraftGuard } from "@/lib/useDraftGuard"
 
 const SessionAssignmentBar = dynamic(() => import("@/components/SessionAssignmentBar"), {
   ssr: false,
@@ -19,11 +20,25 @@ const SessionAssignmentBar = dynamic(() => import("@/components/SessionAssignmen
   ),
 })
 
+function retainsAssignment(destination: URL) {
+  const current = new URL(window.location.href)
+  if (!current.searchParams.has("id")) return false
+  for (const url of [current, destination]) {
+    url.hash = ""
+    url.searchParams.delete("answer")
+    url.searchParams.sort()
+  }
+  return current.href === destination.href
+}
+
 function Record() {
   const query = useSearchParams()
   const id = query.get("id")
   const valid = id && /^[\da-f-]{36}$/i.test(id)
   const session = useResource<Interview>(valid ? "sessions/" + id : null)
+  const [assignmentDirty, setAssignmentDirty] = useState(false)
+  const [interviewDirty, setInterviewDirty] = useState(false)
+  useDraftGuard(assignmentDirty || interviewDirty, undefined, interviewDirty ? undefined : retainsAssignment)
   if (!valid)
     return (
       <section className="panel stack">
@@ -59,11 +74,13 @@ function Record() {
   }
   return (
     <div className="stack">
-      <SessionAssignmentBar key={session.data.id} sessionId={session.data.id} />
+      <SessionAssignmentBar key={session.data.id} sessionId={session.data.id} onDirtyChange={setAssignmentDirty} />
       <InterviewView
         key={id}
         session={session.data}
         answerId={query.get("answer")}
+        assignmentDirty={assignmentDirty}
+        onDirtyChange={setInterviewDirty}
         changed={change}
         onDraftChange={draft=>session.update(previous=>({...previous,draft}))}
         onTransition={(next) => session.update(() => next)}

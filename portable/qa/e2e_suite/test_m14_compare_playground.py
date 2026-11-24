@@ -98,10 +98,10 @@ def test_m14_compare_entry_picker_validation_and_empty_single_handling(e2e_works
 
     page.goto(f"{e2e_workspace.base_url}/interviews/compare/?ids=not-a-uuid,{s1}", wait_until="domcontentloaded")
     expect(page.get_by_text("Ignored 1 invalid interview ID(s).")).to_be_visible()
-    expect(page.get_by_text("Choose 2 to 6 active interviews (1 of 6 selected).")).to_be_visible()
+    expect(page.get_by_text("Choose 2 to 6 interviews (1 of 6 selected).")).to_be_visible()
     expect(page.get_by_role("button", name="Compare selected (1)")).to_be_disabled()
 
-    page.get_by_label("Filter active archive").fill("Grace")
+    page.get_by_label("Filter interviews").fill("Grace")
     expect(page.locator("ul li label", has_text="Grace Hopper")).to_be_visible()
     expect(page.locator("ul li label", has_text="Trashed Candidate")).to_have_count(0)
     page.locator("ul li label", has_text="Grace Hopper").locator("input[type='checkbox']").check()
@@ -159,7 +159,7 @@ def test_m14_compare_matrix_rubric_gating_markdown_and_print_dossier(e2e_workspa
         page.get_by_role("button", name="Download Markdown dossier").click()
     dl = dl_info.value
     assert dl.suggested_filename == "candidate-comparison.md"
-    expect(page.get_by_text("Downloaded candidate-comparison.md.")).to_be_visible()
+    expect(page.get_by_text("Download started for candidate-comparison.md.")).to_be_visible()
     md_text = dl.path().read_text(encoding="utf-8")
     assert "Consensus safety" in md_text and note_secret in md_text
     assert "\\<script\\>alert\\(1\\)\\</script\\>" in md_text and "\\| md" in md_text

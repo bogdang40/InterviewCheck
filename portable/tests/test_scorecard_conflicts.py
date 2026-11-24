@@ -1,8 +1,10 @@
 """Scorecard revisions protect concurrent reviewers and retain criterion attribution."""
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
+import sqlite3
 from threading import Barrier
 
-from api import access
+from api import access, store
 from backup_requests import client, create_session
 
 
@@ -45,7 +47,10 @@ def test_scores_preserve_unchanged_reviewer_and_timestamp(client, monkeypatch):
     design = score("design", 4, "Synthetic first review")
     first = client.put(route, json={"items": [design]}).raise_for_status().json()
     actor = "second@example.test"
-    same = client.put(route, json={"items": [design], "expected_version": first["version"]}).raise_for_status().json()
+    with closing(sqlite3.connect(store.db_path())) as observer:
+        before = observer.execute("PRAGMA data_version").fetchone()[0]
+        same = client.put(route, json={"items": [design], "expected_version": first["version"]}).raise_for_status().json()
+        assert observer.execute("PRAGMA data_version").fetchone()[0] == before
     assert same == first
     second = client.put(route, json={"items": [score("testing", 3), design],
                                      "expected_version": same["version"]}).raise_for_status().json()

@@ -9,6 +9,10 @@ from .models import Reference
 REDACTED_TEXT = "[Redacted by retention policy]"
 
 
+def anonymized_candidate_label(session_id):
+    return f"Candidate [Anonymized {session_id[:8]}]"
+
+
 def _has_table(db: sqlite3.Connection, name: str) -> bool:
     return db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)).fetchone() is not None
 
@@ -38,7 +42,7 @@ class SessionAnonymizer:
 
     def run(self, *, preserve_scorecard_aggregates: bool, actor_email: str, now_iso: str) -> None:
         self.db.execute("UPDATE sessions SET candidate=?, legacy=NULL WHERE id=?",
-                        (f"Candidate [Anonymized {self.sid[:8]}]", self.sid))
+                        (anonymized_candidate_label(self.sid), self.sid))
         self._redact_history()
         self._redact_answers()
         self._redact_note_exports()

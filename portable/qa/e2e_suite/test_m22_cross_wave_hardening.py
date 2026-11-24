@@ -205,7 +205,7 @@ def test_m22_review_draft_recovery_scorecard_and_brief_hardening(e2e_workspace, 
         page.get_by_role("button", name="Save scorecard").click()
         expect(page.get_by_text("Scorecard saved.")).to_be_visible()
         expect(page.get_by_test_id("scorecard-weighted-badge")).to_have_text("Score: 80.0%")
-        page.get_by_label("Handoff note").fill("Ready for panel debrief")
+        page.get_by_role("textbox", name="Handoff note", exact=True).fill("Ready for panel debrief")
         page.get_by_role("button", name="Add handoff note").click()
         expect(page.get_by_text("Handoff note added.")).to_be_visible()
         assert_no_horizontal_overflow(page)
@@ -263,7 +263,7 @@ def test_m22_compare_empty_retry_dossier_and_data_cohort_export(e2e_workspace, e
         assert feed_gate["hits"] >= 1
         _assert_expected_errors(collector, 500, page=page, gate=feed_gate, exact_one=False)
         alert.get_by_role("button", name="Retry", exact=True).click()
-        expect(page.get_by_text("Only 1 active interview found.")).to_be_visible()
+        expect(page.get_by_text("Only 1 interview found.")).to_be_visible()
         expect(page.get_by_role("link", name="New interview", exact=True)).to_have_attribute("href", "/interviews/new/")
 
         with e2e_workspace.client() as client:

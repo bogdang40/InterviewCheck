@@ -10,6 +10,7 @@ import {
   type CohortLifecycle, type CohortRoleOption,
 } from "@/lib/cohortAnalytics"
 import { interviewURL } from "@/lib/workspace"
+import { countedRate, rateCounts, rateValue } from "@/lib/reviewRates"
 import styles from "./CohortAnalyticsPanel.module.css"
 import WorkspaceError from "./WorkspaceError"
 import { Badge } from "./ui/badge"
@@ -82,11 +83,15 @@ export default function CohortAnalyticsPanel() {
 
   const maxBucket = data ? Math.max(1, ...data.score_buckets.map((b) => b.count)) : 1
   const summary = data?.summary
+  const explained = rateCounts(summary?.explained_count, summary?.reviewed_count)
+  const concerns = rateCounts(summary?.concern_count, summary?.reviewed_count)
   const metricCards = summary ? [
     ["Sessions", String(summary.session_count), `${summary.active_count} active / ${summary.finished_count} finished / ${summary.archived_count} archived`],
-    ["Reviewed answers", `${summary.reviewed_count} / ${summary.answer_count}`, "Dispositions recorded"],
-    ["Pass rate", formatPct(summary.pass_rate_pct), "Explained of reviewed"],
-    ["Concern rate", formatPct(summary.concern_rate_pct), "Unresolved or disclosed"],
+    ["Reviewed answers", `${summary.reviewed_count} / ${summary.answer_count}`, "Marked explained, unresolved or disclosed"],
+    ["Explained answers", rateValue(summary.pass_rate_pct, summary.reviewed_count),
+      explained ? `${explained} reviewed` : ""],
+    ["Unresolved or disclosed", rateValue(summary.concern_rate_pct, summary.reviewed_count),
+      concerns ? `${concerns} reviewed` : ""],
     ["Avg scorecard", formatPct(summary.avg_scorecard_pct), `${summary.scored_session_count} scored sessions`],
   ] : []
 
@@ -165,7 +170,7 @@ export default function CohortAnalyticsPanel() {
               <div key={label} className={styles.metricCard}>
                 <span className={styles.metricLabel}>{label}</span>
                 <strong className={styles.metricValue}>{value}</strong>
-                <span className={styles.metricSub}>{sub}</span>
+                {sub && <span className={styles.metricSub}>{sub}</span>}
               </div>
             ))}
           </div>
@@ -204,14 +209,14 @@ export default function CohortAnalyticsPanel() {
                   ) : (
                     <div className={styles.tableWrap}>
                       <table className={styles.table}>
-                        <caption className="sr-only">Cohort performance by tag</caption>
-                        <thead><tr><th>Tag</th><th>Sessions</th><th>Pass rate</th><th>Avg score</th></tr></thead>
+                        <caption className="sr-only">Cohort review outcomes by tag</caption>
+                        <thead><tr><th>Tag</th><th>Sessions</th><th>Explained of reviewed</th><th>Avg score</th></tr></thead>
                         <tbody>
                           {data.tag_breakdown.map((row) => (
                             <tr key={row.tag}>
                               <td data-label="Tag"><button type="button" className={styles.tagButton} onClick={() => setTag(row.tag)}>{row.tag}</button></td>
                               <td data-label="Sessions" className="tabular-nums">{row.session_count}</td>
-                              <td data-label="Pass rate" className="tabular-nums">{formatPct(row.pass_rate_pct)}</td>
+                              <td data-label="Explained of reviewed" className="tabular-nums">{countedRate(row.pass_rate_pct, row.explained_count, row.reviewed_count)}</td>
                               <td data-label="Avg score" className="tabular-nums">{formatPct(row.avg_scorecard_pct)}</td>
                             </tr>
                           ))}
@@ -228,7 +233,7 @@ export default function CohortAnalyticsPanel() {
                   <div className={styles.tableWrap}>
                     <table className={styles.table}>
                       <caption className="sr-only">Daily cohort timeline</caption>
-                      <thead><tr><th>Date (UTC)</th><th>Sessions</th><th>Finished</th><th>Explained</th><th>Concerns</th></tr></thead>
+                      <thead><tr><th>Date (UTC)</th><th>Sessions</th><th>Finished</th><th>Explained</th><th>Unresolved or disclosed</th></tr></thead>
                       <tbody>
                         {data.timeline.map((pt) => (
                           <tr key={pt.date}>
@@ -236,7 +241,7 @@ export default function CohortAnalyticsPanel() {
                             <td data-label="Sessions" className="tabular-nums">{pt.sessions}</td>
                             <td data-label="Finished" className="tabular-nums">{pt.finished}</td>
                             <td data-label="Explained" className="tabular-nums">{pt.explained}</td>
-                            <td data-label="Concerns" className="tabular-nums">{pt.concerns}</td>
+                            <td data-label="Unresolved or disclosed" className="tabular-nums">{pt.concerns}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -246,14 +251,18 @@ export default function CohortAnalyticsPanel() {
               )}
 
               <div className={styles.cardBox}>
-                <h3 className={styles.cardTitle}>Candidate pipeline ({data.candidates.length})</h3>
+                <h3 className={styles.cardTitle}>Candidate pipeline ({data.summary.session_count})</h3>
+                {data.candidates.length < data.summary.session_count && <p className="muted text-sm">
+                  Showing {data.candidates.length} of {data.summary.session_count} interviews. CSV includes every matching interview.
+                  JSON includes these {data.candidates.length} interview rows and summary totals for all {data.summary.session_count} matches.
+                </p>}
                 <div className={styles.tableWrap}>
                   <table className={styles.table}>
                     <caption className="sr-only">Cohort candidate pipeline</caption>
                     <thead>
                       <tr>
                         <th>Candidate</th><th>Role</th><th>Lifecycle</th><th>Tags</th>
-                        <th>Answers</th><th>Matches</th><th>Concerns</th><th>Scorecard</th>
+                        <th>Answers</th><th>With passage matches</th><th>Unresolved or disclosed</th><th>Scorecard</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -273,8 +282,8 @@ export default function CohortAnalyticsPanel() {
                             </div>
                           </td>
                           <td data-label="Answers" className="tabular-nums">{row.answer_count}</td>
-                          <td data-label="Matches" className="tabular-nums">{row.match_count}</td>
-                          <td data-label="Concerns" className="tabular-nums">{row.concern_count}</td>
+                          <td data-label="With passage matches" className="tabular-nums">{row.match_count}</td>
+                          <td data-label="Unresolved or disclosed" className="tabular-nums">{row.concern_count}</td>
                           <td data-label="Scorecard" className="tabular-nums">{formatPct(row.weighted_score_pct)}</td>
                         </tr>
                       ))}

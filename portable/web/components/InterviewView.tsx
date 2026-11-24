@@ -14,7 +14,7 @@ import {
   type Interview,
   type QuestionOrigin,
 } from "@/lib/api"
-import { useDraftGuard } from "@/lib/useDraftGuard"
+import { useReportDirty, type DirtyReporter } from "@/lib/dirtyTracking"
 import { useReviewHotkeys } from "@/lib/useReviewHotkeys"
 import { useScoringCapabilities } from "@/lib/scoringHooks"
 import SavedDraft from "./SavedDraft"
@@ -36,12 +36,14 @@ const AnswerEditor = dynamic(() => import("./AnswerEditor"), {
 type Props = {
   session: Interview
   answerId: string | null
+  assignmentDirty: boolean
+  onDirtyChange: DirtyReporter
   changed: (id: string, answer: Answer) => void
   onDraftChange: (draft: DraftSummary | null) => void
   onTransition: (session: Interview) => void
 }
 
-export default function InterviewView({ session, answerId, changed, onTransition, onDraftChange }: Props) {
+export default function InterviewView({ session, answerId, assignmentDirty, onDirtyChange, changed, onTransition, onDraftChange }: Props) {
   const captureAllowed = session.consent && !session.ended_at
   const [edit, setEdit] = useState<string | null>(
     captureAllowed && !session.draft && !session.answers.length ? "new" : null,
@@ -74,7 +76,7 @@ export default function InterviewView({ session, answerId, changed, onTransition
       return updated
     })
   }, [])
-  useDraftGuard(unsaved)
+  useReportDirty(unsaved, onDirtyChange)
   const moveExchange = (delta: -1 | 1) => {
     if (edit || blocked) return "Save or discard changes before switching exchanges."
     const idx = index < 0 ? 0 : index + delta
@@ -323,7 +325,7 @@ export default function InterviewView({ session, answerId, changed, onTransition
       </fieldset>
       <SessionScorecardPanel key={`scorecard-${session.id}`} sessionId={session.id} onDirtyChange={setScorecardDirty} />
       {!dirty.size && <ATSNote key={session.id} session={session} />}
-      <div className="record-management"><MoveToTrash sessionId={session.id} candidate={session.candidate} disabled={blocked}/></div>
+      <div className="record-management"><MoveToTrash sessionId={session.id} candidate={session.candidate} disabled={blocked || assignmentDirty}/></div>
     </>
   )
 }

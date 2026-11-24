@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import HTMLResponse, Response
 from pydantic import Field, model_validator
 
-from . import exports, report, store
+from . import comparison_scorecards, comparison_summary, exports, report, store
 from .models import Input, RequestID
 
 router = APIRouter()
@@ -20,6 +20,8 @@ class CompareInput(Input):
     session_ids: list[RequestID] = Field(min_length=2, max_length=6)
     include_excerpts: bool = False
     include_notes: bool = False
+    include_scorecards: bool = False
+    include_rationales: bool = False
 
     @model_validator(mode="after")
     def require_unique_sessions(self):
@@ -116,8 +118,10 @@ def _comparison_slots(plans, planned_answers, unplanned_answers):
     return rows
 
 
-def _load_comparison(session_ids: list[UUID], *, include_excerpts: bool, include_notes: bool) -> dict[str, Any]:
-    ordered_ids = [str(uid) for uid in session_ids]
+def _load_comparison(options: CompareInput) -> dict[str, Any]:
+    if options.include_rationales and not options.include_scorecards:
+        raise HTTPException(422, "Include saved scorecards to include their rationales.")
+    ordered_ids = [str(uid) for uid in options.session_ids]
     placeholders = ",".join("?" for _ in ordered_ids)
     with store.connection() as db:
         session_rows = db.execute(
@@ -128,7 +132,7 @@ def _load_comparison(session_ids: list[UUID], *, include_excerpts: bool, include
         by_id = {row["id"]: row for row in session_rows}
         if len(by_id) != len(ordered_ids):
             raise HTTPException(404, "One or more interviews do not exist.")
-        private_columns = (", answer" if include_excerpts else "") + (", note" if include_notes else "")
+        private_columns = (", answer" if options.include_excerpts else "") + (", note" if options.include_notes else "")
         answer_rows = db.execute(
             f"SELECT id, session_id, question, result, status, disposition, planned_slot{private_columns} "
             f"FROM answers WHERE session_id IN ({placeholders}) ORDER BY rowid",
@@ -151,9 +155,9 @@ def _load_comparison(session_ids: list[UUID], *, include_excerpts: bool, include
                 "answer_id": arow["id"], "question": arow["question"], "status": status,
                 "disposition": disposition, "passage_count": len(result_data.get("passages", [])),
             }
-            if include_excerpts:
+            if options.include_excerpts:
                 cell["excerpt"] = _cap_excerpt(arow["answer"] or "")
-            if include_notes:
+            if options.include_notes:
                 cell["note"] = arow["note"] or ""
             slot = arow["planned_slot"]
             if isinstance(slot, int) and slot >= 1:
@@ -178,6 +182,8 @@ def _load_comparison(session_ids: list[UUID], *, include_excerpts: bool, include
 
         slots_out = _comparison_slots(planned_lists, planned_answers, unplanned_answers)
         rubric_criteria = _load_shared_rubric(db, sessions_out)
+        if options.include_scorecards:
+            comparison_scorecards.add_saved_scorecards(db, sessions_out, include_rationales=options.include_rationales)
     return {"sessions": sessions_out, "slots": slots_out, "rubric_criteria": rubric_criteria}
 
 
@@ -192,37 +198,27 @@ def _render_markdown(data: dict[str, Any]) -> str:
     sessions = data["sessions"]
     lines = [
         "# Candidate comparison dossier", "", "Shared wording requires interpretation against the interview rules.", "",
-        "## Candidates", "",
-        "| Candidate | Role | Lifecycle | Answers | Matches | Pending | Explained | Unresolved | Disclosed |",
-        "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
-    for s in sessions:
-        c = s["counts"]
-        lines.append(
-            f"| {report.heading(s['candidate'])} | {report.heading(s['role'])} | {s['lifecycle']} | "
-            f"{s['answer_count']} | {c['match']} | {c['pending']} | {c['explained']} | {c['unresolved']} | {c['disclosed']} |"
-        )
-    lines.extend(["", "### Session policies", ""])
-    for s in sessions:
-        lines.extend([f"**{report.heading(s['candidate'])}** ({s['id']})", "", report.literal(s["policy"]), ""])
+    lines.extend(comparison_summary.markdown(sessions))
     if data["rubric_criteria"]:
-        lines.extend(["## Shared role rubric", ""])
+        lines.extend(["## Shared role rubric", "", "Guidance from the current role template.", ""])
         for crit in data["rubric_criteria"]:
             lines.extend([f"### {report.heading(crit['criterion'])} (weight {crit['weight']})", ""])
             if crit["expected_signals"]:
                 lines.extend(["Expected signals", "", report.literal("\n".join(crit["expected_signals"])), ""])
             if crit["red_flags"]:
                 lines.extend(["Red flags", "", report.literal("\n".join(crit["red_flags"])), ""])
+    lines.extend(comparison_scorecards.markdown(sessions))
     lines.extend(["## Question slot comparison", ""])
     for slot in data["slots"]:
         lines.extend([f"### {_slot_title(slot)}", ""])
         if slot["planned_question"]:
             lines.extend(["Planned question", "", report.literal(slot["planned_question"]), ""])
-        for s in sessions:
+        for number, s in enumerate(sessions, 1):
             if "owner_session_id" in slot and slot["owner_session_id"] != s["id"]:
                 continue
             cell = slot["cells"][s["id"]]
-            lines.extend([f"**{report.heading(s['candidate'])}**", ""])
+            lines.extend([f"**{report.heading(comparison_summary.interview_title(number, s))}**", ""])
             prompts = slot.get("planned_questions")
             if prompts is not None:
                 prompt = prompts[s["id"]]
@@ -249,13 +245,6 @@ def _render_markdown(data: dict[str, Any]) -> str:
 
 def _render_html(data: dict[str, Any]) -> str:
     sessions = data["sessions"]
-    summary_rows = "".join(
-        f"<tr><td>{escape(s['candidate'])}</td><td>{escape(s['role'])}</td><td>{escape(s['lifecycle'])}</td>"
-        f"<td>{escape(s['created_at'])}</td><td>{escape(s['policy'])}</td><td>{s['answer_count']}</td>"
-        f"<td>{s['counts']['match']}</td><td>{s['counts']['no_match']}</td><td>{s['counts']['insufficient']}</td>"
-        f"<td>{s['counts']['pending']}</td><td>{s['counts']['explained']}</td>"
-        f"<td>{s['counts']['unresolved']}</td><td>{s['counts']['disclosed']}</td></tr>" for s in sessions
-    )
     rubric_html = ""
     if data["rubric_criteria"]:
         items = "".join(
@@ -263,16 +252,17 @@ def _render_html(data: dict[str, Any]) -> str:
             f"<p>Expected signals: {escape(', '.join(c['expected_signals']) or 'None')}</p>"
             f"<p>Red flags: {escape(', '.join(c['red_flags']) or 'None')}</p></article>" for c in data["rubric_criteria"]
         )
-        rubric_html = f"<section><h2>Shared role rubric</h2>{items}</section>"
+        rubric_html = f"<section><h2>Shared role rubric</h2><p>Guidance from the current role template.</p>{items}</section>"
     slot_articles = []
     for slot in data["slots"]:
         heading = _slot_title(slot)
         planned = f"<p>Planned question: {escape(slot['planned_question'])}</p>" if slot["planned_question"] else ""
         cells = []
-        for s in sessions:
+        for number, s in enumerate(sessions, 1):
             if "owner_session_id" in slot and slot["owner_session_id"] != s["id"]:
                 continue
             cell = slot["cells"][s["id"]]
+            who = escape(comparison_summary.interview_title(number, s))
             prompt_html = ""
             prompts = slot.get("planned_questions")
             if prompts is not None:
@@ -281,7 +271,7 @@ def _render_html(data: dict[str, Any]) -> str:
                                else "<p>Not in this interview plan.</p>")
             if cell is None:
                 empty = "" if prompts is not None and prompts[s["id"]] is None else "<p>No recorded answer.</p>"
-                cells.append(f"<div><h3>{escape(s['candidate'])}</h3>{prompt_html}{empty}</div>")
+                cells.append(f"<div><h3>{who}</h3>{prompt_html}{empty}</div>")
                 continue
             question_html = ""
             if prompts is None or prompts[s["id"]] != cell["question"]:
@@ -290,7 +280,7 @@ def _render_html(data: dict[str, Any]) -> str:
                 f"<p>Note: {escape(cell['note'])}</p>" if cell.get("note") else ""
             )
             cells.append(
-                f"<div><h3>{escape(s['candidate'])}</h3>{prompt_html}{question_html}"
+                f"<div><h3>{who}</h3>{prompt_html}{question_html}"
                 f"<p>Status: {escape(cell['status'])}, Disposition: {escape(cell['disposition'])}, Passages: {cell['passage_count']}</p>{extra}</div>"
             )
         slot_articles.append(f"<article><h2>{escape(heading)}</h2>{planned}{''.join(cells)}</article>")
@@ -298,22 +288,20 @@ def _render_html(data: dict[str, Any]) -> str:
         f"<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
         f"<title>Candidate comparison dossier</title><style>{exports.STYLE}</style><script src=\"/api/exports/print.js\" defer></script></head><body>"
         f"<nav aria-label=\"Report actions\"><button type=\"button\" id=\"print-report\">Print or save PDF</button></nav>"
-        f"<main><h1>Candidate comparison dossier</h1><p>Shared wording requires interpretation against the interview rules.</p>"
-        f"<table><thead><tr><th>Candidate</th><th>Role</th><th>Lifecycle</th><th>Created</th><th>Policy</th>"
-        f"<th>Answers</th><th>Match</th><th>No match</th><th>Insufficient</th><th>Pending</th><th>Explained</th><th>Unresolved</th><th>Disclosed</th>"
-        f"</tr></thead><tbody>{summary_rows}</tbody></table>{rubric_html}"
+        f'<main class="comparison-report"><h1>Candidate comparison dossier</h1><p>Shared wording requires interpretation against the interview rules.</p>'
+        f"{comparison_summary.html(sessions)}{rubric_html}{comparison_scorecards.html(sessions)}"
         f"<section><h2>Question slot comparison</h2>{''.join(slot_articles) or '<p>No slots recorded.</p>'}</section></main></body></html>"
     )
 
 
 @router.post("/interviews/compare")
 def compare_candidates(item: CompareInput):
-    return _load_comparison(item.session_ids, include_excerpts=item.include_excerpts, include_notes=item.include_notes)
+    return _load_comparison(item)
 
 
 @router.post("/interviews/compare/dossier")
 def compare_dossier(item: CompareDossierInput):
-    data = _load_comparison(item.session_ids, include_excerpts=item.include_excerpts, include_notes=item.include_notes)
+    data = _load_comparison(item)
     if item.format == "markdown":
         return Response(_render_markdown(data), media_type="text/markdown; charset=utf-8",
                         headers={"Content-Disposition": 'attachment; filename="candidate-comparison.md"', "Cache-Control": "no-store"})
@@ -321,6 +309,8 @@ def compare_dossier(item: CompareDossierInput):
 
 
 @router.get("/interviews/compare/print", response_class=HTMLResponse)
-def compare_print(ids: str = Query(..., min_length=36, max_length=300), include_excerpts: bool = False, include_notes: bool = False):
-    data = _load_comparison(_parse_print_ids(ids), include_excerpts=include_excerpts, include_notes=include_notes)
+def compare_print(ids: str = Query(..., min_length=36, max_length=300), include_excerpts: bool = False,
+                  include_notes: bool = False, include_scorecards: bool = False, include_rationales: bool = False):
+    data = _load_comparison(CompareInput(session_ids=_parse_print_ids(ids), include_excerpts=include_excerpts, include_notes=include_notes,
+                                         include_scorecards=include_scorecards, include_rationales=include_rationales))
     return HTMLResponse(_render_html(data), headers={"Cache-Control": "no-store"})

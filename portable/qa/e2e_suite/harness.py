@@ -120,6 +120,13 @@ AUDIO_MOCK_INIT_SCRIPT = """
 """
 
 
+def qa_server(app) -> uvicorn.Server:
+    # Bound request/transport draining before the fixtures' ten-second join;
+    # Uvicorn still runs application lifespan shutdown after the drain.
+    return uvicorn.Server(uvicorn.Config(app, access_log=False, log_level="warning",
+                                         timeout_keep_alive=300, timeout_graceful_shutdown=3))
+
+
 def load_parent_qa_conftest():
     spec = importlib.util.spec_from_file_location("qa_parent_conftest", QA_ROOT / "conftest.py")
     module = importlib.util.module_from_spec(spec)
@@ -260,7 +267,7 @@ class IsolatedWorkspace:
         deadline = time.monotonic() + 15.0
         listener = self._bind_listener(self._bound_api_port, deadline)
         self._bound_api_port = listener.getsockname()[1]
-        server = uvicorn.Server(uvicorn.Config(app, access_log=False, log_level="warning", timeout_keep_alive=300))
+        server = qa_server(app)
         thread = threading.Thread(target=server.run, kwargs={"sockets": [listener]}, daemon=True)
         thread.start()
         while not server.started:
