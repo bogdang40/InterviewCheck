@@ -189,7 +189,7 @@ def test_m21_compliance_tab_retention_audit_and_mobile(e2e_workspace, desktop_pa
     _sign_in_admin(page, e2e_workspace.base_url)
 
     tabs = page.get_by_role("tablist", name="Admin sections").get_by_role("tab")
-    expect(tabs).to_have_count(8)
+    expect(tabs).to_have_count(9)
     compliance_tab = page.get_by_role("tab", name="Compliance")
     compliance_tab.click()
     expect(compliance_tab).to_have_attribute("aria-selected", "true")

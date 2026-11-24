@@ -17,7 +17,7 @@ MODEL_KEY_OK = "sk-m25-super-secret-api-key-1111"
 MODEL_KEY_ERR = "sk-m25-super-secret-api-key-2222"
 PROBE_ERR_SECRET = "sk-m25-leaked-probe-secret-9999"
 VIEWPORTS = [(1440, 900, "desktop-1440"), (390, 844, "mobile-390")]
-ADMIN_TABS = ("Models", "Accounts", "Audit log", "Diagnostics", "Playground", "Security", "Prompts & SLA", "Compliance")
+ADMIN_TABS = ("Models", "Accounts", "Usage", "Audit log", "Diagnostics", "Playground", "Security", "Prompts & SLA", "Compliance")
 FORBIDDEN_SECRET_KEYS = frozenset({
     "encrypted_api_key", "encrypted_signing_secret", "token_hash", "api_key", "signing_secret", "totp_secret", "password_hash",
 })

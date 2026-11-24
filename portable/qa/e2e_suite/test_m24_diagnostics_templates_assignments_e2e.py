@@ -20,7 +20,7 @@ BOOTSTRAP_SECRET = "m24-bootstrap-secret-1234"
 MODEL_API_KEY = "sk-m24-super-secret-api-key-9999"
 ALERT_SIGNING_SECRET = "whsec-m24-super-secret-signing-8888"
 VIEWPORTS = [(1440, 900, "desktop-1440"), (390, 844, "mobile-390")]
-ADMIN_TABS = ("Models", "Accounts", "Audit log", "Diagnostics", "Playground", "Security", "Prompts & SLA", "Compliance")
+ADMIN_TABS = ("Models", "Accounts", "Usage", "Audit log", "Diagnostics", "Playground", "Security", "Prompts & SLA", "Compliance")
 FORBIDDEN_SECRET_KEYS = frozenset({
     "encrypted_api_key", "encrypted_signing_secret", "token_hash",
     "api_key", "signing_secret", "totp_secret", "password_hash",

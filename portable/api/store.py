@@ -9,7 +9,7 @@ from uuid import uuid4
 
 from fastapi import HTTPException
 
-from . import answer_history, bulk_operations, lineage, model_registry, retention_policy, role_analytics, role_kits, role_versions, search_fts, session_scorecard, sql_script
+from . import answer_history, bulk_operations, lineage, model_registry, retention_policy, role_analytics, role_kits, role_versions, search_fts, session_scorecard, sql_script, usage_events
 from .role_kits import role_row, create_role
 from .models import EARLIER_ANSWER_NOTE, AnswerEdit, AnswerInput, ReviewInput, SessionInput
 
@@ -122,6 +122,7 @@ def initialize(path):
         retention_policy.migrate(db)
         from . import admin_audit_outbox
         admin_audit_outbox.migrate(db)
+        usage_events.migrate(db)
         # Freeze plans for workspaces created before role IDs were recorded. Only
         # an unambiguous title can recover the original plan from that edition.
         db.execute("""INSERT OR IGNORE INTO session_context(session_id,role_id,questions,ended_at)
@@ -272,6 +273,7 @@ def write_answer(db, key, item: AnswerInput, replace_id=None, *, session=None, a
     else:
         db.execute("INSERT INTO answers(question,answer,refs,result,status,parent_answer_id,planned_slot,id,session_id) VALUES (?,?,?,?,?,?,?,?,?)",
                    (*fields, aid, key))
+        usage_events.bump(db, "answer")
     saved = get_answer(db, key, aid)
     if replace_id:
         answer_history.record(db, saved, "answer_edit", saved_at=timestamp(), actor=actor)
