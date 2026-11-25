@@ -8,7 +8,7 @@ from typing import Any
 from fastapi import HTTPException
 from starlette.concurrency import run_in_threadpool
 
-from . import model_budgets, model_circuit, model_resolver, model_telemetry, provider_http, ssrf_guard, store
+from . import ai_cost_log, model_budgets, model_circuit, model_resolver, model_telemetry, provider_http, ssrf_guard, store
 from .error_sanitizer import sanitize_error_text
 from .model_execution_policy import (
     ModelQuotaLimiter,
@@ -78,14 +78,14 @@ def _record_outcome(
     http_status: int | None,
     latency_ms: int | None,
     error: str | None,
-    input_tokens: int = 0,
-    output_tokens: int = 0,
+    input_tokens: int = 0, output_tokens: int = 0,
 ) -> None:
-    if target.id is None:
-        return
     safe_error = _redact_target_secrets(error, target) if (not ok and error) else error
     try:
         with store.connection(write=True) as db:
+            ai_cost_log.record(db, target, ok=ok, http_status=http_status, latency_ms=latency_ms, input_tokens=input_tokens, output_tokens=output_tokens)
+            if target.id is None:
+                return  # server-setting models have no registry row for telemetry, budgets or circuits
             model_telemetry.record_check(
                 db, target.id, source="live", ok=ok, http_status=http_status,
                 latency_ms=latency_ms, error=safe_error, checked_at=store.timestamp(),

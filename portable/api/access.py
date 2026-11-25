@@ -159,6 +159,8 @@ async def require_entitlement(request: HTTPConnection):
     account = await snapshot(request)
     if (account.get("entitlement") or {}).get("active") is not True:
         raise HTTPException(402, "An active InterviewCheck plan is required.")
+    from .ai_cost_log import set_actor
+    set_actor(account["user"])  # AI calls in this request are logged against this account
     return account["user"]
 
 
@@ -195,6 +197,8 @@ async def require_admin_session(request: HTTPConnection) -> tuple[dict[str, Any]
             verify_account(data)
     if user.get("role") != "admin":
         raise HTTPException(403, "Admin access required.")
+    from .ai_cost_log import set_actor
+    set_actor(user)  # admin playground and probes are logged against this account
     return user, token
 
 
