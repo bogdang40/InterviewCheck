@@ -3,13 +3,17 @@
 `POST /api/usage/visit` is public: the signed-out home, sample and sign-in pages report one view.
 `GET /api/admin/usage` is for administrators and reads both the review and the account database.
 """
+import csv
 from datetime import datetime, timedelta, timezone
+import io
 import os
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi.responses import StreamingResponse
 
-from . import access, account_db, model_resolver, rate_limit, store, usage_events
+from . import access, account_db, ai_cost_log, model_resolver, rate_limit, store, usage_events
+from .exports import csv_cell
 from .models import Input
 from .origin import workspace_client
 
@@ -39,6 +43,28 @@ async def require_admin(request: Request) -> dict[str, Any]:
 @router.get("", dependencies=[Depends(require_admin), Depends(rate_limit.limit(rate_limit.ADMIN_READ))])
 def usage(days: int = Query(default=30, ge=1, le=365)) -> dict[str, Any]:
     return summary(days)
+
+
+@router.get("/ai-costs", dependencies=[Depends(require_admin), Depends(rate_limit.limit(rate_limit.ADMIN_READ))])
+def ai_costs(days: int = Query(default=30, ge=1, le=365)) -> dict[str, Any]:
+    first = usage_events.since(days)
+    with store.connection() as db:
+        return {"days": days, "first_day": first, "last_day": usage_events.today(), **ai_cost_log.summary(db, first)}
+
+
+@router.get("/ai-costs.csv", dependencies=[Depends(require_admin), Depends(rate_limit.limit(rate_limit.ADMIN_READ))])
+def ai_costs_csv(days: int = Query(default=30, ge=1, le=365)) -> StreamingResponse:
+    first = usage_events.since(days)
+    with store.connection() as db:
+        rows = ai_cost_log.csv_rows(db, first)
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(ai_cost_log.CSV_COLUMNS)
+    for row in rows:
+        writer.writerow([csv_cell(value) for value in row])
+    name = f"ai-costs-{first}-to-{usage_events.today()}.csv"
+    return StreamingResponse(iter([buffer.getvalue()]), media_type="text/csv; charset=utf-8",
+                             headers={"Content-Disposition": f'attachment; filename="{name}"', "Cache-Control": "no-store"})
 
 
 def _iso(ms: int | None) -> str | None:

@@ -21,13 +21,15 @@ export default function Authoring({ task, disabled = false, pending }: {
   const role = task.role.trim()
   const text = (task.mode === "questions" ? task.description : task.question).trim()
   const state = useAuthoringRun(JSON.stringify([task.id, task.mode, role, text]), task.version, pending)
+  // Each task lists only the models that can do it: a question-planning model cannot write a reference answer.
+  const capability = task.mode === "questions" ? "question_planning" : "reference"
   useEffect(() => {
     const controller = new AbortController()
-    api<string[]>("authoring/providers", "GET", undefined, controller.signal)
+    api<string[]>(`authoring/providers?capability=${capability}`, "GET", undefined, controller.signal)
       .then(list => { if (!controller.signal.aborted) { setProviders(list); setProvider(list[0] ?? "") } })
       .catch(e => { if (!controller.signal.aborted) setError(message(e)) })
     return () => controller.abort()
-  }, [])
+  }, [capability])
   if (!providers.length && !error) return null
   return <details className="import authoring-panel">
     <summary>{task.mode === "questions" ? "Draft role questions" : "Generate a reference answer"}</summary>

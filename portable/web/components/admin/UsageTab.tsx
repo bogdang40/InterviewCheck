@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { formatCompactTokens, formatUsd } from "@/lib/adminDiagnostics"
 import { AdminApiError } from "@/lib/adminModels"
 import { formatUsageDay, getAdminUsage, USAGE_PERIODS, type UsageResponse } from "@/lib/adminUsage"
+import { UsageCostLog } from "./UsageCostLog"
 import { UsageDailyTable, UsageModelsTable, UsagePeopleTable, UsageRecentList } from "./UsageTables"
 
 function count(n: number, one: string, many = `${one}s`): string {
@@ -53,6 +54,7 @@ export function UsageTab({ onAuthInvalid, onOpenModels }: { onAuthInvalid: (msg:
   const [data, setData] = useState<UsageResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
+  const [refreshKey, setRefreshKey] = useState(0)
   const requestRef = useRef(0)
 
   const load = useCallback(async (period: number) => {
@@ -97,7 +99,7 @@ export function UsageTab({ onAuthInvalid, onOpenModels }: { onAuthInvalid: (msg:
               ))}
             </select>
           </label>
-          <Button type="button" variant="outline" size="sm" disabled={loading} onClick={() => void load(days)}>
+          <Button type="button" variant="outline" size="sm" disabled={loading} onClick={() => { void load(days); setRefreshKey((n) => n + 1) }}>
             <RefreshCw size={14} aria-hidden="true" />
             {loading ? "Refreshing..." : "Refresh usage"}
           </Button>
@@ -145,6 +147,7 @@ export function UsageTab({ onAuthInvalid, onOpenModels }: { onAuthInvalid: (msg:
             </p>
           )}
 
+          <UsageCostLog days={days} refreshKey={refreshKey} onAuthInvalid={onAuthInvalid} />
           <UsageDailyTable daily={data.daily} />
           {data.accounts_available && <UsagePeopleTable people={data.people} period={periodLabel(data.days)} />}
           {data.accounts_available && <UsageRecentList recent={data.recent} />}

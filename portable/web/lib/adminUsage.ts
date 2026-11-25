@@ -88,3 +88,52 @@ export function formatWhen(iso: string | null): string {
 export function hasActivity(day: UsageDay): boolean {
   return Object.entries(day).some(([key, value]) => key !== "day" && typeof value === "number" && value > 0)
 }
+
+export type AiCostSums = { requests: number; errors: number; input_tokens: number; output_tokens: number; cost_usd: number }
+
+export type AiCostRow = AiCostSums & {
+  company?: string
+  account_email?: string | null
+  accounts?: number
+  provider?: string
+  model_id?: string
+  model_name?: string
+  capability?: string
+  month?: string
+}
+
+export type AiCostCall = {
+  at: string
+  account_email: string | null
+  company: string
+  capability: string
+  provider: string
+  model_id: string
+  model_name: string
+  ok: number
+  http_status: number | null
+  latency_ms: number | null
+  input_tokens: number
+  output_tokens: number
+  cost_usd: number
+}
+
+export type AiCostResponse = {
+  days: number
+  first_day: string
+  last_day: string
+  totals: AiCostSums
+  by_company: AiCostRow[]
+  by_company_model: AiCostRow[]
+  by_provider_model: AiCostRow[]
+  by_month: AiCostRow[]
+  recent: AiCostCall[]
+}
+
+export function getAiCosts(days: number): Promise<AiCostResponse> {
+  return adminRequest<AiCostResponse>(`/api/admin/usage/ai-costs?days=${days}`)
+}
+
+export function aiCostCsvUrl(days: number): string {
+  return `/api/admin/usage/ai-costs.csv?days=${days}`
+}
