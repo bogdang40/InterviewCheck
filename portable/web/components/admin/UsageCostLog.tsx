@@ -89,7 +89,7 @@ export function UsageCostLog({ days, refreshKey, onAuthInvalid }: { days: number
             <h4>By company, account, provider and model</h4>
             <div className="admin-table-wrap">
               <table className="admin-table">
-                <thead><tr><th>Company</th><th>Account</th><th>Provider</th><th>Model</th><th>Used for</th><th>Requests</th><th>Tokens</th><th>Estimated cost</th></tr></thead>
+                <thead><tr><th>Company</th><th>Account</th><th>Provider</th><th>Model</th><th>Used for</th><th>Calls</th><th>Tokens</th><th>Cost</th></tr></thead>
                 <tbody>
                   {data.by_company_model.map((r) => (
                     <tr key={`${r.company}|${r.account_email}|${r.provider}|${r.model_id}|${r.capability}`}>
@@ -98,9 +98,9 @@ export function UsageCostLog({ days, refreshKey, onAuthInvalid }: { days: number
                       <td data-label="Provider">{provider(r.provider)}</td>
                       <td data-label="Model">{r.model_name || r.model_id}<span className="muted admin-mono"> {r.model_id}</span></td>
                       <td data-label="Used for">{task(r.capability)}</td>
-                      <td data-label="Requests" className="admin-mono">{requests(r)}</td>
+                      <td data-label="Calls" className="admin-mono">{requests(r)}</td>
                       <td data-label="Tokens" className="admin-mono">{tokens(r)}</td>
-                      <td data-label="Estimated cost" className="admin-mono">{formatUsd(r.cost_usd)}</td>
+                      <td data-label="Cost" className="admin-mono">{formatUsd(r.cost_usd)}</td>
                     </tr>
                   ))}
                 </tbody>
