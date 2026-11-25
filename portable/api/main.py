@@ -47,6 +47,7 @@ from . import (
     store,
     trash,
     sample,
+    usage_admin,
 )
 from .access import embedded_enabled, require_entitlement
 from .answer_history_routes import mutation_actor, router as answer_history
@@ -242,6 +243,8 @@ workspace.include_router(cohort_analytics.router)
 workspace.include_router(calibration_queue.router)
 app.include_router(health_probes.router)
 app.include_router(sample.router)  # public: fixed fictional cases only
+app.include_router(usage_admin.visit_router)  # public: counts one signed-out page view
+app.include_router(usage_admin.router)
 app.include_router(authoring.router)
 app.include_router(model_presets.router)
 app.include_router(model_health_timeline.router)

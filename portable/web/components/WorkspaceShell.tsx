@@ -7,6 +7,7 @@ import { useEffect, useId, useRef, useState } from "react"
 import { ArrowLeft, ChevronRight, LayoutGrid, Menu, UserRound } from "lucide-react"
 import { blankPreparation, interviewURL, PreparationContext, SignInScreenContext, type Preparation } from "@/lib/workspace"
 import { useAccountStatus } from "@/lib/useAccountStatus"
+import { recordVisit } from "@/lib/siteVisit"
 import { WorkspaceNav, workspaceMenu } from "./WorkspaceNav"
 import WorkspaceSearch from "./WorkspaceSearch"
 
@@ -153,6 +154,11 @@ export default function WorkspaceShell({ children }: { children: React.ReactNode
   const publicHome = atRoot && signedOutHosted
   // Signed-out visitors sign in on a focused screen, not inside the workspace they cannot open yet.
   const signInScreen = atAccount && signedOutHosted
+  // Admin > Usage counts signed-out views of the public pages (no address is stored).
+  const publicPage = !signedOutHosted ? null : atRoot ? "home" : atAccount ? "signin" : path === "/sample/" ? "sample" : null
+  useEffect(() => {
+    if (publicPage) recordVisit(publicPage)
+  }, [publicPage])
 
   function closeDrawer(restoreFocus = true) {
     if (restoreFocus) shouldRestoreFocusRef.current = true

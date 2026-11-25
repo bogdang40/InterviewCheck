@@ -1,7 +1,7 @@
 """Shared visual hierarchy, contrast, layout, and mobile touch-target rubric for QA."""
 
 ADMIN_TABS = (
-    "Models", "Accounts", "Audit log", "Diagnostics",
+    "Models", "Accounts", "Usage", "Audit log", "Diagnostics",
     "Playground", "Security", "Prompts & SLA", "Compliance",
 )
 

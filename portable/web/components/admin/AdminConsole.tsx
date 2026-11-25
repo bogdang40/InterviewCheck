@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic"
 import { useCallback, useEffect, useState } from "react"
-import { Cpu, FileClock, FlaskConical, Plus, RefreshCw, ShieldAlert, ShieldCheck, SlidersHorizontal, Stethoscope, Users } from "lucide-react"
+import { BarChart3, Cpu, FileClock, FlaskConical, Plus, RefreshCw, ShieldAlert, ShieldCheck, SlidersHorizontal, Stethoscope, Users } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { getAdminDiagnostics, type DiagnosticsData } from "@/lib/adminDiagnostics"
@@ -39,13 +39,15 @@ const DiagnosticsTab = dynamic(() => import("./DiagnosticsTab").then((m) => m.Di
 const PlaygroundTab = dynamic(() => import("./PlaygroundTab").then((m) => m.PlaygroundTab), { ssr: false })
 const PromptsAndSlaTab = dynamic(() => import("./PromptsAndSlaTab").then((m) => m.PromptsAndSlaTab), { ssr: false })
 const SecurityAlertsTab = dynamic(() => import("./SecurityAlertsTab").then((m) => m.SecurityAlertsTab), { ssr: false })
+const UsageTab = dynamic(() => import("./UsageTab").then((m) => m.UsageTab), { ssr: false })
 const ModelFormModal = dynamic(() => import("./ModelFormModal").then((m) => m.ModelFormModal), { ssr: false })
 
-type AdminTab = "models" | "accounts" | "audit" | "diagnostics" | "playground" | "security" | "prompts" | "compliance"
+type AdminTab = "models" | "accounts" | "usage" | "audit" | "diagnostics" | "playground" | "security" | "prompts" | "compliance"
 
 const ADMIN_TABS: readonly AdminTabItem<AdminTab>[] = [
   { id: "models", label: "Models", Icon: Cpu },
   { id: "accounts", label: "Accounts", Icon: Users },
+  { id: "usage", label: "Usage", Icon: BarChart3 },
   { id: "audit", label: "Audit log", Icon: FileClock },
   { id: "diagnostics", label: "Diagnostics", Icon: Stethoscope },
   { id: "playground", label: "Playground", Icon: FlaskConical },
@@ -283,6 +285,7 @@ export default function AdminConsole() {
       </AdminTabPanel>
 
       <AdminTabPanel id="accounts" active={tab === "accounts"} opened={openedTabs.has("accounts")}><AccountsTab onAuthInvalid={onAuthInvalid} /></AdminTabPanel>
+      <AdminTabPanel id="usage" active={tab === "usage"} opened={openedTabs.has("usage")}><UsageTab onAuthInvalid={onAuthInvalid} onOpenModels={() => selectTab("models")} /></AdminTabPanel>
       <AdminTabPanel id="audit" active={tab === "audit"} opened={openedTabs.has("audit")}><AuditLogTab onAuthInvalid={onAuthInvalid} /></AdminTabPanel>
       <AdminTabPanel id="diagnostics" active={tab === "diagnostics"} opened={openedTabs.has("diagnostics")}><DiagnosticsTab models={models} onAuthInvalid={onAuthInvalid} /></AdminTabPanel>
       <AdminTabPanel id="playground" active={tab === "playground"} opened={openedTabs.has("playground")}><PlaygroundTab models={models} onAuthInvalid={onAuthInvalid} /></AdminTabPanel>

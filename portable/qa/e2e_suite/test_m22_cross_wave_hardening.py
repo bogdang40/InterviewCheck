@@ -10,7 +10,7 @@ ADMIN_EMAIL = "admin-m22@example.test"
 ADMIN_PASS = "Synthetic-M22-Pass-9876"
 BOOTSTRAP_SECRET = "m22-bootstrap-secret-1234"
 VIEWPORTS = [(1440, 900, "desktop-1440"), (390, 844, "mobile-390")]
-ADMIN_TABS = ("Models", "Accounts", "Audit log", "Diagnostics", "Playground", "Security", "Prompts & SLA", "Compliance")
+ADMIN_TABS = ("Models", "Accounts", "Usage", "Audit log", "Diagnostics", "Playground", "Security", "Prompts & SLA", "Compliance")
 
 
 def _open_page(e2e_browser, width: int, height: int):

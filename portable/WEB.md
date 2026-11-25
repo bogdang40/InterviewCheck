@@ -39,6 +39,12 @@ interviews.example.com {
 
 For public embedded accounts, set `INTERVIEWCHECK_TRUST_PROXY_CLIENT_IP=1` only after the HTTPS proxy replaces `X-InterviewCheck-Client-IP` with the address it observed. The workspace accepts this header on loopback requests through the configured public origin and uses it for the sign in rate limit. Keep both application listeners on loopback.
 
+## Admin usage and AI keys
+
+Administrators add provider keys under **Admin > Models > Connect model**. The server encrypts each key with the master key in `INTERVIEWCHECK_MODEL_SECRET_KEY` or, without it, the `.model_secret.key` file beside the review database. Keep a copy of that file in a safe place apart from the database backups: a restored database cannot decrypt its keys without it, and anyone holding both can read them.
+
+**Admin > Usage** shows signed-out visitors, sign-ins, accounts, interviews, answers, reviews and AI requests per UTC day. The home, sample and sign-in pages report one view each through `POST /api/usage/visit`. The server stores a visitor only as a hash of the client address and browser with a random salt it replaces every day, so it keeps no address and cannot link visits across days. Crawlers, link previews and scripted browsers are not counted. Counters older than 400 days are removed.
+
 ## Static package
 
 ```sh
