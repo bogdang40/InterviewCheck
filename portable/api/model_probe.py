@@ -82,6 +82,10 @@ def _extract_parameters(model: dict[str, Any] | Any) -> dict[str, Any]:
     return {}
 
 
+# Reasoning deployments (gpt-5 family, o-series) answer HTTP 400 when the budget is too small to finish
+# thinking, so a one-token probe fails although the deployment works. A short reply still costs very little.
+PROBE_COMPLETION_TOKENS = 256
+
 async def _probe_request(
     client: httpx.AsyncClient, method: str, url: str, **kwargs: Any
 ) -> tuple[int, bytes | None]:
@@ -132,7 +136,7 @@ async def _run_provider_probe(
             "POST",
             url,
             headers=headers,
-            json={"messages": [{"role": "user", "content": "ok"}], "max_completion_tokens": 1},
+            json={"messages": [{"role": "user", "content": "ok"}], "max_completion_tokens": PROBE_COMPLETION_TOKENS},
         )
     if provider == "deepgram":
         return await _probe_request(
