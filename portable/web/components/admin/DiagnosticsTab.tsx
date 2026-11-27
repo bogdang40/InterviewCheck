@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import {
   computeFleetP95Latency,
   downloadDiagnosticBundle,
+  formatBudgetUsd,
   formatCompactTokens,
   formatUsd,
   getAdminDiagnostics,
@@ -31,12 +32,12 @@ type AudioCheck = {
 
 function MeterBar({ label, value, limit, text }: { label: string; value: number; limit: number | null; text: string }) {
   const max = limit && limit > 0 ? limit : Math.max(value, 1)
-  const pct = limit && limit > 0 ? Math.min(100, Math.round((value / limit) * 100)) : value > 0 ? 100 : 0
+  const pct = limit && limit > 0 ? Math.min(100, value / limit * 100) : value > 0 ? 100 : 0
   const tone = limit && limit > 0 ? (value >= limit ? " over" : value >= limit * 0.8 ? " warn" : "") : ""
   return (
     <div className="admin-diag-bar">
       <div className="spread"><span className="admin-mono">{label}</span><span className="admin-mono">{text}</span></div>
-      <div className="admin-meter-track" role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={Number(max.toFixed(2))} aria-valuenow={Number(Math.min(max, value).toFixed(2))}>
+      <div className="admin-meter-track" role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={max} aria-valuenow={Math.min(max, value)} aria-valuetext={text}>
         <div className={`admin-meter-fill${tone}`} style={{ width: `${pct}%` }} />
       </div>
     </div>
@@ -218,9 +219,7 @@ export function DiagnosticsTab({ models, onAuthInvalid }: { models: ConnectedMod
             {models.map((m) => {
               const u = data?.usageByModel[m.id]
               const t = data?.telemetry?.models?.[m.id]
-              const cfg = readBudgetParameters(m.parameters)
-              const dailyLim = u?.daily_token_limit ?? cfg.daily_token_limit ?? null
-              const monthlyLim = u?.monthly_cost_limit_usd ?? cfg.monthly_cost_limit_usd ?? null
+              const { daily_token_limit: dailyLim = null, monthly_cost_limit_usd: monthlyLim = null } = u ?? readBudgetParameters(m.parameters)
               const dailyTok = u?.daily_tokens ?? 0
               const monthlyUsd = u?.monthly_cost_usd ?? 0
               return (
@@ -235,7 +234,7 @@ export function DiagnosticsTab({ models, onAuthInvalid }: { models: ConnectedMod
                   </div>
                   <div className="admin-diag-bars">
                     <MeterBar label={`Daily tokens (${m.slug})`} value={dailyTok} limit={dailyLim} text={dailyLim ? `${dailyTok.toLocaleString()} / ${dailyLim.toLocaleString()}` : `${dailyTok.toLocaleString()} (No limit)`} />
-                    <MeterBar label={`Monthly estimated spend (${m.slug})`} value={monthlyUsd} limit={monthlyLim} text={monthlyLim ? `${formatUsd(monthlyUsd)} / ${formatUsd(monthlyLim)}` : `${formatUsd(monthlyUsd)} (No threshold)`} />
+                    <MeterBar label={`Monthly estimated spend (${m.slug})`} value={monthlyUsd} limit={monthlyLim} text={monthlyLim ? `${formatBudgetUsd(monthlyUsd)} / ${formatBudgetUsd(monthlyLim)}` : `${formatBudgetUsd(monthlyUsd)} (No threshold)`} />
                   </div>
                 </article>
               )

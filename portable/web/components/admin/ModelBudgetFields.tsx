@@ -100,6 +100,7 @@ export function ModelBudgetFields({
           <small className="muted" id={`${thresholdId}-help`}>
             Enter $0.01 to $100,000. Once the recorded estimate for this model reaches this amount in a UTC month,
             InterviewCheck skips the model on later budget checks. Provider charges can exceed this amount.
+            A request already in progress can take the recorded estimate above this amount.
           </small>
         </div>
         <label className="field">
