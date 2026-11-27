@@ -51,18 +51,22 @@ def test_full_sqlite_preserves_linked_draft_authority_and_json_replaces_it(clien
     parked = client.put(base + "/draft", json={**child(q), "expected_revision": 0}).raise_for_status().json()
     raw = client.get("/api/backups/workspace").raise_for_status().content
     assert parked["deferred_draft_token"].encode() not in raw and b"deferred_draft_token" not in raw
+    assert parked["recovery_fingerprint"].encode() not in raw and b"recovery_fingerprint" not in raw
     full = tmp_path / "full.sqlite"
     with closing(sqlite3.connect(store.db_path())) as source, closing(sqlite3.connect(full)) as dest:
         source.backup(dest)
     monkeypatch.setenv("INTERVIEWCHECK_DB", str(full))
     store.initialize(full)
-    assert client.get(base + "/draft").json()["deferred_draft_token"] == parked["deferred_draft_token"]
+    copied = client.get(base + "/draft").raise_for_status().json()
+    assert copied["deferred_draft_token"] == parked["deferred_draft_token"]
+    assert copied["recovery_fingerprint"] == parked["recovery_fingerprint"]
     client.post(base + "/draft/discard", json=mutations(parked)).raise_for_status()
     empty = tmp_path / "json.sqlite"
     store.initialize(empty)
     monkeypatch.setenv("INTERVIEWCHECK_DB", str(empty))
     restore(client, raw, preview(client, raw)).raise_for_status()
     restored = client.get(base + "/draft").json()
+    assert restored["recovery_fingerprint"] != parked["recovery_fingerprint"]
     assert client.post(base + "/draft/discard", json={**mutations(restored), "deferred_draft_token": parked["deferred_draft_token"]}).status_code == 409
     assert client.get(base + "/draft").json() == restored
     client.post(base + "/draft/discard", json=mutations(restored)).raise_for_status()
@@ -128,3 +132,15 @@ def test_corrected_child_replay_requires_the_lifetime_that_actually_published_it
     assert true_replay["deferred_replay"] and true_replay["answer"] == "Corrected once."
     assert true_replay["deferred_receipt"] == first["deferred_receipt"]
     assert client.get(base + "/draft").json() == ordinary
+
+def test_ordinary_draft_fingerprint_is_stable_for_edits_and_new_for_recreation(client):
+    base, _ = prepare(client)
+    payload = {"id": str(uuid4()), "question": "Ordinary draft", "expected_revision": 0}
+    first = client.put(base + "/draft", json=payload).raise_for_status().json()
+    assert len(first["recovery_fingerprint"]) == 32 and "deferred_draft_token" not in first
+    changed = client.put(base + "/draft", json={**payload, "expected_revision": 1, "answer": "Changed."}).raise_for_status().json()
+    assert changed["recovery_fingerprint"] == first["recovery_fingerprint"]
+    client.post(base + "/draft/discard", json={"id": first["id"], "expected_revision": changed["revision"]}).raise_for_status()
+    replacement = client.put(base + "/draft", json=payload).raise_for_status().json()
+    assert replacement["id"] == first["id"] and replacement["revision"] == first["revision"]
+    assert replacement["recovery_fingerprint"] != first["recovery_fingerprint"]

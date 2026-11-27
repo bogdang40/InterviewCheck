@@ -70,6 +70,7 @@ def get(db, sid, *, portable=False, include_deferred=True):
             )
         },
         "references": json.loads(row["refs"]),
+        **({} if portable else {"recovery_fingerprint": row["recovery_fingerprint"]}),
         **_draft_link(db, str(sid), row, portable, include_deferred),
     }
 
