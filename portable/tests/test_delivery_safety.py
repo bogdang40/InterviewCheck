@@ -91,7 +91,7 @@ def test_release_packages_runtime_json_and_an_executable_launcher(tmp_path, monk
     package_release = _load("package_release", ROOT / "portable/package_release.py")
     fake = tmp_path / "portable"
     for rel in ("api/main.py", "api/sample_cases.json", "requirements.txt", "run.py", "README.md", "WEB.md",
-                "CORE.md", "CONNECTIONS.md", "VERIFICATION.md", "evaluate.py", "evaluation/cases.json",
+                "CORE.md", "CONNECTIONS.md", "VERIFICATION.md", "RECOVERY-REGISTER-TEMPLATE.md", "RECOVERY-REGISTER.md", "evaluate.py", "evaluation/cases.json",
                 "web/out/index.html"):
         (fake / rel).parent.mkdir(parents=True, exist_ok=True)
         (fake / rel).write_text("{}" if rel.endswith(".json") else "fixture")
@@ -100,6 +100,8 @@ def test_release_packages_runtime_json_and_an_executable_launcher(tmp_path, monk
     package_release.package(target)
     with zipfile.ZipFile(target) as archive:
         names = set(archive.namelist())
+        assert "InterviewCheck/RECOVERY-REGISTER-TEMPLATE.md" in names
+        assert "InterviewCheck/RECOVERY-REGISTER.md" not in names
         assert "InterviewCheck/api/sample_cases.json" in names
         info = archive.getinfo("InterviewCheck/start.sh")
         assert stat.S_IMODE(info.external_attr >> 16) == 0o755 and info.create_system == 3

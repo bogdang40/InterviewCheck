@@ -79,9 +79,15 @@ def load_key_file(path: Path) -> bytes:
         if (mode & 0o077) != 0:
             raise SecretBoxError("Model secret file permissions are too broad; restrict to 0600.")
     try:
-        raw = path.read_bytes().strip()
-        key = _decode_urlsafe_b64(raw)
-    except (OSError, ValueError) as exc:
+        return parse_key_file(path.read_bytes())
+    except OSError as exc:
+        raise SecretBoxError("Model secret key file could not be read.") from exc
+
+
+def parse_key_file(contents: bytes) -> bytes:
+    try:
+        key = _decode_urlsafe_b64(contents.strip())
+    except ValueError as exc:
         raise SecretBoxError("Model secret key file could not be read.") from exc
     if len(key) != 32:
         raise SecretBoxError("Model secret key file is invalid.")
@@ -148,10 +154,13 @@ def _coerce_previous_key(entry: str | bytes) -> bytes | None:
 
 
 def keyring(previous_keys: Iterable[str | bytes] = ()) -> list[tuple[str, bytes]]:
-    active = _master_key()
-    entries: list[tuple[str, bytes]] = [(key_id_for(active), active)]
-    seen_masters = {active}
-    for item in (*tuple(previous_keys), *_parse_previous_env_entries()):
+    return supplied_keyring((_master_key(), *previous_keys, *_parse_previous_env_entries()))
+
+
+def supplied_keyring(keys: Iterable[str | bytes]) -> list[tuple[str, bytes]]:
+    entries: list[tuple[str, bytes]] = []
+    seen_masters: set[bytes] = set()
+    for item in keys:
         master = _coerce_previous_key(item)
         if master is not None and master not in seen_masters:
             seen_masters.add(master)
@@ -259,17 +268,25 @@ def _decode_payload(b64_text: str) -> tuple[bytes, bytes, bytes]:
 
 
 def decrypt_secret(ciphertext: str | None, *, aad: str = "", previous_keys: Iterable[str | bytes] = ()) -> str:
+    # Resolve the configured keys only after checking the envelope. A malformed
+    # input, like an absent secret, must not create a workstation key file.
+    def configured_keys():
+        yield from keyring(previous_keys)
+    return decrypt_with_keyring(ciphertext, configured_keys(), aad=aad)
+
+
+def decrypt_with_keyring(ciphertext: str | None, keys: Iterable[tuple[str, bytes]], *, aad: str = "") -> str:
     if not ciphertext:
         return ""
     version, kid = token_key_info(ciphertext)
     if version == "v1":
         nonce, tag, body = _decode_payload(ciphertext[len(PREFIX):])
-        candidates = [master for _, master in keyring(previous_keys)]
+        candidates = [master for _, master in keys]
         compute = lambda k_mac: _compute_tag(k_mac, nonce, aad, body)
     else:
         assert kid is not None
         nonce, tag, body = _decode_payload(ciphertext[len(V2_PREFIX) + len(kid) + 1:])
-        candidates = [master for k_id, master in keyring(previous_keys) if k_id == kid]
+        candidates = [master for k_id, master in keys if k_id == kid]
         compute = lambda k_mac: _compute_tag_v2(k_mac, nonce, kid, aad, body)
 
     for master in candidates:
