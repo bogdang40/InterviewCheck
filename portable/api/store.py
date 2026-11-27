@@ -123,8 +123,8 @@ def initialize(path):
         from . import admin_audit_outbox
         admin_audit_outbox.migrate(db)
         usage_events.migrate(db)
-        from . import review_worksheet
-        review_worksheet.migrate(db)
+        from . import answer_identity
+        answer_identity.migrate(db)
         from . import ai_cost_log, provider_allowance
         ai_cost_log.migrate(db)
         provider_allowance.migrate(db)
