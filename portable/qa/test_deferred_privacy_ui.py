@@ -8,6 +8,29 @@ from playwright.sync_api import expect
 from test_deferred_questions_ui import REPEATED, drop_ack_then_read, keep_custom, open_queue, review_url, seed
 
 
+def test_reloading_a_withheld_queue_removes_the_private_interview(workspace_url, browser_page):
+    from api import answer_history, store
+    from api.retention_anonymizer import SessionAnonymizer
+
+    page = browser_page
+    with httpx.Client(base_url=workspace_url, headers={"X-InterviewCheck": "1"}) as client:
+        sid, path, (parent, _) = seed(client)
+        page.goto(review_url(workspace_url, sid, parent["id"]))
+        queue = open_queue(page)
+        expect(queue.get_by_text("No deferred questions.", exact=True)).to_be_visible()
+        expect(page.locator("body")).to_contain_text(parent["answer"])
+        with store.connection(write=True) as db:
+            SessionAnonymizer(db, sid).run(preserve_scorecard_aggregates=False, actor_email="fixture",
+                                           now_iso=store.timestamp())
+            answer_history.record(db, parent, "baseline")
+        with page.expect_response(lambda response: path + "/deferred-questions?" in response.url) as loaded:
+            queue.get_by_role("button", name="Reload questions").click()
+        assert loaded.value.status == 409 and loaded.value.headers["x-interviewcheck-conflict"] == "interview-privacy"
+        expect(page.get_by_role("region", name="Interview access changed")).to_be_visible()
+        expect(queue).to_have_count(0)
+        expect(page.locator("body")).not_to_contain_text(parent["answer"])
+
+
 def test_json_restored_matching_item_does_not_confirm_the_original_keep(workspace_url, browser_page):
     page = browser_page
     with httpx.Client(base_url=workspace_url, headers={"X-InterviewCheck": "1"}) as c:
