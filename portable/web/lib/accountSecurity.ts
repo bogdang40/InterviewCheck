@@ -1,4 +1,3 @@
-import { orderedAccountRequest } from "./accountCookie"
 import { ApiError, request } from "./http"
 
 export const API_TOKEN_SCOPES = [
@@ -77,17 +76,20 @@ function securityRequest<T>(path: string, options: RequestInit = {}): Promise<T>
 
 export async function listAccountSessions(signal?: AbortSignal): Promise<AccountSession[]> {
   const data = await securityRequest<{ sessions?: AccountSession[] }>("sessions", { signal })
-  return Array.isArray(data?.sessions) ? data.sessions : []
+  const rows = data?.sessions
+  if (!Array.isArray(rows) || !rows.every(row => row && typeof row.id === "string" && typeof row.isCurrent === "boolean")
+      || rows.filter(row => row.isCurrent).length !== 1) {
+    throw new Error("The server did not confirm the current device session.")
+  }
+  return rows
 }
 
-export function revokeAccountSession(id: string): Promise<{ revoked: boolean; id: string }> {
-  return orderedAccountRequest(async () => {
-    const result = await securityRequest<{ revoked: boolean; id: string } | null>(
-      `sessions/${encodeURIComponent(id)}`, { method: "DELETE" },
-    )
-    if (result?.revoked !== true || result.id !== id) throw new Error("The server did not confirm session revocation.")
-    return result
-  })
+export async function revokeAccountSession(id: string): Promise<{ revoked: boolean; id: string }> {
+  const result = await securityRequest<{ revoked: boolean; id: string } | null>(
+    `sessions/${encodeURIComponent(id)}`, { method: "DELETE" },
+  )
+  if (result?.revoked !== true || result.id !== id) throw new Error("The server did not confirm session revocation.")
+  return result
 }
 
 export async function listApiTokens(signal?: AbortSignal): Promise<ApiTokenSummary[]> {

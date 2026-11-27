@@ -302,7 +302,7 @@ export default function Evidence({
           <pre>{JSON.stringify(item.legacy, null, 2)}</pre>
         </details>
       )}
-      <ReviewWorksheet key={item.id + ":" + item.revision} session={session} item={item} ordinal={index + 1}
+      <ReviewWorksheet key={`worksheet:${item.id}:${item.revision}`} session={session} item={item} ordinal={index + 1}
         editorBusy={dirty || busy || conflict || !!worksheet || !!recovered} stage={stageWorksheet}
         onDenied={() => { if (worksheet) withdrawWorksheet() }} />
       {worksheet && <p role="status" className="notice">Worksheet note staged in this tab. Saving keeps the current review outcome.</p>}
