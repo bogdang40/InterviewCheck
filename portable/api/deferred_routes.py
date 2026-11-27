@@ -7,11 +7,12 @@ from uuid import UUID
 from fastapi import APIRouter, Query
 from pydantic import model_validator
 
-from . import deferred_items as items, store
+from . import deferred_handoff, deferred_items as items, store
 from .deferred_text import SelectedQuestion
 from .models import Fingerprint, Input, RequestID
 
 router = APIRouter(prefix="/sessions/{sid}/deferred-questions", tags=["interview-follow-ups"])
+router.include_router(deferred_handoff.router)
 
 
 class KeepSource(Input):
