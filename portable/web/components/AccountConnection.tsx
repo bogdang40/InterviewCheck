@@ -8,12 +8,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AccountSecurityPanel } from "./AccountSecurityPanel";
 import { AdminAccounts } from "./AdminAccounts";
+import { PasswordChangeNotice, setPasswordChangeUnconfirmed } from "./PasswordChangeNotice";
 import { PasswordChangeForm } from "./PasswordChangeForm";
 import WorkspaceError from "./WorkspaceError";
 import { message } from "@/lib/api";
 import { sweepLocalDrafts } from "@/lib/localDraftSweep";
 import { nextPathFromLocation } from "@/lib/safeNextPath";
-import { integration, submit } from "@/lib/integrations";
+import { integration, signOutAccount, submit } from "@/lib/integrations";
 import { submitAccessAuth } from "@/lib/totpApi";
 import { notifyAccountChanged } from "@/lib/useAccountStatus";
 import { readAccountSnapshot, type AccountSnapshot as Account } from "@/lib/accountSnapshot";
@@ -113,6 +114,7 @@ export function AccountConnection({
   if (leaving) return <section className="panel stack"><p role="status">
     {leaving === "in" ? "Signed in. Opening your workspace…" : "Signed out."}</p></section>;
   return <section className="panel stack">{variant === "settings" && <h2>Account and billing</h2>}
+    {!account && !initializing && <PasswordChangeNotice />}
     {!enabled ? <p className="muted">Local workspace. Enable embedded accounts or configure a remote access service to sign in.</p> :
       initializing ? <p className="panel inset muted" role="status">Loading account status…</p> :
       initError ? <WorkspaceError text={initError} retry={() => setInitSeq(n => n + 1)} /> :
@@ -126,7 +128,7 @@ export function AccountConnection({
         </div> : <p className="muted">Billing plans are unavailable.</p>}
         <div className="row">
           <Button variant="outline" disabled={busy || rotating} onClick={() => act(refresh)}>Refresh access</Button>
-          <Button variant="ghost" disabled={busy} onClick={() => act(async () => { await submit("logout"); sweepLocalDrafts(); setLeaving("out"); setAccount(null); notifyAccountChanged(); })}>Sign out</Button>
+          <Button variant="ghost" disabled={busy} onClick={() => act(async () => { await signOutAccount(); sweepLocalDrafts(); setLeaving("out"); setAccount(null); notifyAccountChanged(); })}>Sign out</Button>
         </div>
         <PasswordChangeForm
           onStart={() => {
@@ -171,7 +173,7 @@ export function AccountConnection({
         if (!signup && totpRequired && !totpCode.trim()) {
           throw new Error("Enter your 6-digit authenticator code or backup code.");
         }
-        const res = await submitAccessAuth<Account>(signup ? "signup" : "login", {
+        const res = await submitAccessAuth(signup ? "signup" : "login", {
           email,
           password,
           ...(!signup && totpRequired && totpCode.trim() ? { totpCode: totpCode.trim() } : {}),
@@ -183,6 +185,7 @@ export function AccountConnection({
           setTotpCode("");
           return;
         }
+        setPasswordChangeUnconfirmed(false);
         setPassword(""); setTotpCode(""); setTotpRequired(false); setInvite(""); setAdminSecret("");
         if (variant === "signin") {
           // The shell swaps this screen for the workspace once its status refreshes; until then

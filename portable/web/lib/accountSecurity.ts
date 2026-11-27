@@ -1,3 +1,4 @@
+import { orderedAccountRequest } from "./accountCookie"
 import { ApiError, request } from "./http"
 
 export const API_TOKEN_SCOPES = [
@@ -80,10 +81,13 @@ export async function listAccountSessions(signal?: AbortSignal): Promise<Account
 }
 
 export function revokeAccountSession(id: string): Promise<{ revoked: boolean; id: string }> {
-  return securityRequest<{ revoked: boolean; id: string }>(
-    `sessions/${encodeURIComponent(id)}`,
-    { method: "DELETE" },
-  )
+  return orderedAccountRequest(async () => {
+    const result = await securityRequest<{ revoked: boolean; id: string } | null>(
+      `sessions/${encodeURIComponent(id)}`, { method: "DELETE" },
+    )
+    if (result?.revoked !== true || result.id !== id) throw new Error("The server did not confirm session revocation.")
+    return result
+  })
 }
 
 export async function listApiTokens(signal?: AbortSignal): Promise<ApiTokenSummary[]> {

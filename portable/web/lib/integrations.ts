@@ -1,3 +1,5 @@
+import { orderedAccountRequest } from "./accountCookie";
+
 export type ProviderStatus = {
   transcription?: boolean;
   reference?: boolean;
@@ -29,5 +31,12 @@ export function submit<T>(path: string, data?: unknown) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: data === undefined ? undefined : JSON.stringify(data),
+  });
+}
+
+export function signOutAccount(): Promise<void> {
+  return orderedAccountRequest(async () => {
+    const response = await submit<{ signed_out?: boolean } | null>("logout");
+    if (response?.signed_out !== true) throw new Error("The server did not confirm signout. Refresh access to check.");
   });
 }
