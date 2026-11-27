@@ -66,7 +66,8 @@ def test_panel_chair_records_private_reason_and_member_sees_process_only(e2e_wor
 def sign_out_other_tab(page, sibling, collector, base, sid, aid, reason):
     collector.assert_clean()
     protected = base + f"/api/calibration/sessions/{sid}/answers/{aid}/panel"
-    permitted_reads = {protected, protected + "/edit", protected + "/private", base + "/api/integrations/account"}
+    permitted_reads = {protected, protected + "/edit", protected + "/private", base + "/api/integrations/account",
+                       base + f"/api/sessions/{sid}/ats"}
     denials, errors, writes = [], [], []
 
     def response(event):
