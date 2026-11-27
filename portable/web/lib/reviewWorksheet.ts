@@ -99,6 +99,11 @@ function disclosed(text: string) {
   throw new Error("The disclosure fields have changed. Edit only the proposed note.")
 }
 
+// ReviewInput strips Unicode White_Space before validating and storing the note.
+export function normalizedWorksheetNote(raw: string): string {
+  return raw.replace(/^\p{White_Space}+|\p{White_Space}+$/gu, "")
+}
+
 export function parseWorksheet(raw: string): Worksheet {
   if (new TextEncoder().encode(raw).length > MAX_WORKSHEET_BYTES) throw new Error("The worksheet exceeds 96 KiB.")
   const lines = raw.replace(/^\ufeff/, "").replace(/\r\n/g, "\n").split("\n")
@@ -113,7 +118,7 @@ export function parseWorksheet(raw: string): Worksheet {
   }
   const body = lines.slice(10).join("\n")
   if (forbidden.test(body)) throw new Error("Remove control or bidirectional formatting characters from the note.")
-  const note = body.trim()
+  const note = normalizedWorksheetNote(body)
   if (!note || Array.from(note).length > MAX_NOTE_CHARACTERS) throw new Error("Enter a proposed note of 1 to 12,000 characters.")
   return { sessionId, answerId, ordinal, revision, material, review, question: disclosed(field(lines[7], "Question")),
     excerpt: disclosed(field(lines[8], "Candidate excerpt")), note }
