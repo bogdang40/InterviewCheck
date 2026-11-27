@@ -59,12 +59,14 @@ def test_scores_preserve_unchanged_reviewer_and_timestamp(client, monkeypatch):
     assert second["version"] != first["version"]
 
 
-def test_role_edit_invalidates_open_scorecard(client):
+def test_role_edit_invalidates_open_legacy_scorecard(client):
     rubric = [{"id": "design", "criterion": "Design", "weight": 2}]
     template = {"name": "Engineer", "policy": "Manual", "rubric": rubric}
     role = client.post("/api/roles", json=template).raise_for_status().json()
     session = client.post("/api/sessions", json={"candidate": "Fixture", "role_id": role["id"],
                           "role": role["name"], "policy": "Manual", "consent": True}).raise_for_status().json()
+    with store.connection(write=True) as db:
+        db.execute("UPDATE session_context SET rubric_snapshot=NULL WHERE session_id=?", (session["id"],))
     route = f"/api/sessions/{session['id']}/scorecard"
     before = client.get(route).raise_for_status().json()
     rubric.append({"id": "testing", "criterion": "Testing", "weight": 3})

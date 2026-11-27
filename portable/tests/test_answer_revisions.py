@@ -89,6 +89,8 @@ def test_existing_answer_gains_revision_without_losing_review(client):
     path = prepare(client)
     client.patch(path, json={"note": "Keep this", "disposition": "explained"}).raise_for_status()
     with sqlite3.connect(store.db_path()) as db:
+        # The historical schema predates receipt validation against stored answer history.
+        db.execute("DROP TRIGGER retention_hold_receipt")
         db.execute("DROP TABLE answer_history")
         db.execute("ALTER TABLE answers DROP COLUMN revision")
     store.initialize(store.db_path())

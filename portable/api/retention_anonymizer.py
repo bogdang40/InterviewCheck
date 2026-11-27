@@ -3,6 +3,7 @@
 import json
 import sqlite3
 
+from . import retained_narratives
 from .evidence import compare
 from .models import Reference
 
@@ -46,7 +47,7 @@ class SessionAnonymizer:
         self._redact_history()
         self._redact_answers()
         self._redact_note_exports()
-        for table in ("session_drafts", "transcript_imports"):
+        for table in ("session_drafts", "transcript_imports", "legacy_privacy_holds", "ats_access_versions"):
             if _has_table(self.db, table):
                 self.db.execute(f"DELETE FROM {table} WHERE session_id=?", (self.sid,))
         if not preserve_scorecard_aggregates:
@@ -55,6 +56,7 @@ class SessionAnonymizer:
             "INSERT INTO session_anonymizations(session_id, anonymized_at, anonymized_by) VALUES (?,?,?)",
             (self.sid, now_iso, actor_email),
         )
+        retained_narratives.refresh(self.db, self.sid)
 
     def _redact_answers(self) -> None:
         inherited = _references(self._permitted_sources())

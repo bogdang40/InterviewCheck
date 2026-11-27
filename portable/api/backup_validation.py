@@ -4,7 +4,10 @@ from datetime import datetime
 from uuid import UUID
 
 from .evidence import Words, compare
+from .role_kits import content_version
 from .lineage import validate_graph
+from .retained_finding import recognized_text
+from .session_privacy import archive_only_erasure
 from .models import AnswerInput, Reference, RoleInput, SessionInput, validate_note_length
 
 
@@ -16,8 +19,11 @@ def check_session_chronology(created_at: str, ended_at: str | None, trashed_at: 
         raise ValueError("Session trashed_at cannot precede created_at.")
 
 
-def verify_finding(answer, session, inherited_grams):
+def verify_finding(answer, session, inherited_grams, *, erased_archive=False):
     finding = answer.result
+    confirmed = session.privacy is not None and session.privacy.state == "anonymized"
+    if confirmed and not recognized_text(finding.explanation, finding.follow_up):
+        raise ValueError("The confirmed anonymization contains unrecognized finding text.")
     if answer.disposition == "disclosed" and not answer.note.strip():
         raise ValueError("Missing disclosure note.")
     if answer.import_origin:
@@ -37,6 +43,17 @@ def verify_finding(answer, session, inherited_grams):
 
         if answer.legacy is None or finding.model_dump(exclude_none=True) != ARCHIVED:
             raise ValueError("Invalid historical finding.")
+        return
+    if erased_archive:
+        # The retained marker is shorter than a match. Native questions and source
+        # lists can exceed capture limits. Verify the newly computed finding.
+        expected = compare(answer.question, answer.answer, [])
+        if confirmed:
+            # An older writer may have scrubbed this prompt to the fixed marker. Its text
+            # has already been checked above. Keep all structural evidence checks.
+            expected["follow_up"] = finding.follow_up
+        if finding.model_dump(exclude_none=True) != expected:
+            raise ValueError("Invalid comparison for the retained archive exchange.")
         return
     if len(answer.answer) > 24000 or len(answer.question) > 4000 or len(answer.references) > 12:
         raise ValueError("An exchange exceeds the comparison limits.")
@@ -72,7 +89,32 @@ def unique(items, name):
     return seen
 
 
+def verify_rubric_sources(backup):
+    snapshots = [s.rubric_snapshot for s in backup.sessions if s.rubric_snapshot and s.rubric_snapshot.role_id]
+    requested = {(snap.role_id, snap.version_number) for snap in snapshots}
+    sources = {}
+    for role in backup.roles:
+        for version in (role, *role.versions):
+            key = (role.id, version.version_number)
+            if key not in requested:
+                continue
+            fields = version.model_dump(include={"name", "description", "questions", "policy", "permitted_sources", "rubric"})
+            digest = content_version({"id": role.id, **fields})
+            if version is not role and version.content_sha256 != digest:
+                raise ValueError("An archived role version disagrees with its recorded content digest.")
+            if key in sources and sources[key][0] != digest:
+                raise ValueError("The archive gives different definitions for the same role revision.")
+            sources[key] = (digest, version.rubric)
+    for snap in snapshots:
+        source = sources.get((snap.role_id, snap.version_number))
+        # Detached and older versions can be absent. Compare only when the file supplies the original.
+        if source is not None and (snap.role_content_sha256, snap.criteria) != source:
+            raise ValueError("An interview rubric disagrees with the archived role revision.")
+
+
 def verify_records(backup):
+    if backup.version >= 6:
+        verify_rubric_sources(backup)
     roles = unique((r.id for r in backup.roles), "role ID")
     for role in backup.roles:
         if role.legacy is None:
@@ -85,7 +127,8 @@ def verify_records(backup):
     for session in backup.sessions:
         check_session_chronology(session.created_at, session.ended_at, session.trashed_at)
         validate_graph(session.planned_questions, session.answers, session.draft)
-        if session.legacy is None:
+        erased_archive = archive_only_erasure(session)
+        if session.legacy is None and not erased_archive:
             SessionInput.model_validate(
                 session.model_dump(
                     include={
@@ -119,15 +162,15 @@ def verify_records(backup):
             raise ValueError("An interview refers to a missing role.")
         # A large permitted manual is the same for every exchange in this session.
         inherited_grams = set()
-        if any(a.references and not a.result.archived for a in session.answers):
+        if not erased_archive and any(a.references and not a.result.archived for a in session.answers):
             for ref in session.permitted_sources:
                 inherited_grams.update(Words(ref.text).grams(4))
         for answer in session.answers:
-            if answer.legacy is None:
+            if answer.legacy is None and not erased_archive:
                 AnswerInput.model_validate(
                     answer.model_dump(include={"id", "question", "answer", "references"})
                 )
                 validate_note_length(answer.note)
             if answer.import_origin and answer.import_origin.end_ms < answer.import_origin.start_ms:
                 raise ValueError("The transcript interval is invalid.")
-            verify_finding(answer, session, inherited_grams)
+            verify_finding(answer, session, inherited_grams, erased_archive=erased_archive)

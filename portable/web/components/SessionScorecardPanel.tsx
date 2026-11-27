@@ -7,11 +7,12 @@ import { useReportDirty, type DirtyReporter } from "@/lib/dirtyTracking"
 import { isResourceUnavailable } from "@/lib/http"
 import { fetchSessionScorecard, type ScorecardState } from "@/lib/sessionScorecard"
 import { Button } from "./ui/button"
+import InterviewRubric from "./InterviewRubric"
 import PanelHandoffNotes from "./PanelHandoffNotes"
 import ScorecardEditor, { type ScorePreview } from "./ScorecardEditor"
 import styles from "./SessionScorecardPanel.module.css"
 
-export default function SessionScorecardPanel({ sessionId, onDirtyChange }: { sessionId: string; onDirtyChange?: DirtyReporter }) {
+export default function SessionScorecardPanel({ sessionId, onDirtyChange, readOnly = false }: { sessionId: string; onDirtyChange?: DirtyReporter; readOnly?: boolean }) {
   const [expanded, setExpanded] = useState(true)
   const [loading, setLoading] = useState(true)
   const [initial, setInitial] = useState<ScorecardState | null>(null)
@@ -79,9 +80,15 @@ export default function SessionScorecardPanel({ sessionId, onDirtyChange }: { se
               ? "The scorecard change was refused. Reload the scorecard before editing again."
               : "The scorecard is unavailable. Reload it to check current access."}</p>
             <Button type="button" variant="outline" disabled={loading} onClick={() => reload(true)}>Reload scorecard</Button>
+          </div> : readOnly ? <div className="stack">
+            <InterviewRubric snapshot={initial.rubric_snapshot} />
+            <h3>Saved grades</h3>
+            {initial.items.length ? <ul>{initial.items.map(item => <li key={item.criterion_id}>
+              {item.criterion_label}: {item.rating ?? "Ungraded"}{item.rationale && <p>{item.rationale}</p>}
+            </li>)}</ul> : <p className="muted">No grades saved.</p>}
           </div> : <ScorecardEditor sessionId={sessionId} initial={initial} onDirty={setScoreDirty} onScore={setScore} onUnavailable={withhold} />}
           {(accessIssue !== "read" || initial.handoff_notes_paged) &&
-            <PanelHandoffNotes key={sessionId} sessionId={sessionId} initial={initial} visible={expanded} onDirty={setNoteDirty} />}
+            <PanelHandoffNotes readOnly={readOnly} key={sessionId} sessionId={sessionId} initial={initial} visible={expanded} onDirty={setNoteDirty} />}
         </>}
       {error && <p className="error" role="alert">{error}</p>}
     </div>

@@ -44,7 +44,8 @@ type Props = {
 }
 
 export default function InterviewView({ session, answerId, assignmentDirty, onDirtyChange, changed, onTransition, onDraftChange }: Props) {
-  const captureAllowed = session.consent && !session.ended_at
+  const protectedRecord = session.privacy_state === "anonymized" || session.privacy_state === "legacy_unverified"
+  const captureAllowed = !protectedRecord && session.consent && !session.ended_at
   const [edit, setEdit] = useState<string | null>(
     captureAllowed && !session.draft && !session.answers.length ? "new" : null,
   )
@@ -170,7 +171,7 @@ export default function InterviewView({ session, answerId, assignmentDirty, onDi
         <div>
           <div className="record-state">
             <span className={session.ended_at ? "ended" : "active"}>
-              {session.ended_at ? "Finished" : session.consent ? "In progress" : "Archive only"}
+              {protectedRecord ? "Read only" : session.ended_at ? "Finished" : session.consent ? "In progress" : "Archive only"}
             </span>
             <time dateTime={session.created_at}>{dateLabel(session.created_at)}</time>
           </div>
@@ -179,7 +180,7 @@ export default function InterviewView({ session, answerId, assignmentDirty, onDi
         </div>
         <div className="record-actions">
           <ReportExport sessionId={session.id} disabled={blocked} />
-          {session.consent && (
+          {session.consent && !protectedRecord && (
             <Button variant="outline" size="sm" onClick={transition} disabled={blocked || !!session.draft}>
               {session.ended_at ? "Reopen interview" : "Finish interview"}
             </Button>
@@ -197,6 +198,9 @@ export default function InterviewView({ session, answerId, assignmentDirty, onDi
           {error}
         </p>
       )}
+      {protectedRecord && <p className="notice" role="status">{session.privacy_state === "anonymized"
+        ? "Retention anonymized this interview. Its retained records are read only."
+        : "This older archive has an unverified privacy hold. Its records are read only."}</p>}
       {!session.consent && (
         <p className="notice">The native record has no recorded notice. Review the archived material here.</p>
       )}
@@ -224,7 +228,7 @@ export default function InterviewView({ session, answerId, assignmentDirty, onDi
           Save or discard your changes before switching questions, finishing or exporting.
         </p>
       )}
-      {session.draft && edit !== "draft" && (
+      {!protectedRecord && session.draft && edit !== "draft" && (
         <SavedDraft
           sessionId={session.id}
           summary={session.draft}
@@ -275,6 +279,13 @@ export default function InterviewView({ session, answerId, assignmentDirty, onDi
                 onCancel={() => setEdit(null)}
                 embeddingAvailable={capabilities.embedding}
               />
+            ) : selected && protectedRecord ? (
+              <section className="panel inset stack" aria-label="Retained exchange">
+                <h2>{selected.question}</h2>
+                <p className="preserve">{selected.answer}</p>
+                <p>Saved review outcome: {selected.disposition}</p>
+                {selected.note && <p className="preserve">{selected.note}</p>}
+              </section>
             ) : selected ? (
               <Evidence
                 key={selected.id}
@@ -307,7 +318,7 @@ export default function InterviewView({ session, answerId, assignmentDirty, onDi
             )}
             {!edit && <QuestionLineage session={session} selected={selected} disabled={blocked} navigate={select}
               askSlot={captureAllowed && !session.draft ? slot => begin(session.planned_questions[slot-1], {planned_slot:slot}) : undefined}/>}
-            {session.answers.some((a) => a.import_origin) && (
+            {!protectedRecord && session.answers.some((a) => a.import_origin) && (
               <LocalRecordingPlayback
                 key={session.id}
                 sessionId={session.id}
@@ -323,7 +334,7 @@ export default function InterviewView({ session, answerId, assignmentDirty, onDi
           </div>
         </div>
       </fieldset>
-      <SessionScorecardPanel key={`scorecard-${session.id}`} sessionId={session.id} onDirtyChange={setScorecardDirty} />
+      <SessionScorecardPanel readOnly={protectedRecord} key={`scorecard-${session.id}`} sessionId={session.id} onDirtyChange={setScorecardDirty} />
       {!dirty.size && <ATSNote key={session.id} session={session} />}
       <div className="record-management"><MoveToTrash sessionId={session.id} candidate={session.candidate} disabled={blocked || assignmentDirty}/></div>
     </>

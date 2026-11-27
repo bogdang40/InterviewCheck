@@ -9,7 +9,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException
 
 from . import sql_script
-from .retention_anonymizer import anonymized_candidate_label
+from . import session_privacy
 
 router = APIRouter()
 
@@ -168,11 +168,12 @@ def roles_analytics():
                FROM answers a JOIN active_sessions s ON s.id=a.session_id
                LEFT JOIN session_context c ON c.session_id=s.id"""
         ).fetchall()
+        privacy_filter = session_privacy.calibration_filter(db)
         event_rows = db.execute(
-            """SELECT e.id, e.session_id, e.answer_id, COALESCE(c.role_id, e.role_id) AS role_id,
+            f"""SELECT e.id, e.session_id, e.answer_id, COALESCE(c.role_id, e.role_id) AS role_id,
                       e.reviewer_id, e.reviewer_email, e.disposition, e.created_at
                FROM answer_review_events e JOIN active_sessions s ON s.id=e.session_id
-               LEFT JOIN session_context c ON c.session_id=e.session_id ORDER BY e.id ASC"""
+               LEFT JOIN session_context c ON c.session_id=e.session_id WHERE 1=1 {privacy_filter} ORDER BY e.id ASC"""
         ).fetchall()
 
     sessions_by_role: dict[str | None, list[sqlite3.Row]] = defaultdict(list)
@@ -211,23 +212,16 @@ def _snapshot_prompts(db, answers):
     ids = list(needed)
     if not ids:
         return prompts
-    has_anonymizations = db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='session_anonymizations'").fetchone()
-    # Retention keeps aggregate counts. Do not add historical prompt text to its detail.
-    anonymized_filter = ("AND NOT EXISTS (SELECT 1 FROM session_anonymizations x WHERE x.session_id=c.session_id)"
-                         if has_anonymizations else "")
+    anonymized_filter = session_privacy.calibration_filter(db)
     for start in range(0, len(ids), 500):
         chunk = ids[start:start + 500]
         marks = ",".join("?" for _ in chunk)
         rows = db.execute(
-            f"""SELECT c.session_id,s.candidate,c.questions FROM session_context c JOIN sessions s ON s.id=c.session_id
+            f"""SELECT c.session_id,c.questions FROM session_context c JOIN sessions s ON s.id=c.session_id
                 WHERE c.session_id IN ({marks}) {anonymized_filter}""",
             chunk,
         )
-        for sid, candidate, raw in rows:
-            # Older JSON backups retain the redacted label but omit the local
-            # retention receipt. Keep that record's display on recorded wording.
-            if candidate == anonymized_candidate_label(sid):
-                continue
+        for sid, raw in rows:
             try:
                 plan = json.loads(raw) if raw else []
             except (ValueError, TypeError, RecursionError):
@@ -258,10 +252,11 @@ def role_calibration(rid: UUID):
                JOIN session_context c ON c.session_id=s.id WHERE c.role_id=? ORDER BY a.rowid ASC""",
             (key,),
         ).fetchall()
+        privacy_filter = session_privacy.calibration_filter(db)
         event_rows = db.execute(
-            """SELECT e.id, e.session_id, e.answer_id, e.reviewer_id, e.reviewer_email, e.disposition, e.created_at
+            f"""SELECT e.id, e.session_id, e.answer_id, e.reviewer_id, e.reviewer_email, e.disposition, e.created_at
                FROM answer_review_events e JOIN active_sessions s ON s.id=e.session_id
-               JOIN session_context c ON c.session_id=e.session_id WHERE c.role_id=? ORDER BY e.id ASC""",
+               JOIN session_context c ON c.session_id=e.session_id WHERE c.role_id=? {privacy_filter} ORDER BY e.id ASC""",
             (key,),
         ).fetchall()
         prompts = _snapshot_prompts(db, answer_rows)

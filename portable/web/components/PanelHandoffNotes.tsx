@@ -44,8 +44,8 @@ function accessError(err: unknown) {
   return err.status === 404 ? "This interview or handoff note is unavailable. Check whether the interview is in Trash." : ""
 }
 
-export default function PanelHandoffNotes({ sessionId, initial, visible, onDirty }: {
-  sessionId: string; initial: ScorecardState; visible: boolean; onDirty: DirtyReporter
+export default function PanelHandoffNotes({ sessionId, initial, visible, onDirty, readOnly = false }: {
+  readOnly?: boolean; sessionId: string; initial: ScorecardState; visible: boolean; onDirty: DirtyReporter
 }) {
   const legacy = useRef(!initial.handoff_notes_paged)
   const cached = useRef<HandoffNote[] | null>(legacy.current ? initial.handoff_notes : null)
@@ -138,7 +138,7 @@ export default function PanelHandoffNotes({ sessionId, initial, visible, onDirty
     } catch (err) { failed(err) } finally { setBusy(false) }
   }
   async function remove(note: HandoffNote, index: number) {
-    if (!data || busy) return
+    if (!data || busy || readOnly) return
     requestFocus(data.items[index + 1]?.id ?? data.items[index - 1]?.id ?? "status")
     setBusy(true); setWriteError(""); setStatus("")
     try {
@@ -157,7 +157,7 @@ export default function PanelHandoffNotes({ sessionId, initial, visible, onDirty
 
   return <section className={styles.section} aria-label="Panel handoff notes">
     <h3>Panel handoff notes</h3>
-    {!withholdDraft && <form className="stack" onSubmit={add}>
+    {!readOnly && !withholdDraft && <form className="stack" onSubmit={add}>
       <div className={styles.noteFormRow}>
         <label className={`field ${styles.composeCategory}`}>Category
           <select aria-label="Category" value={category} disabled={busy || !!denied}
@@ -190,10 +190,10 @@ export default function PanelHandoffNotes({ sessionId, initial, visible, onDirty
           <span className={`${styles.catBadge} ${styles["cat_" + note.category] ?? ""}`}>{categories[note.category]}</span>
           <span className={styles.noteMeta}>{note.author_email} &middot; <NoteTime value={note.created_at} /></span>
         </div>
-          <Button id={prefix + note.id} type="button" variant="ghost" size="sm" disabled={busy}
+          {!readOnly && <Button id={prefix + note.id} type="button" variant="ghost" size="sm" disabled={busy}
             aria-label={`Delete ${categories[note.category].toLowerCase()} note`} aria-describedby={prefix + "-body-" + note.id}
             onClick={() => void remove(note, index)}>
-            <Trash2 size={14} aria-hidden="true" />Delete</Button>
+            <Trash2 size={14} aria-hidden="true" />Delete</Button>}
         </div>
         <p id={prefix + "-body-" + note.id} className={styles.noteBody}>{note.body || "No note text retained."}</p>
       </li>)}</ul>

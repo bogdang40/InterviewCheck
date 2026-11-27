@@ -23,6 +23,7 @@ export function ComplianceTab({ onAuthInvalid }: { onAuthInvalid: (msg: string) 
   const [report, setReport] = useState<ComplianceReport | null>(null)
   const [headersResult, setHeadersResult] = useState<HeadersCheckResponse | null>(null)
   const [runs, setRuns] = useState<RetentionRun[]>([])
+  const [withheld, setWithheld] = useState(0)
   const [loading, setLoading] = useState(true)
   const [errorMsg, setErrorMsg] = useState("")
   const [statusMsg, setStatusMsg] = useState("")
@@ -56,6 +57,7 @@ export function ComplianceTab({ onAuthInvalid }: { onAuthInvalid: (msg: string) 
     if (repRes.status === "fulfilled") setReport(repRes.value)
     if (retRes.status === "fulfilled") {
       const { policy, runs: nextRuns } = retRes.value
+      setWithheld(retRes.value.withheld_interviews ?? 0)
       setRuns(nextRuns); setAnonDays(String(policy.anonymize_after_days))
       setPurgeDays(String(policy.purge_trashed_after_days))
       setPreserveScorecards(policy.preserve_scorecard_aggregates); setPolicyEnabled(policy.enabled)
@@ -102,7 +104,7 @@ export function ComplianceTab({ onAuthInvalid }: { onAuthInvalid: (msg: string) 
       if (!dryRun) setConfirmLive("")
       setStatusMsg(`${dryRun ? "Dry-run preview" : "Live retention"} complete: ${res.anonymized_sessions} anonymized, ${res.purged_sessions} purged.`)
       const [ret, rep] = await Promise.all([getRetentionState(), getComplianceReport()])
-      setRuns(ret.runs); setReport(rep)
+      setRuns(ret.runs); setWithheld(ret.withheld_interviews ?? 0); setReport(rep)
     }, "Retention run failed.")
   }
 
@@ -194,6 +196,7 @@ export function ComplianceTab({ onAuthInvalid }: { onAuthInvalid: (msg: string) 
 
       <section className="panel stack" aria-label="Data retention and PII anonymization">
         <div><h2>Data retention &amp; PII anonymization</h2><p className="muted">Configure retention cutoffs, preview impact with a dry run, or execute permanent redaction and purge.</p></div>
+        {withheld > 0 && <p role="alert">Interviews withheld by erasure checks: {withheld}. Inspect a consistent SQLite backup before sharing affected records.</p>}
         <form className={`panel inset ${styles.policyForm}`} onSubmit={handleSavePolicy}>
           <div className={styles.policyGrid}>
             <label className="field"><span>Anonymize finished sessions after (days, 0 disables)</span><Input type="number" min={0} max={3650} value={anonDays} onChange={(e) => setAnonDays(e.target.value)} /></label>

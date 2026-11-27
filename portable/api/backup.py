@@ -11,6 +11,7 @@ from starlette.concurrency import run_in_threadpool
 
 from . import backup_conflicts, backup_schema as schema, bulk_operations, drafts, store
 from . import backup_review_data as review_data
+from . import retained_finding, session_privacy, session_rubric
 
 router = APIRouter(prefix="/backups")
 ROLE_FIELDS = set(schema.Role.model_fields)
@@ -62,8 +63,11 @@ def role_data(row, db=None):
     return record
 
 
-def session_data(db, key, *, has_assignments, has_notes, has_scorecards):
+def session_data(db, key, *, has_assignments, has_notes, has_scorecards, include_v6=True):
     record = select(store.get_session(db, key, include_trashed=True), SESSION_FIELDS)
+    snapshot = session_rubric.read(db, key) if include_v6 else None
+    record["rubric_snapshot"] = snapshot.model_dump() if snapshot else None
+    record["privacy"] = session_privacy.read(db, key).model_dump() if include_v6 else None
     record["assignment"] = review_data.assignment_data(db, key) if has_assignments else None
     record["handoff_notes"] = review_data.handoff_data(db, key) if has_notes else []
     record["scorecard_items"] = review_data.scorecard_data(db, key) if has_scorecards else []
@@ -84,12 +88,19 @@ def session_data(db, key, *, has_assignments, has_notes, has_scorecards):
         record["review_events"] = [dict(ev) for ev in events]
     else:
         record["review_events"] = []
+    if record["privacy"] and record["privacy"]["state"] == "anonymized":
+        try:
+            schema.Session.model_validate(record)
+            record["answers"] = [retained_finding.portable_answer(a) for a in record["answers"]]
+        except ValueError as exc:
+            raise review_data.UnrepresentableReviewData(409, "The anonymization receipt conflicts with stored interview data. "
+                                                        "Inspect the SQLite backup before exporting this interview.") from exc
     return record
 
 
 @router.get("/workspace")
 def download(session_id: UUID | None = None):
-    doc = {"format": "interviewcheck.workspace", "version": 5, "roles": [], "sessions": []}
+    doc = {"format": "interviewcheck.workspace", "version": 6, "roles": [], "sessions": []}
     size = 0
     size_error = (
         "This interview exceeds the JSON backup limit. Use a consistent SQLite database backup."
@@ -128,6 +139,17 @@ def download(session_id: UUID | None = None):
     body = encode(doc).encode("utf-8")
     if len(body) > schema.LIMIT:
         raise HTTPException(413, size_error)
+    # A local retained finding can be legitimate even when its historical shape no longer
+    # matches the erased answer. Verify the finished portable bytes before offering the file.
+    if any(s["privacy"]["state"] == "anonymized" for s in doc["sessions"]):
+        del doc
+        try:
+            schema.parse(body)
+        except HTTPException as exc:
+            if exc.status_code != 422:
+                raise
+            raise review_data.UnrepresentableReviewData(409, "The retained backup cannot pass restore validation. "
+                                                        "Inspect the SQLite backup before exporting.") from exc
     digest = hashlib.sha256(body).hexdigest()
     name = "interview-" + str(session_id) if session_id else "interviewcheck-workspace"
     return Response(
@@ -137,12 +159,13 @@ def download(session_id: UUID | None = None):
     )
 
 
-def stored_session(db, key, *, has_assignments, has_notes, has_scorecards):
+def stored_session(db, key, *, has_assignments, has_notes, has_scorecards, include_v6):
     try:
         data = session_data(
             db, key, has_assignments=has_assignments, has_notes=has_notes, has_scorecards=has_scorecards,
+            include_v6=include_v6,
         )
-    except review_data.UnrepresentableReviewData:
+    except (review_data.UnrepresentableReviewData, session_rubric.UnreadableRubric, session_privacy.UnreadablePrivacy):
         return None
     return schema.Session.model_validate(data)
 
@@ -166,6 +189,8 @@ def classify(db, backup, *, include_conflict_reasons=False):
     actions = {"roles": [], "sessions": []}
     totals = {kind: {"new": 0, "identical": 0, "conflict": 0} for kind in actions}
     conflicts = []
+    if backup.sessions:
+        session_privacy.require_storage(db)
     assignments = sum(s.assignment is not None for s in backup.sessions)
     # Compare only fields included by the writer's version.
     has_assignments = backup.version >= 3 and _has_table(db, "session_assignments")
@@ -198,7 +223,8 @@ def classify(db, backup, *, include_conflict_reasons=False):
             else:
                 exists = db.execute("SELECT 1 FROM sessions WHERE id=?", (key,)).fetchone() is not None
                 if exists:
-                    stored = stored_session(db, key, has_assignments=has_assignments, has_notes=has_notes, has_scorecards=has_scorecards)
+                    stored = stored_session(db, key, has_assignments=has_assignments, has_notes=has_notes,
+                                            has_scorecards=has_scorecards, include_v6=backup.version >= 6)
                 else:
                     linked_collision = review_data.has_handoff_collision(db, record.handoff_notes) or _has_exchange_collision(db, record)
             state = "identical" if stored == record else "conflict" if exists or linked_collision else "new"
@@ -263,10 +289,14 @@ def restore_records(db, actions):
             (s.id, s.candidate, s.role, s.policy, s.consent, s.created_at, legacy(s)),
         )
         db.execute(
-            "INSERT INTO session_context(session_id,role_id,questions,ended_at,permitted_sources) VALUES(?,?,?,?,?)",
-            (s.id, s.role_id, encode(s.planned_questions), s.ended_at, materials(s.permitted_sources)),
+            """INSERT INTO session_context(session_id,role_id,questions,ended_at,permitted_sources,rubric_snapshot)
+               VALUES(?,?,?,?,?,?)""",
+            (s.id, s.role_id, encode(s.planned_questions), s.ended_at, materials(s.permitted_sources),
+             s.rubric_snapshot.model_dump_json() if s.rubric_snapshot else None),
         )
+        # A confirmed receipt seals the original, already validated narrative rows.
         review_data.restore_review_data(db, s)
+        session_privacy.restore(db, s)
         if s.trashed_at:
             db.execute("INSERT INTO session_trash(session_id,trashed_at,operation_version) VALUES (?,?,?)", (s.id, s.trashed_at, str(uuid4())))
         if s.draft:

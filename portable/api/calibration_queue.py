@@ -7,7 +7,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Query, Response
 
-from . import exports, role_analytics, store
+from . import exports, role_analytics, session_privacy, store
 
 router = APIRouter(tags=["calibration"])
 _NO_STORE = {"Cache-Control": "no-store"}
@@ -29,8 +29,7 @@ def _collect_disagreements(
     if not _has_table(db, "active_sessions", include_views=True) or any(not _has_table(db, t) for t in required_tables):
         return {"summary": empty_summary, "items": []}
 
-    has_anon = _has_table(db, "session_anonymizations")
-    anon_clause = "AND NOT EXISTS (SELECT 1 FROM session_anonymizations sa WHERE sa.session_id = s.id)" if has_anon else ""
+    anon_clause = session_privacy.calibration_filter(db)
     role_clause = "AND COALESCE(c.role_id, e.role_id) = ?" if role_id is not None else ""
     params: tuple[Any, ...] = (str(role_id),) if role_id is not None else ()
 

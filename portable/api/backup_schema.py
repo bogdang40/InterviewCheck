@@ -10,18 +10,10 @@ from pydantic import (
     ValidationError, field_validator, model_validator,
 )
 
-from .backup_review_schema import (
-    Assignment,
-    HandoffNote,
-    HistoricalText,
-    ID,
-    Record,
-    ReviewActor,
-    ReviewStamp,
-    ScorecardItem,
-    TZStamp,
-    _require_tz,
-)
+from .backup_review_schema import Assignment, HandoffNote, ScorecardItem
+from .backup_types import HistoricalText, ID, Record, ReviewActor, ReviewStamp, TZStamp, _require_tz
+from .session_privacy import PrivacyRecord, verify_redaction
+from .session_rubric import BackupRubricCriterion, RubricSnapshot
 from .backup_validation import check_session_chronology, unique, verify_records
 
 LIMIT = 20 * 1024 * 1024
@@ -94,14 +86,6 @@ class Source(Record):
     label: HistoricalText
     text: HistoricalText
     permitted: bool
-
-
-class BackupRubricCriterion(Record):
-    id: Annotated[str, StringConstraints(min_length=1, max_length=64)]
-    criterion: Annotated[str, StringConstraints(min_length=1, max_length=500)]
-    weight: int = Field(default=1, ge=1, le=100)
-    expected_signals: list[Annotated[str, StringConstraints(min_length=1, max_length=500)]] = Field(default_factory=list, max_length=20)
-    red_flags: list[Annotated[str, StringConstraints(min_length=1, max_length=500)]] = Field(default_factory=list, max_length=20)
 
 
 class RoleVersion(Record):
@@ -222,6 +206,8 @@ class Session(Record):
     role: HistoricalText
     role_id: ID | None
     planned_questions: HistoricalQuestions
+    rubric_snapshot: RubricSnapshot | None = None
+    privacy: PrivacyRecord | None = None
     policy: HistoricalText
     permitted_sources: list[Material] = Field(default_factory=list, max_length=8)
     consent: bool
@@ -240,6 +226,8 @@ class Session(Record):
     @model_validator(mode="after")
     def valid_chronology(self):
         check_session_chronology(self.created_at, self.ended_at, self.trashed_at)
+        if self.privacy and self.privacy.state == "anonymized":
+            verify_redaction(self)
         self.tags = sorted(unique(self.tags, "session tag"))
         self.handoff_notes.sort(key=lambda note: (note.created_at, note.id), reverse=True)
         unique((item.criterion_id for item in self.scorecard_items), "scorecard criterion ID")
@@ -248,13 +236,13 @@ class Session(Record):
 
 class Backup(Record):
     format: Literal["interviewcheck.workspace"]
-    version: Literal[1, 2, 3, 4, 5]
+    version: Literal[1, 2, 3, 4, 5, 6]
     roles: list[Role] = Field(max_length=4000)
     sessions: list[Session] = Field(max_length=5000)
 
     @model_validator(mode="after")
     def check_extensions(self):
-        role_ids = {r.id for r in self.roles}
+        live_versions = {r.id: r.version_number for r in self.roles}
         unique((n.id for s in self.sessions for n in s.handoff_notes), "handoff note ID")
         unique((v.id for r in self.roles for v in r.versions), "role version ID")
         for r in self.roles:
@@ -266,11 +254,20 @@ class Backup(Record):
                 raise ValueError("Versions 4 and later require a handoff notes field on every interview.")
             if ("scorecard_items" in s.model_fields_set) != (self.version >= 5):
                 raise ValueError("Version 5 requires a scorecard items field on every interview.")
+            if ("rubric_snapshot" in s.model_fields_set) != (self.version >= 6):
+                raise ValueError("Version 6 requires a rubric snapshot field on every interview.")
+            if (self.version >= 6 and s.privacy is None) or (self.version < 6 and "privacy" in s.model_fields_set):
+                raise ValueError("Version 6 requires an interview privacy record.")
+            if s.rubric_snapshot and s.role_id:
+                if s.rubric_snapshot.role_id != s.role_id:
+                    raise ValueError("The rubric snapshot belongs to another role.")
+                if s.role_id in live_versions and s.rubric_snapshot.version_number > live_versions[s.role_id]:
+                    raise ValueError("The interview rubric refers to a revision newer than its linked role.")
             aids = {a.id for a in s.answers}
             for ev in s.review_events:
                 if ev.answer_id not in aids:
                     raise ValueError("A review event refers to a missing exchange.")
-                if ev.role_id is not None and ev.role_id not in role_ids:
+                if ev.role_id is not None and ev.role_id not in live_versions:
                     raise ValueError("A review event refers to a missing role.")
         return self
 

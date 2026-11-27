@@ -11,7 +11,7 @@ from fastapi.responses import Response, StreamingResponse
 from pydantic import AfterValidator, Field, StringConstraints, field_validator, model_validator
 from starlette.background import BackgroundTask
 
-from . import exports, store
+from . import session_privacy, exports, store
 from .access import require_entitlement
 from .models import Input, RequestID
 
@@ -126,6 +126,8 @@ def _require_sessions(db: sqlite3.Connection, keys: list[str], *, active_only: b
     }
     missing = [k for k in keys if k not in found]
     if missing:
+        from .retention_visibility import require_available
+        require_available(db, *missing)
         raise HTTPException(404, f"Interview not found: {missing[0]}")
 
 
@@ -178,6 +180,8 @@ def bulk_tag(payload: BulkTagInput):
         ensure_table(db)
         _require_sessions(db, keys, active_only=True)
         for key in keys:
+            if payload.add:
+                session_privacy.require_content_writable(db, key)
             if payload.remove:
                 rm_ph = ",".join("?" for _ in payload.remove)
                 db.execute(

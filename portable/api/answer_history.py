@@ -4,6 +4,8 @@ import json
 
 from fastapi import HTTPException
 
+from . import retention_visibility
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS answer_history (
     answer_id TEXT NOT NULL REFERENCES answers(id) ON DELETE CASCADE,
@@ -48,6 +50,7 @@ def current_revision(db, sid, aid):
     row = db.execute("""SELECT a.revision FROM answers a JOIN active_sessions s ON s.id=a.session_id
                         WHERE a.id=? AND a.session_id=?""", (aid, sid)).fetchone()
     if row is None:
+        retention_visibility.require_available(db, sid)
         raise HTTPException(404, "Answer does not exist in this session.")
     return row["revision"]
 

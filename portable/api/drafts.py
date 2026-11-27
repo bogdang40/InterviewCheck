@@ -7,7 +7,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException
 from pydantic import Field
 
-from . import lineage, store
+from . import session_privacy, lineage, store
 from .models import AnswerInput, Input, OriginInput, RequestID
 
 router = APIRouter()
@@ -81,6 +81,7 @@ def save(sid: UUID, item: DraftInput):
         raise HTTPException(422, "Enter a question, an answer or a source before saving the draft.")
     with store.connection(write=True) as db:
         session = store.get_summary(db, key)
+        session_privacy.require_content_writable(db, key)
         if session["ended_at"] or not session["consent"]:
             raise HTTPException(409, "Drafts require an open interview with recorded notice.")
         current = get(db, sid)

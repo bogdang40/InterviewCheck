@@ -72,11 +72,12 @@ function Record() {
       }
     })
   }
+  const protectedRecord = session.data.privacy_state === "anonymized" || session.data.privacy_state === "legacy_unverified"
   return (
     <div className="stack">
-      <SessionAssignmentBar key={session.data.id} sessionId={session.data.id} onDirtyChange={setAssignmentDirty} />
+      <SessionAssignmentBar key={`assignment-${session.data.id}-${protectedRecord}`} readOnly={protectedRecord} sessionId={session.data.id} onDirtyChange={setAssignmentDirty} />
       <InterviewView
-        key={id}
+        key={`interview-${id}-${protectedRecord}`}
         session={session.data}
         answerId={query.get("answer")}
         assignmentDirty={assignmentDirty}

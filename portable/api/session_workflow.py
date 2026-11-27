@@ -4,7 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Request
 from starlette.concurrency import run_in_threadpool
 
-from . import access, role_files, role_kits, store
+from . import session_privacy, access, role_files, role_kits, store
 from .models import AnswerInput, Input, RequestID, RoleInput
 
 router = APIRouter()
@@ -29,6 +29,7 @@ def reopen(sid: UUID):
     with store.connection(write=True) as db:
         if not store.get_summary(db, key)["consent"]:
             raise HTTPException(409, "This interview has no recorded notice for capture.")
+        session_privacy.require_content_writable(db, key)
         db.execute("UPDATE session_context SET ended_at=NULL WHERE session_id=?", (key,))
         return store.get_session(db, key)
 

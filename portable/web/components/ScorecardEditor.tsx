@@ -8,6 +8,7 @@ import {
   computeWeightedScorePct, fetchSessionScorecard, saveSessionScorecard, ScorecardVersionConflict,
   type ScorecardItem, type ScorecardState,
 } from "@/lib/sessionScorecard"
+import InterviewRubric from "./InterviewRubric"
 import ScorecardCriteria from "./ScorecardCriteria"
 import { Button } from "./ui/button"
 import { Input } from "./ui/input"
@@ -20,7 +21,7 @@ export default function ScorecardEditor({ sessionId, initial, onDirty, onScore, 
   onUnavailable: (source: "read" | "write") => void
 }) {
   const prefix = useId()
-  const [baseline, setBaseline] = useState<Pick<ScorecardState, "items" | "version">>(initial)
+  const [baseline, setBaseline] = useState<Pick<ScorecardState, "items" | "version" | "rubric_snapshot">>(initial)
   const [rows, setRows] = useState(initial.items)
   const [removals, setRemovals] = useState(() => new Map<string, ScorecardItem>())
   const [conflicts, setConflicts] = useState<ScoreConflict[]>([])
@@ -148,6 +149,7 @@ export default function ScorecardEditor({ sessionId, initial, onDirty, onScore, 
   }
 
   return <fieldset className={styles.section} disabled={busy} aria-label="Rubric scores">
+    <InterviewRubric snapshot={baseline.rubric_snapshot} />
     <ScorecardCriteria rows={rows} added={added} invalid={new Set(attempted ? incomplete.map((r) => r.criterion_id) : [])}
       savedRatings={savedRatings} removals={removals} markRemoval={markRemoval}
       conflicts={conflicts} prefix={prefix} update={update} choose={choose}

@@ -14,6 +14,8 @@ def test_role_snapshot_pending_exports_and_finish(workspace_url, browser_page, p
             saved.raise_for_status()
             roles.append(saved.json())
         page = browser_page
+        duplicate_keys = []
+        page.on("console", lambda msg: duplicate_keys.append(msg.text) if "children with the same key" in msg.text else None)
         page.goto(workspace_url + "/#roles")
         # The development server compiles the roles page on its first visit.
         redirect_timeout = 30_000 if pytestconfig.getoption("--frontend") == "dev" else None
@@ -81,3 +83,4 @@ def test_role_snapshot_pending_exports_and_finish(workspace_url, browser_page, p
         page.get_by_role("button", name="Reopen interview").click()
         expect(page.get_by_role("button", name="Add exchange")).to_be_visible()
         assert client.get("/api/sessions/" + key).json()["ended_at"] is None
+        assert not duplicate_keys, "Review panels must keep distinct component identities."

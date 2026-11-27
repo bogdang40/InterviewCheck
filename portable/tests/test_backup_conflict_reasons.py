@@ -63,7 +63,7 @@ def test_reasons_compare_only_data_the_file_version_recorded(client):
                               (5, ["assignment", "handoff_notes", "scorecard_items"])]:
         doc = deepcopy(original)
         doc["version"] = version
-        for first, field in [(3, "assignment"), (4, "handoff_notes"), (5, "scorecard_items")]:
+        for first, field in [(3, "assignment"), (4, "handoff_notes"), (5, "scorecard_items"), (6, "rubric_snapshot"), (6, "privacy")]:
             if version < first:
                 del doc["sessions"][0][field]
         plan = client.post(EXPLAIN, json=doc).raise_for_status().json()

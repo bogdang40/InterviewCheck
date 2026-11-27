@@ -9,6 +9,7 @@ from pydantic import Field
 
 from . import rate_limit, store
 from .models import Input
+from . import session_privacy
 from .retention_anonymizer import REDACTED_TEXT, SessionAnonymizer
 from .session_purge import purge_session
 
@@ -40,6 +41,10 @@ CREATE TABLE IF NOT EXISTS session_anonymizations (
   anonymized_at TEXT NOT NULL,
   anonymized_by TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS retention_read_holds (
+  session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+  needs_timestamp_check INTEGER NOT NULL DEFAULT 0 CHECK(needs_timestamp_check IN (0,1))
+);
 """
 
 router = APIRouter(prefix="/api/admin/compliance", tags=["compliance-retention"])
@@ -62,6 +67,10 @@ def _has_table(db: sqlite3.Connection, name: str) -> bool:
 
 def migrate(db: sqlite3.Connection) -> None:
     db.executescript(SCHEMA)
+    if not db.execute("SELECT 1 FROM pragma_table_info('retention_read_holds') WHERE name='needs_timestamp_check'").fetchone():
+        db.execute("ALTER TABLE retention_read_holds ADD COLUMN needs_timestamp_check INTEGER NOT NULL DEFAULT 0 "
+                   "CHECK(needs_timestamp_check IN (0,1))")
+    session_privacy.migrate(db)
     db.execute(
         "INSERT OR IGNORE INTO retention_policies"
         "(id,anonymize_after_days,purge_trashed_after_days,preserve_scorecard_aggregates,enabled,updated_by,updated_at) "
@@ -195,11 +204,12 @@ async def _require_admin(request: Request) -> dict[str, Any]:
 def get_retention_policy():
     with store.connection() as db:
         policy = _load_policy(db)
+        held = db.execute("SELECT count(*) FROM retention_read_holds").fetchone()[0]
         runs: list[dict[str, Any]] = []
         if _has_table(db, "retention_runs"):
             rows = db.execute("SELECT * FROM retention_runs ORDER BY executed_at DESC, rowid DESC LIMIT 20").fetchall()
             runs = [_public_run(row) for row in rows]
-    return {"policy": policy, "runs": runs}
+    return {"policy": policy, "runs": runs, "withheld_interviews": held}
 
 
 @router.put("/retention", dependencies=[Depends(rate_limit.limit(rate_limit.ADMIN_WRITE))])

@@ -44,7 +44,7 @@ export default function ScorecardCriteria({ rows, added, invalid, conflicts, sav
         </div>
       </fieldset>
     })}
-    {rows.length === 0 && <p className="muted">No rubric criteria configured for this role yet. Add a criterion below to grade this session.</p>}
+    {rows.length === 0 && <p className="muted">Add a criterion below to grade this interview.</p>}
     <ul className={styles.criteriaList}>
       {rows.map((row) => {
         const id = row.criterion_id

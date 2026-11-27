@@ -5,7 +5,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Query
 
-from . import bulk_operations, store
+from . import bulk_operations, retention_visibility, store
 
 router = APIRouter()
 State = Literal["", "active", "finished", "archived"]
@@ -38,7 +38,7 @@ def fast_page_sql(order: str, status: str, *, has_tag: bool, has_role: bool = Fa
         s.created_at, s.consent, c.ended_at
  FROM sessions s
  LEFT JOIN session_context c ON c.session_id=s.id
- WHERE NOT EXISTS (SELECT 1 FROM session_trash t WHERE t.session_id=s.id)
+ WHERE {retention_visibility.ACTIVE_CONDITION}
  {status_clause}
  {tag_clause}
  {role_clause}

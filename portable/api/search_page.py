@@ -1,5 +1,5 @@
 """Select bounded snippets after choosing the highest ranked field for each record."""
-from . import search_fts
+from . import retention_visibility, search_fts
 from .search_cursor import Position
 
 
@@ -25,8 +25,10 @@ def _candidates(field, fts, body_filter):
     conditions = []
     if fts:
         conditions.append(f"{alias}.rowid IN (SELECT rowid FROM {index} WHERE {column} MATCH :fts)")
+    # Keep the column projection narrow. Expanding the complete active_sessions view also
+    # authorizes reads of policy and native payload columns for a title-only query.
     if kind != "role":
-        conditions.append("NOT EXISTS (SELECT 1 FROM session_trash t WHERE t.session_id=s.id)")
+        conditions.append(retention_visibility.ACTIVE_CONDITION)
     if name == "answer" and body_filter:
         conditions.append(body_filter)
     where = " WHERE " + " AND ".join(conditions) if conditions else ""

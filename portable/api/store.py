@@ -9,7 +9,7 @@ from uuid import uuid4
 
 from fastapi import HTTPException
 
-from . import answer_history, bulk_operations, lineage, model_registry, retention_policy, role_analytics, role_kits, role_versions, search_fts, session_scorecard, sql_script, usage_events
+from . import answer_history, bulk_operations, lineage, model_registry, retention_policy, retention_visibility, role_analytics, role_kits, role_versions, search_fts, session_privacy, session_rubric, session_scorecard, sql_script, usage_events
 from .role_kits import role_row, create_role
 from .models import EARLIER_ANSWER_NOTE, AnswerEdit, AnswerInput, ReviewInput, SessionInput
 
@@ -134,6 +134,7 @@ def initialize(path):
             FROM sessions s LEFT JOIN
               (SELECT name,id,questions FROM roles GROUP BY name HAVING count(*)=1) r ON r.name=s.role
             WHERE NOT EXISTS (SELECT 1 FROM session_context c WHERE c.session_id=s.id)""")
+        retention_visibility.refresh(db)
         db.commit()
 
 
@@ -162,6 +163,8 @@ def summary(row):
 def get_summary(db, key, *, include_trashed=False):
     source = ALL_SUMMARY if include_trashed else SUMMARY
     row = db.execute(source + " WHERE s.id=? GROUP BY s.id", (key,)).fetchone()
+    if include_trashed or row is None:
+        retention_visibility.require_available(db, key)
     if row is None:
         raise HTTPException(404, "Session does not exist.")
     return summary(row)
@@ -169,6 +172,7 @@ def get_summary(db, key, *, include_trashed=False):
 
 def capture_context(db, key):
     summary = get_summary(db, key)
+    session_privacy.require_content_writable(db, key)
     summary["permitted_sources"] = role_kits.session_materials(db, key)
     return summary
 
@@ -177,6 +181,7 @@ def get_answer(db, key, aid):
     row = db.execute("""SELECT a.* FROM answers a JOIN active_sessions s ON s.id=a.session_id
                         WHERE a.session_id=? AND a.id=?""", (key, aid)).fetchone()
     if row is None:
+        retention_visibility.require_available(db, key)
         raise HTTPException(404, "Answer does not exist in this session.")
     return answer_row(row)
 
@@ -193,6 +198,7 @@ def answer_row(row):
 
 def get_session(db, key, *, include_trashed=False):
     item = get_summary(db, key, include_trashed=include_trashed)
+    item["privacy_state"] = session_privacy.read(db, key).state
     draft = db.execute("SELECT id,revision,updated_at FROM session_drafts WHERE session_id=?", (key,)).fetchone()
     item["draft"] = dict(draft) if draft else None
     item["answers"] = [answer_row(row) for row in db.execute(
@@ -211,19 +217,24 @@ def create_session(db, item: SessionInput):
     existing = db.execute("SELECT * FROM sessions WHERE id=?", (key,)).fetchone()
     if existing:
         saved = capture_context(db, key)
-        if "role_id" in item.model_fields_set and saved["role_id"] != (str(item.role_id) if item.role_id else None):
-            raise HTTPException(409, "The session ID already belongs to a different role.")
+        if "role_id" in item.model_fields_set:
+            original = session_rubric.read(db, key)
+            original_role = original.role_id if original is not None else saved["role_id"]
+            if original_role != (str(item.role_id) if item.role_id else None):
+                raise HTTPException(409, "The session ID already belongs to a different role.")
+            if item.role_version is not None and original is not None and original.role_content_sha256 != item.role_version:
+                raise HTTPException(409, "The session ID already belongs to a different role version.")
         same_sources = (item.permitted_sources is None or
                         [material.model_dump() for material in item.permitted_sources] == saved["permitted_sources"])
         if (not same_sources or (item.policy is not None and item.policy != saved["policy"])
                 or any(existing[f] != getattr(item, f) for f in ("candidate", "role", "consent"))):
             raise HTTPException(409, "The session ID already belongs to different content.")
     else:
-        role_id, questions, policy, permitted = role_kits.session_defaults(db, item)
+        role_id, questions, policy, permitted, rubric = role_kits.session_defaults(db, item)
         db.execute("INSERT INTO sessions(id,candidate,role,policy,consent,created_at) VALUES (?,?,?,?,?,?)",
                    (key, item.candidate, item.role, policy, item.consent, timestamp()))
-        db.execute("INSERT INTO session_context(session_id,role_id,questions,permitted_sources) VALUES (?,?,?,?)",
-                   (key, role_id, questions, permitted))
+        db.execute("""INSERT INTO session_context(session_id,role_id,questions,permitted_sources,rubric_snapshot)
+                      VALUES (?,?,?,?,?)""", (key, role_id, questions, permitted, rubric))
     return get_session(db, key)
 
 
@@ -285,6 +296,7 @@ def write_answer(db, key, item: AnswerInput, replace_id=None, *, session=None, a
 
 def update_review(db, key, aid, review: ReviewInput, *, actor: tuple[str, str] = ("local-operator", "local-operator"), history_actor=None):
     current = get_answer(db, key, aid)
+    session_privacy.require_content_writable(db, key)
     check_revision(current, review.expected_revision)
     prior_actor_disp = role_analytics.latest_reviewer_disposition(db, aid, actor[0])
     effective_prev = prior_actor_disp if prior_actor_disp is not None else "pending"

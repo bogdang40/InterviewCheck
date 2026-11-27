@@ -1,4 +1,6 @@
 """Calibration counts follow the question that an interview actually planned."""
+import json
+
 from api import access, store
 from api.retention_anonymizer import SessionAnonymizer
 from backup_requests import client
@@ -84,7 +86,12 @@ def test_restored_redacted_label_limits_display_without_recreating_a_retention_r
     url = f"/api/roles/{role['id']}/calibration"
     before = client.get(url).raise_for_status()
     assert original not in before.text
-    backup = client.get("/api/backups/workspace", params={"session_id": sid}).raise_for_status().content
+    document = client.get("/api/backups/workspace", params={"session_id": sid}).raise_for_status().json()
+    document["version"] = 5
+    for record in document["sessions"]:
+        del record["privacy"]
+        del record["rubric_snapshot"]
+    backup = json.dumps(document).encode()
     target = tmp_path / "recovered.sqlite"
     store.initialize(target)
     monkeypatch.setenv("INTERVIEWCHECK_DB", str(target))

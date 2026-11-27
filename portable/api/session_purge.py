@@ -9,6 +9,8 @@ SESSION_CHILD_TABLES = (
     "session_scorecards",
     "session_handoff_notes",
     "session_anonymizations",
+    "legacy_privacy_holds",
+    "retention_read_holds",
     "session_assignments",
     "session_tags",
     "session_drafts",

@@ -8,6 +8,8 @@ from uuid import UUID
 
 from fastapi import HTTPException
 
+from . import retention_visibility
+
 
 MAX_CURSOR = 256
 FIELDS = "id, session_id, author_email, category, body, created_at"
@@ -64,9 +66,10 @@ def all_notes(db, sid):
 
 
 def read(db, sid, category, limit, cursor):
-    active = db.execute("""SELECT 1 FROM sessions s WHERE s.id=?
-        AND NOT EXISTS (SELECT 1 FROM session_trash t WHERE t.session_id=s.id)""", (sid,)).fetchone()
+    active = db.execute(f"SELECT 1 FROM sessions s WHERE s.id=? AND {retention_visibility.ACTIVE_CONDITION}",
+                        (sid,)).fetchone()
     if active is None:
+        retention_visibility.require_available(db, sid)
         raise HTTPException(404, "Session does not exist.")
     after = _decode(sid, category, cursor) if cursor else None
     if not _has_notes_table(db):

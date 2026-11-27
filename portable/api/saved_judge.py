@@ -6,7 +6,7 @@ import re
 from fastapi import HTTPException
 from pydantic import Field
 
-from . import store
+from . import session_privacy, store
 from .models import Input, RequestID
 
 
@@ -32,6 +32,8 @@ def snapshot(body: SavedJudgeInput):
                LEFT JOIN session_context c ON c.session_id=s.id WHERE s.id=? AND a.id=?""",
             (str(body.session_id), str(body.answer_id)),
         ).fetchone()
+        if row is not None:
+            session_privacy.require_transfer_allowed(db, str(body.session_id))
     if row is None:
         raise HTTPException(404, "Answer does not exist in this session.")
     store.check_revision(row, body.expected_revision)

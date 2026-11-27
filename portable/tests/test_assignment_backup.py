@@ -28,7 +28,7 @@ def test_individual_and_workspace_assignment_recovery(client, tmp_path, monkeypa
     single = client.get("/api/backups/workspace", params={"session_id": archived}).content
     raw = client.get("/api/backups/workspace").content
     document = json.loads(raw)
-    assert document["version"] == json.loads(single)["version"] == 5
+    assert document["version"] == json.loads(single)["version"] == 6
     archived_export, = json.loads(single)["sessions"]
     assert archived_export["id"] == archived and archived_export["trashed_at"]
     for record in document["sessions"]:
@@ -63,6 +63,8 @@ def test_legacy_unknown_assignment_preserves_existing_owner(client, version):
     assignment = assign(client, sid)
     doc = client.get("/api/backups/workspace").json()
     doc["version"] = version
+    del doc["sessions"][0]["privacy"]
+    del doc["sessions"][0]["rubric_snapshot"]
     del doc["sessions"][0]["scorecard_items"]
     del doc["sessions"][0]["handoff_notes"]
     del doc["sessions"][0]["assignment"]
@@ -138,7 +140,7 @@ def test_missing_assignment_storage_fails_before_restore(client, tmp_path, monke
     assert client.get("/api/sessions").json() == []
     new_id = create_session(client)
     doc = client.get("/api/backups/workspace", params={"session_id": new_id}).json()
-    assert doc["version"] == 5 and doc["sessions"][0]["assignment"] is None
+    assert doc["version"] == 6 and doc["sessions"][0]["assignment"] is None
 
 
 def test_invalid_stored_actor_blocks_export_and_conflicts_with_assignment_aware_backup(client):
@@ -163,6 +165,8 @@ def test_invalid_stored_actor_blocks_export_and_conflicts_with_assignment_aware_
     assert client.get(f"/api/sessions/{second['id']}").status_code == 404
     doc["version"] = 2
     for record in doc["sessions"]:
+        del record["privacy"]
+        del record["rubric_snapshot"]
         del record["scorecard_items"]
         del record["handoff_notes"]
         del record["assignment"]
