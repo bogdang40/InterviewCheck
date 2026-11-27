@@ -62,18 +62,32 @@ OUTPUT_RULE = (
 )
 
 
-def _contains_sent_phrase(text, phrase):
+def _contains_sent_phrase(answer, passage, phrase):
+    excerpt = passage["answer_excerpt"]
+    span = passage.get("answer_span")
+    if span is None:
+        # Older findings have no offsets. Use only an excerpt with one possible location.
+        start = answer.find(excerpt)
+        if start < 0 or answer.find(excerpt, start + 1) >= 0:
+            return False
+    else:
+        start, end = span
+        if start < 0 or start + len(excerpt) > end or not answer.startswith(excerpt, start):
+            return False
+    limit = start + min(len(excerpt), EXCERPT_LIMIT)
     starts, ends = [], set()
-    # A term can extend beyond the transmitted prefix. Read its full span before accepting it.
-    for term in TERM.finditer(text):
-        if term.end() > EXCERPT_LIMIT:
+    # Both the matcher's excerpt and the send limit can stop inside a technical term.
+    for term in TERM.finditer(answer):
+        if term.end() > limit:
             break
+        if term.start() < start:
+            continue
         starts.append(term.start())
         ends.add(term.end())
-    return any(start + len(phrase) in ends and text.startswith(phrase, start) for start in starts)
+    return any(pos + len(phrase) in ends and answer.startswith(phrase, pos) for pos in starts)
 
 
-def render_questions(value, passages):
+def render_questions(value, answer, passages):
     if not isinstance(value, list):
         return []
     questions = []
@@ -85,7 +99,7 @@ def render_questions(value, passages):
             continue
         if not 1 <= len(phrase) <= 90 or not PHRASE.fullmatch(phrase):
             continue
-        if any(_contains_sent_phrase(passage["answer_excerpt"], phrase) for passage in passages[:3]):
+        if any(_contains_sent_phrase(answer, passage, phrase) for passage in passages[:3]):
             question = QUESTIONS[angle].format(phrase)
             if question not in questions:
                 questions.append(question)

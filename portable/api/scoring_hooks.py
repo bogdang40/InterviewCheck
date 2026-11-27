@@ -209,7 +209,7 @@ async def review_saved_passages(body: saved_judge.SavedJudgeInput):
 
     target, parsed = await _judge_completion(payload, output_rule=saved_judge.OUTPUT_RULE, before_attempt=check_current)
     await check_current()
-    questions = saved_judge.render_questions(parsed.get("suggestions"), passages)
+    questions = saved_judge.render_questions(parsed.get("suggestions"), initial["answer"], passages)
     if not questions:
         raise HTTPException(502, "AI judge returned no usable follow up question.")
     return {"status": "reviewed", "provider": target.provider, "model": target.model_id,

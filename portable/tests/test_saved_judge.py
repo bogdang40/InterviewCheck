@@ -117,6 +117,29 @@ def test_clipping_cannot_create_or_complete_a_model_anchor(client, provider, ter
     assert result.status_code == 502
 
 
+@pytest.mark.parametrize("term", ["C++", "C#"])
+def test_matcher_excerpt_ending_in_c_cannot_relabel_language(client, provider, term):
+    passage = f"We implement the logging subsystem in {term}"
+    answer = "C was used elsewhere. " + passage
+    request, item = save(client, answer=answer, references=[{"label": "Source", "text": passage}])
+    match = item["result"]["passages"][0]
+    assert match["answer_excerpt"].endswith("in C")
+    assert match["answer_span"][0] == answer.index(passage)
+    model, _ = provider.return_value
+    provider.return_value = model, (None, reply("C"))
+    response = client.post(ENDPOINT, json=request)
+    assert response.status_code == 502
+
+
+def test_legacy_excerpt_must_identify_one_location_for_a_suggestion():
+    excerpt = "We implement the logging subsystem in C"
+    passages = [{"answer_excerpt": excerpt}]
+    suggestion = [{"angle": "verification", "phrase": "logging subsystem"}]
+    assert saved_judge.render_questions(suggestion, excerpt + "++", passages)
+    assert not saved_judge.render_questions(suggestion, excerpt + "++. " + excerpt + "#", passages)
+    assert not saved_judge.render_questions([{"angle": "verification", "phrase": "C"}], excerpt + "++", passages)
+
+
 def test_session_permission_and_archived_notice_prevent_transfer(client, provider):
     phrase = CASES["references"]["lease"]
     ref = {"label": "Outside manual", "text": phrase}
