@@ -150,6 +150,7 @@ def download(session_id: UUID | None = None):
                         db, row[0], has_assignments=has_assignments, has_notes=has_notes, has_scorecards=has_scorecards,
                     ),
                 )
+    deferred_count = sum(len(s["deferred_questions"]) for s in doc["sessions"])
     body = encode(doc).encode("utf-8")
     if len(body) > schema.LIMIT:
         raise HTTPException(413, size_error)
@@ -170,7 +171,7 @@ def download(session_id: UUID | None = None):
         body,
         media_type="application/json",
         headers={"Content-Disposition": f'attachment; filename="{name}.json"', "X-Backup-SHA256": digest,
-                 "X-Backup-Deferred-Questions": str(sum(len(s["deferred_questions"]) for s in doc["sessions"]))},
+                 "X-Backup-Deferred-Questions": str(deferred_count)},
     )
 
 
