@@ -59,7 +59,7 @@ export function AccountConnection({
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Could not load the account.");
     setAccount(data as Account);
-    notifyAccountChanged();
+    notifyAccountChanged(false);
   }, []);
   useEffect(() => {
     if (!enabled || signedIn === false) { setInitializing(false); setInitError(""); return; }
