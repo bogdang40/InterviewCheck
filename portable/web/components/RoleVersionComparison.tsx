@@ -81,7 +81,7 @@ export default function RoleVersionComparison({ source, versions, onUnavailable 
     {reply && after && <>
       <strong>{target === null && wasLive ? `Diff vs live v${targetNumber} (when compared)` : `Comparing v${from} with v${targetNumber}`}</strong>
       {reply.diff.has_changes ? <>
-        <p>Changed fields: {reply.diff.changed_fields.join(", ")}</p>
+        <p>Changed fields: {reply.diff.changed_fields.map(field => field === "permitted_sources" ? "permitted materials" : field).join(", ")}</p>
         <RoleChangeDetails key={key} before={source} after={after} diff={reply.diff} />
       </> : <p>No content changes between these revisions.</p>}
     </>}
