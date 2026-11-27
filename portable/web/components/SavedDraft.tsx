@@ -1,11 +1,13 @@
 import { useState } from "react"
 import { FilePenLine } from "lucide-react"
 import { accessLost } from "@/lib/deferredQuestions"
+import { useReviewNavigationGuard } from "@/lib/dirtyTracking"
 import { api, message, DeferredConflict, DraftConflict, type Draft, type DraftSummary } from "@/lib/api"
 import { Button } from "./ui/button"
 
 export default function SavedDraft({
   sessionId,
+  selectedId,
   summary,
   disabled,
   resume,
@@ -14,6 +16,7 @@ export default function SavedDraft({
   onUnavailable,
 }: {
   sessionId: string
+  selectedId?: string
   summary: DraftSummary
   disabled: boolean
   resume: (d: Draft) => void
@@ -24,7 +27,9 @@ export default function SavedDraft({
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("")
   const [confirm, setConfirm] = useState<DraftSummary | null>(null)
+  const guardNavigation = useReviewNavigationGuard(disabled, selectedId)
   async function act(remove: boolean) {
+    const mayResume = guardNavigation()
     setBusy(true)
     setError("")
     try {
@@ -38,7 +43,10 @@ export default function SavedDraft({
         discard()
       } else {
         const draft = await api<Draft | null>("sessions/" + sessionId + "/draft")
-        if (draft) resume(draft)
+        if (!mayResume()) {
+          setError(draft ? "The draft is still saved. Finish your current changes, then choose Resume draft."
+            : "The saved draft changed. Finish your current changes, then check the draft again.")
+        } else if (draft) resume(draft)
         else discard()
       }
     } catch (e) {

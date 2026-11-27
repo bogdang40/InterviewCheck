@@ -15,6 +15,7 @@ import {
   type QuestionOrigin,
 } from "@/lib/api"
 import { useReportDirty, type DirtyReporter } from "@/lib/dirtyTracking"
+import { useReviewSelectionRefresh } from "@/lib/useReviewSelectionRefresh"
 import { useReviewHotkeys } from "@/lib/useReviewHotkeys"
 import { useScoringCapabilities } from "@/lib/scoringHooks"
 import AnswerEditor from "./LazyAnswerEditor"
@@ -74,6 +75,9 @@ export default function InterviewView({ session, answerId, assignmentDirty, onDi
   const next = selected && nextPending(session.answers, selected.id)
   const unsaved = dirty.size > 0 || scorecardDirty || deferredDirty
   const blocked = unsaved || busy
+  const otherEditorsDirty = Array.from(dirty).some(key => key !== "transcript-import")
+  const refreshForSelection = useReviewSelectionRefresh(session.id, scorecardDirty || deferredDirty || otherEditorsDirty,
+    `${selected?.id}:${edit}`, onTransition, onDeferredUnavailable)
   const pending = session.answers.filter(needsReview).length
   const capabilities = useScoringCapabilities()
 
@@ -139,8 +143,7 @@ export default function InterviewView({ session, answerId, assignmentDirty, onDi
     setError("")
     setBusy(true)
     try {
-      const latest = await api<Interview>("sessions/" + session.id)
-      onTransition(latest)
+      if (!await refreshForSelection()) return
       if (result.answer_ids[0]) select(result.answer_ids[0], true)
       setEdit(null)
     } catch (e) {
@@ -243,6 +246,7 @@ export default function InterviewView({ session, answerId, assignmentDirty, onDi
       {!protectedRecord && session.draft && edit !== "draft" && (
         <SavedDraft
           sessionId={session.id}
+          selectedId={selected?.id}
           summary={session.draft}
           disabled={blocked || !!edit}
           discard={() => onDraftChange(null)}
@@ -257,7 +261,7 @@ export default function InterviewView({ session, answerId, assignmentDirty, onDi
       {captureAllowed && (
         <TranscriptBatchImport
           sessionId={session.id}
-          disabled={busy || Array.from(dirty).some((key) => key !== "transcript-import")}
+          disabled={busy || otherEditorsDirty}
           onDirty={onDirty}
           onImported={imported}
         />
@@ -362,8 +366,8 @@ export default function InterviewView({ session, answerId, assignmentDirty, onDi
           if (!session.answers.some(a => a.id === id)) {
             setBusy(true)
             try {
-              const fresh = await api<Interview>(`sessions/${session.id}`)
-              onTransition(fresh)
+              const fresh = await refreshForSelection()
+              if (!fresh) return
               if (!fresh.answers.some(a => a.id === id)) throw new Error("This exchange is no longer available.")
             } catch (err) { setError(message(err)); return }
             finally { setBusy(false) }
