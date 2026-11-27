@@ -187,6 +187,7 @@ export default function Evidence({
       onSave(result, advance)
       setSaved(true)
     } catch (e) {
+      if (worksheet && savingEpoch !== worksheetEpoch.current) return
       if (worksheet && e instanceof WorksheetUnavailable) {
         withdrawWorksheet()
       } else if (worksheet) {
@@ -195,7 +196,7 @@ export default function Evidence({
       } else if (e instanceof RevisionConflict) setConflict(true)
       else setError(message(e))
     } finally {
-      setBusy(false)
+      if (!worksheet || savingEpoch === worksheetEpoch.current) setBusy(false)
     }
   }
   async function reconcile(acceptCurrent: boolean) {
