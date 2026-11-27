@@ -16,8 +16,8 @@ import { nextPathFromLocation } from "@/lib/safeNextPath";
 import { integration, submit } from "@/lib/integrations";
 import { submitAccessAuth } from "@/lib/totpApi";
 import { notifyAccountChanged } from "@/lib/useAccountStatus";
+import { readAccountSnapshot, type AccountSnapshot as Account } from "@/lib/accountSnapshot";
 
-type Account = { email: string; active: boolean; admin?: boolean };
 
 
 export function AccountConnection({
@@ -54,16 +54,20 @@ export function AccountConnection({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const accountRead = useRef(0);
-  const refresh = useCallback(async () => {
+  const [rotating, setRotating] = useState(false);
+  const refresh = useCallback(async (notify = true) => {
     const read = ++accountRead.current;
-    const response = await fetch("/api/integrations/account", { cache: "no-store" });
-    if (read !== accountRead.current) return;
+    const response = await fetch("/api/integrations/account", { cache: "no-store" }).catch(err => {
+      if (read === accountRead.current) throw err;
+      return null;
+    });
+    if (!response || read !== accountRead.current) return;
     if (response.status === 401) { setAccount(null); return; }
     const data = await response.json().catch(() => ({}));
     if (read !== accountRead.current) return;
-    if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Could not load the account.");
-    setAccount(data as Account);
-    notifyAccountChanged("refresh");
+    if (!response.ok) throw new Error(typeof data?.detail === "string" ? data.detail : "Could not load the account.");
+    setAccount(readAccountSnapshot(data));
+    if (notify) notifyAccountChanged("refresh");
   }, []);
   useEffect(() => {
     if (!enabled || signedIn === false) { setInitializing(false); setInitError(""); return; }
@@ -121,13 +125,29 @@ export function AccountConnection({
           <Button variant="outline" disabled={busy} onClick={() => act(() => billing("portal"))}>Billing portal</Button>
         </div> : <p className="muted">Billing plans are unavailable.</p>}
         <div className="row">
-          <Button variant="outline" disabled={busy} onClick={() => act(refresh)}>Refresh access</Button>
+          <Button variant="outline" disabled={busy || rotating} onClick={() => act(refresh)}>Refresh access</Button>
           <Button variant="ghost" disabled={busy} onClick={() => act(async () => { await submit("logout"); sweepLocalDrafts(); setLeaving("out"); setAccount(null); notifyAccountChanged(); })}>Sign out</Button>
         </div>
-        <PasswordChangeForm onRotated={next => {
-          ++accountRead.current;
-          setAccount(next);
-        }} />
+        <PasswordChangeForm
+          onStart={() => {
+            ++accountRead.current;
+            setRotating(true);
+          }}
+          onRotated={next => {
+            ++accountRead.current;
+            setRotating(false);
+            setAccount(next);
+          }}
+          onUnconfirmed={uncertain => {
+            setRotating(false);
+            const check = accountRead.current + 1;
+            void refresh(false).catch(err => {
+              if (check !== accountRead.current) return;
+              if (uncertain) setAccount(null);
+              setError(message(err));
+            });
+          }}
+        />
         <AccountSecurityPanel
           isAdmin={Boolean(account.admin)}
           onCurrentSessionRevoked={() => {
