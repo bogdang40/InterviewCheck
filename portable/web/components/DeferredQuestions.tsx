@@ -20,9 +20,10 @@ export default function DeferredQuestions({ detailsRef, ...props }: DeferredQueu
   detailsRef: (node: HTMLDetailsElement | null) => void
 }) {
   const [started, setStarted] = useState(false)
+  const [open, setOpen] = useState(false)
   return <details ref={detailsRef} id="deferred-questions" className="panel inset stack"
-    onToggle={e => { if (e.currentTarget.open) setStarted(true) }}>
+    onToggle={e => { setOpen(e.currentTarget.open); if (e.currentTarget.open) setStarted(true) }}>
     <summary className="cursor-pointer font-semibold">Questions for later</summary>
-    {started && <DeferredQuestionQueue {...props} />}
+    {started && <DeferredQuestionQueue {...props} open={open} />}
   </details>
 }
