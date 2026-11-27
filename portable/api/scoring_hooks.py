@@ -196,14 +196,10 @@ async def review_saved_passages(body: saved_judge.SavedJudgeInput):
     if saved_judge.evidence_digest(initial["question"], passages) != body.evidence_sha256:
         raise HTTPException(409, "The saved evidence differs from the displayed exchange. Reload it before requesting questions.",
                             headers={"X-InterviewCheck-Conflict": "answer-revision"})
-    if not initial["consent"] or finding.get("archived") or finding.get("status") != "match" or not passages:
+    _, payload = saved_judge.prepare_payload(initial["question"], finding, initial["consent"])
+    if payload is None:
         return {"status": "insufficient_evidence", "follow_up_questions": [finding["follow_up"]]}
 
-    payload = {"question": initial["question"], "matched_passages": [
-        {"answer_excerpt": p["answer_excerpt"][:saved_judge.EXCERPT_LIMIT],
-         "source_excerpt": p["source_excerpt"][:saved_judge.EXCERPT_LIMIT]}
-        for p in passages[:3]
-    ]}
     async def check_current():
         await run_in_threadpool(saved_judge.check_snapshot, body, initial)
 

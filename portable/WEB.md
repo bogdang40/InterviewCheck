@@ -70,6 +70,10 @@ python portable/package_release.py build/InterviewCheck-portable.zip
 
 The workstation package contains a static Next.js export and FastAPI. The distribution runs without Node.js and uses port 8765 by default. From a source checkout, `python portable/run.py --build-only` builds that same export. The source based server and the static package have separate build outputs.
 
+## Rehearse saved review
+
+In **Admin > Playground**, open **Rehearse saved review**. Choose a fictional case to see whether the saved review can use its evidence. For a matched passage, inspect the exact question and excerpts and try the scripted replies. The same phrase checks used in an interview decide which neutral follow up is usable. An unsupported numeric score supplies no grounding for a question. The rehearsal makes zero provider calls and creates no interview. The separate **Ad hoc judge verdict** preset remains available for an explicit live Playground run.
+
 ## Verification
 
 From the root, run the following after installing the portable development requirements. Use the virtual environment's Python executable for the Python checks. The runtime smoke uses an isolated database and the selected local ports.
