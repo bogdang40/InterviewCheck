@@ -98,6 +98,8 @@ function PanelEditor({ sessionId, item, locked, onDirty, isAdmin, authLoading }:
   }, [sessionId, item, query, authLoading, isAdmin, privateNotes])
 
   function refresh(before: number | null = null) {
+    setData(null)
+    setAction("")
     setNotice("")
     setQuery(old => ({ before, reload: old.reload + 1 }))
   }
@@ -176,7 +178,11 @@ function PanelEditor({ sessionId, item, locked, onDirty, isAdmin, authLoading }:
       {!!data.history_count && <div className="stack">
         <h3>Panel history</h3>
         {isAdmin && <Button type="button" variant="outline" disabled={busy || !!rationale}
-          onClick={() => setPrivateNotes(!privateNotes)}>{privateNotes ? "Hide private panel notes" : "Read private panel notes"}</Button>}
+          onClick={() => {
+            setData(null)
+            setAction("")
+            setPrivateNotes(!privateNotes)
+          }}>{privateNotes ? "Hide private panel notes" : "Read private panel notes"}</Button>}
         <p>{data.history_count} recorded {data.history_count === 1 ? "change" : "changes"}.</p>
         <ol>{data.history.map(h => <li key={h.sequence}>
           <strong>{panelLabels[h.action]}</strong> · {privateNotes && isAdmin && h.actor_email && <>{h.actor_email} · </>}<time dateTime={h.created_at}>{new Date(h.created_at).toLocaleString()}</time>
