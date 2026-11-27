@@ -1,6 +1,8 @@
 """Explicitly saved work in progress. Publishing is the only route that creates evidence."""
 
+import hmac
 import json
+import secrets
 from typing import Annotated
 from uuid import UUID
 
@@ -8,7 +10,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import Field
 
 from . import deferred_items, session_privacy, lineage, store
-from .models import CreateAnswerInput, DeferredQuestionGuard, Input, OriginInput, RequestID
+from .models import CreateAnswerInput, DeferredQuestionGuard, Fingerprint, Input, OriginInput, RequestID
 
 router = APIRouter()
 
@@ -21,6 +23,7 @@ class PartialSource(Input):
 
 class DraftInput(OriginInput):
     deferred_question: DeferredQuestionGuard | None = None
+    deferred_draft_token: Fingerprint | None = None
     id: RequestID
     expected_revision: int = Field(ge=0)
     question: Annotated[str, Field(max_length=4000)] = ""
@@ -29,12 +32,14 @@ class DraftInput(OriginInput):
 
 
 class Publish(CreateAnswerInput):
+    deferred_draft_token: Fingerprint | None = None
     id: RequestID
     expected_revision: int = Field(ge=1)
 
 
 class Discard(Input):
     deferred_question: DeferredQuestionGuard | None = None
+    deferred_draft_token: Fingerprint | None = None
     id: RequestID
     expected_revision: int = Field(ge=1)
 
@@ -79,10 +84,20 @@ def _draft_link(db, sid, row, portable, include):
         return {}
     if portable:
         return {"deferred_question_id": qid, "deferred_revision_id": revision}
-    return {"deferred_question": deferred_items.draft_guard(db, sid, qid, revision)}
+    return {"deferred_question": deferred_items.draft_guard(db, sid, qid, revision),
+            "deferred_draft_token": row["deferred_draft_token"]}
+
+
+def _check_lifetime(current, item):
+    expected = current.get("deferred_draft_token") if current else None
+    supplied = item.deferred_draft_token
+    if expected is not None or supplied is not None or (current and current.get("deferred_question")):
+        if not expected or not supplied or not hmac.compare_digest(expected, supplied):
+            raise deferred_items.conflict("The saved draft was replaced. Read the current draft before continuing.")
 
 
 def _binding(current, item, *, publish=False):
+    _check_lifetime(current, item)
     prior = current.get("deferred_question") if current else None
     supplied = item.deferred_question
     if prior and supplied is None:
@@ -149,7 +164,7 @@ def save(sid: UUID, item: DraftInput):
             raise stale()
         db.execute(
             """INSERT INTO session_drafts(session_id,id,question,answer,refs,updated_at,parent_answer_id,planned_slot,
-                   deferred_question_id,deferred_revision_id) VALUES(?,?,?,?,?,?,?,?,?,?)
+                   deferred_question_id,deferred_revision_id,deferred_draft_token) VALUES(?,?,?,?,?,?,?,?,?,?,?)
                    ON CONFLICT(session_id) DO UPDATE SET question=excluded.question,answer=excluded.answer,
                    refs=excluded.refs,updated_at=excluded.updated_at,parent_answer_id=excluded.parent_answer_id,
                    planned_slot=excluded.planned_slot,deferred_question_id=excluded.deferred_question_id,
@@ -165,6 +180,7 @@ def save(sid: UUID, item: DraftInput):
                 slot,
                 linked["id"] if linked else None,
                 linked["revision_id"] if linked else None,
+                secrets.token_hex(32) if linked else None,
             ),
         )
         return get(db, sid)
@@ -175,6 +191,9 @@ def discard(sid: UUID, item: Discard):
     with store.connection(write=True) as db:
         deferred_items.access_session(db, str(sid))
         current = get(db, sid)
+        _check_lifetime(current, item)
+        if current is None and item.deferred_question:
+            raise deferred_items.conflict("There is no current linked draft to discard.")
         if current:
             if current["id"] != str(item.id) or current["revision"] != item.expected_revision:
                 raise stale()
@@ -191,6 +210,8 @@ def publish(sid: UUID, item: Publish):
     key, aid = str(sid), str(item.id)
     with store.connection(write=True) as db:
         session = store.capture_context(db, key)
+        if item.deferred_draft_token is not None and item.deferred_question is None:
+            raise deferred_items.conflict("A linked draft token requires its deferred question binding.")
         current = get(db, sid)
         if current and current["id"] == aid:
             if current["revision"] != item.expected_revision:
