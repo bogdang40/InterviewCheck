@@ -17,6 +17,7 @@ import {
   type PlaygroundPresetId, type PlaygroundRunResponse,
 } from "@/lib/adminPlayground"
 import { formatLatency } from "@/lib/adminTelemetry"
+import SavedReviewRehearsal from "./SavedReviewRehearsal"
 import styles from "./PlaygroundTab.module.css"
 
 function tokenSummary(item: PlaygroundModelResult): string {
@@ -214,6 +215,7 @@ export function PlaygroundTab({ models, onAuthInvalid }: { models: ConnectedMode
         <Badge variant="outline">{selectedIds.length} / 3 models selected</Badge>
       </div>
 
+      <SavedReviewRehearsal onAuthInvalid={onAuthInvalid} />
       {presetsError && <p role="alert" className="error">{presetsError}</p>}
 
       <form className="panel stack" onSubmit={(e) => void handleRun(e)}>
