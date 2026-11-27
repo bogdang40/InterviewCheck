@@ -30,7 +30,10 @@ def test_retention_blocks_an_open_editor_and_shows_read_only_review(workspace_ur
         region = page.get_by_role("region", name="Retained exchange")
         expect(region).to_contain_text("Why this approach?")
         expect(region).to_contain_text(REDACTED_TEXT)
-        expect(page.get_by_role("button", name="Reports", exact=True)).to_be_enabled()
+        with page.expect_download() as report:
+            page.get_by_role("link", name="Export report", exact=True).click()
+        report_text = report.value.path().read_text(encoding="utf-8")
+        assert REDACTED_TEXT in report_text and "A stale private entry" not in report_text
         expect(page.get_by_label("Interviewer note")).to_have_count(0)
         expect(page.get_by_role("button", name="Save assignment", exact=True)).to_have_count(0)
         expect(page.get_by_role("button", name="Add exchange", exact=True)).to_have_count(0)
