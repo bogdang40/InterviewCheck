@@ -34,8 +34,9 @@ def test_json_restored_matching_item_does_not_confirm_the_original_keep(workspac
         assert len(attempts) == 1 and saved["id"] == original and saved["parent_answer_id"] == parent["id"]
 
 
-@pytest.mark.parametrize("editor", [False, True], ids=["saved-list", "linked-draft"])
-def test_denied_source_reconfirmation_clears_parent_and_draft(workspace_url, browser_page, editor):
+@pytest.mark.parametrize(("editor", "at_final_write"), [(False, False), (True, False), (True, True)],
+                         ids=["saved-list", "linked-draft", "retention-before-final-draft-put"])
+def test_denied_source_reconfirmation_clears_parent_and_draft(workspace_url, browser_page, editor, at_final_write):
     from api import store
     from api.retention_anonymizer import SessionAnonymizer
 
@@ -74,11 +75,37 @@ def test_denied_source_reconfirmation_clears_parent_and_draft(workspace_url, bro
         expect(source).to_contain_text(f'{hit["label"]} · {hit["words"]} matched words')
         other_key = "ic_draft_v1:" + str(uuid4()) + ":test"
         page.evaluate("k => localStorage.setItem(k, 'unrelated fixture')", other_key)
-        with store.connection(write=True) as db:
-            SessionAnonymizer(db, sid).run(preserve_scorecard_aggregates=False, actor_email="operator@example.test",
-                                           now_iso=store.timestamp())
-        action = "Confirm source and save this draft" if editor else "Confirm current source"
-        check.get_by_role("button", name=action).click()
+        question, = c.get(path + "/deferred-questions").raise_for_status().json()["items"]
+        def erase():
+            with store.connection(write=True) as db:
+                SessionAnonymizer(db, sid).run(preserve_scorecard_aggregates=False, actor_email="operator@example.test",
+                                               now_iso=store.timestamp())
+
+        confirm = check.get_by_role("button", name="Confirm source and save this draft" if editor else "Confirm current source")
+        if at_final_write:
+            seen = []
+            def observe(response):
+                if response.url.endswith("/worksheet") and response.ok:
+                    seen.append("source-read")
+                if "/deferred-questions/" in response.url and response.request.method == "PATCH" and response.ok:
+                    seen.append("reconfirmed")
+            page.on("response", observe)
+            def before_put(route):
+                if route.request.method == "PUT":
+                    assert route.request.post_data_json["deferred_question"]["id"] == question["id"]
+                    assert seen == ["source-read", "reconfirmed"]
+                    erase()
+                    seen.append("erased")
+                route.continue_()
+            page.route("**" + path + "/draft", before_put)
+            with page.expect_response(lambda r: r.url.endswith(path + "/draft") and r.request.method == "PUT") as denied:
+                confirm.click()
+            assert denied.value.status == 409
+            assert denied.value.headers.get("x-interviewcheck-conflict") == "interview-privacy"
+            assert seen == ["source-read", "reconfirmed", "erased"]
+        else:
+            erase()
+            confirm.click()
         gate = page.get_by_role("region", name="Interview access changed")
         expect(gate.get_by_role("alert")).to_be_visible()
         expect(page.locator("#deferred-questions")).to_have_count(0)
@@ -88,7 +115,9 @@ def test_denied_source_reconfirmation_clears_parent_and_draft(workspace_url, bro
         assert page.evaluate("k => localStorage.getItem(k)", other_key) == "unrelated fixture"
         gate.get_by_role("button", name="Reload interview").click()
         expect(page.get_by_text("Retention anonymized this interview.", exact=False)).to_be_visible()
-        assert c.get(path + "/draft").raise_for_status().json() is None
+        assert c.get(path + "/draft").status_code == 403
+        with store.connection() as db:
+            assert db.execute("SELECT count(*) FROM session_drafts WHERE session_id=?", (sid,)).fetchone()[0] == 0
 
 
 def test_discard_holds_draft_lifetime_even_when_question_binding_is_identical(workspace_url, browser_page):
