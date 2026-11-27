@@ -128,5 +128,6 @@ export async function saveDeferredDraft(item: DeferredQuestion, id: string, revi
 
 export function accessLost(error: unknown) {
   return error instanceof DeferredUnavailable || error instanceof WorksheetUnavailable
-    || error instanceof ApiError && [401, 402, 403, 404].includes(error.status)
+    || error instanceof ApiError && ([401, 402, 403, 404].includes(error.status)
+      || error.status === 409 && error.code === "interview-privacy")
 }

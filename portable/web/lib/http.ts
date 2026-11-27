@@ -75,7 +75,9 @@ export async function send(url: string, options: HttpOptions = {}): Promise<Resp
   const response = await fetch(url, { ...init, headers, cache: "no-store" })
   if (!response.ok) {
     const data = await readJson(response)
-    throw toError ? toError(response, data) : new errorType(response.status, describe(data, response.status), errorCode(data))
+    if (toError) throw toError(response, data)
+    const withdrawn = response.status === 409 && response.headers.get("X-InterviewCheck-Conflict") === "interview-privacy"
+    throw new errorType(response.status, describe(data, response.status), withdrawn ? "interview-privacy" : errorCode(data))
   }
   return response
 }
