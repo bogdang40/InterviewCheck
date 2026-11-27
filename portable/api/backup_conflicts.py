@@ -8,6 +8,7 @@ SESSION_GROUPS = {
     "scorecard_items": ("scorecard_items", "rubric_snapshot"),
     "exchanges": ("answers", "review_events"),
     "draft": ("draft",),
+    "deferred_questions": ("deferred_questions",),
 }
 ROLE_GROUPS = {
     "role_template": ("id", "name", "description", "questions", "policy", "permitted_sources", "legacy"),
