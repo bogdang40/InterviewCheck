@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import type { ProviderStatus } from "./integrations"
 
 export type AccountSnapshot = {
@@ -19,9 +19,26 @@ export type AccountState = {
 
 export const ACCOUNT_EVENT = "interviewcheck:account"
 
-export function notifyAccountChanged() {
-  if (typeof window !== "undefined") {
-    window.dispatchEvent(new Event(ACCOUNT_EVENT))
+const ACCOUNT_CHANGE_KEY = "interviewcheck:account-generation"
+
+function accountChannel() {
+  try { return typeof BroadcastChannel === "undefined" ? null : new BroadcastChannel(ACCOUNT_CHANGE_KEY) }
+  catch { return null }
+}
+
+export function notifyAccountChanged(changed = true) {
+  if (typeof window === "undefined") return
+  window.dispatchEvent(new CustomEvent(ACCOUNT_EVENT, { detail: changed }))
+  if (!changed) return
+  // Only an invalidation marker crosses tabs. No account ID or credential is stored.
+  try {
+    window.localStorage.setItem(ACCOUNT_CHANGE_KEY, crypto.randomUUID())
+  } catch {
+    const channel = accountChannel()
+    if (channel) {
+      channel.postMessage("changed")
+      channel.close()
+    }
   }
 }
 
@@ -30,6 +47,7 @@ export function useAccountStatus(trigger?: string, enabled = true): AccountState
   const [account, setAccount] = useState<AccountSnapshot | null>(null)
   const [loading, setLoading] = useState(enabled)
   const [tick, setTick] = useState(0)
+  const pending = useRef<AbortController | null>(null)
 
   const refresh = useCallback(() => {
     setTick((n) => n + 1)
@@ -37,11 +55,30 @@ export function useAccountStatus(trigger?: string, enabled = true): AccountState
 
   useEffect(() => {
     if (!enabled) return
-    function onAccountEvent() {
-      setTick((n) => n + 1)
+    function invalidate() {
+      pending.current?.abort()
+      setAccount(null)
+      setStatus(null)
+      setLoading(true)
+      setTick(n => n + 1)
     }
+    function onAccountEvent(event: Event) {
+      if ((event as CustomEvent).detail === false) setTick(n => n + 1)
+      else invalidate()
+    }
+    function onStorage(event: StorageEvent) {
+      if (event.key === ACCOUNT_CHANGE_KEY || event.key === null) invalidate()
+    }
+    const fallback = accountChannel()
+    if (fallback) fallback.onmessage = invalidate
     window.addEventListener(ACCOUNT_EVENT, onAccountEvent)
-    return () => window.removeEventListener(ACCOUNT_EVENT, onAccountEvent)
+    window.addEventListener("storage", onStorage)
+    return () => {
+      window.removeEventListener(ACCOUNT_EVENT, onAccountEvent)
+      window.removeEventListener("storage", onStorage)
+      fallback?.close()
+    }
+
   }, [enabled])
 
   useEffect(() => {
@@ -50,6 +87,7 @@ export function useAccountStatus(trigger?: string, enabled = true): AccountState
       return
     }
     const controller = new AbortController()
+    pending.current = controller
     setLoading(true)
     fetch("/api/integrations/status", { cache: "no-store", signal: controller.signal })
       .then((res) => (res.ok ? res.json() : null))
@@ -79,6 +117,8 @@ export function useAccountStatus(trigger?: string, enabled = true): AccountState
       })
       .catch(() => {
         if (!controller.signal.aborted) {
+          setAccount(null)
+          setStatus(null)
           setLoading(false)
         }
       })
