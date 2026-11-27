@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { FilePenLine } from "lucide-react"
-import { api, message, type Draft, type DraftSummary } from "@/lib/api"
+import { api, message, DeferredConflict, DraftConflict, type Draft, type DraftSummary } from "@/lib/api"
 import { Button } from "./ui/button"
 
 export default function SavedDraft({
@@ -9,25 +9,29 @@ export default function SavedDraft({
   disabled,
   resume,
   discard,
+  refresh,
 }: {
   sessionId: string
   summary: DraftSummary
   disabled: boolean
   resume: (d: Draft) => void
   discard: () => void
+  refresh: (d: Draft | null) => void
 }) {
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("")
-  const [confirm, setConfirm] = useState(false)
+  const [confirm, setConfirm] = useState<DraftSummary | null>(null)
   async function act(remove: boolean) {
     setBusy(true)
     setError("")
     try {
-      if (remove) {
-        await api("sessions/" + sessionId + "/draft/discard", "POST", {
-          id: summary.id,
-          expected_revision: summary.revision,
+      if (remove && confirm) {
+        const ack = await api<{ discarded: boolean }>("sessions/" + sessionId + "/draft/discard", "POST", {
+          id: confirm.id,
+          expected_revision: confirm.revision,
+          ...(confirm.deferred_question ? { deferred_question: confirm.deferred_question } : {}),
         })
+        if (!ack?.discarded) throw new Error("The server did not confirm the discard. Check the current draft.")
         discard()
       } else {
         const draft = await api<Draft | null>("sessions/" + sessionId + "/draft")
@@ -35,10 +39,15 @@ export default function SavedDraft({
         else discard()
       }
     } catch (e) {
-      setError(message(e))
+      if (remove && (e instanceof DeferredConflict || e instanceof DraftConflict)) {
+        try {
+          refresh(await api<Draft | null>("sessions/" + sessionId + "/draft"))
+          setError("The saved draft changed. Review the current draft before confirming a discard.")
+        } catch (readError) { setError(message(readError)) }
+      } else setError(message(e))
     } finally {
       setBusy(false)
-      setConfirm(false)
+      setConfirm(null)
     }
   }
   return (
@@ -55,7 +64,7 @@ export default function SavedDraft({
             <Button size="sm" variant="outline" disabled={disabled || busy} onClick={() => act(true)}>
               Confirm discard
             </Button>
-            <Button size="sm" variant="ghost" onClick={() => setConfirm(false)}>
+            <Button size="sm" variant="ghost" onClick={() => setConfirm(null)}>
               Keep draft
             </Button>
           </>
@@ -64,7 +73,7 @@ export default function SavedDraft({
             <Button size="sm" disabled={disabled || busy} onClick={() => act(false)}>
               Resume draft
             </Button>
-            <Button size="sm" variant="ghost" disabled={disabled || busy} onClick={() => setConfirm(true)}>
+            <Button size="sm" variant="ghost" disabled={disabled || busy} onClick={() => setConfirm(summary)}>
               Discard saved draft
             </Button>
           </>

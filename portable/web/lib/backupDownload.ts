@@ -82,7 +82,7 @@ async function failedDownload(response: Response, signal: AbortSignal): Promise<
   }
 }
 
-export async function downloadBackup(sessionId: string | null, signal: AbortSignal): Promise<string> {
+export async function downloadBackup(sessionId: string | null, signal: AbortSignal): Promise<{ checksum: string; deferredQuestions?: number }> {
   signal.throwIfAborted()
   if (!globalThis.crypto?.subtle) throw new Error("Open the workspace over HTTPS or localhost to verify the backup.")
   const { url, filename } = backupTarget(sessionId)
@@ -106,6 +106,12 @@ export async function downloadBackup(sessionId: string | null, signal: AbortSign
     discard(response)
     throw new Error("The workspace did not return a verifiable backup for this selection. Retry the download.")
   }
+  const reported = response.headers.get("X-Backup-Deferred-Questions")
+  const deferredQuestions = reported === null ? undefined : Number(reported)
+  if (reported !== null && (!/^(0|[1-9]\d*)$/.test(reported) || !Number.isSafeInteger(deferredQuestions))) {
+    discard(response)
+    throw new Error("The workspace returned an invalid deferred question count. Retry the download.")
+  }
   let bytes: Uint8Array<ArrayBuffer>
   try {
     bytes = await readBytes(response, MAX_BACKUP, signal)
@@ -126,5 +132,5 @@ export async function downloadBackup(sessionId: string | null, signal: AbortSign
   const actualHash = Array.from(digest, (n) => n.toString(16).padStart(2, "0")).join("")
   if (expectedHash.toLowerCase() !== actualHash) throw new Error("The backup checksum does not match. Retry the download.")
   saveBlob(new Blob([bytes], { type: "application/json" }), filename)
-  return actualHash
+  return { checksum: actualHash, deferredQuestions }
 }
