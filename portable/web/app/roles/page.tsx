@@ -10,6 +10,7 @@ import RoleVersionHistory from "@/components/RoleVersionHistory"
 import Migration from "@/components/Migration"
 import WorkspaceError from "@/components/WorkspaceError"
 import { usePreparation, useResource } from "@/lib/workspace"
+import { revisionNumber } from "@/lib/revisionNumber"
 import type { CalibratedRole } from "@/lib/roleCalibration"
 
 const CalibrationQueuePanel = dynamic(() => import("@/components/CalibrationQueuePanel"), {
@@ -66,7 +67,7 @@ function RoleLibrary() {
       <RoleVersionHistory
         key={role.id}
         role={role}
-        onRestored={(updated) => { setDetailStatus(`Reloaded ${updated.name} (v${updated.version_number ?? 1}).`); item.reload() }}
+        onRestored={(updated) => { setDetailStatus(`Reloaded ${updated.name} (v${revisionNumber(updated.version_number, updated.version_number_text) || "unavailable"}).`); item.reload() }}
         onConflictReload={() => { setDetailStatus("Reloaded saved role."); item.reload() }}
       />
     </div>
