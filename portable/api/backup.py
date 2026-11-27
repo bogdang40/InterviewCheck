@@ -13,7 +13,7 @@ from starlette.concurrency import run_in_threadpool
 
 from . import backup_conflicts, backup_schema as schema, bulk_operations, drafts, store
 from . import backup_review_data as review_data
-from . import deferred_archive, deferred_items, retained_finding, session_privacy, session_rubric
+from . import deferred_archive, deferred_fulfillment, deferred_items, retained_finding, session_privacy, session_rubric
 
 router = APIRouter(prefix="/backups")
 ROLE_FIELDS = set(schema.Role.model_fields)
@@ -81,6 +81,12 @@ def session_data(db, key, *, has_assignments, has_notes, has_scorecards, include
         record["draft"] = drafts.get(db, key, portable=True, include_deferred=include_deferred)
     record.setdefault("permitted_sources", [])
     record["answers"] = [select(a, ANSWER_FIELDS) for a in record["answers"]]
+    origins = deferred_fulfillment.exported_origins(db, key) if include_deferred else {}
+    if origins and not origins.keys() <= {a["id"] for a in record["answers"]}:
+        raise review_data.UnrepresentableReviewData(409, "A publication fact is detached. Inspect the SQLite backup.")
+    for answer in record["answers"]:
+        if answer["id"] in origins:
+            answer["deferred_origin"] = origins[answer["id"]]
     record["tags"] = bulk_operations.tags_for_sessions(db, [key]).get(key, [])
     if _has_table(db, "answer_review_events"):
         events = db.execute(
@@ -98,7 +104,7 @@ def session_data(db, key, *, has_assignments, has_notes, has_scorecards, include
         except ValueError as exc:
             raise review_data.UnrepresentableReviewData(409, "The anonymization receipt conflicts with stored interview data. "
                                                         "Inspect the SQLite backup before exporting this interview.") from exc
-    if record["deferred_questions"] or (record.get("draft") or {}).get("deferred_question_id"):
+    if record["deferred_questions"] or origins or (record.get("draft") or {}).get("deferred_question_id"):
         try:
             schema.Session.model_validate(record)
         except ValidationError as exc:
@@ -163,7 +169,8 @@ def download(session_id: UUID | None = None):
     return Response(
         body,
         media_type="application/json",
-        headers={"Content-Disposition": f'attachment; filename="{name}.json"', "X-Backup-SHA256": digest},
+        headers={"Content-Disposition": f'attachment; filename="{name}.json"', "X-Backup-SHA256": digest,
+                 "X-Backup-Deferred-Questions": str(sum(len(s["deferred_questions"]) for s in doc["sessions"]))},
     )
 
 
@@ -200,7 +207,7 @@ def classify(db, backup, *, include_conflict_reasons=False):
     conflicts = []
     if backup.sessions:
         session_privacy.require_storage(db)
-        if backup.version >= 7 and not _has_table(db, "deferred_questions"):
+        if backup.version >= 7 and not all(_has_table(db, name) for name in ("deferred_questions", "deferred_publications")):
             raise HTTPException(409, "Restart InterviewCheck to initialize deferred question storage.")
     assignments = sum(s.assignment is not None for s in backup.sessions)
     # Compare only fields included by the writer's version.

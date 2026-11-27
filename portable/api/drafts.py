@@ -34,6 +34,7 @@ class Publish(CreateAnswerInput):
 
 
 class Discard(Input):
+    deferred_question: DeferredQuestionGuard | None = None
     id: RequestID
     expected_revision: int = Field(ge=1)
 
@@ -96,7 +97,7 @@ def _binding(current, item, *, publish=False):
 @router.get("/sessions/{sid}/draft")
 def read(sid: UUID):
     with store.connection() as db:
-        store.get_summary(db, str(sid))
+        deferred_items.access_session(db, str(sid))
         return get(db, sid)
 
 
@@ -172,11 +173,15 @@ def save(sid: UUID, item: DraftInput):
 @router.post("/sessions/{sid}/draft/discard")
 def discard(sid: UUID, item: Discard):
     with store.connection(write=True) as db:
-        store.get_summary(db, str(sid))
+        deferred_items.access_session(db, str(sid))
         current = get(db, sid)
         if current:
             if current["id"] != str(item.id) or current["revision"] != item.expected_revision:
                 raise stale()
+            prior = current.get("deferred_question")
+            supplied = item.deferred_question.model_dump(mode="json") if item.deferred_question else None
+            if supplied != prior:
+                raise deferred_items.conflict("The saved draft binding changed. Reload the draft before discarding it.")
             db.execute("DELETE FROM session_drafts WHERE session_id=?", (str(sid),))
     return {"discarded": True}
 
