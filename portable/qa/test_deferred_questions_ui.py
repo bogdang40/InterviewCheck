@@ -69,7 +69,9 @@ def test_deferred_source_identity_single_draft_and_reconfirmation(workspace_url,
         expect(queue.get_by_text("Question kept for later.")).to_be_visible()
         assert len(attempts) == 1
         page.unroute(pattern, handler)
-        page.get_by_role("navigation", name="Interview questions").get_by_role("button").nth(1).click()
+        picker = page.get_by_role("navigation", name="Interview questions").get_by_label("Selected question")
+        picker.select_option(second["id"])
+        expect(picker).to_have_value(second["id"])
         keep_custom(queue)
         expect(queue.get_by_role("listitem")).to_have_count(2)
         assert queue.evaluate("e => e.scrollWidth <= e.clientWidth + 1")
