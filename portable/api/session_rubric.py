@@ -5,7 +5,7 @@ import json
 from fastapi import HTTPException
 from pydantic import Field, StringConstraints, ValidationError, model_validator
 
-from .backup_review_schema import ID, Record
+from .backup_types import ID, Record
 
 
 class BackupRubricCriterion(Record):

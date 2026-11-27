@@ -4,7 +4,7 @@ from typing import Literal
 from fastapi import HTTPException
 from pydantic import ValidationError, model_validator
 
-from .backup_review_schema import Record, TZStamp
+from .backup_types import Record, TZStamp
 from .retention_anonymizer import REDACTED_TEXT, anonymized_candidate_label
 
 

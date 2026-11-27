@@ -10,18 +10,8 @@ from pydantic import (
     ValidationError, field_validator, model_validator,
 )
 
-from .backup_review_schema import (
-    Assignment,
-    HandoffNote,
-    HistoricalText,
-    ID,
-    Record,
-    ReviewActor,
-    ReviewStamp,
-    ScorecardItem,
-    TZStamp,
-    _require_tz,
-)
+from .backup_review_schema import Assignment, HandoffNote, ScorecardItem
+from .backup_types import HistoricalText, ID, Record, ReviewActor, ReviewStamp, TZStamp, _require_tz
 from .session_privacy import PrivacyRecord, verify_redaction
 from .session_rubric import BackupRubricCriterion, RubricSnapshot
 from .backup_validation import check_session_chronology, unique, verify_records
