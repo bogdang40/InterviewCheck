@@ -17,12 +17,15 @@ from . import (
 )
 from .error_sanitizer import sanitize_error_text
 from .models import Input, RequestID
+from . import saved_review_rehearsal
 
 router = APIRouter(
     prefix="/api/admin/models/playground",
     tags=["model-playground"],
     dependencies=[Depends(model_admin.require_admin)],
 )
+
+router.include_router(saved_review_rehearsal.router)
 
 COMPLETION_CAPABILITIES = frozenset({"reference", "question_planning", "judge"})
 _FENCE_RE = re.compile(r"^\s*```(?:json)?\s*|\s*```\s*$")
@@ -58,8 +61,8 @@ PRESETS: tuple[dict[str, Any], ...] = (
     },
     {
         "id": "ai_judge_rubric",
-        "label": "AI judge rubric",
-        "description": "Benchmark structured interview answer scoring against the judge verdict schema.",
+        "label": "Ad hoc judge verdict",
+        "description": "Test the ad hoc judge JSON schema with a connected model.",
         "system_prompt": (
             "Evaluate the job interview answer against the question and reference material. "
             "Return likelihood (0-100), confidence (low, medium, or high), evidence, and follow_up_questions."
