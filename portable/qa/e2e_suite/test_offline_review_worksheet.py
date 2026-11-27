@@ -1,4 +1,6 @@
 """A reviewer can edit one note offline without copying unrelated interview content."""
+import sqlite3
+
 import pytest
 from playwright.sync_api import expect
 
@@ -62,7 +64,7 @@ def test_explicit_disclosure_compare_stage_then_save(e2e_workspace, mobile_page)
         assert "literal" in original and "original answer" in original and SOURCE not in original
         with page.expect_download() as dl:
             card.get_by_role("button", name="Download text file").click()
-        assert dl.value.path().read_text(encoding="utf-8") == original
+        assert dl.value.path().read_bytes() == original.encode("utf-8")
 
         # Duplicate prompts are identified only by their exchange IDs. Repeated markers and bad UTF-8 are rejected.
         other = show(page, e2e_workspace, sid, one)
@@ -176,3 +178,135 @@ def test_trash_after_staging_clears_proposal_without_writing(e2e_workspace, desk
         assert current["note"] == "" and current["revision"] == 1
         assert all("404" in msg for msg in collector.console_errors)
         collector.console_errors.clear()
+
+def stage_example(page, workspace, sid, aid):
+    card = show(page, workspace, sid, aid)
+    card.get_by_role("button", name="Preview worksheet").click()
+    copy = card.get_by_role("textbox", name="Exact worksheet contents")
+    expect(copy).to_be_visible()
+    upload(card, copy.input_value() + NOTE)
+    card.get_by_role("button", name="Stage proposed note").click()
+    editor = page.get_by_role("textbox", name="Interviewer note")
+    expect(editor).to_have_value(NOTE)
+    return card, editor
+
+
+@pytest.mark.tier3
+@pytest.mark.parametrize("outcome", ["already_saved", "still_current", "diverged"])
+def test_reconcile_uncertain_save_without_losing_last_edits(e2e_workspace, desktop_page, outcome):
+    page, _ = desktop_page
+    with e2e_workspace.client() as client:
+        sid, (aid, _) = seed(client)
+        path = f"/api/sessions/{sid}/answers/{aid}"
+        _, editor = stage_example(page, e2e_workspace, sid, aid)
+        attempted, revised = "Edited after importing.", "Further local edits."
+        editor.fill(attempted)
+        writes = []
+
+        def malformed_response(route):
+            if route.request.method != "PATCH":
+                route.continue_()
+                return
+            writes.append(route.request.post_data_json)
+            if len(writes) != 1:
+                route.continue_()
+                return
+            if outcome == "already_saved":
+                assert route.fetch().ok
+            # Matching id, disposition, note and revision alone cannot acknowledge a full exchange.
+            route.fulfill(status=200, json={"id": aid, "note": attempted, "disposition": "pending", "revision": 2})
+
+        page.route("**" + path, malformed_response)
+        save = page.get_by_role("button", name="Save review", exact=True)
+        save.click()
+        expect(page.get_by_text("The server did not confirm the worksheet save.", exact=False)).to_be_visible()
+        expect(editor).to_have_value(attempted)
+        expect(save).to_be_disabled()
+        editor.fill(revised)
+        if outcome == "diverged":
+            client.patch(path, json={"note": "Another reviewer's note.", "disposition": "explained",
+                                     "expected_revision": 1}).raise_for_status()
+        with sqlite3.connect(e2e_workspace.review_db) as db:
+            votes = db.execute("SELECT count(*) FROM answer_review_events WHERE answer_id=?", (aid,)).fetchone()[0]
+        page.get_by_role("button", name="Check saved review").click()
+        if outcome == "already_saved":
+            expect(page.get_by_text("The submitted note is already saved.")).to_be_visible()
+        elif outcome == "still_current":
+            expect(page.get_by_text("The saved review is unchanged.", exact=False)).to_be_visible()
+        else:
+            compare = page.get_by_role("region", name="Worksheet save reconciliation")
+            keep = compare.get_by_role("button", name="Keep my edited note on this version")
+            expect(compare).to_contain_text("Another reviewer's note.")
+            expect(save).to_be_disabled()
+            client.patch(path, json={"note": "The review changed again.", "disposition": "explained",
+                                     "expected_revision": 2}).raise_for_status()
+            keep.click()
+            expect(compare).to_contain_text("The review changed again.")
+            expect(save).to_be_disabled()
+            keep.click()
+        expect(editor).to_have_value(revised)
+        expect(save).to_be_enabled()
+        assert len(writes) == 1
+        save.click()
+        expect(page.get_by_text("Review saved", exact=True)).to_be_visible()
+        assert len(writes) == 2 and client.get(path).json()["note"] == revised
+        with sqlite3.connect(e2e_workspace.review_db) as db:
+            assert db.execute("SELECT count(*) FROM answer_review_events WHERE answer_id=?", (aid,)).fetchone()[0] == votes
+
+
+@pytest.mark.tier3
+def test_noop_worksheet_save_and_verified_read_denial(e2e_workspace, desktop_page):
+    page, collector = desktop_page
+    with e2e_workspace.client() as client:
+        sid, (aid, _) = seed(client)
+        path = f"/api/sessions/{sid}/answers/{aid}"
+        client.patch(path, json={"note": "Existing note.", "disposition": "pending", "expected_revision": 1}).raise_for_status()
+        _, editor = stage_example(page, e2e_workspace, sid, aid)
+        editor.fill(" Existing note. ")
+        page.get_by_role("button", name="Save review", exact=True).click()
+        expect(page.get_by_text("Review saved", exact=True)).to_be_visible()
+        assert client.get(path).json()["revision"] == 2
+        card, editor = stage_example(page, e2e_workspace, sid, aid)
+        editor.fill("Newer than the worksheet.")
+        page.context.set_offline(True)
+        card.get_by_role("button", name="Preview worksheet").click()
+        expect(card.get_by_role("alert")).to_be_visible()
+        expect(editor).to_have_value("Newer than the worksheet.")
+        page.context.set_offline(False)
+        client.post(f"/api/sessions/{sid}/trash").raise_for_status()
+        card.get_by_role("button", name="Preview worksheet").click()
+        expect(page.get_by_role("region", name="Worksheet unavailable")).to_be_visible()
+        expect(editor).to_have_count(0)
+        assert all("404" in msg or "ERR_INTERNET_DISCONNECTED" in msg for msg in collector.console_errors)
+        collector.console_errors.clear()
+
+
+@pytest.mark.tier3
+def test_large_native_question_reserves_space_for_full_unicode_note(e2e_workspace, desktop_page):
+    page, _ = desktop_page
+    with e2e_workspace.client() as client:
+        sid, (aid, _) = seed(client)
+        # The native SQLite import retains original questions beyond the current editor's 4,000 character ceiling.
+        with sqlite3.connect(e2e_workspace.review_db) as db:
+            db.execute("UPDATE answers SET question=?,legacy=? WHERE id=?", ("界" * 18_000, "{}", aid))
+        card = show(page, e2e_workspace, sid, aid)
+        question = card.get_by_label("Include the question")
+        question.check()
+        card.get_by_role("button", name="Preview worksheet").click()
+        expect(card.get_by_role("alert")).to_contain_text("Omit the question")
+        expect(card.get_by_role("button", name="Download text file")).to_have_count(0)
+        question.uncheck()
+        card.get_by_role("button", name="Preview worksheet").click()
+        preview = card.get_by_role("textbox", name="Exact worksheet contents")
+        expect(preview).to_be_visible()
+        with page.expect_download() as downloads:
+            card.get_by_role("button", name="Download text file").click()
+        raw = downloads.value.path().read_bytes()
+        assert raw == preview.input_value().encode("utf-8")
+        note = "🧭" * 12_000
+        upload(card, raw + note.encode("utf-8"))
+        card.get_by_role("button", name="Stage proposed note").click()
+        expect(page.get_by_role("textbox", name="Interviewer note")).to_have_value(note)
+        page.get_by_role("button", name="Save review", exact=True).click()
+        expect(page.get_by_text("Review saved", exact=True)).to_be_visible()
+        assert client.get(f"/api/sessions/{sid}/answers/{aid}").json()["note"] == note
