@@ -9,7 +9,7 @@ from uuid import uuid4
 
 from fastapi import HTTPException
 
-from . import answer_history, bulk_operations, lineage, model_registry, retention_policy, role_analytics, role_kits, role_versions, search_fts, session_scorecard, sql_script, usage_events
+from . import answer_history, bulk_operations, lineage, model_registry, retention_policy, role_analytics, role_kits, role_versions, search_fts, session_rubric, session_scorecard, sql_script, usage_events
 from .role_kits import role_row, create_role
 from .models import EARLIER_ANSWER_NOTE, AnswerEdit, AnswerInput, ReviewInput, SessionInput
 
@@ -213,17 +213,21 @@ def create_session(db, item: SessionInput):
         saved = capture_context(db, key)
         if "role_id" in item.model_fields_set and saved["role_id"] != (str(item.role_id) if item.role_id else None):
             raise HTTPException(409, "The session ID already belongs to a different role.")
+        if item.role_version is not None:
+            original = session_rubric.read(db, key)
+            if original and original.role_content_sha256 != item.role_version:
+                raise HTTPException(409, "The session ID already belongs to a different role version.")
         same_sources = (item.permitted_sources is None or
                         [material.model_dump() for material in item.permitted_sources] == saved["permitted_sources"])
         if (not same_sources or (item.policy is not None and item.policy != saved["policy"])
                 or any(existing[f] != getattr(item, f) for f in ("candidate", "role", "consent"))):
             raise HTTPException(409, "The session ID already belongs to different content.")
     else:
-        role_id, questions, policy, permitted = role_kits.session_defaults(db, item)
+        role_id, questions, policy, permitted, rubric = role_kits.session_defaults(db, item)
         db.execute("INSERT INTO sessions(id,candidate,role,policy,consent,created_at) VALUES (?,?,?,?,?,?)",
                    (key, item.candidate, item.role, policy, item.consent, timestamp()))
-        db.execute("INSERT INTO session_context(session_id,role_id,questions,permitted_sources) VALUES (?,?,?,?)",
-                   (key, role_id, questions, permitted))
+        db.execute("""INSERT INTO session_context(session_id,role_id,questions,permitted_sources,rubric_snapshot)
+                      VALUES (?,?,?,?,?)""", (key, role_id, questions, permitted, rubric))
     return get_session(db, key)
 
 

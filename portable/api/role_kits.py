@@ -6,6 +6,7 @@ from uuid import uuid4
 
 from fastapi import HTTPException
 
+from . import session_rubric
 from .evidence import compare
 from .models import AnswerInput, Reference, RoleInput, SessionInput
 
@@ -21,6 +22,8 @@ def migrate_columns(db):
         db.execute("ALTER TABLE roles ADD COLUMN rubric_json TEXT NOT NULL DEFAULT '[]'")
     if "version_number" not in roles:
         db.execute("ALTER TABLE roles ADD COLUMN version_number INTEGER NOT NULL DEFAULT 1")
+    if "rubric_snapshot" not in context:
+        db.execute("ALTER TABLE session_context ADD COLUMN rubric_snapshot TEXT")
     if "permitted_sources" not in context:
         db.execute("ALTER TABLE session_context ADD COLUMN permitted_sources TEXT NOT NULL DEFAULT '[]'")
 
@@ -148,20 +151,25 @@ def session_defaults(db, item: SessionInput):
     selected = None
     if item.role_id:
         selected = db.execute("SELECT * FROM roles WHERE id=?", (str(item.role_id),)).fetchone()
-        if selected is not None:
-            check_role_version(selected, item.role_version)
-        if selected is None or selected["name"] != item.role:
+        if selected is None:
             raise HTTPException(409, "The selected role has changed. Refresh the role list.")
     elif "role_id" not in item.model_fields_set:
         matches = db.execute("SELECT * FROM roles WHERE name=? LIMIT 2", (item.role,)).fetchall()
         selected = matches[0] if len(matches) == 1 else None
+    role_digest = role_row(selected)["version"] if selected else None
+    if item.role_version is not None and role_digest != item.role_version:
+        raise HTTPException(409, "The saved role changed after you opened it.",
+                            headers={"X-InterviewCheck-Conflict": "role-version"})
+    if selected is not None and selected["name"] != item.role:
+        raise HTTPException(409, "The selected role has changed. Refresh the role list.")
     policy = item.policy or (selected["policy"] if selected else None)
     if not policy:
         raise HTTPException(422, "Enter the assistance policy agreed with the candidate.")
     sources = selected["permitted_sources"] if selected else "[]"
     if item.permitted_sources is not None:
         sources = serialize_materials(item.permitted_sources)
-    return selected["id"] if selected else None, selected["questions"] if selected else "[]", policy, sources
+    return (selected["id"] if selected else None, selected["questions"] if selected else "[]",
+            policy, sources, session_rubric.capture(selected, role_digest))
 
 
 def session_materials(db, key):

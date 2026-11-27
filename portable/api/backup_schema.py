@@ -22,6 +22,7 @@ from .backup_review_schema import (
     TZStamp,
     _require_tz,
 )
+from .session_rubric import BackupRubricCriterion, RubricSnapshot
 from .backup_validation import check_session_chronology, unique, verify_records
 
 LIMIT = 20 * 1024 * 1024
@@ -94,14 +95,6 @@ class Source(Record):
     label: HistoricalText
     text: HistoricalText
     permitted: bool
-
-
-class BackupRubricCriterion(Record):
-    id: Annotated[str, StringConstraints(min_length=1, max_length=64)]
-    criterion: Annotated[str, StringConstraints(min_length=1, max_length=500)]
-    weight: int = Field(default=1, ge=1, le=100)
-    expected_signals: list[Annotated[str, StringConstraints(min_length=1, max_length=500)]] = Field(default_factory=list, max_length=20)
-    red_flags: list[Annotated[str, StringConstraints(min_length=1, max_length=500)]] = Field(default_factory=list, max_length=20)
 
 
 class RoleVersion(Record):
@@ -222,6 +215,7 @@ class Session(Record):
     role: HistoricalText
     role_id: ID | None
     planned_questions: HistoricalQuestions
+    rubric_snapshot: RubricSnapshot | None = None
     policy: HistoricalText
     permitted_sources: list[Material] = Field(default_factory=list, max_length=8)
     consent: bool
@@ -248,7 +242,7 @@ class Session(Record):
 
 class Backup(Record):
     format: Literal["interviewcheck.workspace"]
-    version: Literal[1, 2, 3, 4, 5]
+    version: Literal[1, 2, 3, 4, 5, 6]
     roles: list[Role] = Field(max_length=4000)
     sessions: list[Session] = Field(max_length=5000)
 
@@ -266,6 +260,10 @@ class Backup(Record):
                 raise ValueError("Versions 4 and later require a handoff notes field on every interview.")
             if ("scorecard_items" in s.model_fields_set) != (self.version >= 5):
                 raise ValueError("Version 5 requires a scorecard items field on every interview.")
+            if ("rubric_snapshot" in s.model_fields_set) != (self.version >= 6):
+                raise ValueError("Version 6 requires a rubric snapshot field on every interview.")
+            if s.rubric_snapshot and s.role_id and s.rubric_snapshot.role_id != s.role_id:
+                raise ValueError("The rubric snapshot belongs to another role.")
             aids = {a.id for a in s.answers}
             for ev in s.review_events:
                 if ev.answer_id not in aids:

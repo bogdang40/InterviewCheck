@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import Field, field_validator
 from starlette.concurrency import run_in_threadpool
 
-from . import access, handoff_page, prompt_framing, sql_script, store
+from . import access, handoff_page, prompt_framing, session_rubric, sql_script, store
 from .models import Input
 from .scorecard_math import weighted_score_pct
 
@@ -104,7 +104,7 @@ def _roles_have_rubric(db: sqlite3.Connection) -> bool:
     return any(col[1] == "rubric_json" for col in db.execute("PRAGMA table_info(roles)"))
 
 
-def _load_role_rubric(db: sqlite3.Connection, session_id: str) -> list[dict[str, Any]]:
+def _legacy_role_rubric(db: sqlite3.Connection, session_id: str) -> list[dict[str, Any]]:
     if not _roles_have_rubric(db):
         return []
     row = db.execute(
@@ -135,6 +135,15 @@ def _load_role_rubric(db: sqlite3.Connection, session_id: str) -> list[dict[str,
     return criteria
 
 
+def _interview_rubric(db, session_id):
+    snapshot = session_rubric.read(db, session_id)
+    if snapshot is None:
+        return _legacy_role_rubric(db, session_id), None
+    items = [{"criterion_id": row.id, "criterion_label": row.criterion, "weight": row.weight}
+             for row in snapshot.criteria]
+    return items, snapshot
+
+
 def _saved_scores(db: sqlite3.Connection, session_id: str) -> list[dict[str, Any]]:
     rows = db.execute(
         """SELECT criterion_id, criterion_label, weight, rating, rationale, updated_by, updated_at
@@ -144,15 +153,15 @@ def _saved_scores(db: sqlite3.Connection, session_id: str) -> list[dict[str, Any
     return [dict(row) for row in rows]
 
 
-def _scorecard_version(session_id, rubric, saved):
+def _scorecard_version(session_id, rubric, saved, snapshot):
     # Bind the revision to the rubric the reviewer opened and the ordered saved scores.
-    content = json.dumps([session_id, rubric, saved], sort_keys=True, separators=(",", ":"))
+    content = json.dumps([session_id, snapshot.model_dump() if snapshot else rubric, saved], sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(content.encode()).hexdigest()
 
 
 def _load_scorecard_state(db: sqlite3.Connection, session_id: str, *, include_handoff_notes: bool = True) -> dict[str, Any]:
     store.get_summary(db, session_id)
-    rubric = _load_role_rubric(db, session_id)
+    rubric, snapshot = _interview_rubric(db, session_id)
     saved_rows = _saved_scores(db, session_id)
     saved_by_id = {row["criterion_id"]: row for row in saved_rows}
     items: list[dict[str, Any]] = []
@@ -182,7 +191,8 @@ def _load_scorecard_state(db: sqlite3.Connection, session_id: str, *, include_ha
             items.append(row)
     state = {
         "session_id": session_id,
-        "version": _scorecard_version(session_id, rubric, saved_rows),
+        "version": _scorecard_version(session_id, rubric, saved_rows, snapshot),
+        "rubric_snapshot": snapshot.model_dump() if snapshot else None,
         "items": items,
         "weighted_score_pct": weighted_score_pct(items),
         "handoff_notes": handoff_page.all_notes(db, session_id) if include_handoff_notes else [],
@@ -214,7 +224,8 @@ def _save_scorecard(key: str, payload: ScorecardSaveInput, actor_email: str, inc
         store.get_summary(db, key)
         previous = _saved_scores(db, key)
         if payload.expected_version is not None:
-            current_version = _scorecard_version(key, _load_role_rubric(db, key), previous)
+            rubric, snapshot = _interview_rubric(db, key)
+            current_version = _scorecard_version(key, rubric, previous, snapshot)
             if current_version != payload.expected_version:
                 raise HTTPException(409, "The saved scorecard changed. Review the latest scores before saving.",
                                     headers={"X-InterviewCheck-Conflict": "scorecard-version"})

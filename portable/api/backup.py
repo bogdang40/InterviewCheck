@@ -11,6 +11,7 @@ from starlette.concurrency import run_in_threadpool
 
 from . import backup_conflicts, backup_schema as schema, bulk_operations, drafts, store
 from . import backup_review_data as review_data
+from . import session_rubric
 
 router = APIRouter(prefix="/backups")
 ROLE_FIELDS = set(schema.Role.model_fields)
@@ -62,8 +63,10 @@ def role_data(row, db=None):
     return record
 
 
-def session_data(db, key, *, has_assignments, has_notes, has_scorecards):
+def session_data(db, key, *, has_assignments, has_notes, has_scorecards, include_snapshot=True):
     record = select(store.get_session(db, key, include_trashed=True), SESSION_FIELDS)
+    snapshot = session_rubric.read(db, key) if include_snapshot else None
+    record["rubric_snapshot"] = snapshot.model_dump() if snapshot else None
     record["assignment"] = review_data.assignment_data(db, key) if has_assignments else None
     record["handoff_notes"] = review_data.handoff_data(db, key) if has_notes else []
     record["scorecard_items"] = review_data.scorecard_data(db, key) if has_scorecards else []
@@ -89,7 +92,7 @@ def session_data(db, key, *, has_assignments, has_notes, has_scorecards):
 
 @router.get("/workspace")
 def download(session_id: UUID | None = None):
-    doc = {"format": "interviewcheck.workspace", "version": 5, "roles": [], "sessions": []}
+    doc = {"format": "interviewcheck.workspace", "version": 6, "roles": [], "sessions": []}
     size = 0
     size_error = (
         "This interview exceeds the JSON backup limit. Use a consistent SQLite database backup."
@@ -137,12 +140,13 @@ def download(session_id: UUID | None = None):
     )
 
 
-def stored_session(db, key, *, has_assignments, has_notes, has_scorecards):
+def stored_session(db, key, *, has_assignments, has_notes, has_scorecards, include_snapshot):
     try:
         data = session_data(
             db, key, has_assignments=has_assignments, has_notes=has_notes, has_scorecards=has_scorecards,
+            include_snapshot=include_snapshot,
         )
-    except review_data.UnrepresentableReviewData:
+    except (review_data.UnrepresentableReviewData, session_rubric.UnreadableRubric):
         return None
     return schema.Session.model_validate(data)
 
@@ -198,7 +202,8 @@ def classify(db, backup, *, include_conflict_reasons=False):
             else:
                 exists = db.execute("SELECT 1 FROM sessions WHERE id=?", (key,)).fetchone() is not None
                 if exists:
-                    stored = stored_session(db, key, has_assignments=has_assignments, has_notes=has_notes, has_scorecards=has_scorecards)
+                    stored = stored_session(db, key, has_assignments=has_assignments, has_notes=has_notes,
+                                            has_scorecards=has_scorecards, include_snapshot=backup.version >= 6)
                 else:
                     linked_collision = review_data.has_handoff_collision(db, record.handoff_notes) or _has_exchange_collision(db, record)
             state = "identical" if stored == record else "conflict" if exists or linked_collision else "new"
@@ -263,8 +268,10 @@ def restore_records(db, actions):
             (s.id, s.candidate, s.role, s.policy, s.consent, s.created_at, legacy(s)),
         )
         db.execute(
-            "INSERT INTO session_context(session_id,role_id,questions,ended_at,permitted_sources) VALUES(?,?,?,?,?)",
-            (s.id, s.role_id, encode(s.planned_questions), s.ended_at, materials(s.permitted_sources)),
+            """INSERT INTO session_context(session_id,role_id,questions,ended_at,permitted_sources,rubric_snapshot)
+               VALUES(?,?,?,?,?,?)""",
+            (s.id, s.role_id, encode(s.planned_questions), s.ended_at, materials(s.permitted_sources),
+             s.rubric_snapshot.model_dump_json() if s.rubric_snapshot else None),
         )
         review_data.restore_review_data(db, s)
         if s.trashed_at:

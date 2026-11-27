@@ -95,7 +95,7 @@ def test_scorecard_roundtrip_order_trash_analytics_and_audit(client, tmp_path, m
     single = client.get("/api/backups/workspace", params={"session_id": archived}).raise_for_status().content
     raw = client.get("/api/backups/workspace").raise_for_status().content
     doc = json.loads(raw)
-    assert doc["version"] == json.loads(single)["version"] == 5
+    assert doc["version"] == json.loads(single)["version"] == 6
     by_id = {s["id"]: s for s in doc["sessions"]}
     assert [i["criterion_id"] for i in by_id[active]["scorecard_items"]] == ["adhoc-z", "sys-design", "adhoc-a"]
     assert all("session_id" not in i for s in doc["sessions"] for i in s["scorecard_items"])
@@ -195,6 +195,7 @@ def test_legacy_backups_preserve_local_scorecards_and_keep_older_checks(client, 
     sid = create_session(client)
     doc = client.get("/api/backups/workspace").json()
     doc["version"] = version
+    del doc["sessions"][0]["rubric_snapshot"]
     record = doc["sessions"][0]
     if version < 4:
         del record["handoff_notes"]
@@ -339,6 +340,7 @@ def test_unrepresentable_stored_scorecards_fail_closed_without_leakage(client, c
     v4 = deepcopy(doc)
     v4["version"] = 4
     for record in v4["sessions"]:
+        del record["rubric_snapshot"]
         del record["scorecard_items"]
     assert preview(client, json.dumps(v4).encode())["sessions"] == {"new": 1, "identical": 1, "conflict": 0}
 
@@ -375,4 +377,4 @@ def test_absent_scorecard_table_blocks_scored_restore_and_allows_empty_v5(client
 
     fresh = create_session(client)
     exported = client.get("/api/backups/workspace", params={"session_id": fresh}).raise_for_status().json()
-    assert exported["version"] == 5 and exported["sessions"][0]["scorecard_items"] == []
+    assert exported["version"] == 6 and exported["sessions"][0]["scorecard_items"] == []

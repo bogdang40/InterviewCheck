@@ -5,7 +5,7 @@ SESSION_GROUPS = {
                           "permitted_sources", "consent", "created_at", "ended_at", "trashed_at", "tags", "legacy"),
     "assignment": ("assignment",),
     "handoff_notes": ("handoff_notes",),
-    "scorecard_items": ("scorecard_items",),
+    "scorecard_items": ("scorecard_items", "rubric_snapshot"),
     "exchanges": ("answers", "review_events"),
     "draft": ("draft",),
 }

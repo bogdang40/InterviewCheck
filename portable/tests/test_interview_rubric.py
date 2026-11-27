@@ -1,0 +1,122 @@
+"""An interview keeps its grading criteria and provenance across role changes and file recovery."""
+from copy import deepcopy
+import json
+from uuid import uuid4
+
+from api import store
+from backup_requests import client, preview, restore
+
+
+FIRST = {"id": "design", "criterion": "Design", "weight": 2,
+         "expected_signals": ["Explains the rollback."], "red_flags": ["No verification step."]}
+SECOND = {"id": "test", "criterion": "Testing", "weight": 4, "expected_signals": [], "red_flags": []}
+
+
+def role_with(client, criteria):
+    return client.post("/api/roles", json={"name": "Engineer", "policy": "Manual", "rubric": criteria}).raise_for_status().json()
+
+
+def setup(client, template, **changes):
+    body = {"id": str(uuid4()), "candidate": "Synthetic", "role": "Engineer", "policy": "Manual", "consent": True}
+    if template:
+        body.update(role_id=template["id"], role_version=template["version"])
+    body.update(changes)
+    client.post("/api/sessions", json=body).raise_for_status()
+    return body
+
+
+def card(client, sid):
+    return client.get(f"/api/sessions/{sid}/scorecard").raise_for_status().json()
+
+
+def test_role_change_and_replay_keep_original_criteria_and_grade(client):
+    role = role_with(client, [FIRST])
+    body = setup(client, role)
+    sid = body["id"]
+    initial = card(client, sid)
+    assert initial["rubric_snapshot"] == {"role_id": role["id"], "version_number": 1,
+                                          "role_content_sha256": role["version"], "criteria": [FIRST]}
+    updated = client.put("/api/roles/" + role["id"], json={**role, "rubric": [SECOND]}).raise_for_status().json()
+    next_sid = setup(client, updated)["id"]
+    assert card(client, next_sid)["rubric_snapshot"]["criteria"] == [SECOND]
+    assert card(client, next_sid)["rubric_snapshot"]["version_number"] == 2
+    client.post("/api/sessions", json=body).raise_for_status()
+    assert client.post("/api/sessions", json={**body, "role_version": updated["version"]}).status_code == 409
+    assert card(client, sid) == initial
+    # Manual role names can match existing templates only if the caller omitted role_id.
+    assert card(client, setup(client, None, role_id=None)["id"])["rubric_snapshot"]["role_id"] is None
+    assert card(client, setup(client, None)["id"])["rubric_snapshot"]["role_id"] == role["id"]
+    grade = {"criterion_id": "design", "criterion_label": "Design", "weight": 2, "rating": 4, "rationale": "Independent example."}
+    saved = client.put(f"/api/sessions/{sid}/scorecard", json={"items": [grade], "expected_version": initial["version"]})
+    assert saved.raise_for_status().json()["weighted_score_pct"] == 80
+    assert client.put(f"/api/sessions/{sid}/scorecard", json={"items": [], "expected_version": initial["version"]}).status_code == 409
+
+
+def test_empty_rubric_remains_empty_and_detached_snapshot_survives_backup(client, tmp_path, monkeypatch):
+    role = role_with(client, [])
+    sid = setup(client, role)["id"]
+    client.put("/api/roles/" + role["id"], json={**role, "rubric": [SECOND]}).raise_for_status()
+    original = card(client, sid)
+    assert original["items"] == [] and original["rubric_snapshot"]["criteria"] == []
+    # The role foreign key is protected. Simulate a database with a detached template.
+    with store.connection(write=True) as db:
+        db.execute("UPDATE session_context SET role_id=NULL WHERE session_id=?", (sid,))
+        db.execute("DELETE FROM roles WHERE id=?", (role["id"],))
+    assert card(client, sid) == original
+    client.post(f"/api/sessions/{sid}/trash").raise_for_status()
+    raw = client.get("/api/backups/workspace", params={"session_id": sid}).raise_for_status().content
+    workspace = client.get("/api/backups/workspace").raise_for_status().json()
+    assert workspace == json.loads(raw)
+    assert workspace["roles"] == [] and workspace["sessions"][0]["rubric_snapshot"] == original["rubric_snapshot"]
+    target = tmp_path / "roundtrip.sqlite"
+    store.initialize(target)
+    monkeypatch.setenv("INTERVIEWCHECK_DB", str(target))
+    restore(client, raw, preview(client, raw)).raise_for_status()
+    assert client.get(f"/api/sessions/{sid}/scorecard").status_code == 404
+    entry = next(row for row in client.get("/api/trash").json()["items"] if row["id"] == sid)
+    client.post(f"/api/trash/{sid}/restore", json={"operation_version": entry["operation_version"]}).raise_for_status()
+    assert card(client, sid) == original
+
+
+def test_v5_replay_preserves_snapshot_and_new_legacy_import_has_unknown_origin(client, tmp_path, monkeypatch):
+    role = role_with(client, [FIRST])
+    sid = setup(client, role)["id"]
+    doc = client.get("/api/backups/workspace").raise_for_status().json()
+    original = doc["sessions"][0].pop("rubric_snapshot")
+    doc["version"] = 5
+    old = json.dumps(doc).encode()
+    plan = preview(client, old)
+    assert plan["sessions"]["identical"] == 1
+    restore(client, old, plan).raise_for_status()
+    assert card(client, sid)["rubric_snapshot"] == original
+    target = tmp_path / "legacy.sqlite"
+    store.initialize(target)
+    monkeypatch.setenv("INTERVIEWCHECK_DB", str(target))
+    restore(client, old, preview(client, old)).raise_for_status()
+    assert card(client, sid)["rubric_snapshot"] is None
+    client.put("/api/roles/" + role["id"], json={**role, "rubric": [SECOND]}).raise_for_status()
+    assert [row["criterion_id"] for row in card(client, sid)["items"]] == ["test"]
+    latest = client.get("/api/backups/workspace").json()
+    assert latest["version"] == 6 and latest["sessions"][0]["rubric_snapshot"] is None
+
+
+def test_v6_conflicts_and_invalid_sources_never_replace_saved_rubric(client):
+    role = role_with(client, [FIRST])
+    sid = setup(client, role)["id"]
+    original = client.get("/api/backups/workspace").raise_for_status().json()
+    changed = deepcopy(original)
+    changed["sessions"][0]["rubric_snapshot"]["criteria"][0]["weight"] = 5
+    plan = client.post("/api/backups/preview?include_conflict_reasons=true", json=changed).raise_for_status().json()
+    assert plan["conflicts"][0]["reasons"] == ["scorecard_items"]
+    assert restore(client, json.dumps(changed).encode(), plan).status_code == 409
+    assert card(client, sid)["rubric_snapshot"]["criteria"] == [FIRST]
+    for malformed in ({"role_id": str(uuid4())}, {"version_number": 0}, {"criteria": [FIRST, FIRST]},
+                      {"role_content_sha256": "invalid"}, {"criteria": [{"id": "private"}]}):
+        invalid = deepcopy(original)
+        invalid["sessions"][0]["rubric_snapshot"].update(malformed)
+        result = client.post("/api/backups/preview", json=invalid)
+        assert result.status_code == 422 and "private" not in result.text
+    del changed["sessions"][0]["rubric_snapshot"]
+    assert client.post("/api/backups/preview", json=changed).status_code == 422
+    original["version"] = 5
+    assert client.post("/api/backups/preview", json=original).status_code == 422
