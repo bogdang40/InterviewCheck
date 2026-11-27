@@ -16,7 +16,10 @@ def open_card(page, workspace):
     page.goto(workspace.base_url + "/account/")
     page.get_by_label("Operator email").fill(EMAIL)
     page.get_by_label("Password", exact=True).fill(PASS)
-    page.get_by_role("button", name="Sign in", exact=True).click()
+    login_url = workspace.base_url + "/api/integrations/access/login"
+    with page.expect_response(lambda res: res.request.method == "POST" and res.url == login_url) as login:
+        page.get_by_role("button", name="Sign in", exact=True).click()
+    assert login.value.status == 200
     expect(page.get_by_text(f"{EMAIL} · Access active")).to_be_visible()
     page.goto(workspace.base_url + "/admin/")
     page.get_by_role("tab", name="Usage", exact=True).click()
@@ -137,7 +140,10 @@ def test_allowance_navigation_protects_each_admin_editor(e2e_workspace, desktop_
     prompt.fill("Independent unsaved review prompt")
     page.get_by_role("tab", name="Usage", exact=True).click()
     expect(field).to_have_value("7")
-    card.get_by_role("button", name="Save allowance").click()
+    allowance_url = e2e_workspace.base_url + ALLOWANCE
+    with page.expect_response(lambda res: res.request.method == "PUT" and res.url == allowance_url) as saved:
+        card.get_by_role("button", name="Save allowance").click()
+    assert saved.value.status == 200 and saved.value.json()["monthly_limit"] == 7
     expect(card).to_contain_text("Allowance saved.")
     verify_guard()
     page.get_by_role("tab", name="Prompts & SLA").click()
