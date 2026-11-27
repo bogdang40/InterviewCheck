@@ -73,7 +73,7 @@ export async function readDeferredSource(sid: string, parentId: string, signal: 
   return { session, answer, ordinal: index + 1, material: saved.material }
 }
 
-export function matchesDeferredDraft(draft: Draft | null, item: DeferredQuestion, id?: string): draft is Draft {
+export function matchesDeferredDraft(draft: Draft | null, item: DeferredQuestion, id?: string): boolean {
   return !!draft && validId(draft.id) && (!id || draft.id === id) && count(draft.revision) && draft.revision > 0
     && typeof draft.answer === "string" && Array.isArray(draft.references) && typeof draft.updated_at === "string"
     && draft.parent_answer_id === item.parent_answer_id && draft.planned_slot == null && draft.question === item.question
