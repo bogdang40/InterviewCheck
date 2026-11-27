@@ -25,7 +25,7 @@ USER_ID = "fixture-private-user-id"
 def copies(tmp_path, monkeypatch):
     live = tmp_path / "live"
     live.mkdir()
-    extracted = tmp_path / "extracted ? #"
+    extracted = tmp_path / ("extracted % #" if os.name == "nt" else "extracted ? % #")
     extracted.mkdir()
     review, access = [live / name for name in ("review.sqlite3", "access.sqlite3")]
     monkeypatch.setenv("INTERVIEWCHECK_DB", str(review))
