@@ -152,6 +152,25 @@ def test_private_panel_draft_disappears_across_browser_account_switch(e2e_worksp
     sibling = page.context.new_page()
     try:
         sibling.goto(base + "/account/", wait_until="domcontentloaded")
+        # A new cookie for the same administrator also invalidates a private panel editor.
+        edit_url = base + f"/api/calibration/sessions/{sid}/answers/{aid}/panel/edit"
+        previous = page.request.get(edit_url).json()["editor"]
+        rotate = sibling.get_by_role("form", name="Change password")
+        rotate.get_by_label("Current password").fill(PASS)
+        rotate.get_by_label("New password", exact=True).fill(PASS + "-rotated")
+        rotate.get_by_label("Confirm new password").fill(PASS + "-rotated")
+        with page.expect_response(lambda res: res.url == edit_url and res.request.method == "GET") as rechecked:
+            rotate.get_by_role("button", name="Update password").click()
+        expect(rotate.get_by_role("status")).to_contain_text("Password updated and session rotated.")
+        assert rechecked.value.ok and rechecked.value.json()["editor"] != previous
+        expect(reason).to_have_value("")
+        expect(panel.get_by_text("Private chair history", exact=True)).to_have_count(0)
+        expect(panel.get_by_label("Discussion action")).to_have_value("")
+        # Now verify the distinct switch to B with another unsaved draft and visible private history.
+        panel.get_by_role("button", name="Read private panel notes").click()
+        expect(panel.get_by_text("Private chair history", exact=True)).to_be_visible()
+        panel.get_by_label("Discussion action").select_option("reopened")
+        reason.fill("Private A draft")
         sign_out_other_tab(page, sibling, collector, base, sid, aid, reason)
         _sign_in_browser(sibling, base, second_email)
         # The application can return this tab to its sign-in gate on logout.
