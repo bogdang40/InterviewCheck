@@ -80,7 +80,7 @@ def state(path, sid):
 
 
 class Observed:
-    def __init__(self, page, base, path):
+    def __init__(self, page, base, path, *, capture_clipboard=True):
         self.preview_path = path + "/deferred-questions/handoff/preview"
         self.verify_path = path + "/deferred-questions/handoff/verify"
         self.calls = []
@@ -100,11 +100,12 @@ class Observed:
         page.on("request", sent)
         page.on("websocket", lambda ws: self.external.append("websocket") if urlsplit(ws.url).netloc != origin else None)
         page.on("download", self.downloads.append)
-        # Capture the clipboard adapter's exact UTF-8 input without changing the host clipboard.
-        page.add_init_script("""window.handoffCopies = [];
-            Object.defineProperty(navigator, 'clipboard', {configurable:true, value:{
-              writeText: async (text) => { window.handoffCopies.push([...new TextEncoder().encode(text)]); }
-            }});""")
+        if capture_clipboard:
+            # Capture the adapter's UTF-8 input without changing the host clipboard.
+            page.add_init_script("""window.handoffCopies = [];
+                Object.defineProperty(navigator, 'clipboard', {configurable:true, value:{
+                  writeText: async (text) => { window.handoffCopies.push([...new TextEncoder().encode(text)]); }
+                }});""")
 
     def assert_private(self):
         assert self.external == [] and self.workspace_writes == []
