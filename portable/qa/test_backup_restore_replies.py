@@ -172,7 +172,7 @@ def test_older_server_reply_without_download_header_or_review_counts(workspace_u
         try:
             assert upstream.status == 200
             result = upstream.json()
-            for field in ("assignments", "handoff_notes", "scorecard_items"):
+            for field in ("assignments", "handoff_notes", "scorecard_items", "deferred_questions"):
                 del result[field]
             route.fulfill(status=200, content_type="application/json; charset=utf-8", body=json.dumps(result))
         finally:
@@ -197,7 +197,7 @@ def test_older_server_reply_without_download_header_or_review_counts(workspace_u
         assert client.get(f"/api/sessions/{sid}").raise_for_status().json()["candidate"] == "Restore fixture"
 
 
-@pytest.mark.parametrize("failure", ["disconnect", "inconsistent acknowledgement", "omitted count"])
+@pytest.mark.parametrize("failure", ["disconnect", "inconsistent acknowledgement", "omitted count", "different deferred count", "omitted deferred count"])
 def test_lost_or_invalid_reply_after_commit_requires_read_only_repreview(workspace_url, browser_page, archive, failure):
     page = browser_page
     path, sid, plan = archive
@@ -218,7 +218,9 @@ def test_lost_or_invalid_reply_after_commit_requires_read_only_repreview(workspa
         });
         if (window.restoreFailure === "disconnect") throw new TypeError("Synthetic lost restore reply");
         const wrong = await response.json();
-        if (window.restoreFailure === "omitted count") delete wrong.assignments;
+        if (window.restoreFailure === "different deferred count") wrong.deferred_questions++;
+        else if (window.restoreFailure === "omitted deferred count") delete wrong.deferred_questions;
+        else if (window.restoreFailure === "omitted count") delete wrong.assignments;
         else wrong.sessions.new++;
         return new Response(JSON.stringify(wrong), {status:200, headers:{"Content-Type":"application/json"}});
       };

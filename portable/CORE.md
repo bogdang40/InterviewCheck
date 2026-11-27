@@ -155,7 +155,7 @@ Keep a selected follow up on its saved parent without replacing the interview's 
 
 A changed parent requires explicit reconfirmation against its current material. A reviewer note alone does not invalidate the question. The original selected wording and parent are retained; a fulfilled child remains linked to that parent if its answer is corrected. Withdrawing notice, Trash and retention protection restrict availability. Retention anonymization removes deferred questions and linked drafts.
 
-Workspace JSON version 7 includes each interview's deferred questions, their state and the link to any saved deferred draft. Existing schedules, notes, scorecards and role snapshots keep their earlier meanings. Older imports start without deferred work, and replaying a matching version 1 to 6 file preserves locally saved questions. A fresh JSON restore regenerates local edit tokens. Read the restored queue and draft before writing. A consistent SQLite backup also retains in-flight request receipts.
+Workspace JSON version 7 includes each interview's deferred questions, their state and the link to any saved deferred draft. Existing schedules, notes, scorecards and role snapshots keep their earlier meanings. Older imports start without deferred work, and replaying a matching version 1 to 6 file preserves locally saved questions. Each fulfilled question is checked against a publication fact on its original child, including after a later correction. A fresh JSON restore regenerates local edit tokens. Read the restored queue and draft before writing. A consistent SQLite backup also retains in-flight request receipts.
 
 ## Review brief
 
