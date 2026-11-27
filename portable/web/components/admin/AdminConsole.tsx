@@ -71,6 +71,7 @@ export default function AdminConsole() {
   const [envFallbacks, setEnvFallbacks] = useState<EnvFallback[]>([])
   const [fleetTelemetry, setFleetTelemetry] = useState<FleetTelemetryResponse | null>(null)
   const [diagnostics, setDiagnostics] = useState<DiagnosticsData | null>(null)
+  const [diagnosticsError, setDiagnosticsError] = useState("")
   const diagnosticsRequest = useRef(0)
   const [modelsLoading, setModelsLoading] = useState(true)
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -111,7 +112,10 @@ export default function AdminConsole() {
     const request = ++diagnosticsRequest.current
     try {
       const next = await getAdminDiagnostics()
-      if (request === diagnosticsRequest.current) setDiagnostics(next)
+      if (request === diagnosticsRequest.current) {
+        setDiagnostics(next)
+        setDiagnosticsError("")
+      }
     } catch (err) {
       if (request !== diagnosticsRequest.current) return
       setDiagnostics(null)
@@ -222,6 +226,7 @@ export default function AdminConsole() {
           setModelsLoading(true)
           setFleetTelemetry(null)
           setDiagnostics(null)
+          setDiagnosticsError("")
           setHealthModel(null)
           setStatus((prev) => (prev ? { ...prev, signedIn: false } : prev))
         }}
@@ -253,6 +258,7 @@ export default function AdminConsole() {
       <AdminTabNav tabs={ADMIN_TABS} activeTab={tab} onSelect={selectTab} />
 
       {(bannerError || access.error) && <p role="alert" className="error">{bannerError || access.error}</p>}
+      {diagnosticsError && <p role="alert" className="error">{diagnosticsError}</p>}
       {bannerStatus && <p role="status" className="notice">{bannerStatus}</p>}
 
       <AdminTabPanel id="models" active={tab === "models"} opened className="stack">
@@ -317,7 +323,7 @@ export default function AdminConsole() {
             void refreshTelemetry()
             setDiagnostics(null)
             void refreshDiagnostics().catch(err => {
-              if (!handleAuthFailure(err)) setBannerError(err instanceof Error ? err.message : "Could not refresh diagnostics.")
+              if (!handleAuthFailure(err)) setDiagnosticsError(err instanceof Error ? err.message : "Could not refresh diagnostics.")
             })
             setBannerStatus(created ? `Connected ${saved.display_name}.` : `Updated ${saved.display_name}.`)
           }}

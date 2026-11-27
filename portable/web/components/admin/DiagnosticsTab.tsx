@@ -10,7 +10,6 @@ import {
   formatBudgetUsd,
   formatCompactTokens,
   formatUsd,
-  readBudgetParameters,
   type DiagnosticsData,
 } from "@/lib/adminDiagnostics"
 import { AdminApiError, CAPABILITY_LABELS, PROVIDER_LABELS, type ConnectedModel } from "@/lib/adminModels"
@@ -184,7 +183,7 @@ export function DiagnosticsTab({ models, data, refresh, onAuthInvalid }: {
       {error && <p role="alert" className="error">{error}</p>}
       {exportStatus && <p role="status" aria-live="polite" className="notice">{exportStatus}</p>}
 
-      <div className="admin-summary-grid" aria-label="Fleet diagnostic summary">
+      {data && <div className="admin-summary-grid" aria-label="Fleet diagnostic summary">
         <article className="panel admin-metric">
           <div className="admin-metric-label"><span>Fleet P95 latency</span><Activity size={15} aria-hidden="true" /></div>
           <strong>{formatLatency(fleetP95)}</strong>
@@ -193,12 +192,12 @@ export function DiagnosticsTab({ models, data, refresh, onAuthInvalid }: {
         <article className={`panel admin-metric${checkErrors > 0 || (summary?.error_models ?? 0) > 0 ? " attention" : ""}`}>
           <div className="admin-metric-label"><span>Fleet errors</span></div>
           <strong>{checkErrors}</strong>
-          <small>{summary?.error_models ?? 0} models in error · {data?.usageSummary.daily_errors ?? 0} request errors today</small>
+          <small>{summary?.error_models ?? 0} models in error · {data.usageSummary.daily_errors} request errors today</small>
         </article>
         <article className="panel admin-metric">
           <div className="admin-metric-label"><span>Daily tokens &amp; spend</span></div>
-          <strong>{formatCompactTokens(data?.usageSummary.daily_tokens ?? 0)}</strong>
-          <small>Estimated monthly spend {formatUsd(data?.usageSummary.monthly_cost_usd ?? 0)} · {data?.usageSummary.daily_requests ?? 0} reqs today</small>
+          <strong>{formatCompactTokens(data.usageSummary.daily_tokens)}</strong>
+          <small>Estimated monthly spend {formatUsd(data.usageSummary.monthly_cost_usd)} · {data.usageSummary.daily_requests} reqs today</small>
         </article>
         <article className="panel admin-metric">
           <div className="admin-metric-label"><span>Transcription pipeline</span></div>
@@ -208,22 +207,24 @@ export function DiagnosticsTab({ models, data, refresh, onAuthInvalid }: {
           </div>
           <small className="admin-mono">{trans?.active_provider ? `${trans.active_provider}${trans.active_model ? ` · ${trans.active_model}` : ""}` : "No active transcription provider"}</small>
         </article>
-      </div>
+      </div>}
 
       <section className="panel stack" aria-label="Per-model usage and budgets">
         <h3>Per-model token and cost usage</h3>
-        {loading && !data ? (
-          <p role="status" className="muted">Loading usage diagnostics…</p>
+        {!data ? (
+          <p role="status" className="muted">{loading ? "Loading usage diagnostics…" : "Recorded usage is unavailable."}</p>
         ) : !models.length ? (
           <p className="muted">No connected models registered yet.</p>
         ) : (
           <div className="admin-diag-list">
             {models.map((m) => {
-              const u = data?.usageByModel[m.id]
-              const t = data?.telemetry?.models?.[m.id]
-              const { daily_token_limit: dailyLim = null, monthly_cost_limit_usd: monthlyLim = null } = u ?? readBudgetParameters(m.parameters)
-              const dailyTok = u?.daily_tokens ?? 0
-              const monthlyUsd = u?.monthly_cost_usd ?? 0
+              const u = data.usageByModel[m.id]
+              if (!u) return <article key={m.id} className="panel inset admin-diag-card">
+                <strong>{m.display_name}</strong><p className="muted">Recorded usage is unavailable.</p>
+              </article>
+              const t = data.telemetry?.models?.[m.id]
+              const { daily_token_limit: dailyLim, monthly_cost_limit_usd: monthlyLim,
+                daily_tokens: dailyTok, monthly_cost_usd: monthlyUsd } = u
               return (
                 <article key={m.id} className="panel inset admin-diag-card">
                   <div className="spread">

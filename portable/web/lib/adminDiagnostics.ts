@@ -130,15 +130,18 @@ export function formatModelBudgetBadge(
   usage?: ModelUsageSummary,
 ): { label: string; overLimit: boolean } | null {
   const budget = readBudgetParameters(model.parameters)
-  const { daily_token_limit: dailyLimit = null, monthly_cost_limit_usd: monthlyLimit = null } = usage ?? budget
-  const dailyTokens = usage?.daily_tokens ?? 0
-  const monthlyCost = usage?.monthly_cost_usd ?? 0
   const hasRates = budget.input_cost_per_1m_usd != null || budget.output_cost_per_1m_usd != null
+  if (!usage) {
+    return budget.daily_token_limit != null || budget.monthly_cost_limit_usd != null || hasRates
+      ? { label: "Budget usage unavailable", overLimit: false } : null
+  }
+  const { daily_token_limit: dailyLimit, monthly_cost_limit_usd: monthlyLimit,
+    daily_tokens: dailyTokens, monthly_cost_usd: monthlyCost } = usage
   if (dailyLimit === null && monthlyLimit === null && !hasRates && dailyTokens === 0 && monthlyCost === 0) return null
   const overLimit =
     (dailyLimit !== null && dailyTokens >= dailyLimit) ||
     (monthlyLimit !== null && monthlyCost >= monthlyLimit) ||
-    (usage?.budget_status != null && usage.budget_status !== "ok")
+    usage.budget_status !== "ok"
   const parts: string[] = []
   if (dailyLimit !== null) parts.push(`${formatCompactTokens(dailyTokens)}/${formatCompactTokens(dailyLimit)} tok`)
   else if (dailyTokens > 0) parts.push(`${formatCompactTokens(dailyTokens)} tok`)
