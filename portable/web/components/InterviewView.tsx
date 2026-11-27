@@ -17,6 +17,7 @@ import {
 import { useReportDirty, type DirtyReporter } from "@/lib/dirtyTracking"
 import { useReviewHotkeys } from "@/lib/useReviewHotkeys"
 import { useScoringCapabilities } from "@/lib/scoringHooks"
+import AnswerEditor from "./LazyAnswerEditor"
 import DeferredQuestions from "./DeferredQuestions"
 import MoveToTrash from "./MoveToTrash"
 import ReportExport from "./ReportExport"
@@ -32,10 +33,6 @@ const ATSNote = dynamic(() => import("./ATSNote"), { ssr: false })
 const LocalRecordingPlayback = dynamic(() => import("./LocalRecordingPlayback"), { ssr: false })
 const TranscriptBatchImport = dynamic(() => import("./TranscriptBatchImport"), { ssr: false })
 const SessionScorecardPanel = dynamic(() => import("./SessionScorecardPanel"), { ssr: false })
-const AnswerEditor = dynamic(() => import("./AnswerEditor"), {
-  ssr: false,
-  loading: () => <p role="status">Loading exchange editor...</p>,
-})
 
 type Props = {
   session: Interview
@@ -294,7 +291,7 @@ export default function InterviewView({ session, answerId, assignmentDirty, onDi
                 initial={session.answers.find((a) => a.id === edit)}
                 onDirty={onDirty}
                 onSave={(answer, notice) => { save(answer); if (notice) setCaptureNotice({ id: answer.id, text: notice }) }}
-                onCancel={() => setEdit(null)}
+                onCancel={() => { setEdit(null); focusTarget.current?.focus({ preventScroll: true }) }}
                 embeddingAvailable={capabilities.embedding}
               />
             ) : selected && protectedRecord ? (

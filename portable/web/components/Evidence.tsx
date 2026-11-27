@@ -272,7 +272,7 @@ export default function Evidence({
       <CandidateResponse item={item}/>
       <Findings result={item.result} />
       <PanelDiscussion sessionId={sessionId} item={item} locked={busy || dirty || conflict || !!worksheet} onDirty={onDirty} />
-      {judgeAvailable && <JudgeAssist key={`${item.id}:${item.revision}`} sessionId={sessionId} item={item}
+      {judgeAvailable !== false && <JudgeAssist key={`${item.id}:${item.revision}`} sessionId={sessionId} item={item}
         judgeAvailable={judgeAvailable} onFollowUp={onFollowUp} />}
       {onOpenDeferred && <Button type="button" variant="outline" size="sm" aria-controls="deferred-questions"
         onClick={onOpenDeferred}>Keep this follow up for later…</Button>}
