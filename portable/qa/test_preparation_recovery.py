@@ -149,7 +149,9 @@ def test_permission_snapshot_and_browser_restore(workspace_url, browser_page, mo
         assert c.get("/api/sessions").json() == []
         page.get_by_role("button", name="Preview restore").click()
         expect(page.get_by_role("heading", name="Restore preview")).to_be_visible()
-        expect(page.get_by_text("1 review assignment, 1 panel handoff note and 1 rubric score", exact=False)).to_be_visible()
+        contents = page.get_by_text("This file contains", exact=False)
+        for count in ("1 review assignment", "1 panel handoff note", "1 rubric score", "0 deferred questions"):
+            expect(contents).to_contain_text(count)
         expect(page.get_by_text(note_text, exact=False)).to_have_count(0)
         expect(page.get_by_text(rationale_text, exact=False)).to_have_count(0)
         assert c.get("/api/roles").json() == []
