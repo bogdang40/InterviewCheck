@@ -63,6 +63,7 @@ def test_legacy_unknown_assignment_preserves_existing_owner(client, version):
     assignment = assign(client, sid)
     doc = client.get("/api/backups/workspace").json()
     doc["version"] = version
+    del doc["sessions"][0]["privacy"]
     del doc["sessions"][0]["rubric_snapshot"]
     del doc["sessions"][0]["scorecard_items"]
     del doc["sessions"][0]["handoff_notes"]
@@ -164,6 +165,7 @@ def test_invalid_stored_actor_blocks_export_and_conflicts_with_assignment_aware_
     assert client.get(f"/api/sessions/{second['id']}").status_code == 404
     doc["version"] = 2
     for record in doc["sessions"]:
+        del record["privacy"]
         del record["rubric_snapshot"]
         del record["scorecard_items"]
         del record["handoff_notes"]

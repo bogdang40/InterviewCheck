@@ -82,6 +82,7 @@ def test_v5_replay_preserves_snapshot_and_new_legacy_import_has_unknown_origin(c
     role = role_with(client, [FIRST])
     sid = setup(client, role)["id"]
     doc = client.get("/api/backups/workspace").raise_for_status().json()
+    del doc["sessions"][0]["privacy"]
     original = doc["sessions"][0].pop("rubric_snapshot")
     doc["version"] = 5
     old = json.dumps(doc).encode()

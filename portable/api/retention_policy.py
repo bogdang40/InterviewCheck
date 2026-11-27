@@ -9,6 +9,7 @@ from pydantic import Field
 
 from . import rate_limit, store
 from .models import Input
+from . import session_privacy
 from .retention_anonymizer import REDACTED_TEXT, SessionAnonymizer
 from .session_purge import purge_session
 
@@ -62,6 +63,7 @@ def _has_table(db: sqlite3.Connection, name: str) -> bool:
 
 def migrate(db: sqlite3.Connection) -> None:
     db.executescript(SCHEMA)
+    session_privacy.migrate(db)
     db.execute(
         "INSERT OR IGNORE INTO retention_policies"
         "(id,anonymize_after_days,purge_trashed_after_days,preserve_scorecard_aggregates,enabled,updated_by,updated_at) "

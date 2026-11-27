@@ -195,6 +195,7 @@ def test_legacy_backups_preserve_local_scorecards_and_keep_older_checks(client, 
     sid = create_session(client)
     doc = client.get("/api/backups/workspace").json()
     doc["version"] = version
+    del doc["sessions"][0]["privacy"]
     del doc["sessions"][0]["rubric_snapshot"]
     record = doc["sessions"][0]
     if version < 4:
@@ -340,6 +341,7 @@ def test_unrepresentable_stored_scorecards_fail_closed_without_leakage(client, c
     v4 = deepcopy(doc)
     v4["version"] = 4
     for record in v4["sessions"]:
+        del record["privacy"]
         del record["rubric_snapshot"]
         del record["scorecard_items"]
     assert preview(client, json.dumps(v4).encode())["sessions"] == {"new": 1, "identical": 1, "conflict": 0}

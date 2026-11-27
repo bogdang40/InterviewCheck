@@ -6,12 +6,14 @@ import json
 import re
 from uuid import UUID, uuid4
 
+from pydantic import ValidationError
+
 from fastapi import APIRouter, Header, HTTPException, Request, Response
 from starlette.concurrency import run_in_threadpool
 
 from . import backup_conflicts, backup_schema as schema, bulk_operations, drafts, store
 from . import backup_review_data as review_data
-from . import session_rubric
+from . import session_privacy, session_rubric
 
 router = APIRouter(prefix="/backups")
 ROLE_FIELDS = set(schema.Role.model_fields)
@@ -63,10 +65,11 @@ def role_data(row, db=None):
     return record
 
 
-def session_data(db, key, *, has_assignments, has_notes, has_scorecards, include_snapshot=True):
+def session_data(db, key, *, has_assignments, has_notes, has_scorecards, include_v6=True):
     record = select(store.get_session(db, key, include_trashed=True), SESSION_FIELDS)
-    snapshot = session_rubric.read(db, key) if include_snapshot else None
+    snapshot = session_rubric.read(db, key) if include_v6 else None
     record["rubric_snapshot"] = snapshot.model_dump() if snapshot else None
+    record["privacy"] = session_privacy.read(db, key).model_dump() if include_v6 else None
     record["assignment"] = review_data.assignment_data(db, key) if has_assignments else None
     record["handoff_notes"] = review_data.handoff_data(db, key) if has_notes else []
     record["scorecard_items"] = review_data.scorecard_data(db, key) if has_scorecards else []
@@ -87,6 +90,12 @@ def session_data(db, key, *, has_assignments, has_notes, has_scorecards, include
         record["review_events"] = [dict(ev) for ev in events]
     else:
         record["review_events"] = []
+    if record["privacy"] and record["privacy"]["state"] == "anonymized":
+        try:
+            schema.Session.model_validate(record)
+        except ValidationError as exc:
+            raise review_data.UnrepresentableReviewData(409, "The anonymization receipt conflicts with stored interview data. "
+                                                        "Inspect the SQLite backup before exporting this interview.") from exc
     return record
 
 
@@ -140,13 +149,13 @@ def download(session_id: UUID | None = None):
     )
 
 
-def stored_session(db, key, *, has_assignments, has_notes, has_scorecards, include_snapshot):
+def stored_session(db, key, *, has_assignments, has_notes, has_scorecards, include_v6):
     try:
         data = session_data(
             db, key, has_assignments=has_assignments, has_notes=has_notes, has_scorecards=has_scorecards,
-            include_snapshot=include_snapshot,
+            include_v6=include_v6,
         )
-    except (review_data.UnrepresentableReviewData, session_rubric.UnreadableRubric):
+    except (review_data.UnrepresentableReviewData, session_rubric.UnreadableRubric, session_privacy.UnreadablePrivacy):
         return None
     return schema.Session.model_validate(data)
 
@@ -170,6 +179,8 @@ def classify(db, backup, *, include_conflict_reasons=False):
     actions = {"roles": [], "sessions": []}
     totals = {kind: {"new": 0, "identical": 0, "conflict": 0} for kind in actions}
     conflicts = []
+    if backup.sessions:
+        session_privacy.require_storage(db)
     assignments = sum(s.assignment is not None for s in backup.sessions)
     # Compare only fields included by the writer's version.
     has_assignments = backup.version >= 3 and _has_table(db, "session_assignments")
@@ -203,7 +214,7 @@ def classify(db, backup, *, include_conflict_reasons=False):
                 exists = db.execute("SELECT 1 FROM sessions WHERE id=?", (key,)).fetchone() is not None
                 if exists:
                     stored = stored_session(db, key, has_assignments=has_assignments, has_notes=has_notes,
-                                            has_scorecards=has_scorecards, include_snapshot=backup.version >= 6)
+                                            has_scorecards=has_scorecards, include_v6=backup.version >= 6)
                 else:
                     linked_collision = review_data.has_handoff_collision(db, record.handoff_notes) or _has_exchange_collision(db, record)
             state = "identical" if stored == record else "conflict" if exists or linked_collision else "new"
@@ -273,6 +284,7 @@ def restore_records(db, actions):
             (s.id, s.role_id, encode(s.planned_questions), s.ended_at, materials(s.permitted_sources),
              s.rubric_snapshot.model_dump_json() if s.rubric_snapshot else None),
         )
+        session_privacy.restore(db, s)
         review_data.restore_review_data(db, s)
         if s.trashed_at:
             db.execute("INSERT INTO session_trash(session_id,trashed_at,operation_version) VALUES (?,?,?)", (s.id, s.trashed_at, str(uuid4())))

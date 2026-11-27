@@ -75,6 +75,7 @@ def test_legacy_backups_preserve_local_notes(client, version):
     sid = create_session(client)
     doc = client.get("/api/backups/workspace").json()
     doc["version"] = version
+    del doc["sessions"][0]["privacy"]
     del doc["sessions"][0]["rubric_snapshot"]
     record = doc["sessions"][0]
     del record["scorecard_items"]
@@ -173,6 +174,7 @@ def test_v4_detects_content_changes_and_handles_invalid_stored_notes(client):
     assert preview(client, raw)["sessions"]["conflict"] == 1
     assert restore(client, raw, plan).status_code == 409
     doc["version"] = 3
+    del doc["sessions"][0]["privacy"]
     del doc["sessions"][0]["rubric_snapshot"]
     del doc["sessions"][0]["scorecard_items"]
     del doc["sessions"][0]["handoff_notes"]

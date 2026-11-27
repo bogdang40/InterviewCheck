@@ -22,6 +22,7 @@ from .backup_review_schema import (
     TZStamp,
     _require_tz,
 )
+from .session_privacy import PrivacyRecord, verify_redaction
 from .session_rubric import BackupRubricCriterion, RubricSnapshot
 from .backup_validation import check_session_chronology, unique, verify_records
 
@@ -216,6 +217,7 @@ class Session(Record):
     role_id: ID | None
     planned_questions: HistoricalQuestions
     rubric_snapshot: RubricSnapshot | None = None
+    privacy: PrivacyRecord | None = None
     policy: HistoricalText
     permitted_sources: list[Material] = Field(default_factory=list, max_length=8)
     consent: bool
@@ -234,6 +236,8 @@ class Session(Record):
     @model_validator(mode="after")
     def valid_chronology(self):
         check_session_chronology(self.created_at, self.ended_at, self.trashed_at)
+        if self.privacy and self.privacy.state == "anonymized":
+            verify_redaction(self)
         self.tags = sorted(unique(self.tags, "session tag"))
         self.handoff_notes.sort(key=lambda note: (note.created_at, note.id), reverse=True)
         unique((item.criterion_id for item in self.scorecard_items), "scorecard criterion ID")
@@ -262,6 +266,8 @@ class Backup(Record):
                 raise ValueError("Version 5 requires a scorecard items field on every interview.")
             if ("rubric_snapshot" in s.model_fields_set) != (self.version >= 6):
                 raise ValueError("Version 6 requires a rubric snapshot field on every interview.")
+            if (self.version >= 6 and s.privacy is None) or (self.version < 6 and "privacy" in s.model_fields_set):
+                raise ValueError("Version 6 requires an interview privacy record.")
             if s.rubric_snapshot and s.role_id and s.rubric_snapshot.role_id != s.role_id:
                 raise ValueError("The rubric snapshot belongs to another role.")
             aids = {a.id for a in s.answers}

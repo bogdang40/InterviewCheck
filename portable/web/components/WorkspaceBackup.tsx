@@ -137,6 +137,7 @@ export default function WorkspaceBackup() {
           Backups from versions 1 through 3 leave existing panel handoff notes in place.
           Backups from versions 1 through 4 leave existing rubric scorecards in place.
           Version 6 also preserves the rubric captured at interview start. Earlier files leave an existing snapshot in place.
+          Confirmed anonymization stays in effect after restore. Older redacted records without a receipt can carry a privacy hold.
         </p>
         <label className="field">
           Workspace backup file

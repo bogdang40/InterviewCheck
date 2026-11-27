@@ -2,7 +2,7 @@
 
 SESSION_GROUPS = {
     "interview_details": ("id", "candidate", "role", "role_id", "planned_questions", "policy",
-                          "permitted_sources", "consent", "created_at", "ended_at", "trashed_at", "tags", "legacy"),
+                          "permitted_sources", "consent", "created_at", "ended_at", "trashed_at", "tags", "legacy", "privacy"),
     "assignment": ("assignment",),
     "handoff_notes": ("handoff_notes",),
     "scorecard_items": ("scorecard_items", "rubric_snapshot"),

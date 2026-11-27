@@ -10,7 +10,7 @@ import { Textarea } from "./ui/textarea"
 type Recipient = { candidate: string; role: string; target_id: string }
 type Record = { id: string; provider: string; remote_id: string; recipient: string; state: string }
 type Draft = Record & { draft: string }
-type State = { providers: string[]; history: Record[] }
+type State = { providers: string[]; history: Record[]; privacy?: "anonymized" | "legacy_unverified" }
 
 export function ATSNote({ session }: { session: Session }) {
   const base = "sessions/" + session.id + "/ats"
@@ -76,7 +76,9 @@ export function ATSNote({ session }: { session: Session }) {
   return <details className="import">
     <summary>Send a private ATS note</summary>
     <div className="stack">
-      {state && !state.providers.length && <p>Configure an ATS connection with permission to write private notes.</p>}
+      {state?.privacy && <p>{state.privacy === "anonymized" ? "This interview was anonymized."
+        : "This older record has signs of redaction. Its original retention status is unknown."} Private ATS transfers are unavailable.</p>}
+      {state && !state.privacy && !state.providers.length && <p>Configure an ATS connection with permission to write private notes.</p>}
       {!!state?.providers.length && <>
         <form className="stack" onSubmit={event => { event.preventDefault(); find() }}>
           <div className="dual">

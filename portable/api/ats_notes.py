@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import Field
 from starlette.concurrency import run_in_threadpool
 
-from . import ats, rate_limit, store
+from . import ats, rate_limit, session_privacy, store
 from .ats_directory import subdomain
 from .models import Input
 from .provider_http import configured, fetch_json, setting
@@ -61,6 +61,9 @@ def draft_text(session):
 def state(sid: UUID):
     with store.connection() as db:
         store.get_summary(db, str(sid))
+        privacy = session_privacy.read(db, str(sid))
+        if privacy.state != "unmarked":
+            return {"providers": [], "history": [], "privacy": privacy.state}
         rows = db.execute("SELECT id,state,provider,recipient,remote_id FROM note_exports WHERE session_id=? ORDER BY rowid DESC LIMIT 20",
                           (str(sid),))
         return {"providers": destinations(), "history": [dict(r) for r in rows]}
@@ -68,11 +71,13 @@ def state(sid: UUID):
 
 def begin_operation(db, sid):
     store.get_summary(db, sid)
+    session_privacy.require_transfer_allowed(db, sid)
     db.execute("INSERT OR IGNORE INTO ats_access_versions(session_id,version) VALUES(?,?)", (sid, str(uuid4())))
     return db.execute("SELECT version FROM ats_access_versions WHERE session_id=?", (sid,)).fetchone()[0]
 
 
 def check_operation(db, sid, version):
+    session_privacy.require_transfer_allowed(db, sid)
     allowed = db.execute("""SELECT 1 FROM ats_access_versions v JOIN active_sessions s ON s.id=v.session_id
                             WHERE v.session_id=? AND v.version=?""", (sid, version)).fetchone()
     if not allowed:
