@@ -4,19 +4,15 @@ import re
 from fastapi import HTTPException
 
 from . import retained_narratives
-from .retained_finding import TEXT_PARAMS, UNSAFE_TEXT_SQL
+from .retained_finding import FINDING_PARAMS, UNSAFE_FINDING_SQL
 from .retention_anonymizer import REDACTED_TEXT
 
 
 CANDIDATE = "r.candidate != 'Candidate [Anonymized ' || substr(r.id,1,8) || ']' OR r.legacy IS NOT NULL"
 ANSWER = f"""r.answer!=:marker OR r.note!='' OR r.legacy IS NOT NULL OR r.import_origin IS NOT NULL OR
-    CASE WHEN json_valid(r.result) THEN json_type(r.result,'$.passages') IS NOT 'array'
-      OR ({UNSAFE_TEXT_SQL}) OR EXISTS (
-        SELECT 1 FROM json_each(r.result,'$.passages') p
-        WHERE CASE WHEN p.type='object' THEN coalesce(json_extract(p.value,'$.answer_excerpt'),'')!=:marker ELSE 1 END)
-    ELSE 1 END"""
+    CASE WHEN json_valid(r.result) THEN ({UNSAFE_FINDING_SQL}) ELSE 1 END"""
 EXPORT = "r.draft!=:marker OR r.recipient!=:marker"
-PARAMS = {"marker": REDACTED_TEXT, **TEXT_PARAMS}
+PARAMS = {"marker": REDACTED_TEXT, **FINDING_PARAMS}
 ACTIVE_CONDITION = """NOT EXISTS (SELECT 1 FROM session_trash t WHERE t.session_id=s.id)
                   AND NOT EXISTS (SELECT 1 FROM retention_read_holds h WHERE h.session_id=s.id)"""
 PERMANENT = "ON CONFLICT(session_id) DO UPDATE SET needs_timestamp_check=0"
