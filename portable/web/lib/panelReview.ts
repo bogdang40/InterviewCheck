@@ -1,5 +1,5 @@
 import type { Answer, Disposition } from "./api"
-import { request } from "./http"
+import { ApiError, errorMessage, request } from "./http"
 
 export const panelLabels = {
   none: "No disagreement",
@@ -15,7 +15,7 @@ export type PanelView = "open" | "all" | "completed"
 type PanelEvent = { sequence: number; action: PanelAction; actor_email?: string; rationale?: string; created_at: string }
 export type PanelCase = {
   session_id: string; answer_id: string; status: PanelStatus; split: boolean; basis: string; version: string; evidence: string
-  history_count: number; history: PanelEvent[]
+  editor?: string; history_count: number; history: PanelEvent[]
   reviewers: { reviewer_email: string; disposition: Disposition; created_at: string }[]
 }
 
@@ -54,13 +54,20 @@ function route(sid: string, aid: string) {
   return `/api/calibration/sessions/${encodeURIComponent(sid)}/answers/${encodeURIComponent(aid)}/panel`
 }
 
-export async function readPanel(sid: string, aid: string, before: number | null, signal: AbortSignal, privateNotes = false) {
+export async function readPanel(sid: string, aid: string, before: number | null, signal: AbortSignal, privateNotes = false, editing = false) {
   const suffix = before === null ? "" : `?before=${before}`
-  return checked(await request<PanelCase>(route(sid, aid) + (privateNotes ? "/private" : "") + suffix, { signal }), sid, aid)
+  const result = checked(await request<PanelCase>(route(sid, aid) + (privateNotes ? "/private" : editing ? "/edit" : "") + suffix, { signal }), sid, aid)
+  if ((privateNotes || editing) && !validDigest(result.editor)) throw new Error("The server did not confirm this panel editor.")
+  return result
 }
 
 export async function writePanel(state: PanelCase, action: PanelAction, rationale: string, signal: AbortSignal) {
-  const json = { action, rationale, expected_basis: state.basis, expected_version: state.version, expected_evidence: state.evidence }
-  return checked(await request<PanelCase>(route(state.session_id, state.answer_id), { method: "POST", json, signal }),
+  if (!validDigest(state.editor)) throw new Error("Read the administrator panel context before saving.")
+  const json = { action, rationale, expected_editor: state.editor, expected_basis: state.basis, expected_version: state.version, expected_evidence: state.evidence }
+  return checked(await request<PanelCase>(route(state.session_id, state.answer_id), {
+    method: "POST", json, signal,
+    toError: (response, body) => new ApiError(response.status, errorMessage(body, response.status),
+      response.headers.get("X-InterviewCheck-Conflict") ?? undefined),
+  }),
     state.session_id, state.answer_id)
 }
