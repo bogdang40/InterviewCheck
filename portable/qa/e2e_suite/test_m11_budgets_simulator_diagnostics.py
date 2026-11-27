@@ -1,4 +1,5 @@
 """Opaque-box Playwright E2E tests for M11 model budgets, routing simulator, and diagnostics."""
+import csv
 from datetime import datetime, timezone
 import re
 
@@ -19,6 +20,7 @@ MEMBER_EMAIL = "member-m11@example.test"
 BOOTSTRAP_SECRET = "m11-bootstrap-secret-1234"
 ADMIN_PASS = "Synthetic-M11-Admin-Pass-1"
 MEMBER_PASS = "Synthetic-M11-Member-Pass-1"
+MONTHLY_THRESHOLD = "Monthly estimated spend threshold (USD)"
 
 
 def _setup_auth(e2e_workspace, *, include_member: bool = False) -> None:
@@ -98,7 +100,7 @@ def test_m11_budget_configuration_persistence_and_security_gates(e2e_workspace, 
     assert daily_input.evaluate("el => el.validity.rangeUnderflow") is True and dlg.is_visible()
 
     daily_input.fill("50000")
-    dlg.get_by_label("Monthly cost limit USD (0.01 to 100000)").fill("25.5")
+    dlg.get_by_label(MONTHLY_THRESHOLD, exact=True).fill("25.5")
     dlg.get_by_label("Input USD per 1M tokens").fill("2.5")
     dlg.get_by_label("Output USD per 1M tokens").fill("10")
     dlg.get_by_role("button", name="Save and connect").click()
@@ -120,11 +122,11 @@ def test_m11_budget_configuration_persistence_and_security_gates(e2e_workspace, 
     card.get_by_role("button", name="Configure").click()
     edit_dlg = page.get_by_role("dialog")
     expect(edit_dlg.get_by_label("Daily token limit (1 to 100M)")).to_have_value("50000")
-    expect(edit_dlg.get_by_label("Monthly cost limit USD (0.01 to 100000)")).to_have_value("25.5")
+    expect(edit_dlg.get_by_label(MONTHLY_THRESHOLD, exact=True)).to_have_value("25.5")
     expect(edit_dlg.get_by_label("Input USD per 1M tokens")).to_have_value("2.5")
     expect(edit_dlg.get_by_label("Output USD per 1M tokens")).to_have_value("10")
     edit_dlg.get_by_label("Daily token limit (1 to 100M)").fill("75000")
-    edit_dlg.get_by_label("Monthly cost limit USD (0.01 to 100000)").fill("")
+    edit_dlg.get_by_label(MONTHLY_THRESHOLD, exact=True).fill("")
     edit_dlg.get_by_role("button", name="Save configuration").click()
     expect(edit_dlg).to_have_count(0)
 
@@ -139,6 +141,74 @@ def test_m11_budget_configuration_persistence_and_security_gates(e2e_workspace, 
         params = models_res.json()["models"][0]["parameters"]
         assert params["daily_token_limit"] == 75000 and params["monthly_cost_limit_usd"] is None
     _assert_no_secrets(page, "sk-m11-secret-alpha-9999")
+    collector.assert_clean()
+
+
+def test_monthly_estimated_spend_threshold_skips_later_request(e2e_workspace, desktop_page, monkeypatch):
+    _setup_auth(e2e_workspace)
+    page, collector = desktop_page
+    model_id = "threshold-fixture-v1"
+    calls = []
+
+    async def recorded_usage(name, method, url, **kwargs):
+        calls.append((name, method, kwargs["json"]["model"]))
+        return {"status": "completed", "output": [{"type": "message", "content": [
+            {"type": "output_text", "text": "Recorded fixture response."}]}],
+            "usage": {"input_tokens": 1500, "output_tokens": 500}}
+
+    monkeypatch.setattr(integrations, "fetch_json", recorded_usage)
+    with e2e_workspace.client() as client:
+        login_user(client, email=ADMIN_EMAIL, password=ADMIN_PASS)
+        _create_model_api(client, slug="threshold-fixture", display_name="Spend threshold fixture",
+                          model_id=model_id, is_default=True)
+        _sign_in_admin(page, e2e_workspace.base_url)
+        card = page.locator("article.admin-model-card", has_text="Spend threshold fixture")
+        configure = card.get_by_role("button", name="Configure")
+        configure.click()
+        editor = page.get_by_role("dialog", name="Configure Spend threshold fixture")
+        threshold = editor.get_by_role("spinbutton", name=MONTHLY_THRESHOLD, exact=True)
+        threshold.fill("0.02")
+        editor.get_by_label("Input USD per 1M tokens").fill("10")
+        editor.get_by_label("Output USD per 1M tokens").fill("20")
+        editor.get_by_role("button", name="Save configuration").click()
+        expect(editor).to_have_count(0)
+
+        request = {"role": "Engineer", "question": "Which measurement?"}
+        result = client.post("/api/integrations/reference", json=request).raise_for_status()
+        assert result.json()["text"] == "Recorded fixture response."
+        assert calls == [("OpenAI", "POST", model_id)]
+        refused = client.post("/api/integrations/reference", json=request)
+        assert refused.status_code == 429 and refused.headers["X-InterviewCheck-Limit"] == "model-budget"
+        assert calls == [("OpenAI", "POST", model_id)]
+
+    page.get_by_role("tab", name="Usage", exact=True).click()
+    ledger = page.get_by_role("region", name="AI cost log")
+    recorded = ledger.get_by_role("listitem")
+    expect(recorded).to_have_count(1)
+    expect(recorded).to_contain_text("Spend threshold fixture")
+    expect(recorded).to_contain_text("$0.03 · Estimated")
+    with page.expect_download() as download:
+        ledger.get_by_role("link", name="Download CSV").click()
+    with download.value.path().open(encoding="utf-8-sig", newline="") as exported:
+        row, = csv.DictReader(exported)
+    assert (row["model_id"], row["estimate_status"], float(row["cost_usd"])) == (model_id, "estimated", 0.025)
+    assert (int(row["input_tokens"]), int(row["output_tokens"])) == (1500, 500)
+
+    page.reload(wait_until="domcontentloaded")
+    page.get_by_role("tab", name="Models", exact=True).click()
+    simulator = page.get_by_role("region", name="Routing chain simulator")
+    simulator.get_by_role("button", name="Test capability chain").click()
+    expect(simulator.get_by_role("listitem")).to_contain_text("Monthly estimated spend threshold reached")
+    configure.click()
+    expect(threshold).to_have_value("0.02")
+    help_text = re.compile(r"recorded estimate.*later budget checks\. Provider charges can exceed this amount\.")
+    expect(threshold).to_have_accessible_description(help_text)
+    field = editor.locator("div.field").filter(has_text=MONTHLY_THRESHOLD)
+    for width, height in ((1440, 900), (390, 844)):
+        page.set_viewport_size({"width": width, "height": height})
+        expect(field.get_by_text(help_text)).to_be_visible()
+        assert_no_horizontal_overflow(page)
+        field.screenshot(path=e2e_workspace.screenshot_dir / f"model-spend-threshold-{width}.png")
     collector.assert_clean()
 
 
@@ -259,7 +329,7 @@ def test_m11_lazy_diagnostics_tab_usage_transcription_and_audio_check(e2e_worksp
     expect(tok_bar).to_have_attribute("aria-valuenow", "2000")
     expect(tok_bar).to_have_attribute("aria-valuemax", "2000")
     expect(tok_bar.locator(".admin-meter-fill.over")).to_have_count(1)
-    expect(diag_panel.get_by_role("progressbar", name="Monthly spend (diag-primary)")).to_have_attribute("aria-valuemax", "10")
+    expect(diag_panel.get_by_role("progressbar", name="Monthly estimated spend (diag-primary)")).to_have_attribute("aria-valuemax", "10")
 
     with e2e_workspace.client() as admin_api:
         login_user(admin_api, email=ADMIN_EMAIL, password=ADMIN_PASS)

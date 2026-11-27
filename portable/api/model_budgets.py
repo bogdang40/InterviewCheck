@@ -265,11 +265,12 @@ def fleet_usage_summary(db: sqlite3.Connection, *, today: str | None = None) -> 
         cfg = extract_budget_params(_load_config_dict(m["config_json"]))
         d_req, d_err, d_in, d_out, d_unsplit, d_cost = _row_usage(daily_rows.get(mid))
         m_req, m_err, m_in, m_out, m_unsplit, m_cost = _row_usage(monthly_rows.get(mid))
+        monthly_cost = round(m_cost, 8)
         d_tok, m_tok = d_in + d_out + d_unsplit, m_in + m_out + m_unsplit
         d_lim, m_lim = cfg["daily_token_limit"], cfg["monthly_cost_limit_usd"]
         if d_lim is not None and d_tok >= d_lim:
             b_status, over_budget = "daily_token_limit_exceeded", over_budget + 1
-        elif m_lim is not None and round(m_cost, 8) >= m_lim:
+        elif m_lim is not None and monthly_cost >= m_lim:
             b_status, over_budget = "monthly_cost_limit_exceeded", over_budget + 1
         else:
             b_status = "ok"
@@ -293,7 +294,7 @@ def fleet_usage_summary(db: sqlite3.Connection, *, today: str | None = None) -> 
             "daily_unsplit_tokens": d_unsplit, "monthly_unsplit_tokens": m_unsplit,
             "daily_token_limit": d_lim, "monthly_requests": m_req, "monthly_errors": m_err,
             "monthly_input_tokens": m_in, "monthly_output_tokens": m_out, "monthly_tokens": m_tok,
-            "monthly_cost_usd": round(m_cost, 6), "monthly_cost_limit_usd": m_lim,
+            "monthly_cost_usd": monthly_cost, "monthly_cost_limit_usd": m_lim,
             "request_count": m_req, "error_count": m_err, "budget_status": b_status,
         }
 

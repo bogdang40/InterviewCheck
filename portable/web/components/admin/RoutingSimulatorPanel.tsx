@@ -34,7 +34,7 @@ function routingResult(result: SimulateChainResponse) {
 
 function budgetLabel(status: string): string {
   if (status === "daily_token_limit_exceeded") return "Daily token limit exceeded"
-  if (status === "monthly_cost_limit_exceeded") return "Monthly cost limit exceeded"
+  if (status === "monthly_cost_limit_exceeded") return "Monthly estimated spend threshold reached"
   return status === "ok" ? "Budget ok" : status
 }
 
@@ -109,7 +109,7 @@ export function RoutingSimulatorPanel({ onAuthInvalid }: { onAuthInvalid: (msg: 
           Routing chain simulator
         </h2>
         <p className="muted">
-          Dry-run candidate selection, fallback priority, RPM quota, and budget ceilings without calling external providers.
+          Preview candidate selection, fallback priority, request rate limits, and model budgets without calling a provider.
         </p>
       </div>
 

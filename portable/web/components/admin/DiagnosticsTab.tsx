@@ -7,10 +7,9 @@ import { Button } from "@/components/ui/button"
 import {
   computeFleetP95Latency,
   downloadDiagnosticBundle,
+  formatBudgetUsd,
   formatCompactTokens,
   formatUsd,
-  getAdminDiagnostics,
-  readBudgetParameters,
   type DiagnosticsData,
 } from "@/lib/adminDiagnostics"
 import { AdminApiError, CAPABILITY_LABELS, PROVIDER_LABELS, type ConnectedModel } from "@/lib/adminModels"
@@ -31,22 +30,26 @@ type AudioCheck = {
 
 function MeterBar({ label, value, limit, text }: { label: string; value: number; limit: number | null; text: string }) {
   const max = limit && limit > 0 ? limit : Math.max(value, 1)
-  const pct = limit && limit > 0 ? Math.min(100, Math.round((value / limit) * 100)) : value > 0 ? 100 : 0
+  const pct = limit && limit > 0 ? Math.min(100, value / limit * 100) : value > 0 ? 100 : 0
   const tone = limit && limit > 0 ? (value >= limit ? " over" : value >= limit * 0.8 ? " warn" : "") : ""
   return (
     <div className="admin-diag-bar">
       <div className="spread"><span className="admin-mono">{label}</span><span className="admin-mono">{text}</span></div>
-      <div className="admin-meter-track" role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={Number(max.toFixed(2))} aria-valuenow={Number(Math.min(max, value).toFixed(2))}>
+      <div className="admin-meter-track" role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={max} aria-valuenow={Math.min(max, value)} aria-valuetext={text}>
         <div className={`admin-meter-fill${tone}`} style={{ width: `${pct}%` }} />
       </div>
     </div>
   )
 }
 
-export function DiagnosticsTab({ models, onAuthInvalid }: { models: ConnectedModel[]; onAuthInvalid: (msg: string) => void }) {
-  const [data, setData] = useState<DiagnosticsData | null>(null)
+export function DiagnosticsTab({ models, data, refresh, onAuthInvalid }: {
+  models: ConnectedModel[]
+  data: DiagnosticsData | null
+  refresh: () => Promise<void>
+  onAuthInvalid: (msg: string) => void
+}) {
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState("")
+  const [exportError, setExportError] = useState("")
   const [audioPhase, setAudioPhase] = useState<"idle" | "checking" | "done">("idle")
   const [audioLevel, setAudioLevel] = useState(-72)
   const [audioStatus, setAudioStatus] = useState("")
@@ -59,14 +62,14 @@ export function DiagnosticsTab({ models, onAuthInvalid }: { models: ConnectedMod
 
   const handleExportBundle = useCallback(async () => {
     if (exporting) return
-    setExporting(true); setError(""); setExportStatus("")
+    setExporting(true); setExportError(""); setExportStatus("")
     try {
       const filename = await downloadDiagnosticBundle()
       if (mountedRef.current) setExportStatus(`Downloaded diagnostic bundle (${filename}).`)
     } catch (err) {
       if (!mountedRef.current) return
       if (err instanceof AdminApiError && (err.status === 401 || err.status === 403)) { onAuthInvalid(err.message); return }
-      setError(err instanceof Error ? err.message : "Could not export diagnostic bundle.")
+      setExportError(err instanceof Error ? err.message : "Could not export diagnostic bundle.")
     } finally {
       if (mountedRef.current) setExporting(false)
     }
@@ -86,18 +89,16 @@ export function DiagnosticsTab({ models, onAuthInvalid }: { models: ConnectedMod
   }, [])
 
   const load = useCallback(async () => {
-    setLoading(true); setError("")
+    setLoading(true)
     try {
-      const next = await getAdminDiagnostics()
-      if (mountedRef.current) setData(next)
+      await refresh()
     } catch (err) {
       if (!mountedRef.current) return
-      if (err instanceof AdminApiError && (err.status === 401 || err.status === 403)) { onAuthInvalid(err.message); return }
-      setError(err instanceof Error ? err.message : "Could not load diagnostics.")
+      if (err instanceof AdminApiError && (err.status === 401 || err.status === 403)) onAuthInvalid(err.message)
     } finally {
       if (mountedRef.current) setLoading(false)
     }
-  }, [onAuthInvalid])
+  }, [onAuthInvalid, refresh])
 
   useEffect(() => {
     mountedRef.current = true
@@ -164,7 +165,7 @@ export function DiagnosticsTab({ models, onAuthInvalid }: { models: ConnectedMod
       <div className="panel inset spread">
         <div>
           <h2>Diagnostics &amp; usage</h2>
-          <p className="muted">Daily token budgets, monthly cost ceilings, fleet P95 latency, transcription readiness, and local audio capture.</p>
+          <p className="muted">Daily token budgets, monthly estimated spend thresholds, fleet P95 latency, transcription readiness, and local audio capture.</p>
         </div>
         <div className="row">
           <Button type="button" variant="outline" size="sm" disabled={exporting} onClick={() => void handleExportBundle()}>
@@ -178,10 +179,10 @@ export function DiagnosticsTab({ models, onAuthInvalid }: { models: ConnectedMod
         </div>
       </div>
 
-      {error && <p role="alert" className="error">{error}</p>}
+      {exportError && <p role="alert" className="error">{exportError}</p>}
       {exportStatus && <p role="status" aria-live="polite" className="notice">{exportStatus}</p>}
 
-      <div className="admin-summary-grid" aria-label="Fleet diagnostic summary">
+      {data && <div className="admin-summary-grid" aria-label="Fleet diagnostic summary">
         <article className="panel admin-metric">
           <div className="admin-metric-label"><span>Fleet P95 latency</span><Activity size={15} aria-hidden="true" /></div>
           <strong>{formatLatency(fleetP95)}</strong>
@@ -190,12 +191,12 @@ export function DiagnosticsTab({ models, onAuthInvalid }: { models: ConnectedMod
         <article className={`panel admin-metric${checkErrors > 0 || (summary?.error_models ?? 0) > 0 ? " attention" : ""}`}>
           <div className="admin-metric-label"><span>Fleet errors</span></div>
           <strong>{checkErrors}</strong>
-          <small>{summary?.error_models ?? 0} models in error · {data?.usageSummary.daily_errors ?? 0} request errors today</small>
+          <small>{summary?.error_models ?? 0} models in error · {data.usageSummary.daily_errors} request errors today</small>
         </article>
         <article className="panel admin-metric">
           <div className="admin-metric-label"><span>Daily tokens &amp; spend</span></div>
-          <strong>{formatCompactTokens(data?.usageSummary.daily_tokens ?? 0)}</strong>
-          <small>Month spend {formatUsd(data?.usageSummary.monthly_cost_usd ?? 0)} · {data?.usageSummary.daily_requests ?? 0} reqs today</small>
+          <strong>{formatCompactTokens(data.usageSummary.daily_tokens)}</strong>
+          <small>Estimated monthly spend {formatUsd(data.usageSummary.monthly_cost_usd)} · {data.usageSummary.daily_requests} reqs today</small>
         </article>
         <article className="panel admin-metric">
           <div className="admin-metric-label"><span>Transcription pipeline</span></div>
@@ -205,24 +206,24 @@ export function DiagnosticsTab({ models, onAuthInvalid }: { models: ConnectedMod
           </div>
           <small className="admin-mono">{trans?.active_provider ? `${trans.active_provider}${trans.active_model ? ` · ${trans.active_model}` : ""}` : "No active transcription provider"}</small>
         </article>
-      </div>
+      </div>}
 
-      <section className="panel stack" aria-label="Per-model usage and budget ceilings">
+      <section className="panel stack" aria-label="Per-model usage and budgets">
         <h3>Per-model token and cost usage</h3>
-        {loading && !data ? (
-          <p role="status" className="muted">Loading usage diagnostics…</p>
+        {!data ? (
+          <p role="status" className="muted">{loading ? "Loading usage diagnostics…" : "Recorded usage is unavailable."}</p>
         ) : !models.length ? (
           <p className="muted">No connected models registered yet.</p>
         ) : (
           <div className="admin-diag-list">
             {models.map((m) => {
-              const u = data?.usageByModel[m.id]
-              const t = data?.telemetry?.models?.[m.id]
-              const cfg = readBudgetParameters(m.parameters)
-              const dailyLim = u?.daily_token_limit ?? cfg.daily_token_limit ?? null
-              const monthlyLim = u?.monthly_cost_limit_usd ?? cfg.monthly_cost_limit_usd ?? null
-              const dailyTok = u?.daily_tokens ?? 0
-              const monthlyUsd = u?.monthly_cost_usd ?? 0
+              const u = data.usageByModel[m.id]
+              if (!u) return <article key={m.id} className="panel inset admin-diag-card">
+                <strong>{m.display_name}</strong><p className="muted">Recorded usage is unavailable.</p>
+              </article>
+              const t = data.telemetry?.models?.[m.id]
+              const { daily_token_limit: dailyLim, monthly_cost_limit_usd: monthlyLim,
+                daily_tokens: dailyTok, monthly_cost_usd: monthlyUsd } = u
               return (
                 <article key={m.id} className="panel inset admin-diag-card">
                   <div className="spread">
@@ -235,7 +236,7 @@ export function DiagnosticsTab({ models, onAuthInvalid }: { models: ConnectedMod
                   </div>
                   <div className="admin-diag-bars">
                     <MeterBar label={`Daily tokens (${m.slug})`} value={dailyTok} limit={dailyLim} text={dailyLim ? `${dailyTok.toLocaleString()} / ${dailyLim.toLocaleString()}` : `${dailyTok.toLocaleString()} (No limit)`} />
-                    <MeterBar label={`Monthly spend (${m.slug})`} value={monthlyUsd} limit={monthlyLim} text={monthlyLim ? `${formatUsd(monthlyUsd)} / ${formatUsd(monthlyLim)}` : `${formatUsd(monthlyUsd)} (No cap)`} />
+                    <MeterBar label={`Monthly estimated spend (${m.slug})`} value={monthlyUsd} limit={monthlyLim} text={monthlyLim ? `${formatBudgetUsd(monthlyUsd)} / ${formatBudgetUsd(monthlyLim)}` : `${formatBudgetUsd(monthlyUsd)} (No threshold)`} />
                   </div>
                 </article>
               )
