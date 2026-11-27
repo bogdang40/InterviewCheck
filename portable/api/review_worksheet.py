@@ -5,8 +5,7 @@ import json
 
 from fastapi import HTTPException
 
-from . import answer_identity, store
-from .retention_anonymizer import REDACTED_TEXT, anonymized_candidate_label
+from . import answer_identity, session_privacy, store
 
 
 def _fingerprint(key: bytes, tag: str, fields) -> str:
@@ -17,18 +16,16 @@ def _fingerprint(key: bytes, tag: str, fields) -> str:
 def state(db, sid: str, aid: str, *, answer=None) -> dict:
     row = db.execute("""SELECT s.candidate,s.role,s.created_at,s.policy,s.consent,c.role_id,
                                c.questions,c.permitted_sources,
-                               EXISTS(SELECT 1 FROM session_anonymizations z WHERE z.session_id=s.id) AS anonymized,
                                (SELECT count(*) FROM answers x WHERE x.session_id=s.id AND x.rowid<=a.rowid) AS ordinal
                         FROM active_sessions s JOIN answers a ON a.session_id=s.id
                         LEFT JOIN session_context c ON c.session_id=s.id
                         WHERE s.id=? AND a.id=?""", (sid, aid)).fetchone()
     if row is None:
         raise HTTPException(404, "This exchange is unavailable for worksheets.")
+    if not row["consent"] or session_privacy.read(db, sid).state != "unmarked":
+        raise HTTPException(403, "This interview does not permit worksheet use.",
+                            headers={"X-InterviewCheck-Worksheet": "unavailable"})
     saved = answer if answer is not None else store.get_answer(db, sid, aid)
-    # JSON recovery preserves the anonymized label and answer, but can omit the operational retention table.
-    erased = row["candidate"] == anonymized_candidate_label(sid) and saved["answer"] == REDACTED_TEXT
-    if row["anonymized"] or erased or not row["consent"]:
-        raise HTTPException(403, "This interview does not permit worksheet use.")
     context = {name: row[name] for name in ("candidate", "role", "created_at", "policy", "role_id")}
     context.update(consent=bool(row["consent"]), planned_questions=json.loads(row["questions"] or "[]"),
                    permitted_sources=json.loads(row["permitted_sources"] or "[]"))
