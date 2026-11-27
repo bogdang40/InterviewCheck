@@ -76,7 +76,7 @@ export default function InterviewView({ session, answerId, assignmentDirty, onDi
   const unsaved = dirty.size > 0 || scorecardDirty || deferredDirty
   const blocked = unsaved || busy
   const otherEditorsDirty = Array.from(dirty).some(key => key !== "transcript-import")
-  const refreshForSelection = useReviewSelectionRefresh(session.id, scorecardDirty || deferredDirty || otherEditorsDirty,
+  const { captureSelection, refreshForSelection } = useReviewSelectionRefresh(session.id, scorecardDirty || deferredDirty || otherEditorsDirty,
     `${selected?.id}:${edit}`, onTransition, onDeferredUnavailable)
   const pending = session.answers.filter(needsReview).length
   const capabilities = useScoringCapabilities()
@@ -139,11 +139,11 @@ export default function InterviewView({ session, answerId, assignmentDirty, onDi
     if (replace) window.history.replaceState(null, "", url)
     else window.history.pushState(null, "", url)
   }
-  async function imported(result: { answer_ids: string[] }) {
+  async function imported(result: { answer_ids: string[] }, maySelect: () => boolean) {
     setError("")
     setBusy(true)
     try {
-      if (!await refreshForSelection()) return
+      if (!await refreshForSelection(maySelect)) return
       if (result.answer_ids[0]) select(result.answer_ids[0], true)
       setEdit(null)
     } catch (e) {
@@ -263,6 +263,7 @@ export default function InterviewView({ session, answerId, assignmentDirty, onDi
           sessionId={session.id}
           disabled={busy || otherEditorsDirty}
           onDirty={onDirty}
+          captureSelection={captureSelection}
           onImported={imported}
         />
       )}
@@ -366,7 +367,7 @@ export default function InterviewView({ session, answerId, assignmentDirty, onDi
           if (!session.answers.some(a => a.id === id)) {
             setBusy(true)
             try {
-              const fresh = await refreshForSelection()
+              const fresh = await refreshForSelection(captureSelection())
               if (!fresh) return
               if (!fresh.answers.some(a => a.id === id)) throw new Error("This exchange is no longer available.")
             } catch (err) { setError(message(err)); return }

@@ -64,7 +64,8 @@ export async function api<T>(path: string, method = "GET", body?: unknown, signa
     const unavailable = [401, 402, 403, 404].includes(response.status)
       || response.headers.get("X-InterviewCheck-Worksheet") === "unavailable"
       || (response.status === 409 && response.headers.get("X-InterviewCheck-Conflict") === "interview-privacy")
-    if (unavailable && ((body && typeof body === "object" && "deferred_question" in body) || (method === "GET" && path.endsWith("/draft")))) {
+    if (unavailable && ((body && typeof body === "object" && "deferred_question" in body) ||
+      (method === "GET" && path.endsWith("/draft")) || (method === "POST" && path.endsWith("/draft/discard")))) {
       throw new DeferredUnavailable(detail || "This interview no longer permits deferred questions.")
     }
     if (unavailable && (guardedSave || (method === "GET" && path.endsWith("/worksheet")))) {

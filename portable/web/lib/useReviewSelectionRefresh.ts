@@ -1,14 +1,23 @@
-import { api, type Interview } from "./api"
+import type { Interview } from "./api"
 import { useReviewNavigationGuard } from "./dirtyTracking"
+import { isInterviewUnavailable, request } from "./http"
 
 /** Revalidate the selection before applying an interview snapshot that can replace the open exchange. */
 export function useReviewSelectionRefresh(sessionId: string, locked: boolean, source: string,
   update: (session: Interview) => void, withdraw: () => void) {
-  const guard = useReviewNavigationGuard(locked, source)
-  return async () => {
-    const maySelect = guard()
-    const fresh = await api<Interview>(`sessions/${sessionId}`)
-    if (fresh?.id !== sessionId) throw new Error("The server did not return this interview.")
+  const captureSelection = useReviewNavigationGuard(locked, source)
+  async function refreshForSelection(maySelect: () => boolean) {
+    let fresh: Interview
+    try {
+      fresh = await request<Interview>(`/api/sessions/${sessionId}`)
+    } catch (err) {
+      if (!isInterviewUnavailable(err)) throw err
+      withdraw()
+      return
+    }
+    if (fresh?.id !== sessionId || typeof fresh.consent !== "boolean" || !Array.isArray(fresh.answers)) {
+      throw new Error("The server did not return this interview.")
+    }
     if (!fresh.consent || (fresh.privacy_state && fresh.privacy_state !== "unmarked")) {
       withdraw()
       return
@@ -17,4 +26,5 @@ export function useReviewSelectionRefresh(sessionId: string, locked: boolean, so
     update(fresh)
     return fresh
   }
+  return { captureSelection, refreshForSelection }
 }

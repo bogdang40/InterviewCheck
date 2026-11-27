@@ -50,12 +50,12 @@ export default function SavedDraft({
         else discard()
       }
     } catch (e) {
-      if (summary.deferred_question && accessLost(e)) { onUnavailable(); return }
+      if (accessLost(e)) { onUnavailable(); return }
       if (remove && (e instanceof DeferredConflict || e instanceof DraftConflict)) {
         try {
           refresh(await api<Draft | null>("sessions/" + sessionId + "/draft"))
           setError("The saved draft changed. Review the current draft before confirming a discard.")
-        } catch (readError) { if (summary.deferred_question && accessLost(readError)) onUnavailable(); else setError(message(readError)) }
+        } catch (readError) { if (accessLost(readError)) onUnavailable(); else setError(message(readError)) }
       } else setError(message(e))
     } finally {
       setBusy(false)
@@ -106,7 +106,7 @@ export function DraftConflictView({
   resolve,
 }: {
   sessionId: string
-  onUnavailable?: () => void
+  onUnavailable: () => void
   resolve: (latest: Draft | null, keep: boolean) => void
 }) {
   const [latest, setLatest] = useState<Draft | null | undefined>(undefined)
@@ -116,7 +116,7 @@ export function DraftConflictView({
       setLatest(await api<Draft | null>("sessions/" + sessionId + "/draft"))
       setError("")
     } catch (e) {
-      if (onUnavailable && accessLost(e)) onUnavailable()
+      if (accessLost(e)) onUnavailable()
       else setError(message(e))
     }
   }
