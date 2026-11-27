@@ -1,3 +1,5 @@
+import { orderedAccountRequest } from "./accountCookie"
+import { readAccountSnapshot, type AccountSnapshot } from "./accountSnapshot"
 import { ApiError, readJson, request } from "./http"
 
 export type TotpStatus = {
@@ -66,7 +68,11 @@ export function regenerateBackupCodes(code: string): Promise<TotpBackupRegenerat
   return totpRequest<TotpBackupRegenerateResult>("backup-codes/regenerate", { method: "POST", body: JSON.stringify({ code }) })
 }
 
-export async function submitAccessAuth<T>(action: "login" | "signup", payload: Record<string, unknown>): Promise<LoginWithTotpResult<T>> {
+export function submitAccessAuth(action: "login" | "signup", payload: Record<string, unknown>): Promise<LoginWithTotpResult<AccountSnapshot>> {
+  return orderedAccountRequest(() => sendAccessAuth(action, payload))
+}
+
+async function sendAccessAuth(action: "login" | "signup", payload: Record<string, unknown>): Promise<LoginWithTotpResult<AccountSnapshot>> {
   const response = await fetch(`/api/integrations/access/${action}`, {
     method: "POST",
     headers: { "X-InterviewCheck": "1", "Content-Type": "application/json" },
@@ -83,5 +89,5 @@ export async function submitAccessAuth<T>(action: "login" | "signup", payload: R
     }
     throw new TotpApiError(response.status, info.message, info.code)
   }
-  return { ok: true, account: data as T }
+  return { ok: true, account: readAccountSnapshot(data) }
 }

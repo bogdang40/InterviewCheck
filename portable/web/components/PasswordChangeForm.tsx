@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react"
 import { KeyRound } from "lucide-react"
+import { setPasswordChangeUnconfirmed } from "./PasswordChangeNotice"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { AdminApiError, rotateOwnPassword } from "@/lib/adminModels"
@@ -50,6 +51,7 @@ export function PasswordChangeForm({
     cancelPreRotationStatusRead()
     try {
       const next = await rotateOwnPassword(currentPassword, newPassword)
+      setPasswordChangeUnconfirmed(false)
       if (mounted.current) {
         setCurrentPassword("")
         setNewPassword("")
@@ -60,6 +62,7 @@ export function PasswordChangeForm({
       notifyAccountChanged("rotation")
     } catch (err) {
       const uncertain = !(err instanceof AdminApiError) || err.status >= 500
+      if (uncertain) setPasswordChangeUnconfirmed(true)
       if (mounted.current) {
         const detail = err instanceof Error ? err.message : "Could not update password."
         setError(uncertain ? `The change was not confirmed. Checking access. ${detail}` : detail)
