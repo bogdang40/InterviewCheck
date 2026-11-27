@@ -306,8 +306,8 @@ def update_review(db, key, aid, review: ReviewInput, *, actor: tuple[str, str] =
     else:
         session_privacy.require_content_writable(db, key)
         check_revision(current, review.expected_revision)
-        prior_actor_disp = role_analytics.latest_reviewer_disposition(db, aid, actor[0])
-        actor_changed = (prior_actor_disp or "pending") != review.disposition
+        previous_disposition = role_analytics.latest_reviewer_disposition(db, aid, actor[0]) or "pending"
+        actor_changed = previous_disposition != review.disposition
     answer_changed = (current["disposition"], current["note"]) != (review.disposition, review.note)
     if not answer_changed and not actor_changed:
         return current
@@ -323,7 +323,7 @@ def update_review(db, key, aid, review: ReviewInput, *, actor: tuple[str, str] =
             answer_id=aid,
             reviewer_id=actor[0],
             reviewer_email=actor[1],
-            previous_disposition=effective_prev,
+            previous_disposition=previous_disposition,
             disposition=review.disposition,
         )
     saved = get_answer(db, key, aid)
