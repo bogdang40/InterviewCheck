@@ -2,7 +2,7 @@ from contextlib import contextmanager
 from copy import deepcopy
 from uuid import uuid4
 
-from api import backup_conflicts, backup_schema, store
+from api import backup_conflicts, backup_schema, role_kits, store
 from backup_requests import client, create_session
 
 
@@ -81,6 +81,9 @@ def test_linked_id_conflicts_hide_existing_owners_and_colliding_ids(client):
     doc = snapshot(client)
     new_role, new_session = str(uuid4()), str(uuid4())
     doc["roles"][0].update(id=new_role, name="Imported role")
+    historical, = doc["roles"][0]["versions"]
+    historical["name"] = "Imported role"
+    historical["content_sha256"] = role_kits.content_version({**historical, "id": new_role})
     doc["sessions"][0].update(id=new_session, candidate="Imported interview")
     result = client.post(EXPLAIN, json=doc).raise_for_status()
     assert result.json()["conflicts"] == [
