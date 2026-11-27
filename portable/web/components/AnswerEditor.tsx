@@ -166,7 +166,7 @@ export default function AnswerEditor({
         <h2>{initial ? "Edit exchange" : "Add an exchange"}</h2>
       </div>
       {deferred && <p className="notice">This draft answers a kept question. Its source exchange and question are fixed.</p>}
-      {deferred && deferredConflict && baseline && <section className="notice stack" aria-label="Deferred draft source check">
+      {deferred && deferredConflict && !draftConflict && baseline && <section className="notice stack" aria-label="Deferred draft source check">
         <p role="status">The saved question or its source changed. Your answer is still here.</p>
         <DeferredSourceCheck sessionId={session.id} questionId={deferred.id} disabled={capturePending || generating}
           confirmLabel="Confirm source and save this draft" onBusy={active => setBusy(active ? "deferred" : "")}
@@ -176,7 +176,7 @@ export default function AnswerEditor({
               if (!signal.aborted) { setBaseline(updated); setDeferredConflict(false); setError("") }
             } catch (e) {
               if (!(e instanceof DraftConflict) || signal.aborted) throw e
-              setDeferredConflict(false); setDraftConflict(true)
+              setDraftConflict(true)
               setError("Another tab changed the saved draft. Compare it with your edits before confirming this source.")
             }
           }} />
