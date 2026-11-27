@@ -123,7 +123,7 @@ To correct a grade entered by mistake, mark that saved rating for removal. The p
 
 The handoff panel loads 20 notes at a time. Select a category or browse older notes without losing a note you are writing or a score you are editing. The panel uses the saved note timestamp and ID for stable ordering. Paging affects only the panel. A workspace backup still carries all handoff notes for each included interview.
 
-Local answer edits follow the saved draft or published exchange they belong to. Reverting all edits clears that editor's recovery copy. If an older app saved edits without recording the draft ID, open **Unlinked local draft** to inspect and copy or download the text. Moving an interview to Trash clears its local copies in this browser. Signing out clears local copies for the workspace.
+Local answer edits follow the saved draft or published exchange they belong to. Reverting all edits clears that editor's recovery copy. A parked draft has a private browser recovery copy tied to its current lifetime. Discarding and recreating the draft or importing it into a fresh workspace starts a new lifetime. If an older app recorded only a draft ID, or no draft ID, open **Unlinked local draft** to inspect and copy or download the text. Moving an interview to Trash clears its local copies in this browser. Signing out clears local copies for the workspace.
 
 ## Import a WebVTT conversation
 

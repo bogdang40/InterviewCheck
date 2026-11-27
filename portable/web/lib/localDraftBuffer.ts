@@ -68,7 +68,7 @@ export function createDebouncedDraftWriter(key: string, delayMs = 400) {
 }
 
 export function useLocalDraftRecovery(
-  key: string,
+  key: string | null,
   dirty: boolean,
   snapshot: string,
   buildPayload: () => Omit<LocalDraftPayload, "savedAt">,
@@ -85,6 +85,11 @@ export function useLocalDraftRecovery(
     initialRef.current = snapshot
     edited.current = false
     restored.current = false
+    if (key === null) {
+      observed.current = null
+      setRecovered(null)
+      return
+    }
     const sessionId = key.slice(DRAFT_KEY_PREFIX.length).split(":", 1)[0]
     preserveUnlinked(sessionId)
     const writer = createDebouncedDraftWriter(key)
@@ -132,7 +137,7 @@ export function useLocalDraftRecovery(
     setRecovered(null)
   }, [])
   const markRestored = useCallback(() => {
-    const current = writerRef.current?.valid() ? readRecord(key) : null
+    const current = key && writerRef.current?.valid() ? readRecord(key) : null
     if (!current || current.raw !== observed.current?.raw) {
       observed.current = ambiguous(current) ? null : current
       setRecovered(observed.current && !matchesServer(observed.current.data) ? observed.current : null)
@@ -146,11 +151,11 @@ export function useLocalDraftRecovery(
   return { recovered: recovered?.key === key ? recovered.data : null, clear, markRestored }
 }
 
-export function useUnlinkedEditorDraft(sessionId: string) {
+export function useUnlinkedEditorDraft(sessionId: string, legacySavedId?: string) {
   const [record, setRecord] = useState<DraftRecord | null>(null)
   useEffect(() => {
     const load = () => {
-      const next = latestUnlinked(sessionId)
+      const next = latestUnlinked(sessionId, legacySavedId)
       setRecord(previous => previous?.key === next?.key && previous?.raw === next?.raw ? previous : next)
     }
     load()
@@ -160,10 +165,10 @@ export function useUnlinkedEditorDraft(sessionId: string) {
       window.removeEventListener("storage", load)
       window.removeEventListener(DRAFT_SWEEP_EVENT, load)
     }
-  }, [sessionId])
+  }, [sessionId, legacySavedId])
   const discardUnlinked = () => {
     removeRecord(record)
-    setRecord(latestUnlinked(sessionId))
+    setRecord(latestUnlinked(sessionId, legacySavedId))
   }
   return { unlinked: record?.key.startsWith(DRAFT_KEY_PREFIX + sessionId + ":") ? record.data : null, discardUnlinked }
 }
