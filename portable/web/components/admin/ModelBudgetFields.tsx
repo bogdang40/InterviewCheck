@@ -1,8 +1,11 @@
 "use client"
 
+import { useId } from "react"
 import { Input } from "@/components/ui/input"
 import { readBudgetParameters, type ModelBudgetParameters } from "@/lib/adminDiagnostics"
 import { parseOptionalFloat, parseOptionalInt, type ConnectedModel } from "@/lib/adminModels"
+
+const monthlyThresholdLabel = "Monthly estimated spend threshold (USD)"
 
 export type ModelBudgetValues = {
   dailyTokenLimit: string
@@ -34,7 +37,7 @@ export function parseModelBudgetValues(values: ModelBudgetValues): Required<Mode
     ),
     monthly_cost_limit_usd: parseOptionalFloat(
       values.monthlyCostLimitUsd,
-      "Monthly cost limit (USD)",
+      monthlyThresholdLabel,
       0.01,
       100000,
     ),
@@ -62,9 +65,10 @@ export function ModelBudgetFields({
   busy: boolean
   onChange: (next: ModelBudgetValues) => void
 }) {
+  const thresholdId = useId()
   return (
     <fieldset className="admin-budget-fieldset">
-      <legend>Budget ceilings &amp; token rates (optional)</legend>
+      <legend>Model budgets and token rates (optional)</legend>
       <div className="admin-param-grid">
         <label className="field">
           Daily token limit (1 to 100M)
@@ -79,19 +83,25 @@ export function ModelBudgetFields({
             onChange={(e) => onChange({ ...values, dailyTokenLimit: e.target.value })}
           />
         </label>
-        <label className="field">
-          Monthly cost limit USD (0.01 to 100000)
+        <div className="field">
+          <label htmlFor={thresholdId}>{monthlyThresholdLabel}</label>
           <Input
+            id={thresholdId}
+            aria-describedby={`${thresholdId}-help`}
             type="number"
             step="0.01"
             min="0.01"
             max="100000"
             disabled={busy}
             value={values.monthlyCostLimitUsd}
-            placeholder="Unlimited"
+            placeholder="No threshold"
             onChange={(e) => onChange({ ...values, monthlyCostLimitUsd: e.target.value })}
           />
-        </label>
+          <small className="muted" id={`${thresholdId}-help`}>
+            Enter $0.01 to $100,000. Once the recorded estimate for this model reaches this amount in a UTC month,
+            InterviewCheck skips the model on later budget checks. Provider charges can exceed this amount.
+          </small>
+        </div>
         <label className="field">
           Input USD per 1M tokens
           <Input

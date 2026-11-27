@@ -164,7 +164,7 @@ export function DiagnosticsTab({ models, onAuthInvalid }: { models: ConnectedMod
       <div className="panel inset spread">
         <div>
           <h2>Diagnostics &amp; usage</h2>
-          <p className="muted">Daily token budgets, monthly cost ceilings, fleet P95 latency, transcription readiness, and local audio capture.</p>
+          <p className="muted">Daily token budgets, monthly estimated spend thresholds, fleet P95 latency, transcription readiness, and local audio capture.</p>
         </div>
         <div className="row">
           <Button type="button" variant="outline" size="sm" disabled={exporting} onClick={() => void handleExportBundle()}>
@@ -195,7 +195,7 @@ export function DiagnosticsTab({ models, onAuthInvalid }: { models: ConnectedMod
         <article className="panel admin-metric">
           <div className="admin-metric-label"><span>Daily tokens &amp; spend</span></div>
           <strong>{formatCompactTokens(data?.usageSummary.daily_tokens ?? 0)}</strong>
-          <small>Month spend {formatUsd(data?.usageSummary.monthly_cost_usd ?? 0)} · {data?.usageSummary.daily_requests ?? 0} reqs today</small>
+          <small>Estimated monthly spend {formatUsd(data?.usageSummary.monthly_cost_usd ?? 0)} · {data?.usageSummary.daily_requests ?? 0} reqs today</small>
         </article>
         <article className="panel admin-metric">
           <div className="admin-metric-label"><span>Transcription pipeline</span></div>
@@ -207,7 +207,7 @@ export function DiagnosticsTab({ models, onAuthInvalid }: { models: ConnectedMod
         </article>
       </div>
 
-      <section className="panel stack" aria-label="Per-model usage and budget ceilings">
+      <section className="panel stack" aria-label="Per-model usage and budgets">
         <h3>Per-model token and cost usage</h3>
         {loading && !data ? (
           <p role="status" className="muted">Loading usage diagnostics…</p>
@@ -235,7 +235,7 @@ export function DiagnosticsTab({ models, onAuthInvalid }: { models: ConnectedMod
                   </div>
                   <div className="admin-diag-bars">
                     <MeterBar label={`Daily tokens (${m.slug})`} value={dailyTok} limit={dailyLim} text={dailyLim ? `${dailyTok.toLocaleString()} / ${dailyLim.toLocaleString()}` : `${dailyTok.toLocaleString()} (No limit)`} />
-                    <MeterBar label={`Monthly spend (${m.slug})`} value={monthlyUsd} limit={monthlyLim} text={monthlyLim ? `${formatUsd(monthlyUsd)} / ${formatUsd(monthlyLim)}` : `${formatUsd(monthlyUsd)} (No cap)`} />
+                    <MeterBar label={`Monthly estimated spend (${m.slug})`} value={monthlyUsd} limit={monthlyLim} text={monthlyLim ? `${formatUsd(monthlyUsd)} / ${formatUsd(monthlyLim)}` : `${formatUsd(monthlyUsd)} (No threshold)`} />
                   </div>
                 </article>
               )
