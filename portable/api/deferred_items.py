@@ -45,6 +45,14 @@ def migrate(db):
         db.execute("""UPDATE session_drafts SET deferred_draft_token=lower(hex(randomblob(32)))
                       WHERE deferred_question_id IS NOT NULL""")
 
+    # Browser recovery identifies the parked draft lifetime without retaining a write token.
+    if "recovery_fingerprint" not in columns:
+        db.execute("ALTER TABLE session_drafts ADD COLUMN recovery_fingerprint TEXT")
+        db.execute("UPDATE session_drafts SET recovery_fingerprint=lower(hex(randomblob(16)))")
+    db.execute("""CREATE TRIGGER IF NOT EXISTS session_draft_recovery_insert AFTER INSERT ON session_drafts BEGIN
+                  UPDATE session_drafts SET recovery_fingerprint=lower(hex(randomblob(16))) WHERE session_id=NEW.session_id;
+                  END""")
+
 
 def digest(fields):
     return sha256(json.dumps(fields, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
