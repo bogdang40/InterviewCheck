@@ -6,14 +6,12 @@ import json
 import re
 from uuid import UUID, uuid4
 
-from pydantic import ValidationError
-
 from fastapi import APIRouter, Header, HTTPException, Request, Response
 from starlette.concurrency import run_in_threadpool
 
 from . import backup_conflicts, backup_schema as schema, bulk_operations, drafts, store
 from . import backup_review_data as review_data
-from . import session_privacy, session_rubric
+from . import retained_finding, session_privacy, session_rubric
 
 router = APIRouter(prefix="/backups")
 ROLE_FIELDS = set(schema.Role.model_fields)
@@ -93,7 +91,8 @@ def session_data(db, key, *, has_assignments, has_notes, has_scorecards, include
     if record["privacy"] and record["privacy"]["state"] == "anonymized":
         try:
             schema.Session.model_validate(record)
-        except ValidationError as exc:
+            record["answers"] = [retained_finding.portable_answer(a) for a in record["answers"]]
+        except ValueError as exc:
             raise review_data.UnrepresentableReviewData(409, "The anonymization receipt conflicts with stored interview data. "
                                                         "Inspect the SQLite backup before exporting this interview.") from exc
     return record
@@ -140,6 +139,17 @@ def download(session_id: UUID | None = None):
     body = encode(doc).encode("utf-8")
     if len(body) > schema.LIMIT:
         raise HTTPException(413, size_error)
+    # A local retained finding can be legitimate even when its historical shape no longer
+    # matches the erased answer. Verify the finished portable bytes before offering the file.
+    if any(s["privacy"]["state"] == "anonymized" for s in doc["sessions"]):
+        del doc
+        try:
+            schema.parse(body)
+        except HTTPException as exc:
+            if exc.status_code != 422:
+                raise
+            raise review_data.UnrepresentableReviewData(409, "The retained backup cannot pass restore validation. "
+                                                        "Inspect the SQLite backup before exporting.") from exc
     digest = hashlib.sha256(body).hexdigest()
     name = "interview-" + str(session_id) if session_id else "interviewcheck-workspace"
     return Response(

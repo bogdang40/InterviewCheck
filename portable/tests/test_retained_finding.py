@@ -23,8 +23,8 @@ def sql_allows(raw):
     # The runtime uses this predicate only after json_valid succeeds.
     with closing(sqlite3.connect(":memory:")) as db:
         conflict, = db.execute(
-            f"WITH sample(result) AS (VALUES(:doc)) SELECT {retained_finding.UNSAFE_TEXT_SQL} FROM sample r",
-            {**retained_finding.TEXT_PARAMS, "doc": raw},
+            f"WITH sample(result) AS (VALUES(:doc)) SELECT {retained_finding.UNSAFE_FINDING_SQL} FROM sample r",
+            {**retained_finding.FINDING_PARAMS, "doc": raw},
         ).fetchone()
     return conflict == 0
 
@@ -118,3 +118,44 @@ def test_ordinary_file_keeps_its_existing_follow_up_validation(client):
     assert row["privacy"]["state"] == "unmarked"
     row["answers"][0]["result"]["follow_up"] = "Which assumption would you test under load?"
     assert client.post("/api/backups/preview", json=doc).status_code == 200
+
+def test_duplicate_passage_fields_cannot_hide_the_value_decoded_by_the_renderer():
+    original = compare("What changed?", PASSAGE, [REFERENCE])
+    original["follow_up"] = REDACTED_TEXT
+    passage, = original["passages"]
+    passage["answer_excerpt"] = REDACTED_TEXT
+    safe = json.dumps(original)
+    assert sql_allows(safe)
+    private_passages = json.dumps([{**passage, "answer_excerpt": PRIVATE}])
+    private_member = json.dumps("answer_excerpt") + ":" + json.dumps(PRIVATE)
+    # SQLite path selection and Python object decoding can disagree about duplicates.
+    for ambiguous in (
+        safe[:-1] + ',"passages":' + private_passages + "}",
+        '{"passages":' + private_passages + "," + safe[1:],
+        safe.replace('"answer_excerpt":', private_member + ', "answer_excerpt":', 1),
+        safe.replace(json.dumps(REDACTED_TEXT) + ', "source_excerpt":', json.dumps(REDACTED_TEXT) + "," + private_member + ', "source_excerpt":', 1),
+        safe[:-1] + r', "\u0070assages":' + private_passages + "}",
+    ):
+        assert ambiguous != safe and not sql_allows(ambiguous)
+
+
+@pytest.mark.parametrize("change", [
+    {"label": ["unexpected"]}, {"words": True}, {"words": 0}, {"source_excerpt": {"private": PRIVATE}},
+    {"answer_excerpt": REDACTED_TEXT + "\x00" + PRIVATE}, {"source_index": False}, {"source_index": -1},
+    {"answer_span": [0, "7"]}, {"source_span": [5, 2]}, {"unexpected": PRIVATE},
+])
+def test_wrong_passage_types_and_fields_are_withheld(change):
+    finding = compare("What changed?", PASSAGE, [REFERENCE])
+    finding["follow_up"] = REDACTED_TEXT
+    finding["passages"][0]["answer_excerpt"] = REDACTED_TEXT
+    finding["passages"][0].update(change)
+    assert not sql_allows(json.dumps(finding))
+
+
+@pytest.mark.parametrize("change", [
+    {"passages": {}}, {"passages": ["unexpected"]}, {"archived": "false"}, {"status": ["insufficient"]},
+    {"other": "unexpected"},
+])
+def test_wrong_finding_types_are_withheld(change):
+    finding = compare("How?", REDACTED_TEXT, [])
+    assert not sql_allows(json.dumps({**finding, **change}))
