@@ -89,33 +89,37 @@ def unique(items, name):
     return seen
 
 
-def verify_rubric_sources(backup):
+def verify_role_sources(backup):
+    fields = {"name", "description", "questions", "policy", "permitted_sources", "rubric"}
     snapshots = [s.rubric_snapshot for s in backup.sessions if s.rubric_snapshot and s.rubric_snapshot.role_id]
-    requested = {(snap.role_id, snap.version_number) for snap in snapshots}
+    requested = {(item.role_id, item.version_number) for item in snapshots}
     sources = {}
     for role in backup.roles:
-        for version in (role, *role.versions):
-            key = (role.id, version.version_number)
-            if key not in requested:
-                continue
-            fields = version.model_dump(include={"name", "description", "questions", "policy", "permitted_sources", "rubric"})
-            digest = content_version({"id": role.id, **fields})
-            if version is not role and version.content_sha256 != digest:
+        key = (role.id, role.version_number)
+        if not role.versions and key not in requested:
+            continue
+        live = content_version({"id": role.id, **role.model_dump(include=fields)})
+        if key in requested:
+            sources[key] = (live, role.rubric)
+        for version in role.versions:
+            digest = content_version({"id": role.id, **version.model_dump(include=fields)})
+            if version.content_sha256 != digest:
                 raise ValueError("An archived role version disagrees with its recorded content digest.")
-            if key in sources and sources[key][0] != digest:
-                raise ValueError("The archive gives different definitions for the same role revision.")
-            sources[key] = (digest, version.rubric)
-    for snap in snapshots:
-        source = sources.get((snap.role_id, snap.version_number))
-        # Detached and older versions can be absent. Compare only when the file supplies the original.
-        if source is not None and (snap.role_content_sha256, snap.criteria) != source:
+            if version.version_number > role.version_number or (version.version_number == role.version_number and digest != live):
+                raise ValueError("The archive gives inconsistent definitions for the role revision.")
+            key = (role.id, version.version_number)
+            if key in requested:
+                sources[key] = (digest, version.rubric)
+    for item in snapshots:
+        source = sources.get((item.role_id, item.version_number))
+        # A detached role or an older revision can be missing from the archive.
+        if source is not None and (item.role_content_sha256, item.criteria) != source:
             raise ValueError("An interview rubric disagrees with the archived role revision.")
 
 
 def verify_records(backup):
-    if backup.version >= 6:
-        verify_rubric_sources(backup)
     roles = unique((r.id for r in backup.roles), "role ID")
+    verify_role_sources(backup)
     for role in backup.roles:
         if role.legacy is None:
             RoleInput.model_validate(role.model_dump(exclude={"legacy"}))

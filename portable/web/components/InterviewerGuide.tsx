@@ -2,6 +2,7 @@
 
 import { useId, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { Download } from "lucide-react"
+import { revisionNumber } from "@/lib/revisionNumber"
 import { saveBlob } from "@/lib/download"
 import { guideDocument, guideStyles, type GuideRole } from "@/lib/interviewerGuide"
 import { Button } from "./ui/button"
@@ -9,10 +10,11 @@ import { Button } from "./ui/button"
 export function GuideButton({ role, disabled = false, historical = false }: {
   role: GuideRole; disabled?: boolean; historical?: boolean
 }) {
+  const number = revisionNumber(role.version_number, role.version_number_text)
   const [selection, setSelection] = useState<GuideRole | null>(null)
   return <>
-    <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={() => setSelection(role)}
-      aria-label={historical ? `Preview interviewer guide for revision ${role.version_number}` : undefined}>
+    <Button type="button" size="sm" variant="outline" disabled={disabled || !number} onClick={() => setSelection(role)}
+      aria-label={historical ? `Preview interviewer guide for revision ${number}` : undefined}>
       {historical ? "Preview guide" : "Preview interviewer guide"}
     </Button>
     {selection && <InterviewerGuide role={selection} close={() => setSelection(null)} />}
@@ -45,7 +47,7 @@ function InterviewerGuide({ role, close }: { role: GuideRole; close: () => void 
 
   function download() {
     const file = new Blob(["<!doctype html>\n", doc.documentElement.outerHTML], { type: "text/html;charset=utf-8" })
-    saveBlob(file, `interviewer-guide-v${role.version_number ?? 1}.html`)
+    saveBlob(file, `interviewer-guide-v${revisionNumber(role.version_number, role.version_number_text)}.html`)
   }
 
   return (

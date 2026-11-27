@@ -84,6 +84,7 @@ def _version_dict(row: sqlite3.Row) -> dict[str, Any]:
         "id": row["id"],
         "role_id": row["role_id"],
         "version_number": int(row["version_number"]),
+        "version_number_text": str(row["version_number"]),
         "version": row["content_sha256"],
         "content_sha256": row["content_sha256"],
         "name": row["name"],
@@ -103,6 +104,7 @@ def _fallback_from_live(live: dict[str, Any]) -> dict[str, Any]:
         "id": live["id"],
         "role_id": live["id"],
         "version_number": live["version_number"],
+        "version_number_text": str(live["version_number"]),
         "version": live["version"],
         "content_sha256": live["version"],
         "name": live["name"],
@@ -138,6 +140,16 @@ def _diff_list(old_items: list[str], new_items: list[str]) -> dict[str, Any]:
     }
 
 
+def _diff_questions(before, after):
+    delta = _diff_list(before, after)
+    old_counts, new_counts = Counter(before), Counter(after)
+    common = {text for text, count in old_counts.items() if count == 1 and new_counts[text] == 1}
+    old_order = [text for text in before if text in common]
+    new_order = [text for text in after if text in common]
+    delta["reordered_common"] = {"before": old_order, "after": new_order} if old_order != new_order else None
+    return delta
+
+
 def _diff_materials(old_items, new_items):
     old = [(r["label"], r["text"]) for r in old_items]
     new = [(r["label"], r["text"]) for r in new_items]
@@ -170,11 +182,12 @@ def compute_diff(version: dict[str, Any], live: dict[str, Any]) -> dict[str, Any
     changes = {f: {"version": version[f], "live": live[f]} for f in fields if version[f] != live[f]}
     return {
         "against_version_number": live["version_number"],
+        "against_version_number_text": str(live["version_number"]),
         "against_version": live["version"],
         "has_changes": bool(changes),
         "changed_fields": list(changes),
         "changes": changes,
-        "questions": _diff_list(version["questions"], live["questions"]),
+        "questions": _diff_questions(version["questions"], live["questions"]),
         "rubric": _diff_rubric(version["rubric"], live["rubric"]),
         "permitted_sources": _diff_materials(version["permitted_sources"], live["permitted_sources"]),
     }
@@ -192,13 +205,26 @@ def list_versions(rid: UUID):
         live = role_kits.role_row(role_row)
         rows = db.execute("SELECT * FROM role_versions WHERE role_id=? ORDER BY version_number DESC", (key,)).fetchall()
         versions = [_version_dict(row) for row in rows] if rows else [_fallback_from_live(live)]
-    return {"role_id": key, "current_version": live["version"], "current_version_number": live["version_number"], "versions": versions}
+    return {"role_id": key, "current_version": live["version"], "current_version_number": live["version_number"],
+            "current_version_number_text": str(live["version_number"]), "versions": versions}
+
+
+def _verified_snapshot(row, live):
+    try:
+        snapshot = _version_dict(row)
+        actual = role_kits.content_version({**snapshot, "id": live["id"]})
+    except (TypeError, ValueError, KeyError) as exc:
+        raise HTTPException(409, "The stored role revision could not be verified. Inspect the SQLite backup.") from exc
+    if (actual != snapshot["content_sha256"] or snapshot["version_number"] > live["version_number"] or
+            (snapshot["version_number"] == live["version_number"] and actual != live["version"])):
+        raise HTTPException(409, "The stored role revision conflicts with its recorded contents. Inspect the SQLite backup.")
+    return snapshot
 
 
 def _saved_version(db, live, number):
     row = db.execute("SELECT * FROM role_versions WHERE role_id=? AND version_number=?", (live["id"], number)).fetchone()
     if row is not None:
-        return _version_dict(row)
+        return _verified_snapshot(row, live)
     if number == live["version_number"]:
         history = db.execute("SELECT 1 FROM role_versions WHERE role_id=? LIMIT 1", (live["id"],)).fetchone()
         if history is None:
@@ -225,6 +251,7 @@ def version_detail(rid: UUID, version_number: int = Path(ge=1, le=2**63 - 1),
         "role_id": key,
         "current_version": live["version"],
         "current_version_number": live["version_number"],
+        "current_version_number_text": str(live["version_number"]),
         "version": source,
         "diff": compute_diff(source, target),
     }
@@ -252,7 +279,8 @@ def _restore_version(key: str, item: RoleRestoreInput, version_number: int, acto
         ).fetchone()
         if target is None:
             raise HTTPException(404, "Role version does not exist.")
-        next_version = int(existing["version_number"]) + 1
+        _verified_snapshot(target, role_kits.role_row(existing))
+        next_version = role_kits.next_version_number(db, existing)
         db.execute(
             """UPDATE roles
                SET name=?, description=?, questions=?, policy=?, permitted_sources=?, rubric_json=?, version_number=?
@@ -264,4 +292,4 @@ def _restore_version(key: str, item: RoleRestoreInput, version_number: int, acto
         note = item.change_note or f"Restored from version {version_number}"
         record_snapshot_row(db, updated, change_note=note, created_by=actor_email)
         result = role_kits.role_row(updated)
-    return {**result, "restored_from_version": version_number}
+    return {**result, "restored_from_version": version_number, "restored_from_version_text": str(version_number)}
