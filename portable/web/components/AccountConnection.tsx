@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -53,13 +53,17 @@ export function AccountConnection({
   const [signup, setSignup] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const accountRead = useRef(0);
   const refresh = useCallback(async () => {
+    const read = ++accountRead.current;
     const response = await fetch("/api/integrations/account", { cache: "no-store" });
+    if (read !== accountRead.current) return;
     if (response.status === 401) { setAccount(null); return; }
     const data = await response.json().catch(() => ({}));
+    if (read !== accountRead.current) return;
     if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Could not load the account.");
     setAccount(data as Account);
-    notifyAccountChanged(false);
+    notifyAccountChanged("refresh");
   }, []);
   useEffect(() => {
     if (!enabled || signedIn === false) { setInitializing(false); setInitError(""); return; }
@@ -69,7 +73,7 @@ export function AccountConnection({
     refresh()
       .catch(e => { if (active) setInitError(message(e)); })
       .finally(() => { if (active) setInitializing(false); });
-    return () => { active = false; };
+    return () => { active = false; ++accountRead.current; };
   }, [enabled, signedIn, refresh, initSeq]);
 
   useEffect(() => {
@@ -120,7 +124,10 @@ export function AccountConnection({
           <Button variant="outline" disabled={busy} onClick={() => act(refresh)}>Refresh access</Button>
           <Button variant="ghost" disabled={busy} onClick={() => act(async () => { await submit("logout"); sweepLocalDrafts(); setLeaving("out"); setAccount(null); notifyAccountChanged(); })}>Sign out</Button>
         </div>
-        <PasswordChangeForm onRotated={next => setAccount(next)} />
+        <PasswordChangeForm onRotated={next => {
+          ++accountRead.current;
+          setAccount(next);
+        }} />
         <AccountSecurityPanel
           isAdmin={Boolean(account.admin)}
           onCurrentSessionRevoked={() => {
