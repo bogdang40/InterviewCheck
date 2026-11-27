@@ -6,12 +6,14 @@ import json
 import re
 from uuid import UUID, uuid4
 
+from pydantic import ValidationError
+
 from fastapi import APIRouter, Header, HTTPException, Request, Response
 from starlette.concurrency import run_in_threadpool
 
 from . import backup_conflicts, backup_schema as schema, bulk_operations, drafts, store
 from . import backup_review_data as review_data
-from . import retained_finding, session_privacy, session_rubric
+from . import deferred_archive, deferred_items, retained_finding, session_privacy, session_rubric
 
 router = APIRouter(prefix="/backups")
 ROLE_FIELDS = set(schema.Role.model_fields)
@@ -63,10 +65,11 @@ def role_data(row, db=None):
     return record
 
 
-def session_data(db, key, *, has_assignments, has_notes, has_scorecards, include_v6=True):
+def session_data(db, key, *, has_assignments, has_notes, has_scorecards, include_v6=True, include_deferred=True):
     record = select(store.get_session(db, key, include_trashed=True), SESSION_FIELDS)
     snapshot = session_rubric.read(db, key) if include_v6 else None
     record["rubric_snapshot"] = snapshot.model_dump() if snapshot else None
+    record["deferred_questions"] = deferred_archive.records(db, key, schema.LIMIT) if include_deferred else []
     record["privacy"] = session_privacy.read(db, key).model_dump() if include_v6 else None
     record["assignment"] = review_data.assignment_data(db, key) if has_assignments else None
     record["handoff_notes"] = review_data.handoff_data(db, key) if has_notes else []
@@ -75,7 +78,7 @@ def session_data(db, key, *, has_assignments, has_notes, has_scorecards, include
     if deleted:
         record["trashed_at"] = deleted["trashed_at"]
     if record.get("draft"):
-        record["draft"] = drafts.get(db, key)
+        record["draft"] = drafts.get(db, key, portable=True, include_deferred=include_deferred)
     record.setdefault("permitted_sources", [])
     record["answers"] = [select(a, ANSWER_FIELDS) for a in record["answers"]]
     record["tags"] = bulk_operations.tags_for_sessions(db, [key]).get(key, [])
@@ -95,12 +98,17 @@ def session_data(db, key, *, has_assignments, has_notes, has_scorecards, include
         except ValueError as exc:
             raise review_data.UnrepresentableReviewData(409, "The anonymization receipt conflicts with stored interview data. "
                                                         "Inspect the SQLite backup before exporting this interview.") from exc
+    if record["deferred_questions"] or (record.get("draft") or {}).get("deferred_question_id"):
+        try:
+            schema.Session.model_validate(record)
+        except ValidationError as exc:
+            raise review_data.UnrepresentableReviewData(409, "The deferred question graph is inconsistent. Inspect the SQLite backup.") from exc
     return record
 
 
 @router.get("/workspace")
 def download(session_id: UUID | None = None):
-    doc = {"format": "interviewcheck.workspace", "version": 6, "roles": [], "sessions": []}
+    doc = {"format": "interviewcheck.workspace", "version": 7, "roles": [], "sessions": []}
     size = 0
     size_error = (
         "This interview exceeds the JSON backup limit. Use a consistent SQLite database backup."
@@ -159,13 +167,14 @@ def download(session_id: UUID | None = None):
     )
 
 
-def stored_session(db, key, *, has_assignments, has_notes, has_scorecards, include_v6):
+def stored_session(db, key, *, has_assignments, has_notes, has_scorecards, include_v6, include_deferred):
     try:
         data = session_data(
             db, key, has_assignments=has_assignments, has_notes=has_notes, has_scorecards=has_scorecards,
-            include_v6=include_v6,
+            include_v6=include_v6, include_deferred=include_deferred,
         )
-    except (review_data.UnrepresentableReviewData, session_rubric.UnreadableRubric, session_privacy.UnreadablePrivacy):
+    except (review_data.UnrepresentableReviewData, session_rubric.UnreadableRubric, session_privacy.UnreadablePrivacy,
+            deferred_items.UnreadableQuestion):
         return None
     return schema.Session.model_validate(data)
 
@@ -191,6 +200,8 @@ def classify(db, backup, *, include_conflict_reasons=False):
     conflicts = []
     if backup.sessions:
         session_privacy.require_storage(db)
+        if backup.version >= 7 and not _has_table(db, "deferred_questions"):
+            raise HTTPException(409, "Restart InterviewCheck to initialize deferred question storage.")
     assignments = sum(s.assignment is not None for s in backup.sessions)
     # Compare only fields included by the writer's version.
     has_assignments = backup.version >= 3 and _has_table(db, "session_assignments")
@@ -224,9 +235,10 @@ def classify(db, backup, *, include_conflict_reasons=False):
                 exists = db.execute("SELECT 1 FROM sessions WHERE id=?", (key,)).fetchone() is not None
                 if exists:
                     stored = stored_session(db, key, has_assignments=has_assignments, has_notes=has_notes,
-                                            has_scorecards=has_scorecards, include_v6=backup.version >= 6)
+                                            has_scorecards=has_scorecards, include_v6=backup.version >= 6, include_deferred=backup.version >= 7)
                 else:
-                    linked_collision = review_data.has_handoff_collision(db, record.handoff_notes) or _has_exchange_collision(db, record)
+                    linked_collision = (review_data.has_handoff_collision(db, record.handoff_notes) or
+                                        _has_exchange_collision(db, record) or deferred_archive.collides(db, record.deferred_questions))
             state = "identical" if stored == record else "conflict" if exists or linked_collision else "new"
             totals[group][state] += 1
             if state == "new":
@@ -249,6 +261,7 @@ def classify(db, backup, *, include_conflict_reasons=False):
         "assignments": assignments,
         "handoff_notes": notes,
         "scorecard_items": scorecards,
+        "deferred_questions": sum(len(s.deferred_questions) for s in backup.sessions),
         "conflicts": conflicts,
     }
 
@@ -316,6 +329,7 @@ def restore_records(db, actions):
                     a.parent_answer_id, a.planned_slot,
                 ),
             )
+        deferred_archive.restore(db, s)
         if s.tags:
             bulk_operations.ensure_table(db)
             for tag in s.tags:

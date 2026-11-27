@@ -12,6 +12,7 @@ from pydantic import (
 
 from .backup_review_schema import Assignment, HandoffNote, ScorecardItem
 from .backup_types import HistoricalText, ID, Record, ReviewActor, ReviewStamp, TZStamp, _require_tz
+from . import deferred_archive
 from .session_privacy import PrivacyRecord, verify_redaction
 from .session_rubric import BackupRubricCriterion, RubricSnapshot
 from .backup_validation import check_session_chronology, unique, verify_records
@@ -190,6 +191,8 @@ class ReviewEvent(Record):
 
 
 class SavedDraft(Record):
+    deferred_question_id: ID | None = None
+    deferred_revision_id: deferred_archive.Revision | None = None
     parent_answer_id: ID | None = None
     planned_slot: int | None = Field(default=None, ge=1)
     id: ID
@@ -208,6 +211,7 @@ class Session(Record):
     planned_questions: HistoricalQuestions
     rubric_snapshot: RubricSnapshot | None = None
     privacy: PrivacyRecord | None = None
+    deferred_questions: list[deferred_archive.DeferredQuestion] = Field(default_factory=list)
     policy: HistoricalText
     permitted_sources: list[Material] = Field(default_factory=list, max_length=8)
     consent: bool
@@ -226,6 +230,7 @@ class Session(Record):
     @model_validator(mode="after")
     def valid_chronology(self):
         check_session_chronology(self.created_at, self.ended_at, self.trashed_at)
+        deferred_archive.validate(self)
         if self.privacy and self.privacy.state == "anonymized":
             verify_redaction(self)
         self.tags = sorted(unique(self.tags, "session tag"))
@@ -236,13 +241,14 @@ class Session(Record):
 
 class Backup(Record):
     format: Literal["interviewcheck.workspace"]
-    version: Literal[1, 2, 3, 4, 5, 6]
+    version: Literal[1, 2, 3, 4, 5, 6, 7]
     roles: list[Role] = Field(max_length=4000)
     sessions: list[Session] = Field(max_length=5000)
 
     @model_validator(mode="after")
     def check_extensions(self):
         live_versions = {r.id: r.version_number for r in self.roles}
+        unique((q.id for s in self.sessions for q in s.deferred_questions), "deferred question ID")
         unique((n.id for s in self.sessions for n in s.handoff_notes), "handoff note ID")
         unique((v.id for r in self.roles for v in r.versions), "role version ID")
         for r in self.roles:
@@ -263,6 +269,10 @@ class Backup(Record):
                     raise ValueError("The rubric snapshot belongs to another role.")
                 if s.role_id in live_versions and s.rubric_snapshot.version_number > live_versions[s.role_id]:
                     raise ValueError("The interview rubric refers to a revision newer than its linked role.")
+            if ("deferred_questions" in s.model_fields_set) != (self.version >= 7):
+                raise ValueError("Version 7 requires deferred questions on each interview.")
+            if self.version < 7 and s.draft and {"deferred_question_id", "deferred_revision_id"} & s.draft.model_fields_set:
+                raise ValueError("This file version cannot contain a deferred draft link.")
             aids = {a.id for a in s.answers}
             for ev in s.review_events:
                 if ev.answer_id not in aids:

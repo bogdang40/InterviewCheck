@@ -83,6 +83,7 @@ def test_v5_replay_preserves_snapshot_and_new_legacy_import_has_unknown_origin(c
     role = role_with(client, [FIRST])
     sid = setup(client, role)["id"]
     doc = client.get("/api/backups/workspace").raise_for_status().json()
+    del doc["sessions"][0]["deferred_questions"]
     del doc["sessions"][0]["privacy"]
     original = doc["sessions"][0].pop("rubric_snapshot")
     doc["version"] = 5
@@ -99,7 +100,7 @@ def test_v5_replay_preserves_snapshot_and_new_legacy_import_has_unknown_origin(c
     client.put("/api/roles/" + role["id"], json={**role, "rubric": [SECOND]}).raise_for_status()
     assert [row["criterion_id"] for row in card(client, sid)["items"]] == ["test"]
     latest = client.get("/api/backups/workspace").json()
-    assert latest["version"] == 6 and latest["sessions"][0]["rubric_snapshot"] is None
+    assert latest["version"] == 7 and latest["sessions"][0]["rubric_snapshot"] is None
 
 
 def test_v6_conflicts_and_invalid_sources_never_replace_saved_rubric(client):
@@ -120,6 +121,7 @@ def test_v6_conflicts_and_invalid_sources_never_replace_saved_rubric(client):
         assert result.status_code == 422 and "private" not in result.text
     del changed["sessions"][0]["rubric_snapshot"]
     assert client.post("/api/backups/preview", json=changed).status_code == 422
+    del original["sessions"][0]["deferred_questions"]
     original["version"] = 5
     assert client.post("/api/backups/preview", json=original).status_code == 422
 
