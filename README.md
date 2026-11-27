@@ -27,7 +27,7 @@ Open the review queue to go directly to an exchange with a pending passage match
 
 Open **Compare candidates** at `/interviews/compare/` to select two to six interviews from the archive. The comparison shows the saved questions for each interview. You can include saved ratings and choose whether to include reviewer rationales before printing or downloading the comparison. Interviews in Trash are excluded.
 
-Use the `/admin/` console (8-tab model administration, accounts, audit log, diagnostics, playground, security alerts, prompts and SLA, and compliance) to configure encrypted provider connections, budgets, alert rules, TOTP enforcement, and retention policies.
+Open `/admin/` and select **Models** to connect providers and configure prices and spend thresholds. **Usage** shows the cost log and controls the monthly attempt allowance. **Playground** includes a scripted rehearsal of the saved review rules. The console also manages accounts, audit records, diagnostics, alerts, prompts, access controls and retention policies.
 
 Use the review brief to preview exactly what a reader will receive. Its default omits identifying fields, transcript excerpts and notes. Full reports remain available. Workspace data supports a versioned JSON backup, restore previews and a separate Trash view. The account screen contains the browser appearance preference.
 
