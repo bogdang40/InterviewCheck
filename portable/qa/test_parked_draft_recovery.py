@@ -8,6 +8,14 @@ from playwright.sync_api import expect
 from test_deferred_questions_ui import keep_custom, open_queue, review_url, seed
 
 
+def wait_for_buffer(page, sid, draft, text):
+    key = f"ic_draft_v1:{sid}:editor:saved:{draft['id']}:life:{draft['recovery_fingerprint']}"
+    page.wait_for_function(
+        "([key, text]) => JSON.parse(localStorage.getItem(key))?.text === text",
+        arg=[key, text],
+    )
+
+
 def test_same_id_recreated_linked_draft_cannot_offer_predecessor_text(workspace_url, browser_page):
     page = browser_page
     page.on("dialog", lambda d: d.accept())
@@ -17,18 +25,19 @@ def test_same_id_recreated_linked_draft_cannot_offer_predecessor_text(workspace_
         queue = open_queue(page)
         keep_custom(queue)
         queue.get_by_role("button", name="Open answer draft").click()
-        editor = page.get_by_label("Candidate answer", exact=True)
+        editor = page.get_by_role("textbox", name="Candidate answer", exact=True)
         expect(editor).to_be_visible()
         old = c.get(path + "/draft").raise_for_status().json()
         old_text = "Private text for the former parked draft."
         editor.fill(old_text)
-        page.wait_for_function("s => Object.values(localStorage).some(v=>v.includes(s))", arg=old_text)
+        wait_for_buffer(page, sid, old, old_text)
         resume = page.get_by_role("button", name="Resume draft", exact=True)
         recovery = page.get_by_role("region", name="Local draft recovery")
         page.reload()
         resume.click()
         recovery.get_by_role("button", name="Restore local edits").click()
         expect(editor).to_have_value(old_text)
+        assert c.get(path + "/draft").raise_for_status().json() == old
         c.post(path + "/draft/discard", json={"id": old["id"], "expected_revision": old["revision"],
                "deferred_question": old["deferred_question"], "deferred_draft_token": old["deferred_draft_token"]}).raise_for_status()
         new = c.put(path + "/draft", json={"id": old["id"], "expected_revision": 0, "question": old["question"],
@@ -58,7 +67,7 @@ def test_same_id_recreated_linked_draft_cannot_offer_predecessor_text(workspace_
 
         current_text = "Recoverable edits for the replacement only."
         editor.fill(current_text)
-        page.wait_for_function("s => Object.values(localStorage).some(v=>v.includes(s))", arg=current_text)
+        wait_for_buffer(page, sid, new, current_text)
         # The fingerprint is non-authorizing. Neither the queue token nor either draft write token goes to storage.
         raw = page.evaluate("JSON.stringify(Object.entries(localStorage))")
         for private in (old["deferred_draft_token"], new["deferred_draft_token"], new["deferred_question"]["version"]):
