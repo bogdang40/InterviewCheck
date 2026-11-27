@@ -82,11 +82,13 @@ def _check_tables(db, tables, relations):
     for table, required in tables.items():
         entry = db.execute("SELECT type FROM pragma_table_list(?) WHERE schema='main' AND name=?",
                            (table, table)).fetchone()
-        info = db.execute('SELECT name, pk, "notnull" FROM pragma_table_info(?)', (table,)).fetchall()
+        info = db.execute('SELECT name, pk, "notnull", type FROM pragma_table_info(?)', (table,)).fetchall()
         columns = {col[0] for col in info}
         primary = {"session_context": "session_id", "user_totp": "user_id",
                    "login_windows": "address", "login_email_windows": "email"}.get(table, "id")
-        if entry != ("table",) or not required.issubset(columns) or [col[0] for col in info if col[1]] != [primary]:
+        declared_type = "INTEGER" if table in {"audit_log", "alert_deliveries"} else "TEXT"
+        actual_primary = [(col[0], col[3].upper()) for col in info if col[1]]
+        if entry != ("table",) or not required.issubset(columns) or actual_primary != [(primary, declared_type)]:
             raise SnapshotError("schema_mismatch")
         if table == "api_tokens":
             mandatory = {"user_id", "name", "token_prefix", "token_hash", "scopes_json", "created_at"}

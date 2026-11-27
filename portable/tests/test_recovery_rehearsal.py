@@ -331,7 +331,7 @@ def test_missing_original_v7_authority_tables_stop_preflight_without_writes(copi
     assert digests() == damaged
 
 
-@pytest.mark.parametrize("fault", ["missing_table", "nullable_hash", "nonunique_hash", "missing_owner_fk", "bad_cascade"])
+@pytest.mark.parametrize("fault", ["missing_table", "integer_key", "nullable_hash", "nonunique_hash", "missing_owner_fk", "bad_cascade"])
 def test_v8_receipt_requires_scoped_token_storage_and_constraints(copies, fault):
     review, access, key = copies
     with closing(sqlite3.connect(access)) as db, db:
@@ -339,6 +339,7 @@ def test_v8_receipt_requires_scoped_token_storage_and_constraints(copies, fault)
         db.execute("DROP TABLE api_tokens")
         if fault != "missing_table":
             old, new = {
+                "integer_key": ("id TEXT PRIMARY KEY", "id INTEGER PRIMARY KEY"),
                 "nullable_hash": ("token_hash TEXT NOT NULL UNIQUE", "token_hash TEXT UNIQUE"),
                 "nonunique_hash": ("token_hash TEXT NOT NULL UNIQUE", "token_hash TEXT NOT NULL"),
                 "missing_owner_fk": ("REFERENCES users(id) ON DELETE CASCADE", ""),
@@ -348,3 +349,13 @@ def test_v8_receipt_requires_scoped_token_storage_and_constraints(copies, fault)
             db.execute(ddl.replace(old, new))
     report = recovery_rehearsal.rehearse(review, access, [key], ["RECOVERED_PREVIOUS"])
     assert report["databases"]["access"] == {"status": "schema_mismatch"}
+
+def test_required_alert_uses_text_identifiers(copies):
+    review, access, key = copies
+    with closing(sqlite3.connect(review)) as db, db:
+        sql = db.execute("SELECT sql FROM sqlite_master WHERE name='alert_rules' AND type='table'").fetchone()[0]
+        db.execute("DROP TABLE alert_rules")
+        assert "id TEXT PRIMARY KEY" in sql
+        db.execute(sql.replace("id TEXT PRIMARY KEY", "id INTEGER PRIMARY KEY", 1))
+    report = recovery_rehearsal.rehearse(review, access, [key], ["RECOVERED_PREVIOUS"])
+    assert report["status"] == "failed" and report["databases"]["review"]["status"] == "schema_mismatch"
