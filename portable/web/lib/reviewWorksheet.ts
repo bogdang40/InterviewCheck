@@ -40,6 +40,22 @@ export function confirmsWorksheetSave(saved: Answer | null, original: Answer, no
     && JSON.stringify(stable(material(saved))) === JSON.stringify(stable(material(original)))
 }
 
+export function sameSavedMaterial(left: Answer, right: Answer) {
+  return left === right || JSON.stringify(stable(material(left))) === JSON.stringify(stable(material(right)))
+}
+
+function worksheetContext(session: Interview): Context {
+  return {
+    candidate: session.candidate, role: session.role, created_at: session.created_at, consent: session.consent,
+    policy: session.policy, role_id: session.role_id, planned_questions: session.planned_questions,
+    permitted_sources: session.permitted_sources,
+  }
+}
+
+export function sameWorksheetContext(left: Interview, right: Interview) {
+  return left === right || JSON.stringify(stable(worksheetContext(left))) === JSON.stringify(stable(worksheetContext(right)))
+}
+
 export async function currentWorksheet(session: Interview, item: Answer, ordinal: number, signal?: AbortSignal): Promise<WorksheetState> {
   const live = await api<WorksheetState>(`sessions/${session.id}/answers/${item.id}/worksheet`, "GET", undefined, signal)
   if (!live?.session || !live.answer || !receipt.test(live.material) || !receipt.test(live.review)
@@ -48,12 +64,7 @@ export async function currentWorksheet(session: Interview, item: Answer, ordinal
     || !["pending", "explained", "unresolved", "disclosed"].includes(live.answer.disposition)) {
     throw new Error("The saved exchange could not be verified. Reload the interview.")
   }
-  const context: Context = {
-    candidate: session.candidate, role: session.role, created_at: session.created_at, consent: session.consent,
-    policy: session.policy, role_id: session.role_id, planned_questions: session.planned_questions,
-    permitted_sources: session.permitted_sources,
-  }
-  if (JSON.stringify(stable([live.session, material(live.answer)])) !== JSON.stringify(stable([context, material(item)]))) {
+  if (JSON.stringify(stable(live.session)) !== JSON.stringify(stable(worksheetContext(session))) || !sameSavedMaterial(live.answer, item)) {
     throw new Error("The exchange has changed. Reload the interview before using a worksheet.")
   }
   return live
