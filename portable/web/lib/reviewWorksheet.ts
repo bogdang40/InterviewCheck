@@ -1,6 +1,9 @@
 import { api, type Answer, type Interview } from "./api"
 
 export const MAX_WORKSHEET_BYTES = 96 * 1024
+export const MAX_NOTE_CHARACTERS = 12_000
+// Four UTF-8 bytes per scalar, plus a possible BOM, ten CRLF header lines and a final CRLF.
+const NOTE_RESERVE = 4 * MAX_NOTE_CHARACTERS + 15
 const title = "InterviewCheck review worksheet v1"
 const marker = "=== Proposed interviewer note ==="
 const uuid = /^[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/i
@@ -29,11 +32,18 @@ function material(answer: Answer) {
   return fields
 }
 
+export function confirmsWorksheetSave(saved: Answer | null, original: Answer, note: string): saved is Answer {
+  return !!saved && typeof saved === "object" && saved.note === note && saved.disposition === original.disposition
+    && saved.revision === original.revision + (note === original.note ? 0 : 1)
+    && JSON.stringify(stable(material(saved))) === JSON.stringify(stable(material(original)))
+}
+
 export async function currentWorksheet(session: Interview, item: Answer, ordinal: number, signal?: AbortSignal): Promise<WorksheetState> {
   const live = await api<WorksheetState>(`sessions/${session.id}/answers/${item.id}/worksheet`, "GET", undefined, signal)
   if (!live?.session || !live.answer || !receipt.test(live.material) || !receipt.test(live.review)
     || live.session_id !== session.id || live.answer.id !== item.id || live.ordinal !== ordinal
-    || !Number.isSafeInteger(live.answer.revision) || typeof live.answer.note !== "string") {
+    || !Number.isSafeInteger(live.answer.revision) || live.answer.revision < 1 || typeof live.answer.note !== "string"
+    || !["pending", "explained", "unresolved", "disclosed"].includes(live.answer.disposition)) {
     throw new Error("The saved exchange could not be verified. Reload the interview.")
   }
   const context: Context = {
@@ -59,11 +69,15 @@ function display(value: string | null) {
 }
 
 export function worksheetText(saved: WorksheetState, fields: Disclosure) {
-  return [title, "Session: " + saved.session_id, "Exchange: " + saved.answer.id, "Number: " + saved.ordinal,
+  const text = [title, "Session: " + saved.session_id, "Exchange: " + saved.answer.id, "Number: " + saved.ordinal,
     "Revision: " + saved.answer.revision, "Material: " + saved.material, "Review: " + saved.review,
     "Question: " + display(fields.question ? saved.answer.question : null),
     "Candidate excerpt: " + display(fields.excerpt ? firstExcerpt(saved.answer.answer) : null),
     marker, ""].join("\n")
+  if (new TextEncoder().encode(text).length + NOTE_RESERVE > MAX_WORKSHEET_BYTES) {
+    throw new Error("These fields leave too little room for a full review note. Omit the question or answer excerpt and preview again.")
+  }
+  return text
 }
 
 function field(line: string | undefined, label: string) {
@@ -100,7 +114,7 @@ export function parseWorksheet(raw: string): Worksheet {
   const body = lines.slice(10).join("\n")
   if (forbidden.test(body)) throw new Error("Remove control or bidirectional formatting characters from the note.")
   const note = body.trim()
-  if (!note || Array.from(note).length > 12_000) throw new Error("Enter a proposed note of 1 to 12,000 characters.")
+  if (!note || Array.from(note).length > MAX_NOTE_CHARACTERS) throw new Error("Enter a proposed note of 1 to 12,000 characters.")
   return { sessionId, answerId, ordinal, revision, material, review, question: disclosed(field(lines[7], "Question")),
     excerpt: disclosed(field(lines[8], "Candidate excerpt")), note }
 }
