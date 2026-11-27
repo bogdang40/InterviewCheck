@@ -31,6 +31,8 @@ def migrate(db):
     sql_script.execute(db, deferred_fulfillment.SCHEMA)
     if "creation_receipt" not in {r[1] for r in db.execute("PRAGMA table_info(deferred_questions)")}:
         db.execute("ALTER TABLE deferred_questions ADD COLUMN creation_receipt TEXT")
+    if "publication_draft_token" not in {r[1] for r in db.execute("PRAGMA table_info(deferred_questions)")}:
+        db.execute("ALTER TABLE deferred_questions ADD COLUMN publication_draft_token TEXT")
     if not had_facts:
         deferred_fulfillment.migrate_receipts(db)
     columns = {r[1] for r in db.execute("PRAGMA table_info(session_drafts)")}
@@ -38,6 +40,10 @@ def migrate(db):
         db.execute("ALTER TABLE session_drafts ADD COLUMN deferred_question_id TEXT REFERENCES deferred_questions(id)")
     if "deferred_revision_id" not in columns:
         db.execute("ALTER TABLE session_drafts ADD COLUMN deferred_revision_id TEXT")
+    if "deferred_draft_token" not in columns:
+        db.execute("ALTER TABLE session_drafts ADD COLUMN deferred_draft_token TEXT")
+        db.execute("""UPDATE session_drafts SET deferred_draft_token=lower(hex(randomblob(32)))
+                      WHERE deferred_question_id IS NOT NULL""")
 
 
 def digest(fields):
@@ -134,6 +140,7 @@ def begin_publish(db, sid, aid, item, parent, slot):
     if row["status"] == "fulfilled":
         if (row["child_answer_id"] == aid and row["previous_revision_id"] and
                 hmac.compare_digest(binding.version, token(db, row, row["previous_revision_id"])) and
+                row["publication_draft_token"] == getattr(item, "deferred_draft_token", None) and
                 row["fulfillment_digest"] == submission_digest(aid, item, parent, slot)):
             return row, True
         raise conflict("This question already has a recorded child exchange. Open its saved response.")
@@ -149,9 +156,9 @@ def finish_publish(db, row, aid, item, parent, slot):
     if row is not None:
         proof = submission_digest(aid, item, parent, slot)
         updated = db.execute("""UPDATE deferred_questions SET child_answer_id=?,status='fulfilled',
-                                previous_revision_id=revision_id,revision_id=?,fulfillment_digest=?
+                                previous_revision_id=revision_id,revision_id=?,fulfillment_digest=?,publication_draft_token=?
                                 WHERE id=? AND status='pending' AND revision_id=?""",
-                             (aid, secrets.token_hex(16), proof, row["id"], row["revision_id"]))
+                             (aid, secrets.token_hex(16), proof, getattr(item, "deferred_draft_token", None), row["id"], row["revision_id"]))
         if updated.rowcount != 1:
             raise conflict("The deferred question changed before its response was saved.")
         deferred_fulfillment.record(db, row["session_id"], aid, row["id"], parent, deferred_fulfillment.question_hash(row["question"]))
