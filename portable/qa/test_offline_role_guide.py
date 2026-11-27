@@ -108,8 +108,9 @@ def test_offline_guide_uses_the_displayed_revision_and_selected_fields(workspace
             pdf = offline.pdf(path=output, format="A4", margin={"top": "15mm", "bottom": "15mm", "left": "15mm", "right": "15mm"})
             assert len(re.findall(rb"/Type\s*/Page\b", pdf)) >= 2
             if shutil.which("pdftotext"):
-                printed = subprocess.check_output(["pdftotext", "-layout", str(output), "-"]).decode("utf-8")
+                printed = subprocess.check_output(["pdftotext", "-enc", "UTF-8", "-layout", str(output), "-"]).decode("utf-8")
                 assert "What happens on failover?" in printed and "Review case 40" in printed
+                assert "Explain <sample> & Δ." in printed
                 for marker in ("Final material marker", "Private criterion"):
                     assert (marker in printed) == (file == rich)
         assert not network
