@@ -124,6 +124,8 @@ def initialize(path):
         retention_policy.migrate(db)
         from . import admin_audit_outbox
         admin_audit_outbox.migrate(db)
+        from . import answer_identity
+        answer_identity.migrate(db)
         usage_events.migrate(db)
         from . import answer_identity
         answer_identity.migrate(db)

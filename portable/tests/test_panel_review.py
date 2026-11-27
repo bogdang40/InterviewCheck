@@ -47,7 +47,7 @@ def workspace(tmp_path, monkeypatch):
 
 def command(case, action, note=NOTE):
     return {"expected_basis": case["basis"], "expected_version": case["version"], "expected_evidence": case["evidence"],
-            "action": action, "rationale": note}
+            "action": action, "rationale": note, "expected_editor": case.get("editor", "0" * 64)}
 
 
 def status(web, route):
@@ -66,6 +66,11 @@ def test_complete_is_independent_and_private_details_require_named_admin(workspa
     before_card = status(member, f"/api/sessions/{sid}/scorecard")
     payload = command(initial, "discussion_complete")
     assert member.post(route, json=payload).status_code == 403 and member.get(route + "/private").status_code == 403
+    assert member.get(route + "/edit").status_code == 403
+    assert "editor" not in initial
+    editor = status(chair, route + "/edit")
+    assert chair.post(route, json=payload).status_code == 409
+    payload = command(editor, "discussion_complete")
     result = chair.post(route, json=payload).raise_for_status().json()
     assert result["status"] == "discussion_complete" and result["split"] and result["history_count"] == 1
     event, = result["history"]
@@ -89,25 +94,25 @@ def test_complete_is_independent_and_private_details_require_named_admin(workspa
 
 def test_material_edit_and_reverted_vote_reopen_discussion_but_note_edit_does_not(workspace):
     chair, member, _, _, answer, route = workspace
-    first = chair.post(route, json=command(status(chair, route), "discussion_complete")).raise_for_status().json()
+    first = chair.post(route, json=command(status(chair, route + "/edit"), "discussion_complete")).raise_for_status().json()
     member.patch(answer, json={"disposition": "unresolved", "note": "Clarified my earlier note."}).raise_for_status()
-    after_note = status(chair, route)
+    after_note = status(chair, route + "/edit")
     assert after_note["status"] == "discussion_complete" and after_note["basis"] == first["basis"]
     assert after_note["evidence"] != first["evidence"]
     assert chair.post(route, json=command(first, "reopened")).status_code == 409
     body = {"question": "Explain the test.", "answer": "I wrote a different test.", "references": []}
     chair.put(answer, json=body).raise_for_status()
     chair.put(answer, json={**body, "answer": "I wrote a test."}).raise_for_status()
-    after_material = status(chair, route)
+    after_material = status(chair, route + "/edit")
     assert after_material["status"] == "changed" and after_material["basis"] != first["basis"]
     assert decisions(chair, "open")[0]["panel_status"] == "changed"
     second = chair.post(route, json=command(after_material, "discussion_complete")).raise_for_status().json()
     member.patch(answer, json={"disposition": "explained", "note": "Converged briefly."}).raise_for_status()
-    converged = status(chair, route)
+    converged = status(chair, route + "/edit")
     assert not converged["split"] and converged["status"] == "changed"
     member.patch(answer, json={"disposition": "unresolved", "note": "Reviewed separately."}).raise_for_status()
-    assert status(chair, route)["basis"] != second["basis"]
-    follow = chair.post(route, json=command(status(chair, route), "follow_up_required")).raise_for_status().json()
+    assert status(chair, route + "/edit")["basis"] != second["basis"]
+    follow = chair.post(route, json=command(status(chair, route + "/edit"), "follow_up_required")).raise_for_status().json()
     assert decisions(chair, "open")[0]["panel_status"] == "follow_up_required"
     reopened = chair.post(route, json=command(follow, "reopened")).raise_for_status().json()
     assert reopened["history"][0]["action"] == "reopened" and reopened["history_count"] == 4
@@ -115,19 +120,19 @@ def test_material_edit_and_reverted_vote_reopen_discussion_but_note_edit_does_no
 
 def test_concurrent_writes_have_one_winner(workspace):
     chair, _, _, _, _, route = workspace
-    payload = command(status(chair, route), "discussion_complete")
+    payload = command(status(chair, route + "/edit"), "discussion_complete")
     barrier = Barrier(2)
     def decide():
         barrier.wait()
         return chair.post(route, json=payload).status_code
     with ThreadPoolExecutor(2) as pool:
         assert sorted(f.result() for f in [pool.submit(decide), pool.submit(decide)]) == [200, 409]
-    assert status(chair, route)["history_count"] == 1
+    assert status(chair, route + "/edit")["history_count"] == 1
 
 
 def test_sqlite_restores_history_json_restores_only_opinions(workspace, tmp_path, monkeypatch):
     chair, member, sid, aid, _, route = workspace
-    closed = chair.post(route, json=command(status(chair, route), "discussion_complete")).raise_for_status().json()
+    closed = chair.post(route, json=command(status(chair, route + "/edit"), "discussion_complete")).raise_for_status().json()
     source = store.db_path()
     sqlite_copy = tmp_path / "restored-full.sqlite"
     with closing(sqlite3.connect(source)) as original, closing(sqlite3.connect(sqlite_copy)) as backup:
@@ -146,7 +151,7 @@ def test_sqlite_restores_history_json_restores_only_opinions(workspace, tmp_path
     store.initialize(empty)
     monkeypatch.setenv("INTERVIEWCHECK_DB", str(empty))
     restore_json()
-    restored = status(chair, route)
+    restored = status(chair, route + "/edit")
     assert restored["status"] == "open" and restored["history"] == [] and restored["split"]
     store.initialize(sqlite_copy)
     monkeypatch.setenv("INTERVIEWCHECK_DB", str(sqlite_copy))
@@ -154,8 +159,60 @@ def test_sqlite_restores_history_json_restores_only_opinions(workspace, tmp_path
     marker = chair.post(f"/api/sessions/{sid}/trash").raise_for_status().json()
     assert chair.get(route).status_code == 404 and decisions(chair, "all") == []
     chair.post(f"/api/trash/{sid}/restore", json={"operation_version": marker["operation_version"]}).raise_for_status()
-    assert status(chair, route)["status"] == "discussion_complete"
+    assert status(chair, route + "/edit")["status"] == "discussion_complete"
     with store.connection(write=True) as db:
         SessionAnonymizer(db, sid).run(preserve_scorecard_aggregates=True, actor_email="fixture", now_iso=store.timestamp())
         assert db.execute("SELECT count(*) FROM panel_decisions WHERE answer_id=?", (aid,)).fetchone()[0] == 0
     assert chair.get(route + "/private").status_code == 404 and decisions(chair, "all") == []
+
+
+def test_stale_admin_draft_cannot_be_attributed_to_another_admin(workspace, monkeypatch):
+    chair, second, _, _, _, route = workspace
+    new_email = "second-chair@example.test"
+    monkeypatch.setenv("ADMIN_EMAILS", f"{ADMIN},{new_email}")
+    stale = command(status(chair, route + "/edit"), "discussion_complete", "Private first chair draft")
+    created = second.post("/api/integrations/access/signup", json={"email": new_email,
+        "password": "fixture-password-123", "adminSecret": "panel-test-bootstrap-123"}).raise_for_status().json()
+    assert created["admin"]
+    current = status(second, route + "/edit")
+    assert current["editor"] != stale["expected_editor"] and current["history"] == []
+    refused = second.post(route, json=stale)
+    assert refused.status_code == 409 and refused.headers["X-InterviewCheck-Conflict"] == "panel-authority"
+    assert status(chair, route + "/private")["history"] == []
+    good = second.post(route, json=command(current, "discussion_complete", "Second chair reasoning")).raise_for_status().json()
+    assert [(e["actor_email"], e["rationale"]) for e in good["history"]] == [(new_email, "Second chair reasoning")]
+
+
+def test_revoked_embedded_session_after_request_checks_cannot_write(workspace, monkeypatch):
+    from api import account_db, panel_review
+    chair, _, _, _, _, route = workspace
+    draft = command(status(chair, route + "/edit"), "discussion_complete")
+    real = panel_review._record
+    def before_writer(sid, aid, payload, actor):
+        with account_db.connection(write=True) as adb:
+            adb.execute("UPDATE sessions SET revoked_at=? WHERE token_hash=?",
+                        (account_db.now(), account_db.digest(actor.session_token)))
+        return real(sid, aid, payload, actor)
+    monkeypatch.setattr(panel_review, "_record", before_writer)
+    assert chair.post(route, json=draft).status_code == 401
+    with store.connection() as db:
+        assert db.execute("SELECT COUNT(*) FROM panel_decisions").fetchone()[0] == 0
+
+
+def test_restored_identical_exchange_rejects_first_unsubmitted_draft(workspace):
+    chair, _, sid, _, _, route = workspace
+    source = status(chair, route + "/edit")
+    assert source["history_count"] == 0
+    command_a = command(source, "follow_up_required", "Draft on a previous record")
+    raw = chair.get("/api/backups/workspace").raise_for_status().content
+    trash = chair.post(f"/api/sessions/{sid}/trash").raise_for_status().json()
+    chair.post(f"/api/trash/{sid}/purge", json={"operation_version": trash["operation_version"],
+                                                "confirm_session_id": sid}).raise_for_status()
+    preview = chair.post("/api/backups/preview", content=raw).raise_for_status().json()
+    chair.post("/api/backups/restore", content=raw, headers={"X-Backup-Preview": preview["fingerprint"]}).raise_for_status()
+    current = status(chair, route + "/edit")
+    assert source["evidence"] == current["evidence"] and current["editor"] != source["editor"]
+    refused = chair.post(route, json=command_a)
+    assert refused.status_code == 409 and refused.headers["X-InterviewCheck-Conflict"] == "panel-authority"
+    assert not status(chair, route + "/private")["history"]
+    chair.post(route, json=command(current, "follow_up_required")).raise_for_status()
