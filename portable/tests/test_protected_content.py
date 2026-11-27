@@ -120,7 +120,7 @@ def test_prior_native_erasure_restores_as_a_hold_without_a_receipt(client, tmp_p
     legacy = client.get("/api/backups/workspace").raise_for_status().json()
     legacy["version"] = 5
     entry = legacy["sessions"][0]
-    del entry["privacy"], entry["rubric_snapshot"]
+    del entry["privacy"], entry["rubric_snapshot"], entry["deferred_questions"]
     raw = json.dumps(legacy).encode()
     fresh_destination(tmp_path / "legacy.sqlite", monkeypatch)
     restore(client, raw, preview(client, raw)).raise_for_status()
