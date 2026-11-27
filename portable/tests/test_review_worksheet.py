@@ -4,7 +4,7 @@ import json
 from fastapi.testclient import TestClient
 import pytest
 
-from api import rate_limit, store
+from api import rate_limit, session_privacy, store
 from api.main import app
 from api.retention_anonymizer import SessionAnonymizer
 
@@ -124,6 +124,8 @@ def test_erasure_and_lost_notice_block_preview_and_save(web, mode):
                                                actor_email="fixture@example.test", now_iso=store.timestamp())
                 if mode == "legacy_redaction":
                     db.execute("DELETE FROM session_anonymizations WHERE session_id=?", (sid,))
+                    db.execute("DROP TABLE legacy_privacy_holds")
+                    session_privacy.migrate(db)
     assert web.get(f"/api/sessions/{sid}/answers/{aid}/worksheet").status_code == expected
     assert apply(web, sid, aid, view).status_code == expected
 
@@ -141,6 +143,7 @@ def test_preview_is_read_only_and_binding_key_never_leaves_database(web):
     with store.connection() as db:
         assert store.get_answer(db, sid, aid) == before
 
+
 def test_purge_and_restore_on_same_workspace_invalidates_the_old_worksheet(web):
     sid, (aid, _) = exchange(web)
     original = read(web, sid, aid)
@@ -157,3 +160,33 @@ def test_purge_and_restore_on_same_workspace_invalidates_the_old_worksheet(web):
     assert restored["answer"] == original["answer"] and restored["material"] != original["material"]
     assert apply(web, sid, aid, original).status_code == 409
     assert apply(web, sid, aid, restored).status_code == 200
+
+def test_legacy_partial_erasure_holds_the_entire_interview(web, tmp_path, monkeypatch):
+    sid, (aid, other) = exchange(web)
+    prior = read(web, sid, other)
+    selected = {"session_id": sid}
+    before = web.get("/api/backups/workspace", params=selected).raise_for_status().json()
+    with store.connection(write=True) as db:
+        SessionAnonymizer(db, sid).run(preserve_scorecard_aggregates=True,
+                                      actor_email="fixture@example.test", now_iso=store.timestamp())
+    file = web.get("/api/backups/workspace", params=selected).raise_for_status().json()
+    file["version"] = 5
+    record = file["sessions"][0]
+    del record["privacy"], record["rubric_snapshot"]
+    original = next(item for item in before["sessions"][0]["answers"] if item["id"] == other)
+    record["answers"] = [original if item["id"] == other else item for item in record["answers"]]
+    target = tmp_path / "legacy-import.sqlite"
+    store.initialize(target)
+    monkeypatch.setenv("INTERVIEWCHECK_DB", str(target))
+    raw = json.dumps(file).encode()
+    headers = {"Content-Type": "application/json"}
+    preview = web.post("/api/backups/preview", content=raw, headers=headers).raise_for_status().json()
+    web.post("/api/backups/restore", content=raw, headers={**headers, "X-Backup-Preview": preview["fingerprint"]}).raise_for_status()
+    for answer_id in (aid, other):
+        denied = web.get(f"/api/sessions/{sid}/answers/{answer_id}/worksheet")
+        assert denied.status_code == 403 and denied.headers["X-InterviewCheck-Worksheet"] == "unavailable"
+        save = apply(web, sid, answer_id, prior)
+        assert save.status_code == 403 and save.headers["X-InterviewCheck-Worksheet"] == "unavailable"
+    with store.connection() as db:
+        assert store.get_answer(db, sid, other)["note"] == ""
+        assert db.execute("SELECT COUNT(*) FROM answer_review_events WHERE session_id=?", (sid,)).fetchone()[0] == 0
