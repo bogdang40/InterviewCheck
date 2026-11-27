@@ -35,7 +35,7 @@ def workspace(tmp_path, monkeypatch):
         for web, email, extra in ((chair, ADMIN, {"adminSecret": "panel-test-bootstrap-123"}), (member, MEMBER, {})):
             user = web.post("/api/integrations/access/signup", json={"email": email, "password": "panel-test-pass-123",
                                                                     **extra}).raise_for_status().json()
-            assert user["admin"] is (web is chair)
+            assert user.get("admin", False) is (web is chair)
         sid = chair.post("/api/sessions", json={"candidate": "Synthetic panel candidate", "role": "Engineer",
                                                 "policy": "Manual", "consent": True}).raise_for_status().json()["id"]
         aid = chair.post(f"/api/sessions/{sid}/answers", json={"question": "Explain the test.", "answer": "I wrote a test."}).raise_for_status().json()["id"]
