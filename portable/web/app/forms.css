@@ -78,6 +78,12 @@ select,
 .check input {
   accent-color: var(--green);
 }
+@media (max-width: 820px) {
+  .check {
+    min-height: 44px;
+    align-items: center;
+  }
+}
 .source-box,
 .policy,
 .notice,
