@@ -294,8 +294,38 @@ def test_admin_audit_log_tab_records_and_filters_model_and_account_events(e2e_wo
     collector.assert_clean()
 
 
+def delay_rotation_deliveries(page):
+    # Keep independent browser fetch promises. Each response has exactly one consumer,
+    # including the real password response whose fresh cookie the browser already accepted.
+    page.evaluate("""() => {
+      const send = window.fetch.bind(window);
+      const phase = window.rotationFixture = {};
+      let firstAccount = true, firstStatus = true;
+      window.fetch = async (input, init) => {
+        const url = new URL(input instanceof Request ? input.url : input, location.href);
+        if (firstAccount && url.pathname === '/api/integrations/account') {
+          firstAccount = false;
+          const stale = await new Promise(resolve => { phase.releaseRead = resolve });
+          phase.readReturned = true;
+          return new Response(stale.body, {status: stale.status, headers: {'Content-Type': 'application/json'}});
+        }
+        const response = await send(input, init);
+        if (url.pathname === '/api/integrations/access/password') {
+          phase.passwordStatus = response.status;
+          await new Promise(resolve => { phase.releasePassword = resolve });
+          phase.ackReturned = true;
+        } else if (phase.ackReturned && firstStatus && url.pathname === '/api/integrations/status') {
+          firstStatus = false;
+          await new Promise(resolve => { phase.releaseStatus = resolve });
+        }
+        return response;
+      };
+    }""")
+
+
 @pytest.mark.tier3
-def test_account_password_rotation_revokes_other_browser_context_session(e2e_workspace, e2e_browser):
+@pytest.mark.parametrize("expired_read_first", [False, True], ids=["rotation-first", "expired-read-first"])
+def test_account_password_rotation_revokes_other_browser_context_session(e2e_workspace, e2e_browser, expired_read_first):
     e2e_workspace.configure_embedded_auth(admin_emails=(ADMIN1_EMAIL,), bootstrap_secret=BOOTSTRAP_SECRET)
     with e2e_workspace.client() as c:
         signup_user(c, email=ADMIN1_EMAIL, password=ADMIN_PASS, admin_secret=BOOTSTRAP_SECRET)
@@ -306,41 +336,43 @@ def test_account_password_rotation_revokes_other_browser_context_session(e2e_wor
         _sign_in_on_account(page_a, e2e_workspace.base_url, ADMIN1_EMAIL, ADMIN_PASS)
         _sign_in_on_account(page_b, e2e_workspace.base_url, ADMIN1_EMAIL, ADMIN_PASS)
 
-        # A manual refresh issued with the previous cookie is still in flight when A rotates.
+        # A manual refresh issued before rotation can resolve on either side of the write acknowledgment.
         account_url = e2e_workspace.base_url + "/api/integrations/account"
-        status_url = e2e_workspace.base_url + "/api/integrations/status"
-        held_account, held_status = [], []
+        page_a.wait_for_load_state("networkidle", timeout=15_000)
         collector_a.assert_clean()
-        page_a.route(account_url, lambda route: held_account.append(route), times=1)
-        with page_a.expect_request(lambda req: req.method == "GET" and req.url == account_url):
-            page_a.get_by_role("button", name="Refresh access").click()
+        delay_rotation_deliveries(page_a)
+        page_a.get_by_role("button", name="Refresh access").click()
+        page_a.wait_for_function("typeof window.rotationFixture.releaseRead === 'function'")
         pw_form = page_a.get_by_role("form", name="Change password")
         pw_form.get_by_label("Current password").fill(ADMIN_PASS)
         pw_form.get_by_label("New password", exact=True).fill(NEW_ADMIN_PASS)
         pw_form.get_by_label("Confirm new password").fill(NEW_ADMIN_PASS)
-        page_a.route(status_url, lambda route: held_status.append(route), times=1)
-        with page_a.expect_request(lambda req: req.method == "GET" and req.url == status_url):
-            pw_form.get_by_role("button", name="Update password").click()
-        expect(pw_form.get_by_role("status")).to_contain_text("Password updated and session rotated.")
-        confirmed = page_a.request.get(account_url)
-        assert confirmed.ok and confirmed.json()["email"] == ADMIN1_EMAIL and confirmed.json()["admin"]
-        # Deliver the genuine expired-session response from B to the held pre-rotation read.
+        pw_form.get_by_role("button", name="Update password").click()
+        page_a.wait_for_function("typeof window.rotationFixture.releasePassword === 'function'")
+        assert page_a.evaluate("window.rotationFixture.passwordStatus") == 200
+        current = page_a.request.get(account_url)
         expired = page_b.request.get(account_url)
-        assert expired.status == 401 and len(held_account) == len(held_status) == 1
-        expected_console = []
-        def observe(message):
-            if message.type == "error" and message.location.get("url") == account_url and "401" in message.text:
-                expected_console.append(message.text)
-        page_a.on("console", observe)
-        with page_a.expect_request_finished(lambda req: req.method == "GET" and req.url == account_url):
-            held_account[0].fulfill(response=expired)
-        held_status[0].continue_()
-        page_a.wait_for_load_state("networkidle", timeout=15_000)
-        page_a.remove_listener("console", observe)
-        assert len(expected_console) <= 1 and collector_a.console_errors == expected_console
-        collector_a.console_errors.clear()
-        expect(pw_form.get_by_role("status")).to_contain_text("Password updated and session rotated.")
+        assert current.ok and current.json()["email"] == ADMIN1_EMAIL and current.json()["admin"]
+        assert expired.status == 401
+
+        def deliver_old_read():
+            page_a.evaluate("r => window.rotationFixture.releaseRead(r)", {"status": expired.status, "body": expired.text()})
+            page_a.wait_for_function("window.rotationFixture.readReturned")
+            page_a.evaluate("() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done)))")
+
+        if expired_read_first:
+            deliver_old_read()
+            expect(pw_form).to_be_visible()
+            expect(pw_form.get_by_role("status")).to_have_count(0)
+        page_a.evaluate("() => window.rotationFixture.releasePassword()")
+        page_a.wait_for_function("typeof window.rotationFixture.releaseStatus === 'function'")
+        expect(pw_form.get_by_role("status")).to_have_text("Password updated and session rotated.")
+        if not expired_read_first:
+            deliver_old_read()
+        page_a.evaluate("() => window.rotationFixture.releaseStatus()")
+        expect(pw_form.get_by_role("status")).to_have_text("Password updated and session rotated.")
         expect(page_a.get_by_role("link", name="Open model admin panel")).to_be_visible()
+        collector_a.assert_clean()
 
         # Context A keeps an active rotated session.
         page_a.get_by_role("button", name="Refresh access").click()
@@ -368,3 +400,45 @@ def test_account_password_rotation_revokes_other_browser_context_session(e2e_wor
     finally:
         ctx_a.close()
         ctx_b.close()
+
+
+@pytest.mark.tier3
+def test_unconfirmed_password_reply_rechecks_the_session_without_retrying(e2e_workspace, desktop_page):
+    e2e_workspace.configure_embedded_auth(admin_emails=(ADMIN1_EMAIL,), bootstrap_secret=BOOTSTRAP_SECRET)
+    with e2e_workspace.client() as client:
+        signup_user(client, email=ADMIN1_EMAIL, password=ADMIN_PASS, admin_secret=BOOTSTRAP_SECRET)
+    page, collector = desktop_page
+    base = e2e_workspace.base_url
+    _sign_in_on_account(page, base, ADMIN1_EMAIL, ADMIN_PASS)
+    page.wait_for_load_state("networkidle", timeout=15_000)
+    # The original response applies its real Set-Cookie. Only its JSON acknowledgment is lost.
+    page.evaluate("""() => {
+        const original = window.fetch.bind(window);
+        window.rotationCheck = { writes: 0, reads: 0, committed: false };
+        window.fetch = async (input, init) => {
+          const path = new URL(input instanceof Request ? input.url : input, location.href).pathname;
+          const reply = await original(input, init);
+          const state = window.rotationCheck;
+          if (path === '/api/integrations/access/password') {
+            state.writes++;
+            state.committed = reply.ok;
+            return new Response('{}', {status: 200, headers: {'Content-Type': 'application/json'}});
+          }
+          if (path === '/api/integrations/account' && state.committed && reply.ok) state.reads++;
+          return reply;
+        };
+    }""")
+    form = page.get_by_role("form", name="Change password")
+    form.get_by_label("Current password").fill(ADMIN_PASS)
+    form.get_by_label("New password", exact=True).fill(NEW_ADMIN_PASS)
+    form.get_by_label("Confirm new password").fill(NEW_ADMIN_PASS)
+    form.get_by_role("button", name="Update password").click()
+    expect(form.get_by_role("alert")).to_contain_text("The change was not confirmed.")
+    page.wait_for_function("window.rotationCheck.committed && window.rotationCheck.reads > 0")
+    expect(form.get_by_role("status")).to_have_count(0)
+    assert page.evaluate("window.rotationCheck.writes") == 1
+    assert page.request.get(base + "/api/integrations/account").json()["email"] == ADMIN1_EMAIL
+    page.get_by_role("button", name="Sign out", exact=True).click()
+    expect(page.get_by_role("button", name="Sign in", exact=True)).to_be_visible()
+    assert page.request.get(base + "/api/integrations/account").status == 401
+    collector.assert_clean()

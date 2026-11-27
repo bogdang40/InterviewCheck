@@ -1,13 +1,10 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
+import { readAccountSnapshot, type AccountSnapshot } from "./accountSnapshot"
 import type { ProviderStatus } from "./integrations"
 
-export type AccountSnapshot = {
-  email: string
-  active: boolean
-  admin?: boolean
-}
+export type { AccountSnapshot } from "./accountSnapshot"
 
 export type AccountState = {
   status: ProviderStatus | null
@@ -20,6 +17,16 @@ export type AccountState = {
 export const ACCOUNT_EVENT = "interviewcheck:account"
 
 const ACCOUNT_CHANGE_KEY = "interviewcheck:account-generation"
+const ROTATION_STARTED = "interviewcheck:password-rotation-started"
+let documentMarker: string | undefined
+function documentId() {
+  // A routing label lives only in this document. It contains no account or session data.
+  return documentMarker ??= (globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2))
+}
+
+export function cancelPreRotationStatusRead() {
+  window.dispatchEvent(new Event(ROTATION_STARTED))
+}
 
 function accountChannel() {
   try { return typeof BroadcastChannel === "undefined" ? null : new BroadcastChannel(ACCOUNT_CHANGE_KEY) }
@@ -37,7 +44,7 @@ export function notifyAccountChanged(change: "identity" | "rotation" | "refresh"
   } catch {
     const channel = accountChannel()
     if (channel) {
-      channel.postMessage("changed")
+      channel.postMessage({ change: "identity", sender: documentId() })
       channel.close()
     }
   }
@@ -72,11 +79,17 @@ export function useAccountStatus(trigger?: string, enabled = true): AccountState
     function onStorage(event: StorageEvent) {
       if (event.key === ACCOUNT_CHANGE_KEY || event.key === null) invalidate()
     }
+    const cancelPending = () => pending.current?.abort()
     const fallback = accountChannel()
-    if (fallback) fallback.onmessage = invalidate
+    if (fallback) fallback.onmessage = event => {
+      // A different BroadcastChannel object in this same document also receives the message.
+      if (event.data === "changed" || (event.data?.change === "identity" && event.data.sender !== documentId())) invalidate()
+    }
+    window.addEventListener(ROTATION_STARTED, cancelPending)
     window.addEventListener(ACCOUNT_EVENT, onAccountEvent)
     window.addEventListener("storage", onStorage)
     return () => {
+      window.removeEventListener(ROTATION_STARTED, cancelPending)
       window.removeEventListener(ACCOUNT_EVENT, onAccountEvent)
       window.removeEventListener("storage", onStorage)
       fallback?.close()
@@ -112,7 +125,7 @@ export function useAccountStatus(trigger?: string, enabled = true): AccountState
           setLoading(false)
           return
         }
-        const nextAccount = (await acctRes.json()) as AccountSnapshot
+        const nextAccount = readAccountSnapshot(await acctRes.json())
         if (!controller.signal.aborted) {
           setAccount(nextAccount)
           setLoading(false)
