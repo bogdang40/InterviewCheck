@@ -197,11 +197,12 @@ async def _require_admin(request: Request) -> dict[str, Any]:
 def get_retention_policy():
     with store.connection() as db:
         policy = _load_policy(db)
+        held = db.execute("SELECT count(*) FROM retention_read_holds").fetchone()[0]
         runs: list[dict[str, Any]] = []
         if _has_table(db, "retention_runs"):
             rows = db.execute("SELECT * FROM retention_runs ORDER BY executed_at DESC, rowid DESC LIMIT 20").fetchall()
             runs = [_public_run(row) for row in rows]
-    return {"policy": policy, "runs": runs}
+    return {"policy": policy, "runs": runs, "withheld_interviews": held}
 
 
 @router.put("/retention", dependencies=[Depends(rate_limit.limit(rate_limit.ADMIN_WRITE))])

@@ -126,6 +126,8 @@ def _require_sessions(db: sqlite3.Connection, keys: list[str], *, active_only: b
     }
     missing = [k for k in keys if k not in found]
     if missing:
+        from .retention_visibility import require_available
+        require_available(db, *missing)
         raise HTTPException(404, f"Interview not found: {missing[0]}")
 
 

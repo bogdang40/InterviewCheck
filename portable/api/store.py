@@ -9,7 +9,7 @@ from uuid import uuid4
 
 from fastapi import HTTPException
 
-from . import answer_history, bulk_operations, lineage, model_registry, retention_policy, role_analytics, role_kits, role_versions, search_fts, session_privacy, session_rubric, session_scorecard, sql_script, usage_events
+from . import answer_history, bulk_operations, lineage, model_registry, retention_policy, retention_visibility, role_analytics, role_kits, role_versions, search_fts, session_privacy, session_rubric, session_scorecard, sql_script, usage_events
 from .role_kits import role_row, create_role
 from .models import EARLIER_ANSWER_NOTE, AnswerEdit, AnswerInput, ReviewInput, SessionInput
 
@@ -134,6 +134,7 @@ def initialize(path):
             FROM sessions s LEFT JOIN
               (SELECT name,id,questions FROM roles GROUP BY name HAVING count(*)=1) r ON r.name=s.role
             WHERE NOT EXISTS (SELECT 1 FROM session_context c WHERE c.session_id=s.id)""")
+        retention_visibility.refresh(db)
         db.commit()
 
 
@@ -162,6 +163,8 @@ def summary(row):
 def get_summary(db, key, *, include_trashed=False):
     source = ALL_SUMMARY if include_trashed else SUMMARY
     row = db.execute(source + " WHERE s.id=? GROUP BY s.id", (key,)).fetchone()
+    if include_trashed or row is None:
+        retention_visibility.require_available(db, key)
     if row is None:
         raise HTTPException(404, "Session does not exist.")
     return summary(row)
@@ -178,6 +181,7 @@ def get_answer(db, key, aid):
     row = db.execute("""SELECT a.* FROM answers a JOIN active_sessions s ON s.id=a.session_id
                         WHERE a.session_id=? AND a.id=?""", (key, aid)).fetchone()
     if row is None:
+        retention_visibility.require_available(db, key)
         raise HTTPException(404, "Answer does not exist in this session.")
     return answer_row(row)
 

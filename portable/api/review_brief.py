@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 from pydantic import Field
 
-from . import store
+from . import retention_visibility, store
 from .models import Input, RequestID
 from .report import literal
 
@@ -63,6 +63,7 @@ def build(db, sid, selection):
         (sid,),
     ).fetchone()
     if session is None:
+        retention_visibility.require_available(db, sid)
         raise HTTPException(404, "Session does not exist.")
     excerpts = {str(value) for value in selection.excerpt_ids}
     notes = {str(value) for value in selection.note_ids}

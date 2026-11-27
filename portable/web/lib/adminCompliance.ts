@@ -17,7 +17,7 @@ export type RetentionRun = {
   cutoff_anonymize_at: string | null; cutoff_purge_at: string | null; executed_at: string
 }
 
-export type RetentionState = { policy: RetentionPolicy; runs: RetentionRun[] }
+export type RetentionState = { policy: RetentionPolicy; runs: RetentionRun[]; withheld_interviews?: number }
 
 export type RetentionRunResult = {
   dry_run: boolean; anonymized_sessions: number; purged_sessions: number

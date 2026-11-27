@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import HTMLResponse, Response
 from pydantic import Field, model_validator
 
-from . import comparison_scorecards, comparison_summary, exports, report, store
+from . import comparison_scorecards, comparison_summary, exports, report, retention_visibility, store
 from .models import Input, RequestID
 
 router = APIRouter()
@@ -131,6 +131,7 @@ def _load_comparison(options: CompareInput) -> dict[str, Any]:
         ).fetchall()
         by_id = {row["id"]: row for row in session_rows}
         if len(by_id) != len(ordered_ids):
+            retention_visibility.require_available(db, *ordered_ids)
             raise HTTPException(404, "One or more interviews do not exist.")
         private_columns = (", answer" if options.include_excerpts else "") + (", note" if options.include_notes else "")
         answer_rows = db.execute(

@@ -14,8 +14,8 @@ TITLE_FIELDS = (
 BODY_FIELD = ("answer", "answer", "answer", 4)
 SOURCES = {
     "role": ("roles r", "r", "NULL", "fts_roles"),
-    "session": ("sessions s", "s", "s.id", "fts_sessions"),
-    "answer": ("answers a JOIN sessions s ON s.id=a.session_id", "a", "a.session_id", "fts_answers"),
+    "session": ("active_sessions s", "s", "s.id", "fts_sessions"),
+    "answer": ("answers a JOIN active_sessions s ON s.id=a.session_id", "a", "a.session_id", "fts_answers"),
 }
 
 
@@ -25,8 +25,6 @@ def _candidates(field, fts, body_filter):
     conditions = []
     if fts:
         conditions.append(f"{alias}.rowid IN (SELECT rowid FROM {index} WHERE {column} MATCH :fts)")
-    if kind != "role":
-        conditions.append("NOT EXISTS (SELECT 1 FROM session_trash t WHERE t.session_id=s.id)")
     if name == "answer" and body_filter:
         conditions.append(body_filter)
     where = " WHERE " + " AND ".join(conditions) if conditions else ""

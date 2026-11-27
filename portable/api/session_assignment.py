@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BeforeValidator, Field, field_validator, model_validator
 from starlette.concurrency import run_in_threadpool
 
-from . import session_privacy, access, assignment_queue, store
+from . import session_privacy, access, assignment_queue, retention_visibility, store
 from .assignment_versions import AssignmentVersion, AssignmentVersions, require_versions, version_for
 from .models import Input, RequestID
 
@@ -125,6 +125,7 @@ class BulkSessionAssignmentInput(Input):
 
 def _require_active_session(db: sqlite3.Connection, session_id: str) -> None:
     if db.execute("SELECT 1 FROM active_sessions WHERE id=?", (session_id,)).fetchone() is None:
+        retention_visibility.require_available(db, session_id)
         raise HTTPException(404, "Session does not exist.")
 
 
@@ -135,11 +136,16 @@ def _row_to_assignment(row: sqlite3.Row | None) -> dict[str, Any] | None:
 def _suggested_reviewers(db: sqlite3.Connection, actor_email: str) -> list[str]:
     emails: set[str] = set()
     actor = _clean_email(actor_email)
+    if not _has_table(db, "retention_read_holds"):
+        return [actor] if actor else []
     queries: list[str] = []
     if _has_table(db, "answer_review_events"):
-        queries.append("SELECT DISTINCT reviewer_email FROM answer_review_events")
+        queries.append("""SELECT DISTINCT e.reviewer_email FROM answer_review_events e
+                          WHERE NOT EXISTS (SELECT 1 FROM retention_read_holds h WHERE h.session_id=e.session_id)""")
     if _has_table(db, "session_assignments"):
-        queries.append("SELECT DISTINCT assignee_email FROM session_assignments UNION SELECT DISTINCT assigned_by FROM session_assignments")
+        queries.append("""WITH available AS (SELECT a.assignee_email,a.assigned_by FROM session_assignments a
+                          WHERE NOT EXISTS (SELECT 1 FROM retention_read_holds h WHERE h.session_id=a.session_id))
+                          SELECT assignee_email FROM available UNION SELECT assigned_by FROM available""")
     for sql in queries:
         for row in db.execute(sql):
             cleaned = _clean_email(row[0] or "")

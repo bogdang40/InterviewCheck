@@ -10,9 +10,11 @@ from .session_purge import purge_session
 
 router = APIRouter()
 
-BIN = """SELECT s.id,s.candidate,s.role,s.created_at,t.trashed_at,t.operation_version,
+BIN = """SELECT s.id,CASE WHEN h.session_id IS NULL THEN s.candidate ELSE 'Protected interview' END candidate,
+        CASE WHEN h.session_id IS NULL THEN s.role ELSE '' END role,s.created_at,t.trashed_at,t.operation_version,
         (SELECT count(*) FROM answers a WHERE a.session_id=s.id) answer_count
-        FROM session_trash t JOIN sessions s ON s.id=t.session_id"""
+        FROM session_trash t JOIN sessions s ON s.id=t.session_id
+        LEFT JOIN retention_read_holds h ON h.session_id=s.id"""
 
 
 class Version(Input):

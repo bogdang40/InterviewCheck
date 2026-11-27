@@ -13,7 +13,7 @@ from starlette.background import BackgroundTask
 from fastapi import APIRouter
 from fastapi.responses import HTMLResponse, Response, StreamingResponse
 
-from . import review_brief, store
+from . import retention_visibility, review_brief, store
 from .lineage import description as origin_description
 from .scorecard_math import weighted_score_pct
 
@@ -40,6 +40,7 @@ def archive_rows():
                              "Interviewer disposition", "Interviewer note", "Native score", "Native verdict", "Permitted source snapshot",
                              "Exchange ID", "Parent exchange ID", "Planned slot", "Planned question"])
     with store.connection() as db:
+        retention_visibility.require_complete_export(db)
         # A left join retains interviews for which no answer was captured.
         cursor = db.execute("""SELECT s.id,s.created_at,s.candidate,s.role,s.policy,s.consent,
             a.question,a.answer,a.status,a.result,a.disposition,a.note,a.legacy,c.permitted_sources,

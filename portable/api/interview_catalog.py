@@ -36,9 +36,9 @@ def fast_page_sql(order: str, status: str, *, has_tag: bool, has_role: bool = Fa
     return f"""WITH paged AS MATERIALIZED (
  SELECT s.id, substr(s.candidate,1,180) candidate, substr(s.role,1,180) role,
         s.created_at, s.consent, c.ended_at
- FROM sessions s
+ FROM active_sessions s
  LEFT JOIN session_context c ON c.session_id=s.id
- WHERE NOT EXISTS (SELECT 1 FROM session_trash t WHERE t.session_id=s.id)
+ WHERE 1=1
  {status_clause}
  {tag_clause}
  {role_clause}
