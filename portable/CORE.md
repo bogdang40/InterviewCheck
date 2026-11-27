@@ -227,3 +227,12 @@ If the connection drops while restoring, the server may already have saved the r
 For up to 20 conflicting records, the preview lists the parts that differ, such as the assignment or saved scorecard. A scorecard difference can include reviewer attribution or its update time. Clients can request these categories with `include_conflict_reasons=true` on the preview endpoint.
 
 JSON restore has a 20 MiB file limit. Export smaller sets as individual interviews where appropriate. For a complete large deployment, use SQLite's consistent backup procedure and retain any separate account database under the operator's storage policy. The service does not automatically delete backup files when an interview is purged.
+
+
+## Offline review worksheet
+
+Open **Offline review worksheet** on one saved exchange and choose **Preview worksheet**. The default text contains the exchange number, record identifiers, revision and verification receipts. Select the question or the first 240 characters of the answer to include either field. Inspect the exact contents before copying or downloading.
+
+Edit the text below the proposed note marker in a UTF-8 text editor. The file can be edited offline. Return to the same exchange in the original workspace, select the file, and compare the proposed note with the saved note. **Stage proposed note** places it in the current tab. **Save review** saves the note and keeps the existing outcome and reviewer votes. The app checks eligibility and current evidence at each transfer, staging and save. A change while the comparison is open requires another comparison. An unavailable server cannot validate or apply a worksheet.
+
+Each workspace has a private worksheet binding key. An export and restore through workspace JSON creates no shared key. Restoring a full SQLite snapshot preserves the identity of that original workspace. Downloaded files, clipboard copies and text in an external editor remain under the recipient's control after an interview is trashed, anonymized or removed. Staged worksheet text is held in memory until saved or discarded.
