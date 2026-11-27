@@ -20,7 +20,10 @@ SCHEMA = {
         "roles": {"id", "name", "questions"},
         "session_context": {"session_id", "role_id", "permitted_sources"},
         "connected_models": {"id", "provider", "capability", "model_id", "encrypted_api_key", "key_hint"},
-        "alert_rules": {"id", "trigger_type", "webhook_url", "encrypted_signing_secret", "secret_hint"},
+        "alert_rules": {"id", "name", "trigger_type", "threshold_value", "capability_filter", "webhook_url",
+                        "encrypted_signing_secret", "secret_hint", "enabled", "cooldown_minutes", "last_triggered_at",
+                        "created_at", "updated_at"},
+        "alert_deliveries": {"id", "rule_id", "event_key", "ok", "http_status", "error", "delivered_at"},
     },
     "access": {
         "users": {"id", "email", "role", "password_hash", "disabled", "created_at", "updated_at",
@@ -28,6 +31,9 @@ SCHEMA = {
         "sessions": {"id", "user_id", "expires_at", "token_hash", "device_name", "created_at", "last_seen_at", "revoked_at"},
         "subscriptions": {"id", "user_id", "status", "plan", "current_period_end", "updated_at", "stripe_customer_id"},
         "audit_log": {"id", "at", "actor_user_id", "action", "target_user_id", "details", "prev_hash", "entry_hash"},
+        "api_tokens": {"id", "user_id", "name", "token_prefix", "token_hash", "scopes_json",
+                       "created_at", "expires_at", "last_used_at", "revoked_at"},
+        "stripe_events": {"id", "type", "received_at", "applied_at"},
         "user_totp": {"user_id", "secret_enc", "enabled", "created_at", "verified_at", "last_used_step"},
         "user_backup_codes": {"id", "user_id", "code_hash", "created_at", "used_at"},
         "login_windows": {"address", "start", "hits"},
@@ -35,8 +41,11 @@ SCHEMA = {
     },
 }
 RELATIONS = {
-    "review": (("answers", "session_id", "sessions"), ("session_context", "session_id", "sessions")),
-    "access": (("sessions", "user_id", "users"), ("user_totp", "user_id", "users")),
+    "review": (("answers", "session_id", "sessions"), ("session_context", "session_id", "sessions"),
+               ("alert_deliveries", "rule_id", "alert_rules")),
+    "access": (("sessions", "user_id", "users"), ("api_tokens", "user_id", "users"),
+               ("subscriptions", "user_id", "users"), ("user_totp", "user_id", "users"),
+               ("user_backup_codes", "user_id", "users")),
 }
 COLUMNS = {"review": (MODEL_API_KEYS, ALERT_SIGNING_SECRETS), "access": (TOTP_SECRETS,)}
 MAX_ENVELOPE_BYTES = 16384
@@ -73,15 +82,30 @@ def _check_tables(db, tables, relations):
     for table, required in tables.items():
         entry = db.execute("SELECT type FROM pragma_table_list(?) WHERE schema='main' AND name=?",
                            (table, table)).fetchone()
-        columns = dict(db.execute("SELECT name, pk FROM pragma_table_info(?)", (table,)))
+        info = db.execute('SELECT name, pk, "notnull" FROM pragma_table_info(?)', (table,)).fetchall()
+        columns = {col[0] for col in info}
         primary = {"session_context": "session_id", "user_totp": "user_id",
                    "login_windows": "address", "login_email_windows": "email"}.get(table, "id")
-        if entry != ("table",) or not required.issubset(columns) or columns.get(primary) != 1:
+        if entry != ("table",) or not required.issubset(columns) or [col[0] for col in info if col[1]] != [primary]:
             raise SnapshotError("schema_mismatch")
+        if table == "api_tokens":
+            mandatory = {"user_id", "name", "token_prefix", "token_hash", "scopes_json", "created_at"}
+            indexes = db.execute('SELECT name FROM pragma_index_list(?) WHERE "unique"=1 AND partial=0', (table,))
+            if (not mandatory.issubset(col[0] for col in info if col[2])
+                    or not any(db.execute("SELECT name FROM pragma_index_info(?) ORDER BY seqno", (name,)).fetchall()
+                               == [("token_hash",)] for (name,) in indexes)):
+                raise SnapshotError("schema_mismatch")
+        if table == "alert_rules":
+            mandatory = {"name", "trigger_type", "threshold_value", "webhook_url", "enabled", "cooldown_minutes",
+                         "created_at", "updated_at"}
+            if not mandatory.issubset(col[0] for col in info if col[2]):
+                raise SnapshotError("schema_mismatch")
     for table, column, parent in relations:
-        relation = db.execute('SELECT 1 FROM pragma_foreign_key_list(?) WHERE "from"=? AND "table"=? AND "to"=?',
-                              (table, column, parent, "id")).fetchone()
-        if relation is None:
+        if table not in tables:
+            continue
+        actions = db.execute('SELECT on_delete FROM pragma_foreign_key_list(?) WHERE "from"=? AND "table"=? AND "to"=?',
+                             (table, column, parent, "id")).fetchall()
+        if not actions or (table in ("api_tokens", "alert_deliveries") and ("CASCADE",) not in actions):
             raise SnapshotError("schema_mismatch")
 
 
@@ -181,18 +205,12 @@ def check_historical_pair(review: Path, access: Path, review_sha256: str, access
     """Validate closed copies from the supported version 7 writer before any migration."""
     if review.samefile(access):
         raise SnapshotError("same_snapshot")
-    # Use the column contracts of the actual version 7 writer. Later releases
-    # added TOTP enrollments, audit hash fields and encrypted alert secrets.
-    tables = {
-        "review": {name: SCHEMA["review"][name] for name in ("sessions", "answers", "roles", "session_context", "connected_models")},
-        "access": {
-            "users": {"id", "email", "role", "password_hash", "created_at", "updated_at"},
-            "sessions": {"id", "token_hash", "user_id", "expires_at"},
-            "subscriptions": {"id", "user_id", "status", "stripe_customer_id"},
-            "stripe_events": {"id", "applied_at"},
-            "audit_log": {"id", "at", "actor_user_id", "action"},
-        },
-    }
+    # f71eb4b and b325deb0 already issued scoped API tokens and encrypted alert signing keys.
+    # Version 8 added the TOTP tables and account audit chain hashes.
+    access_tables = {table: required for table, required in SCHEMA["access"].items()
+                     if table not in ("user_totp", "user_backup_codes")}
+    access_tables["audit_log"] = access_tables["audit_log"] - {"prev_hash", "entry_hash"}
+    tables = {"review": SCHEMA["review"], "access": access_tables}
     pair = (("review", review, review_sha256), ("access", access, access_sha256))
     identities = {kind: _identity(path) for kind, path, _ in pair}
     for kind, path, expected in pair:
@@ -202,7 +220,7 @@ def check_historical_pair(review: Path, access: Path, review_sha256: str, access
             db.execute("PRAGMA trusted_schema=OFF")
             if kind == "access" and db.execute("PRAGMA user_version").fetchone() != (7,):
                 raise SnapshotError("unsupported_historical_schema")
-            _check_tables(db, tables[kind], RELATIONS["review"] if kind == "review" else RELATIONS["access"][:1])
+            _check_tables(db, tables[kind], RELATIONS[kind])
             if db.execute("PRAGMA integrity_check(1)").fetchone() != ("ok",) or db.execute("PRAGMA foreign_key_check").fetchone():
                 raise SnapshotError("integrity_failed")
     if any(_identity(path) != identities[kind] for kind, path, _ in pair):

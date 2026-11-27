@@ -307,3 +307,44 @@ def test_rehearsal_requires_subscription_startup_field(copies):
         db.execute("ALTER TABLE subscriptions DROP COLUMN stripe_customer_id")
     result = recovery_rehearsal.rehearse(review, access, [key], ["RECOVERED_PREVIOUS"])
     assert result["databases"]["access"]["status"] == "schema_mismatch"
+
+
+@pytest.mark.parametrize(("kind", "table"), [("review", "alert_rules"), ("access", "api_tokens")])
+def test_missing_original_v7_authority_tables_stop_preflight_without_writes(copies, kind, table):
+    from api.recovery_snapshot import check_historical_pair, SnapshotError
+
+    review, access, _ = copies
+    paths = {"review": review, "access": access}
+    # Isolate the schema gate. The integration drill separately builds both files with the genuine v7 writer.
+    with closing(sqlite3.connect(access)) as db, db:
+        db.execute("PRAGMA user_version=7")
+
+    def digests():
+        return tuple(hashlib.sha256(path.read_bytes()).hexdigest() for path in (review, access))
+
+    check_historical_pair(review, access, *digests())
+    with closing(sqlite3.connect(paths[kind])) as db, db:
+        db.execute("DROP TABLE " + table)
+    damaged = digests()
+    with pytest.raises(SnapshotError, match="^schema_mismatch$"):
+        check_historical_pair(review, access, *damaged)
+    assert digests() == damaged
+
+
+@pytest.mark.parametrize("fault", ["missing_table", "nullable_hash", "nonunique_hash", "missing_owner_fk", "bad_cascade"])
+def test_v8_receipt_requires_scoped_token_storage_and_constraints(copies, fault):
+    review, access, key = copies
+    with closing(sqlite3.connect(access)) as db, db:
+        ddl = db.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='api_tokens'").fetchone()[0]
+        db.execute("DROP TABLE api_tokens")
+        if fault != "missing_table":
+            old, new = {
+                "nullable_hash": ("token_hash TEXT NOT NULL UNIQUE", "token_hash TEXT UNIQUE"),
+                "nonunique_hash": ("token_hash TEXT NOT NULL UNIQUE", "token_hash TEXT NOT NULL"),
+                "missing_owner_fk": ("REFERENCES users(id) ON DELETE CASCADE", ""),
+                "bad_cascade": ("REFERENCES users(id) ON DELETE CASCADE", "REFERENCES users(id) ON DELETE RESTRICT"),
+            }[fault]
+            assert old in ddl
+            db.execute(ddl.replace(old, new))
+    report = recovery_rehearsal.rehearse(review, access, [key], ["RECOVERED_PREVIOUS"])
+    assert report["databases"]["access"] == {"status": "schema_mismatch"}
