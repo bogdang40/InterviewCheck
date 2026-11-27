@@ -14,6 +14,11 @@ export function isAccessDenied(error: unknown): error is ApiError & { status: 40
   return error instanceof ApiError && (error.status === 401 || error.status === 402 || error.status === 403)
 }
 
+export function isInterviewUnavailable(error: unknown): boolean {
+  return isAccessDenied(error) || (error instanceof ApiError &&
+    (error.status === 404 || (error.status === 409 && error.code === "interview-privacy")))
+}
+
 /** A missing resource or unavailable endpoint also requires a new read before the editor can be reused. */
 export function isResourceUnavailable(error: unknown): boolean {
   return isAccessDenied(error) || (error instanceof ApiError && (error.status === 404 || error.status === 501))

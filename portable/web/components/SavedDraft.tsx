@@ -1,11 +1,13 @@
 import { useState } from "react"
 import { FilePenLine } from "lucide-react"
 import { accessLost } from "@/lib/deferredQuestions"
+import { useReviewNavigationGuard } from "@/lib/dirtyTracking"
 import { api, message, DeferredConflict, DraftConflict, type Draft, type DraftSummary } from "@/lib/api"
 import { Button } from "./ui/button"
 
 export default function SavedDraft({
   sessionId,
+  selectedId,
   summary,
   disabled,
   resume,
@@ -14,6 +16,7 @@ export default function SavedDraft({
   onUnavailable,
 }: {
   sessionId: string
+  selectedId?: string
   summary: DraftSummary
   disabled: boolean
   resume: (d: Draft) => void
@@ -24,7 +27,9 @@ export default function SavedDraft({
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("")
   const [confirm, setConfirm] = useState<DraftSummary | null>(null)
+  const guardNavigation = useReviewNavigationGuard(disabled, selectedId)
   async function act(remove: boolean) {
+    const mayResume = guardNavigation()
     setBusy(true)
     setError("")
     try {
@@ -38,16 +43,19 @@ export default function SavedDraft({
         discard()
       } else {
         const draft = await api<Draft | null>("sessions/" + sessionId + "/draft")
-        if (draft) resume(draft)
+        if (!mayResume()) {
+          setError(draft ? "The draft is still saved. Finish your current changes, then choose Resume draft."
+            : "The saved draft changed. Finish your current changes, then check the draft again.")
+        } else if (draft) resume(draft)
         else discard()
       }
     } catch (e) {
-      if (summary.deferred_question && accessLost(e)) { onUnavailable(); return }
+      if (accessLost(e)) { onUnavailable(); return }
       if (remove && (e instanceof DeferredConflict || e instanceof DraftConflict)) {
         try {
           refresh(await api<Draft | null>("sessions/" + sessionId + "/draft"))
           setError("The saved draft changed. Review the current draft before confirming a discard.")
-        } catch (readError) { if (summary.deferred_question && accessLost(readError)) onUnavailable(); else setError(message(readError)) }
+        } catch (readError) { if (accessLost(readError)) onUnavailable(); else setError(message(readError)) }
       } else setError(message(e))
     } finally {
       setBusy(false)
@@ -98,7 +106,7 @@ export function DraftConflictView({
   resolve,
 }: {
   sessionId: string
-  onUnavailable?: () => void
+  onUnavailable: () => void
   resolve: (latest: Draft | null, keep: boolean) => void
 }) {
   const [latest, setLatest] = useState<Draft | null | undefined>(undefined)
@@ -108,7 +116,7 @@ export function DraftConflictView({
       setLatest(await api<Draft | null>("sessions/" + sessionId + "/draft"))
       setError("")
     } catch (e) {
-      if (onUnavailable && accessLost(e)) onUnavailable()
+      if (accessLost(e)) onUnavailable()
       else setError(message(e))
     }
   }

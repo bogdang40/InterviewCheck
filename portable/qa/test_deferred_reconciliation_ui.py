@@ -151,14 +151,17 @@ def test_discard_reconfirms_new_linked_draft_after_same_id_restore(workspace_url
         fresh = c.get(path + "/draft").raise_for_status().json()
         assert fresh["id"] == old["id"] and fresh["revision"] == old["revision"]
         assert fresh["deferred_question"]["version"] != old["deferred_question"]["version"]
+        discard_url = workspace_url + path + "/draft/discard"
         commands = []
-        page.on("request", lambda req: commands.append(req.post_data_json) if req.url.endswith(path + "/draft/discard") else None)
+        page.on("request", lambda req: commands.append(req.post_data_json) if req.method == "POST" and req.url == discard_url else None)
         page.get_by_role("button", name="Confirm discard").click()
         expect(page.get_by_text("The saved draft changed. Review the current draft before confirming a discard.")).to_be_visible()
         assert c.get(path + "/draft").json() == fresh
         discard.click()
-        page.get_by_role("button", name="Confirm discard").click()
-        expect(discard).to_have_count(0)
+        with page.expect_response(lambda res: res.request.method == "POST" and res.url == discard_url) as accepted:
+            page.get_by_role("button", name="Confirm discard").click()
+        assert accepted.value.ok and accepted.value.json() == {"discarded": True}
+        expect(page.get_by_text("Saved exchange draft", exact=True)).to_have_count(0)
         assert [body["deferred_question"] for body in commands] == [old["deferred_question"], fresh["deferred_question"]]
         assert [body["deferred_draft_token"] for body in commands] == [old["deferred_draft_token"], fresh["deferred_draft_token"]]
-        assert c.get(path + "/draft").json() is None
+        assert c.get(path + "/draft").raise_for_status().json() is None

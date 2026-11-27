@@ -37,3 +37,16 @@ export function useReportDirty(dirty: boolean, report?: DirtyReporter) {
   }, [dirty, report])
   useIsomorphicLayoutEffect(() => () => report?.(false), [report])
 }
+
+/** Capture permission to change the visible editor before an asynchronous read or write. */
+export function useReviewNavigationGuard(locked: boolean, source?: string) {
+  const current = useRef<symbol | null>(null)
+  useIsomorphicLayoutEffect(() => {
+    current.current = locked ? null : Symbol()
+    return () => { current.current = null }
+  }, [locked, source])
+  return () => {
+    const started = current.current
+    return () => started !== null && current.current === started
+  }
+}

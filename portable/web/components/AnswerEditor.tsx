@@ -331,7 +331,7 @@ export default function AnswerEditor({
             {error}
           </p>
         )}
-        {draftConflict && <DraftConflictView onUnavailable={deferred ? onDeferredUnavailable : undefined} sessionId={session.id} resolve={(latest,keep)=>{
+        {draftConflict && <DraftConflictView onUnavailable={onDeferredUnavailable} sessionId={session.id} resolve={(latest,keep)=>{
           if (deferred && (!latest || latest.id !== id || latest.deferred_question?.id !== deferred.id)) {
             setDraftConflict(false); setDeferredConflict(true)
             setError("The saved draft no longer belongs to this question. Your answer is still here.")

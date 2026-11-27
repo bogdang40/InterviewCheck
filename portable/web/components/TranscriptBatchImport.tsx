@@ -16,12 +16,14 @@ export default function TranscriptBatchImport({
   sessionId,
   disabled = false,
   onDirty,
+  captureSelection,
   onImported,
 }: {
   sessionId: string
   disabled?: boolean
   onDirty: (id: string, value: boolean) => void
-  onImported: (summary: ImportResult) => void
+  captureSelection: () => () => boolean
+  onImported: (summary: ImportResult, maySelect: () => boolean) => void
 }) {
   const [file, setFile] = useState<Upload>()
   const [candidate, setCandidate] = useState("")
@@ -107,6 +109,7 @@ export default function TranscriptBatchImport({
   const exceedsTotal = rows.reduce((n, row) => n + row.question.length + row.answer.length, 0) > 500000
   async function save() {
     if (!file || !preview || busy || disabled || !rows.length || invalid || exceedsTotal) return
+    const maySelect = captureSelection()
     setBusy(true)
     setError("")
     try {
@@ -125,7 +128,7 @@ export default function TranscriptBatchImport({
       const omitted = preview.rows.length - selected.size
       setSuccess(`Saved ${result.saved}. Already imported ${result.skipped}. Not selected ${omitted}.`)
       clear()
-      onImported(result)
+      onImported(result, maySelect)
     } catch (e) {
       setError(message(e))
     } finally {

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { api, message, type Draft } from "@/lib/api"
-import { useReportDirty } from "@/lib/dirtyTracking"
+import { useReportDirty, useReviewNavigationGuard } from "@/lib/dirtyTracking"
 import { accessLost, changeDeferred, deferredStates, listDeferred, matchesDeferredDraft, saveDeferredDraft,
   type DeferredFilter, type DeferredPage, type DeferredQuestion } from "@/lib/deferredQuestions"
 import { Button } from "./ui/button"
@@ -29,6 +29,7 @@ export default function DeferredQuestionQueue({ session, parent, locked, onDirty
   const childId = useRef<{ questionId: string; id: string } | null>(null)
   const controlsLocked = locked || working || !!sourceBusy || editingQuestion
   const editable = session.consent && !session.ended_at && (!session.privacy_state || session.privacy_state === "unmarked")
+  const guardNavigation = useReviewNavigationGuard(locked || !editable || !open, parent?.id)
   useReportDirty(working || !!sourceBusy || editingQuestion, onDirty)
   useEffect(() => () => active.current?.abort(), [])
 
@@ -56,6 +57,14 @@ export default function DeferredQuestionQueue({ session, parent, locked, onDirty
   async function act(item: DeferredQuestion, action: "dismiss" | "ask") {
     if (!editable || controlsLocked || active.current) return
     const controller = new AbortController()
+    const mayOpen = guardNavigation()
+    function openOrPark(draft: Draft) {
+      if (mayOpen()) openDraft(draft)
+      else {
+        foundDraft(draft)
+        setNotice("The draft is still saved. Finish your current changes, then choose Resume draft.")
+      }
+    }
     active.current = controller
     setWorking(true); setNotice(""); setActionError("")
     try {
@@ -67,19 +76,21 @@ export default function DeferredQuestionQueue({ session, parent, locked, onDirty
         }
       } else {
         const existing = await api<Draft | null>(`sessions/${session.id}/draft`, "GET", undefined, controller.signal)
+        if (controller.signal.aborted) return
         if (existing) {
           if (!matchesDeferredDraft(existing, item)) {
             foundDraft(existing)
             if (existing.deferred_question?.id === item.id) throw new Error("This saved draft needs the current source. Resume it from the saved draft banner.")
             throw new Error("Another exchange draft is saved. Resume or discard that draft before asking this question.")
           }
-          if (!controller.signal.aborted) openDraft(existing)
+          openOrPark(existing)
           return
         }
+        if (!mayOpen()) { setNotice("Finish your current changes, then choose Open answer draft again."); return }
         const id = childId.current?.questionId === item.id ? childId.current.id : crypto.randomUUID()
         childId.current = { questionId: item.id, id }
         const draft = await saveDeferredDraft(item, id, 0, "", [], controller.signal)
-        if (!controller.signal.aborted) { childId.current = null; openDraft(draft) }
+        if (!controller.signal.aborted) { childId.current = null; openOrPark(draft) }
       }
     } catch (e) {
       if (!controller.signal.aborted) {
