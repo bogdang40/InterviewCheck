@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import Field, field_validator
 from starlette.concurrency import run_in_threadpool
 
-from . import access, handoff_page, prompt_framing, session_rubric, sql_script, store
+from . import session_privacy, access, handoff_page, prompt_framing, session_rubric, sql_script, store
 from .models import Input
 from .scorecard_math import weighted_score_pct
 
@@ -44,6 +44,8 @@ CREATE INDEX IF NOT EXISTS idx_handoff_notes_session
 
 def migrate(db: sqlite3.Connection) -> None:
     sql_script.execute(db, SCHEMA)
+    if not db.execute("SELECT 1 FROM pragma_table_info('session_context') WHERE name='rubric_snapshot'").fetchone():
+        db.execute("ALTER TABLE session_context ADD COLUMN rubric_snapshot TEXT")
 
 
 class ScorecardItemInput(Input):
@@ -222,6 +224,7 @@ def _save_scorecard(key: str, payload: ScorecardSaveInput, actor_email: str, inc
     now = store.timestamp()
     with store.connection(write=True) as db:
         store.get_summary(db, key)
+        session_privacy.require_content_writable(db, key)
         previous = _saved_scores(db, key)
         if payload.expected_version is not None:
             rubric, snapshot = _interview_rubric(db, key)
@@ -273,6 +276,7 @@ def _save_handoff_note(key: str, payload: HandoffNoteInput, actor_email: str):
     created_at = store.timestamp()
     with store.connection(write=True) as db:
         store.get_summary(db, key)
+        session_privacy.require_content_writable(db, key)
         db.execute(
             """INSERT INTO session_handoff_notes(id, session_id, author_email, category, body, created_at)
                VALUES (?,?,?,?,?,?)""",

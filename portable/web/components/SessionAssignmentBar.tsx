@@ -46,7 +46,7 @@ function AssignmentValues({ title, fields }: { title: string; fields: Fields | n
   </section>
 }
 
-export default function SessionAssignmentBar({ sessionId, onDirtyChange }: { sessionId: string; onDirtyChange: DirtyReporter }) {
+export default function SessionAssignmentBar({ sessionId, onDirtyChange, readOnly = false }: { sessionId: string; onDirtyChange: DirtyReporter; readOnly?: boolean }) {
   const datalistId = useId()
   const dueHelpId = useId()
   const [assignment, setAssignment] = useState<SessionAssignment | null>(null)
@@ -212,7 +212,7 @@ export default function SessionAssignmentBar({ sessionId, onDirtyChange }: { ses
         )}
       </div>
 
-      <form
+      {!readOnly && <form
         className="grid gap-3 md:grid-cols-[minmax(0,1.5fr)_minmax(130px,0.8fr)_minmax(145px,0.9fr)_auto] md:items-end"
         noValidate
         onSubmit={(e) => void handleSave(e)}
@@ -257,8 +257,10 @@ export default function SessionAssignmentBar({ sessionId, onDirtyChange }: { ses
           {edited && !review && <Button type="button" variant="ghost" size="sm" className="min-h-[44px] md:min-h-8"
             disabled={!!busy} onClick={discardEdits}>Discard assignment changes</Button>}
         </div>
-      </form>
-      <small id={dueHelpId}>Changing the date sets the deadline to 23:59:59 UTC. A blank date clears it.</small>
+      </form>}
+      {readOnly && assignment && <Button type="button" variant="outline" disabled={locked}
+        onClick={() => void write(null, assignment, version)}>Clear assignment</Button>}
+      {!readOnly && <small id={dueHelpId}>Changing the date sets the deadline to 23:59:59 UTC. A blank date clears it.</small>}
 
       {!loading && !version && !review && <div className="notice stack" role="status">
         The server did not return an assignment version. Refresh before making changes.

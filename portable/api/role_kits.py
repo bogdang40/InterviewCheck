@@ -22,8 +22,6 @@ def migrate_columns(db):
         db.execute("ALTER TABLE roles ADD COLUMN rubric_json TEXT NOT NULL DEFAULT '[]'")
     if "version_number" not in roles:
         db.execute("ALTER TABLE roles ADD COLUMN version_number INTEGER NOT NULL DEFAULT 1")
-    if "rubric_snapshot" not in context:
-        db.execute("ALTER TABLE session_context ADD COLUMN rubric_snapshot TEXT")
     if "permitted_sources" not in context:
         db.execute("ALTER TABLE session_context ADD COLUMN permitted_sources TEXT NOT NULL DEFAULT '[]'")
 
@@ -50,13 +48,17 @@ def role_row(row):
         role["legacy"] = json.loads(role["legacy"])
     else:
         role.pop("legacy", None)
-    # Bind open forms to the editable content, including templates restored from a backup.
+    role["version"] = content_version(role)
+    return role
+
+
+def content_version(role):
+    """Hash the same editable fields for captured, archived and live role versions."""
     fields = {
         key: role[key]
         for key in ("id", "name", "description", "questions", "policy", "permitted_sources", "rubric")
     }
-    role["version"] = hashlib.sha256(json.dumps(fields, sort_keys=True).encode()).hexdigest()
-    return role
+    return hashlib.sha256(json.dumps(fields, sort_keys=True).encode()).hexdigest()
 
 
 def check_role_version(row, version):

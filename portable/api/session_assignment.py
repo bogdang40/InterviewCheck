@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BeforeValidator, Field, field_validator, model_validator
 from starlette.concurrency import run_in_threadpool
 
-from . import access, assignment_queue, store
+from . import session_privacy, access, assignment_queue, store
 from .assignment_versions import AssignmentVersion, AssignmentVersions, require_versions, version_for
 from .models import Input, RequestID
 
@@ -182,6 +182,7 @@ def _save_assignment(key: str, payload: SessionAssignmentInput, actor_email: str
     now = store.timestamp()
     with store.connection(write=True) as db:
         _require_active_session(db, key)
+        session_privacy.require_content_writable(db, key)
         if payload.expected_version is not None:
             require_versions(db, {key: payload.expected_version})
         migrate(db)
@@ -271,6 +272,8 @@ def _save_bulk_assignments(payload: BulkSessionAssignmentInput, actor_email: str
             return {"action": "clear", "updated": len(ids), "cleared_ids": ids}
         migrate(db)
         assert payload.assignee_email is not None
+        for sid in ids:
+            session_privacy.require_content_writable(db, sid)
         assignments: list[dict[str, Any]] = []
         for sid in ids:
             db.execute(

@@ -1,5 +1,6 @@
 """An interview keeps its grading criteria and provenance across role changes and file recovery."""
 from copy import deepcopy
+from hashlib import sha256
 import json
 from uuid import uuid4
 
@@ -106,7 +107,7 @@ def test_v6_conflicts_and_invalid_sources_never_replace_saved_rubric(client):
     sid = setup(client, role)["id"]
     original = client.get("/api/backups/workspace").raise_for_status().json()
     changed = deepcopy(original)
-    changed["sessions"][0]["rubric_snapshot"]["criteria"][0]["weight"] = 5
+    changed["sessions"][0]["rubric_snapshot"] = None
     plan = client.post("/api/backups/preview?include_conflict_reasons=true", json=changed).raise_for_status().json()
     assert plan["conflicts"][0]["reasons"] == ["scorecard_items"]
     assert restore(client, json.dumps(changed).encode(), plan).status_code == 409
@@ -121,3 +122,53 @@ def test_v6_conflicts_and_invalid_sources_never_replace_saved_rubric(client):
     assert client.post("/api/backups/preview", json=changed).status_code == 422
     original["version"] = 5
     assert client.post("/api/backups/preview", json=original).status_code == 422
+
+def test_contradictory_archived_rubric_is_rejected_on_empty_workspace(client, tmp_path, monkeypatch):
+    role = role_with(client, [FIRST])
+    sid = setup(client, role)["id"]
+    old = client.get("/api/backups/workspace").raise_for_status().json()
+    client.put("/api/roles/" + role["id"], json={**role, "rubric": [SECOND]}).raise_for_status()
+    newer = client.get("/api/backups/workspace").raise_for_status().json()
+    assert newer["roles"][0]["version_number"] == 2
+    assert newer["sessions"][0]["rubric_snapshot"]["version_number"] == 1
+    target = tmp_path / "empty.sqlite"
+    store.initialize(target)
+    monkeypatch.setenv("INTERVIEWCHECK_DB", str(target))
+    # Both the current role and older immutable versions can supply the original definition.
+    for base in (old, newer):
+        assert preview(client, json.dumps(base).encode())["sessions"]["new"] == 1
+        for edit in ({"criteria": [SECOND]}, {"role_content_sha256": "9" * 64}):
+            bad = deepcopy(base)
+            bad["sessions"][0]["rubric_snapshot"].update(edit)
+            raw = json.dumps(bad).encode()
+            assert client.post("/api/backups/preview", content=raw).status_code == 422
+            assert restore(client, raw, {"fingerprint": sha256(raw).hexdigest()}).status_code == 422
+            assert client.get("/api/sessions").json() == [] and client.get("/api/roles").json() == []
+    # A historical source cannot claim an unrelated digest even when the session repeats it.
+    invalid = deepcopy(newer)
+    first = next(v for v in invalid["roles"][0]["versions"] if v["version_number"] == 1)
+    first["content_sha256"] = invalid["sessions"][0]["rubric_snapshot"]["role_content_sha256"] = "9" * 64
+    assert client.post("/api/backups/preview", json=invalid).status_code == 422
+    raw = json.dumps(newer).encode()
+    restore(client, raw, preview(client, raw)).raise_for_status()
+    assert card(client, sid)["rubric_snapshot"]["criteria"] == [FIRST]
+
+
+def test_detached_restore_replays_only_the_original_explicit_role_and_digest(client, tmp_path, monkeypatch):
+    role = role_with(client, [FIRST])
+    request = setup(client, role)
+    sid = request["id"]
+    with store.connection(write=True) as db:
+        db.execute("UPDATE session_context SET role_id=NULL WHERE session_id=?", (sid,))
+        db.execute("DELETE FROM roles WHERE id=?", (role["id"],))
+    raw = client.get("/api/backups/workspace").raise_for_status().content
+    target = tmp_path / "detached.sqlite"
+    store.initialize(target)
+    monkeypatch.setenv("INTERVIEWCHECK_DB", str(target))
+    restore(client, raw, preview(client, raw)).raise_for_status()
+    original = card(client, sid)
+    assert client.post("/api/sessions", json=request).raise_for_status().json()["id"] == sid
+    for replacement in ({"role_id": str(uuid4())}, {"role_version": "0" * 64}, {"role_id": None, "role_version": None}):
+        assert client.post("/api/sessions", json={**request, **replacement}).status_code == 409
+    assert card(client, sid) == original
+    assert client.get("/api/roles").json() == [] and len(client.get("/api/sessions").json()) == 1

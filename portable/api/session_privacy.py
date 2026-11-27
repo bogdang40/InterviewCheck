@@ -67,6 +67,12 @@ def read(db, sid):
     return PrivacyRecord(state="unmarked", anonymized_at=None)
 
 
+def require_content_writable(db, sid):
+    if read(db, sid).state != "unmarked":
+        raise HTTPException(409, "This interview is protected. Reload it to view its retained records.",
+                            headers={"X-InterviewCheck-Conflict": "interview-privacy"})
+
+
 def require_transfer_allowed(db, sid):
     if read(db, sid).state != "unmarked":
         raise HTTPException(409, "Private transfers are unavailable for this protected interview.")
@@ -88,10 +94,21 @@ def legacy_hold(session):
                for a in session.answers)
 
 
+def _erased_shape(session):
+    return (session.candidate == anonymized_candidate_label(session.id) and session.legacy is None
+            and session.draft is None and all(a.answer == REDACTED_TEXT and not a.note and a.legacy is None
+                                               and a.import_origin is None for a in session.answers))
+
+
+def archive_only_erasure(session):
+    # Older archives have no receipt. A strict erased shape can preserve a false
+    # notice, but may only acquire an unverified hold on restore.
+    return (not session.consent and (session.privacy is None or session.privacy.state != "unmarked")
+            and _erased_shape(session))
+
+
 def verify_redaction(session):
-    if (session.candidate != anonymized_candidate_label(session.id) or session.legacy is not None or
-            session.draft is not None or any(a.answer != REDACTED_TEXT or a.note or a.legacy is not None
-                                             or a.import_origin is not None for a in session.answers)):
+    if not _erased_shape(session):
         raise ValueError("The confirmed anonymization contains data that retention should have erased.")
 
 

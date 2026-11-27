@@ -27,5 +27,5 @@ def test_original_rubric_guides_review_after_the_template_changes(workspace_url,
         result = client.get("/api/sessions/" + first["id"] + "/scorecard").raise_for_status().json()
         assert result["weighted_score_pct"] == 80 and result["items"][0]["weight"] == 3
         page.goto(workspace_url + "/interviews/review/?id=" + second["id"])
-        expect(page.get_by_text("Rubric at interview start · Role version 2. This version had no criteria.")).to_be_visible()
+        expect(page.get_by_text("Rubric at interview start · Role version 2. No criteria were recorded at this revision.")).to_be_visible()
         expect(page.get_by_role("button", name="Rate System design 4 of 5")).to_have_count(0)

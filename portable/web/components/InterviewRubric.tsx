@@ -9,7 +9,7 @@ export default function InterviewRubric({ snapshot }: { snapshot: RubricSnapshot
     ? `Role version ${snapshot.version_number}`
     : `Role revision ${snapshot.role_content_sha256?.slice(0, 12)}`
   const label = `Rubric at interview start · ${revision}`
-  if (!snapshot.criteria.length) return <p className="muted">{label}. This version had no criteria.</p>
+  if (!snapshot.criteria.length) return <p className="muted">{label}. No criteria were recorded at this revision.</p>
   return <details className="panel inset">
     <summary>{label}</summary>
     <ol className="stack">

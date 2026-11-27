@@ -44,8 +44,8 @@ function accessError(err: unknown) {
   return err.status === 404 ? "This interview or handoff note is unavailable. Check whether the interview is in Trash." : ""
 }
 
-export default function PanelHandoffNotes({ sessionId, initial, visible, onDirty }: {
-  sessionId: string; initial: ScorecardState; visible: boolean; onDirty: DirtyReporter
+export default function PanelHandoffNotes({ sessionId, initial, visible, onDirty, readOnly = false }: {
+  readOnly?: boolean; sessionId: string; initial: ScorecardState; visible: boolean; onDirty: DirtyReporter
 }) {
   const legacy = useRef(!initial.handoff_notes_paged)
   const cached = useRef<HandoffNote[] | null>(legacy.current ? initial.handoff_notes : null)
@@ -157,7 +157,7 @@ export default function PanelHandoffNotes({ sessionId, initial, visible, onDirty
 
   return <section className={styles.section} aria-label="Panel handoff notes">
     <h3>Panel handoff notes</h3>
-    {!withholdDraft && <form className="stack" onSubmit={add}>
+    {!readOnly && !withholdDraft && <form className="stack" onSubmit={add}>
       <div className={styles.noteFormRow}>
         <label className={`field ${styles.composeCategory}`}>Category
           <select aria-label="Category" value={category} disabled={busy || !!denied}
