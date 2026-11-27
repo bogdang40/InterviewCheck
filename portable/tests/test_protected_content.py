@@ -87,7 +87,7 @@ def test_native_false_notice_survives_anonymization_and_round_trip(client, tmp_p
     extracted = json.loads(raw)["sessions"][0]
     assert extracted["consent"] is False and "legacy" not in extracted
     assert extracted["privacy"] == {"state": "anonymized", "anonymized_at": STAMP}
-    assert bool(extracted["trashed_at"]) == trashed
+    assert bool(extracted.get("trashed_at")) == trashed
     assert extracted["answers"][0]["answer"] == REDACTED_TEXT
     fresh_destination(tmp_path / "recovered.sqlite", monkeypatch)
     restore(client, raw, preview(client, raw)).raise_for_status()
