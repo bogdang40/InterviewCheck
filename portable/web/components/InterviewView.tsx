@@ -58,6 +58,7 @@ export default function InterviewView({ session, answerId, assignmentDirty, onDi
   const [deferredDirty, setDeferredDirty] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
+  const [captureNotice, setCaptureNotice] = useState("")
   const deferredPanel = useRef<HTMLDetailsElement | null>(null)
   const [deferredReady, setDeferredReady] = useState(false)
   const attachDeferred = useCallback((node: HTMLDetailsElement | null) => {
@@ -167,6 +168,7 @@ export default function InterviewView({ session, answerId, assignmentDirty, onDi
     select(destination, !advance)
   }
   function begin(question = "", origin?: QuestionOrigin) {
+    setCaptureNotice("")
     setFirstOrigin(origin)
     setFollowUp(question)
     setEdit("new")
@@ -200,6 +202,7 @@ export default function InterviewView({ session, answerId, assignmentDirty, onDi
           )}
         </div>
       </header>
+      {captureNotice && <p role="status">{captureNotice}</p>}
       {error && (
         <p className="error" role="alert">
           {error}
@@ -241,6 +244,7 @@ export default function InterviewView({ session, answerId, assignmentDirty, onDi
           summary={session.draft}
           disabled={blocked || !!edit}
           discard={() => onDraftChange(null)}
+          refresh={onDraftChange}
           resume={(draft) => {
             setResumed(draft)
             setEdit("draft")
@@ -282,7 +286,7 @@ export default function InterviewView({ session, answerId, assignmentDirty, onDi
                 }}
                 initial={session.answers.find((a) => a.id === edit)}
                 onDirty={onDirty}
-                onSave={save}
+                onSave={(answer, notice) => { setCaptureNotice(notice ?? ""); save(answer) }}
                 onCancel={() => setEdit(null)}
                 embeddingAvailable={capabilities.embedding}
               />

@@ -5,7 +5,7 @@ import { backupURL, downloadBackup } from "@/lib/backupDownload"
 import { Button } from "./ui/button"
 import { Input } from "./ui/input"
 
-type Result = { state: "idle" | "loading" | "canceled" } | { state: "started"; checksum: string } | { state: "error"; detail: string }
+type Result = { state: "idle" | "loading" | "canceled" } | { state: "started"; checksum: string; deferredQuestions?: number } | { state: "error"; detail: string }
 
 export default function BackupDownloadLink({ sessionId }: { sessionId: string | null }) {
   const [result, setResult] = useState<Result>({ state: "idle" })
@@ -36,8 +36,8 @@ export default function BackupDownloadLink({ sessionId }: { sessionId: string | 
     active.current = controller
     setResult({ state: "loading" })
     try {
-      const checksum = await downloadBackup(sessionId, controller.signal)
-      if (!controller.signal.aborted) setResult({ state: "started", checksum })
+      const receipt = await downloadBackup(sessionId, controller.signal)
+      if (!controller.signal.aborted) setResult({ state: "started", ...receipt })
     } catch (error) {
       if (!controller.signal.aborted) setResult({ state: "error", detail: message(error) })
     } finally {
@@ -66,6 +66,7 @@ export default function BackupDownloadLink({ sessionId }: { sessionId: string | 
     {result.state === "canceled" && <p role="status">Backup download canceled.</p>}
     {result.state === "started" && <>
       <p role="status">Download started for {scope}.</p>
+      {result.deferredQuestions !== undefined && <p>{result.deferredQuestions} deferred {result.deferredQuestions === 1 ? "question" : "questions"} in this backup.</p>}
       <details>
         <summary>Backup checksum</summary>
         <label className="field">

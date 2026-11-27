@@ -1,5 +1,6 @@
 import { api, type Answer, type Draft, type Interview, type Source } from "./api"
 import { ApiError, request } from "./http"
+import { deferredFields } from "./deferredSubmission"
 import { currentWorksheet } from "./reviewWorksheet"
 
 export const deferredStates = ["pending", "dismissed", "fulfilled"] as const
@@ -87,12 +88,13 @@ export function sameSources(stored: Source[], proposed: Source[]) {
 
 export async function saveDeferredDraft(item: DeferredQuestion, id: string, revision: number, answer: string,
                                         sources: Source[], signal?: AbortSignal) {
+  const fields = deferredFields(item.question, answer, sources)
   const saved = await api<Draft>(`sessions/${item.session_id}/draft`, "PUT", {
-    id, expected_revision: revision, parent_answer_id: item.parent_answer_id, planned_slot: null, question: item.question,
-    answer, references: sources, deferred_question: { id: item.id, version: item.version },
+    id, expected_revision: revision, parent_answer_id: item.parent_answer_id, planned_slot: null, ...fields,
+    deferred_question: { id: item.id, version: item.version },
   }, signal)
-  if (!matchesDeferredDraft(saved, item, id) || saved.answer !== answer ||
-      !sameSources(saved.references, sources)) {
+  if (!matchesDeferredDraft(saved, item, id) || saved.answer !== fields.answer ||
+      !sameSources(saved.references, fields.references)) {
     throw new Error("The server did not confirm this saved draft. Check the current draft before retrying.")
   }
   return saved

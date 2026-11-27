@@ -8,7 +8,8 @@ from fastapi import APIRouter, Query
 from pydantic import model_validator
 
 from . import deferred_items as items, store
-from .models import Fingerprint, Input, Question, RequestID
+from .deferred_text import SelectedQuestion
+from .models import Fingerprint, Input, RequestID
 
 router = APIRouter(prefix="/sessions/{sid}/deferred-questions", tags=["interview-follow-ups"])
 
@@ -16,7 +17,7 @@ router = APIRouter(prefix="/sessions/{sid}/deferred-questions", tags=["interview
 class Add(Input):
     id: RequestID
     parent_answer_id: RequestID
-    question: Question
+    question: SelectedQuestion
     expected_material: Fingerprint
 
 
@@ -60,17 +61,18 @@ def add(sid: UUID, payload: Add):
     sid, qid, parent = str(sid), str(payload.id), str(payload.parent_answer_id)
     with store.connection(write=True) as db:
         session = items.access_session(db, sid)
-        material = items.checked_material(db, sid, parent, payload.expected_material)
         existing = db.execute("SELECT * FROM deferred_questions WHERE id=?", (qid,)).fetchone()
         if existing:
-            if (existing["session_id"], existing["parent_answer_id"], existing["question"]) == (sid, parent, payload.question):
+            if ((existing["session_id"], existing["parent_answer_id"], existing["question"]) == (sid, parent, payload.question)
+                    and existing["creation_receipt"] and hmac.compare_digest(existing["creation_receipt"], payload.expected_material)):
                 return items.public(db, existing)
             raise items.conflict("This deferred question ID is already in use.")
         if session["ended_at"]:
             raise items.conflict("Reopen the interview before keeping a new question.")
+        material = items.checked_material(db, sid, parent, payload.expected_material)
         db.execute("""INSERT INTO deferred_questions(id,session_id,parent_answer_id,question,status,needs_reconfirmation,
-                      material_sha256,revision_id,created_at) VALUES(?,?,?,?,'pending',0,?,?,?)""",
-                   (qid, sid, parent, payload.question, material, secrets.token_hex(16), store.timestamp()))
+                      material_sha256,revision_id,created_at,creation_receipt) VALUES(?,?,?,?,'pending',0,?,?,?,?)""",
+                   (qid, sid, parent, payload.question, material, secrets.token_hex(16), store.timestamp(), payload.expected_material))
         return items.public(db, items.find(db, sid, qid))
 
 
