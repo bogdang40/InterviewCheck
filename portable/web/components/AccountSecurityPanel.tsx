@@ -6,8 +6,9 @@ import { Check, Copy, KeyRound, Laptop, RefreshCw, X } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { orderedAccountRequest } from "@/lib/accountCookie"
 import {
-  API_TOKEN_SCOPES, SCOPE_LABELS, createApiToken, listAccountSessions, listApiTokens,
+  API_TOKEN_SCOPES, SCOPE_LABELS, AccountSecurityError, createApiToken, listAccountSessions, listApiTokens,
   revokeAccountSession, revokeApiToken,
   type AccountSession, type ApiTokenScope, type ApiTokenSummary,
 } from "@/lib/accountSecurity"
@@ -31,6 +32,7 @@ export function AccountSecurityPanel({
   const [tokens, setTokens] = useState<ApiTokenSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [busyKey, setBusyKey] = useState<string | null>(null)
+  const [needsSessionCheck, setNeedsSessionCheck] = useState(false)
   const [error, setError] = useState("")
   const [status, setStatus] = useState("")
   const [tokenName, setTokenName] = useState("")
@@ -73,16 +75,38 @@ export function AccountSecurityPanel({
     if (!isAdmin) setScopes((prev) => prev.filter((s) => s !== "admin:models"))
   }, [isAdmin])
 
-  async function handleRevokeSession(s: AccountSession) {
-    setBusyKey(`session:${s.id}`); setError(""); setStatus("")
+  async function checkCurrentSession() {
+    // The displayed Current badge may predate another sign in on the same browser.
     try {
-      await revokeAccountSession(s.id)
-      if (s.isCurrent) { onCurrentSessionRevoked?.(); return }
-      setSessions((prev) => prev.filter((item) => item.id !== s.id))
-      setStatus(`Revoked session (${s.deviceName || "Browser session"}).`)
+      setSessions(await listAccountSessions())
+      setNeedsSessionCheck(false)
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not revoke session.")
+      if (err instanceof AccountSecurityError && err.status === 401) {
+        onCurrentSessionRevoked?.()
+        return
+      }
+      setNeedsSessionCheck(true)
+      const detail = err instanceof Error ? err.message : "Could not load active device sessions."
+      setError(`Check the current session to confirm access. ${detail}`)
+    }
+  }
+
+  async function runSessionAction(key: string, action: () => Promise<void>) {
+    setBusyKey(key); setError("")
+    try { await orderedAccountRequest(action) }
+    catch (err) {
+      setError(err instanceof Error ? err.message : "Could not complete the device session request.")
     } finally { setBusyKey(null) }
+  }
+
+  function handleRevokeSession(s: AccountSession) {
+    return runSessionAction(`session:${s.id}`, async () => {
+      setStatus("")
+      await revokeAccountSession(s.id)
+      setSessions(prev => prev.filter(item => item.id !== s.id))
+      setStatus(`Revoked session (${s.deviceName || "Browser session"}).`)
+      await checkCurrentSession()
+    })
   }
 
   async function handleCreateToken(e: FormEvent<HTMLFormElement>) {
@@ -130,8 +154,9 @@ export function AccountSecurityPanel({
     <div className="stack">
       <div className="spread">
         <div><h3>Account security</h3><p className="muted">Review active device sessions and manage scoped API tokens.</p></div>
-        <Button type="button" variant="outline" size="sm" disabled={loading || busyKey !== null} onClick={() => void refresh()}>
-          <RefreshCw size={14} aria-hidden="true" />Refresh security
+        <Button type="button" variant="outline" size="sm" disabled={loading || busyKey !== null}
+          onClick={() => void (needsSessionCheck ? runSessionAction("session:check", checkCurrentSession) : refresh())}>
+          <RefreshCw size={14} aria-hidden="true" />{needsSessionCheck ? "Check current session" : "Refresh security"}
         </Button>
       </div>
       {error && <p role="alert" className="error">{error}</p>}
@@ -166,7 +191,7 @@ export function AccountSecurityPanel({
                     <td data-label="Last seen" className="py-2 pr-3 font-mono text-xs">{fmt(s.lastSeenAt)}</td>
                     <td data-label="Expires" className="py-2 pr-3 font-mono text-xs">{fmt(s.expiresAt)}</td>
                     <td data-label="Action" className="py-2">
-                      <Button type="button" variant="outline" size="xs" className="min-h-[44px] px-3 md:min-h-6 md:px-2" disabled={busyKey !== null} onClick={() => void handleRevokeSession(s)}>
+                      <Button type="button" variant="outline" size="xs" className="min-h-[44px] px-3 md:min-h-6 md:px-2" disabled={busyKey !== null || needsSessionCheck} onClick={() => void handleRevokeSession(s)}>
                         {busyKey === `session:${s.id}` ? "Revoking..." : "Revoke"}
                       </Button>
                     </td>
