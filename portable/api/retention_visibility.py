@@ -19,6 +19,7 @@ EXPORT = "r.draft!=:marker OR r.recipient!=:marker"
 PARAMS = {"marker": REDACTED_TEXT, **TEXT_PARAMS}
 ACTIVE_CONDITION = """NOT EXISTS (SELECT 1 FROM session_trash t WHERE t.session_id=s.id)
                   AND NOT EXISTS (SELECT 1 FROM retention_read_holds h WHERE h.session_id=s.id)"""
+PERMANENT = "ON CONFLICT(session_id) DO UPDATE SET needs_timestamp_check=0"
 
 
 def _conflicts(scope):
@@ -66,19 +67,21 @@ def _track_changes(db):
         for event in ("INSERT", "UPDATE"):
             _install(db, "TRIGGER", f"retention_hold_{table}_{event}", f"""AFTER {event} ON {table}
                 WHEN EXISTS (SELECT 1 FROM session_anonymizations WHERE session_id={sid}) AND ({condition})
-                BEGIN INSERT OR IGNORE INTO retention_read_holds(session_id) VALUES({sid}); END""")
+                BEGIN INSERT INTO retention_read_holds(session_id) VALUES({sid}) {PERMANENT}; END""")
     check_receipt = fixed_values(_conflicts("x.session_id=NEW.session_id"))
-    _install(db, "TRIGGER", "retention_hold_receipt", f"""AFTER INSERT ON session_anonymizations
-        BEGIN INSERT OR IGNORE INTO retention_read_holds(session_id) {check_receipt}; END""")
+    # A prior writer can insert a receipt without running the current timestamp check. All
+    # readers withhold it until the current writer or a later startup validates its narratives.
+    _install(db, "TRIGGER", "retention_hold_receipt", f"""AFTER INSERT ON session_anonymizations BEGIN
+        INSERT INTO retention_read_holds(session_id) {check_receipt} {PERMANENT};
+        INSERT INTO retention_read_holds(session_id,needs_timestamp_check) VALUES(NEW.session_id,1)
+            ON CONFLICT(session_id) DO NOTHING;
+        END""")
 
 
 def refresh(db):
-    # Only membership is rebuilt. The original rows and erasure receipt remain available
-    # in a consistent physical backup. Current writers enforce protection in their transaction.
-    db.execute("""CREATE TABLE IF NOT EXISTS retention_read_holds (
-                  session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE)""")
-    db.execute("DELETE FROM retention_read_holds")
-    db.execute(f"INSERT INTO retention_read_holds(session_id) {_conflicts('1')}", PARAMS)
+    # Keep witnessed violations even if the older writer assigned its timestamp before
+    # taking the write lock. A restart cannot reconstruct that commit ordering from timestamps.
+    db.execute(f"INSERT INTO retention_read_holds(session_id) {_conflicts('1')} {PERMANENT}", PARAMS)
     retained_narratives.refresh(db)
     _install(db, "VIEW", "active_sessions", f"AS SELECT s.rowid AS rowid,s.* FROM sessions s WHERE {ACTIVE_CONDITION}")
     _track_changes(db)
@@ -86,14 +89,18 @@ def refresh(db):
 
 def require_available(db, *ids):
     marks = ",".join("?" for _ in ids)
-    if db.execute(f"SELECT 1 FROM retention_read_holds WHERE session_id IN ({marks}) LIMIT 1", ids).fetchone():
-        raise HTTPException(409, "This interview has records that conflict with its erasure receipt. "
-                                 "Inspect a consistent SQLite backup before sharing it.",
-                            headers={"X-InterviewCheck-Conflict": "interview-privacy"})
+    state = db.execute(f"SELECT min(needs_timestamp_check) FROM retention_read_holds WHERE session_id IN ({marks})",
+                       ids).fetchone()[0]
+    if state is None:
+        return
+    detail = ("An erasure receipt needs validation. Restart the current release to check the retained interview."
+              if state else "This interview has records that conflict with its erasure receipt. "
+              "Inspect a consistent SQLite backup before sharing it.")
+    raise HTTPException(409, detail, headers={"X-InterviewCheck-Conflict": "interview-privacy"})
 
 
 def require_complete_export(db):
     if db.execute("""SELECT 1 FROM retention_read_holds h WHERE NOT EXISTS
                      (SELECT 1 FROM session_trash t WHERE t.session_id=h.session_id) LIMIT 1""").fetchone():
-        raise HTTPException(409, "The archive contains an interview that conflicts with its erasure receipt. "
+        raise HTTPException(409, "The archive includes an interview withheld by an erasure check. "
                                  "Export unaffected interviews individually or inspect a consistent SQLite backup.")

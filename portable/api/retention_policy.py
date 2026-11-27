@@ -41,6 +41,10 @@ CREATE TABLE IF NOT EXISTS session_anonymizations (
   anonymized_at TEXT NOT NULL,
   anonymized_by TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS retention_read_holds (
+  session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+  needs_timestamp_check INTEGER NOT NULL DEFAULT 0 CHECK(needs_timestamp_check IN (0,1))
+);
 """
 
 router = APIRouter(prefix="/api/admin/compliance", tags=["compliance-retention"])
@@ -63,6 +67,9 @@ def _has_table(db: sqlite3.Connection, name: str) -> bool:
 
 def migrate(db: sqlite3.Connection) -> None:
     db.executescript(SCHEMA)
+    if not db.execute("SELECT 1 FROM pragma_table_info('retention_read_holds') WHERE name='needs_timestamp_check'").fetchone():
+        db.execute("ALTER TABLE retention_read_holds ADD COLUMN needs_timestamp_check INTEGER NOT NULL DEFAULT 0 "
+                   "CHECK(needs_timestamp_check IN (0,1))")
     session_privacy.migrate(db)
     db.execute(
         "INSERT OR IGNORE INTO retention_policies"

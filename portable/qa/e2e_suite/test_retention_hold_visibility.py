@@ -62,7 +62,7 @@ def test_admin_count_public_visibility_and_preselected_backup_refusal(e2e_worksp
         page.get_by_role("tab", name="Compliance", exact=True).click()
         retention = page.get_by_role("region", name="Data retention and PII anonymization")
         notice = retention.get_by_role("alert")
-        expect(notice).to_contain_text("Interviews withheld because stored records conflict with an erasure receipt: 1.")
+        expect(notice).to_contain_text("Interviews withheld by erasure checks: 1.")
         expect(notice).not_to_contain_text(HISTORY_ONLY)
         retention.screenshot(path=e2e_workspace.screenshot_dir / "admin-retention-hold.png")
 
