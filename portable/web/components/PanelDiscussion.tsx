@@ -25,12 +25,35 @@ export default function PanelDiscussion(props: Props) {
     if (event.currentTarget.open) setStarted(true)
   }}>
     <summary>Panel discussion</summary>
-    {started && <PanelEditor {...props} />}
+    {started && <PanelSession {...props} />}
   </details>
 }
 
-function PanelEditor({ sessionId, item, locked, onDirty }: Props) {
-  const { account, isAdmin, loading: authLoading } = useAccountStatus()
+function PanelSession(props: Props) {
+  const { account, status, isAdmin, loading, refresh } = useAccountStatus()
+  useEffect(() => {
+    const resume = () => { if (document.visibilityState === "visible") refresh() }
+    const restored = (event: PageTransitionEvent) => { if (event.persisted) resume() }
+    window.addEventListener("pageshow", restored)
+    window.addEventListener("focus", resume)
+    document.addEventListener("visibilitychange", resume)
+    return () => {
+      window.removeEventListener("pageshow", restored)
+      window.removeEventListener("focus", resume)
+      document.removeEventListener("visibilitychange", resume)
+    }
+  }, [refresh])
+  if (!loading && !status) return <Button variant="outline" onClick={refresh}>Recheck panel access</Button>
+  if (!loading && status?.access && (!status.signedIn || !account?.active)) {
+    return <p className="muted">Sign in with active workspace access to read this panel discussion.</p>
+  }
+  const scope = JSON.stringify([account?.email, account?.active, isAdmin])
+  return <PanelEditor key={scope} {...props} isAdmin={isAdmin && account?.active === true} authLoading={loading} />
+}
+
+function PanelEditor({ sessionId, item, locked, onDirty, isAdmin, authLoading }:
+  Props & { isAdmin: boolean; authLoading: boolean }) {
+  const editorContext = useRef<string | undefined>(undefined)
   const [privateNotes, setPrivateNotes] = useState(false)
   const [data, setData] = useState<PanelCase | null>(null)
   const [query, setQuery] = useState({ before: null as number | null, reload: 0 })
@@ -50,10 +73,18 @@ function PanelEditor({ sessionId, item, locked, onDirty }: Props) {
     setData(null)
     setError("")
     if (!authLoading) {
-      Promise.all([readPanel(sessionId, item.id, query.before, controller.signal, privateNotes && isAdmin), displayedEvidence(item)])
+      Promise.all([readPanel(sessionId, item.id, query.before, controller.signal, privateNotes && isAdmin, isAdmin), displayedEvidence(item)])
         .then(([record, evidence]) => {
           if (controller.signal.aborted) return
           if (record.evidence !== evidence) throw new Error("The displayed exchange changed. Reload the interview to review its current text.")
+          const changedEditor = !!editorContext.current && record.editor !== editorContext.current
+          editorContext.current = record.editor
+          if (changedEditor) {
+            setRationale("")
+            setNotice("")
+            setPrivateNotes(false)
+            if (privateNotes) return
+          }
           setData(record)
           setAction("")
         }).catch(err => {
@@ -64,7 +95,7 @@ function PanelEditor({ sessionId, item, locked, onDirty }: Props) {
         })
     }
     return () => { controller.abort(); submit.current?.abort() }
-  }, [sessionId, item, query, account?.email, authLoading, isAdmin, privateNotes])
+  }, [sessionId, item, query, authLoading, isAdmin, privateNotes])
 
   function refresh(before: number | null = null) {
     setNotice("")
@@ -80,7 +111,7 @@ function PanelEditor({ sessionId, item, locked, onDirty }: Props) {
       const next = await writePanel(data, action, rationale.trim(), controller.signal)
       if (controller.signal.aborted) return
       if (next.history_count !== data.history_count + 1 || next.basis !== data.basis ||
-          next.history[0]?.action !== action || next.history[0]?.rationale !== rationale.trim()) {
+          next.editor !== data.editor || next.history[0]?.action !== action || next.history[0]?.rationale !== rationale.trim()) {
         throw new Error("The server could not confirm this decision. Read the latest panel record before another change.")
       }
       setData(next); setRationale(""); setNotice("Panel decision recorded.")
@@ -88,7 +119,12 @@ function PanelEditor({ sessionId, item, locked, onDirty }: Props) {
     } catch (err) {
       if (!controller.signal.aborted) {
         setData(null)
-        if (err instanceof ApiError && [401, 402, 403, 404].includes(err.status)) setRationale("")
+        if (err instanceof ApiError && ([401, 402, 403, 404].includes(err.status) || err.code === "panel-authority")) {
+          setRationale("")
+          setAction("")
+          setPrivateNotes(false)
+          editorContext.current = undefined
+        }
         setError(message(err))
       }
     } finally {
@@ -96,6 +132,7 @@ function PanelEditor({ sessionId, item, locked, onDirty }: Props) {
     }
   }
 
+  if (authLoading) return <p className="muted" role="status">Checking access to panel discussion…</p>
   const last = data?.history.at(-1)
   const mayReopen = data && ["discussion_complete", "follow_up_required"].includes(data.status)
   return <div className="stack">
