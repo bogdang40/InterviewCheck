@@ -99,7 +99,7 @@ class Observed:
                 self.workspace_writes.append((request.method, url.path))
         page.on("request", sent)
         page.on("websocket", lambda ws: self.external.append("websocket") if urlsplit(ws.url).netloc != origin else None)
-        page.on("download", self.downloads.append)
+        page.on("download", lambda download: self.downloads.append(download))
         if capture_clipboard:
             # Capture the adapter's UTF-8 input without changing the host clipboard.
             page.add_init_script("""window.handoffCopies = [];
