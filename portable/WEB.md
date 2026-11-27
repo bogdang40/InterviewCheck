@@ -55,6 +55,8 @@ Set monthly USD thresholds and token prices under **Admin > Models**. The router
 
 Under **Admin > Usage > Monthly AI attempt allowance**, set a workspace limit for text generation and embeddings. Each Playground, retry and fallback send uses one attempt. Enter zero to pause new sends or leave the field blank for unlimited. The counter starts when the workspace schema is upgraded and counts from that point even without a limit. It resets at midnight UTC on the first day of each month. Changing the limit keeps the current count. An already admitted request can finish after a pause. A timeout or lost response still counts. A connection rejected by local endpoint validation returns its slot. Connection tests, transcription and clients that call providers outside this server are outside this allowance.
 
+A full SQLite restore restores the selected backup's allowance and count. Calls made after that backup are absent from the restored counter. During a recovery, pause generation and embeddings, reconcile those calls with the provider, then set the limit to the restored count plus the number of further attempts the operator authorizes. Workspace JSON imports leave this operational counter in place.
+
 ## Static package
 
 ```sh
