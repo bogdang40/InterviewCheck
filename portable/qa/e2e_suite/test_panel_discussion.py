@@ -3,6 +3,7 @@ from collections import Counter
 import re
 
 from playwright.sync_api import expect
+import pytest
 
 from e2e_suite.harness import assert_no_horizontal_overflow, login_user
 from e2e_suite.test_m23_alerts_calibration_e2e import (
@@ -112,7 +113,8 @@ def sign_out_other_tab(page, sibling, collector, base, sid, aid, reason):
     collector.console_errors.clear()
 
 
-def test_private_panel_draft_disappears_across_browser_account_switch(e2e_workspace, desktop_page):
+@pytest.mark.parametrize("storage_writes", [True, False], ids=["storage", "channel"])
+def test_private_panel_draft_disappears_across_browser_account_switch(e2e_workspace, desktop_page, storage_writes):
     from e2e_suite.harness import signup_user
     from e2e_suite.test_m23_alerts_calibration_e2e import BOOTSTRAP_SECRET
 
@@ -131,6 +133,17 @@ def test_private_panel_draft_disappears_across_browser_account_switch(e2e_worksp
             user.patch(answer, json={"disposition": opinion, "note": "Original opinion."}).raise_for_status()
 
     page, collector = desktop_page
+    if not storage_writes:
+        page.context.add_init_script("""(() => {
+          const write = Storage.prototype.setItem;
+          Storage.prototype.setItem = function(key, value) {
+            if (key === 'interviewcheck:account-generation') {
+              window.fallbackAccountChanges = (window.fallbackAccountChanges || 0) + 1;
+              throw new DOMException('Fixture storage is unavailable', 'QuotaExceededError');
+            }
+            return write.call(this, key, value);
+          };
+        })()""")
     base = e2e_workspace.base_url
     _sign_in_browser(page, base, ADMIN_EMAIL)
     url = base + f"/interviews/review/?id={sid}&answer={aid}#panel-discussion"
@@ -163,6 +176,10 @@ def test_private_panel_draft_disappears_across_browser_account_switch(e2e_worksp
             rotate.get_by_role("button", name="Update password").click()
         expect(rotate.get_by_role("status")).to_contain_text("Password updated and session rotated.")
         assert rechecked.value.ok and rechecked.value.json()["editor"] != previous
+        if not storage_writes:
+            assert sibling.evaluate("window.fallbackAccountChanges") >= 1
+            sibling.wait_for_load_state("networkidle")
+            expect(rotate.get_by_role("status")).to_have_text("Password updated and session rotated.")
         expect(reason).to_have_value("")
         expect(panel.get_by_text("Private chair history", exact=True)).to_have_count(0)
         expect(panel.get_by_label("Discussion action")).to_have_value("")
