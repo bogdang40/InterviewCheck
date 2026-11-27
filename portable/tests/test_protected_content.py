@@ -85,7 +85,7 @@ def test_native_false_notice_survives_anonymization_and_round_trip(client, tmp_p
         client.post(f"/api/sessions/{sid}/trash").raise_for_status()
     raw = client.get("/api/backups/workspace").raise_for_status().content
     extracted = json.loads(raw)["sessions"][0]
-    assert extracted["consent"] is False and extracted["legacy"] is None
+    assert extracted["consent"] is False and "legacy" not in extracted
     assert extracted["privacy"] == {"state": "anonymized", "anonymized_at": STAMP}
     assert bool(extracted["trashed_at"]) == trashed
     assert extracted["answers"][0]["answer"] == REDACTED_TEXT
