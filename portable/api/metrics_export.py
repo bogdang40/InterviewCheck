@@ -185,7 +185,7 @@ def collect_metrics(registry: MetricsRegistry | None = None) -> dict[str, Any]:
                         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
                         model_daily_tokens = [
                             {"capability": r["capability"], "tokens": int(r["tokens"])}
-                            for r in db.execute("SELECT m.capability AS capability, COALESCE(SUM(u.input_tokens + u.output_tokens), 0) AS tokens FROM model_usage_daily u JOIN connected_models m ON m.id=u.model_id WHERE u.usage_date=? GROUP BY m.capability ORDER BY m.capability", (today,))
+                            for r in db.execute("SELECT m.capability AS capability, COALESCE(SUM(u.input_tokens + u.output_tokens + u.unsplit_tokens), 0) AS tokens FROM model_usage_daily u JOIN connected_models m ON m.id=u.model_id WHERE u.usage_date=? GROUP BY m.capability ORDER BY m.capability", (today,))
                         ]
                 if _table_exists(db, "interview_catalog", include_views=True):
                     for r in db.execute("SELECT lifecycle, COUNT(*) AS cnt FROM interview_catalog GROUP BY lifecycle"):

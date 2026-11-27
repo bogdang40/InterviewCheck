@@ -45,6 +45,10 @@ Administrators add provider keys under **Admin > Models > Connect model**. The s
 
 **Admin > Usage** shows signed-out visitors, sign-ins, accounts, interviews, answers, reviews and AI requests per UTC day. The home, sample and sign-in pages report one view each through `POST /api/usage/visit`. The server stores a visitor only as a hash of the client address and browser with a random salt it replaces every day, so it keeps no address and cannot link visits across days. Crawlers, link previews and scripted browsers are not counted. Counters older than 400 days are removed.
 
+In the AI cost log, select a company and an outcome to inspect matching calls. The CSV uses the displayed report's UTC period and excludes calls recorded after that report loaded. Refresh Usage to include newer calls. Company names come from account email domains. Each hosted company still needs its own deployment and operator. The CSV includes the estimate status at the time of each call. Missing rates, incomplete token counts and historical estimates can leave the displayed cost incomplete. A configured rate of zero is valid.
+
+Set monthly USD thresholds and token prices under **Admin > Models**. The router checks recorded spend before starting a connected model request. Concurrent calls, unpriced usage and provider billing adjustments can put the invoice above this threshold. Use provider billing controls when you need a spending guarantee.
+
 ## Static package
 
 ```sh

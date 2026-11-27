@@ -1,4 +1,5 @@
 import { adminRequest, type ConnectedModel, type ModelCapability } from "./adminModels"
+import type { EstimateStatus } from "./adminUsage"
 
 export type PlaygroundPresetId =
   | "custom"
@@ -45,7 +46,9 @@ export type PlaygroundModelResult = {
   latency_ms: number | null
   input_tokens: number
   output_tokens: number
+  unsplit_tokens: number
   estimated_cost_usd: number
+  estimate_status: EstimateStatus | "not_called"
   output_text: string | null
   parsed_json: unknown
   schema_valid: boolean

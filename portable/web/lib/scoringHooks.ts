@@ -14,16 +14,9 @@ export type SemanticScoreResult = {
   model?: string
   matches: SemanticMatch[]
 }
-export type JudgeConfidence = "low" | "medium" | "high"
-export type JudgeSignals = { passage_count: number; max_matched_words: number; deterministic_match: 0 | 1 }
-export type JudgeScoreResult = {
-  provider: string
-  model: string
-  likelihood: number
-  confidence: JudgeConfidence
-  evidence: string[]
-  follow_up_questions: string[]
-}
+export type JudgeReviewResult =
+  | { status: "insufficient_evidence"; follow_up_questions: string[] }
+  | { status: "reviewed"; provider: string; model: string; follow_up_questions: string[] }
 
 const PROVIDER_NAMES: Record<string, string> = {
   openai: "OpenAI",
@@ -69,14 +62,6 @@ export function useScoringCapabilities(enabled = true): ScoringCapabilities {
   return state
 }
 
-export function buildJudgeSignals(result: Answer["result"]): JudgeSignals {
-  return {
-    passage_count: result.passages.length,
-    max_matched_words: Math.max(0, ...result.passages.map((p) => p.words)),
-    deterministic_match: result.status === "match" ? 1 : 0,
-  }
-}
-
 export function runSemanticSimilarity(
   answer: string,
   sources: Source[],
@@ -89,16 +74,19 @@ export function runSemanticSimilarity(
   return api<SemanticScoreResult>("scoring/semantic", "POST", { answer, references }, signal)
 }
 
-export function runJudgeCheck(item: Answer, signal?: AbortSignal): Promise<JudgeScoreResult> {
-  const references = item.references.slice(0, 4).map(({ label, text, permitted }) => ({ label, text, permitted }))
-  return api<JudgeScoreResult>(
-    "scoring/judge",
+export async function runJudgeCheck(sessionId: string, item: Answer, signal?: AbortSignal): Promise<JudgeReviewResult> {
+  const passages = item.result.passages.slice(0, 3).map(p => [p.answer_excerpt, p.source_excerpt])
+  const evidence = new TextEncoder().encode(JSON.stringify([item.question, passages]))
+  if (!globalThis.crypto?.subtle) throw new Error("Open the workspace on HTTPS or localhost to verify the saved evidence.")
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", evidence))
+  return api<JudgeReviewResult>(
+    "scoring/judge/saved",
     "POST",
     {
-      question: item.question,
-      answer: item.answer,
-      references,
-      signals: buildJudgeSignals(item.result),
+      session_id: sessionId,
+      answer_id: item.id,
+      expected_revision: item.revision,
+      evidence_sha256: Array.from(digest, byte => byte.toString(16).padStart(2, "0")).join(""),
     },
     signal,
   )

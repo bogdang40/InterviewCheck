@@ -142,7 +142,7 @@ def test_extract_usage_across_providers_and_edge_cases():
     assert model_budgets.extract_usage("openai", {"usage": {"prompt_tokens": 120, "completion_tokens": 45}}) == (120, 45)
     assert model_budgets.extract_usage("openai", {"usage": {"input_tokens": 80, "output_tokens": 20}}) == (80, 20)
     assert model_budgets.extract_usage("openai", {"usage": {"prompt_tokens": 33, "total_tokens": 33}}) == (33, 0)
-    assert model_budgets.extract_usage("openai_compatible", {"usage": {"total_tokens": 64}}) == (64, 0)
+    assert model_budgets.extract_usage("openai_compatible", {"usage": {"total_tokens": 64}}) == (0, 0)
     assert model_budgets.extract_usage("anthropic", {"usage": {"input_tokens": 210, "output_tokens": 90}}) == (210, 90)
     assert model_budgets.extract_usage("azure_openai", {"usage": {"prompt_tokens": -5, "completion_tokens": True}}) == (0, 0)
     assert model_budgets.extract_usage("openai", None) == (0, 0)

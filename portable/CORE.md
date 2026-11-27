@@ -85,6 +85,10 @@ Run `python evaluate.py` from the portable directory to reproduce the fixed comp
 
 The independent match is a familiar saying found in a single comparison source. The assisted misses include an unseen coach and a paraphrase. The unseen coaching and independent reasoning cases have identical observable inputs and produce the same result. These 14 cases describe specific behaviors and give no estimate of population accuracy.
 
+When a judge model is connected, **Suggest questions** uses the passage match saved with the exchange. It sends the interview question and up to three pairs of matched excerpts to the model. Each excerpt is limited to 1,000 characters. The model selects a phrase and an angle, such as verification or a limitation. The app checks that the phrase occurs in the matched answer excerpt and uses it in a question. An exchange with insufficient evidence or no eligible match keeps its local follow up. The same applies to an archived exchange without recorded notice. A match shows shared wording. The interviewer can use a suggested question to ask how the candidate reached an answer, then record the outcome.
+
+Run `python -m pytest -q tests/test_saved_judge.py` from the portable directory to exercise this decision on the fixed comparison cases, including permitted text, a brief independent answer and a shared saying. A scripted provider returns a high score. The saved review exposes only suggested questions.
+
 ## Mailbox invites
 
 Set `IMAP_HOST`, `IMAP_USERNAME` and `IMAP_PASSWORD` for a mailbox that contains interview invitations. Use `IMAP_FOLDER` for a dedicated folder and `IMAP_PORT` for a TLS port other than 993. In Connections choose **Sync Mailbox invites**. The service opens the mailbox read only. It searches within the most recent 500 message UIDs and the last 60 days. It inspects MIME structure for the 60 most recent matching messages, then fetches up to 30 calendar parts with BODY.PEEK. An encoded attachment can contain at most 400,000 bytes. Each socket action has an eight second timeout. The sync checks a 45 second deadline between operations.

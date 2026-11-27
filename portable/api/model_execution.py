@@ -11,12 +11,10 @@ from starlette.concurrency import run_in_threadpool
 from . import ai_cost_log, model_budgets, model_circuit, model_resolver, model_telemetry, provider_http, ssrf_guard, store
 from .error_sanitizer import sanitize_error_text
 from .model_execution_policy import (
-    ModelQuotaLimiter,
-    QUOTA_LIMITER,
+    ModelQuotaLimiter, QUOTA_LIMITER,
     _clamped_retries,
     _is_ssrf_error,
-    _rpm_limit,
-    _safe_finite_float,
+    _rpm_limit, _safe_finite_float,
     _safe_timeout,
     reset_quotas,
 )
@@ -24,6 +22,7 @@ from .model_execution_policy import (
 FAILOVER_STATUSES = frozenset({429, 502, 503, 504})
 _ORIG_RESOLVE_OR_503 = model_resolver.resolve_or_503
 _ORIG_DISPATCH_COMPLETION = model_resolver.dispatch_completion
+MeterCallback = Callable[[model_budgets.TokenUsage], None]
 
 
 def resolve_candidates(
@@ -72,28 +71,24 @@ def _sanitize_target_error(
 
 
 def _record_outcome(
-    target: model_resolver.ResolvedModel,
-    *,
-    ok: bool,
-    http_status: int | None,
-    latency_ms: int | None,
-    error: str | None,
-    input_tokens: int = 0, output_tokens: int = 0,
+    target: model_resolver.ResolvedModel, *, ok: bool, http_status: int | None,
+    latency_ms: int | None, error: str | None,
+    usage: model_budgets.TokenUsage = model_budgets.TokenUsage(), provider_attempted: bool = True,
 ) -> None:
     safe_error = _redact_target_secrets(error, target) if (not ok and error) else error
     try:
         with store.connection(write=True) as db:
-            ai_cost_log.record(db, target, ok=ok, http_status=http_status, latency_ms=latency_ms, input_tokens=input_tokens, output_tokens=output_tokens)
+            if provider_attempted:
+                ai_cost_log.record(db, target, ok=ok, http_status=http_status, latency_ms=latency_ms, usage=usage)
             if target.id is None:
                 return  # server-setting models have no registry row for telemetry, budgets or circuits
             model_telemetry.record_check(
                 db, target.id, source="live", ok=ok, http_status=http_status,
                 latency_ms=latency_ms, error=safe_error, checked_at=store.timestamp(),
             )
-            model_budgets.record_usage(
-                db, target.id, input_tokens=input_tokens, output_tokens=output_tokens,
-                ok=ok, config=target.config,
-            )
+            if provider_attempted:
+                model_budgets.record_usage(db, target.id, input_tokens=usage.input_tokens, output_tokens=usage.output_tokens,
+                                           ok=ok, config=target.config, unsplit_tokens=usage.unsplit_tokens)
             model_circuit.record_outcome(db, target.id, ok=ok, error=safe_error, secret=target.api_key)
     except (sqlite3.Error, OverflowError, ValueError):
         pass
@@ -122,16 +117,17 @@ async def _validate_target_endpoint(target: model_resolver.ResolvedModel, *, res
             await ssrf_guard.validate_endpoint_url_async(target.endpoint or "", provider=ssrf_provider, resolve_dns=True)
     except ssrf_guard.SSRFValidationError as exc:
         detail = _sanitize_target_error(str(exc), "Blocked unsafe provider endpoint.", target)
-        await run_in_threadpool(_record_outcome, target, ok=False, http_status=400, latency_ms=0, error=detail)
+        await run_in_threadpool(_record_outcome, target, ok=False, http_status=400, latency_ms=0, error=detail, provider_attempted=False)
         raise HTTPException(400, detail) from exc
 
 
 async def _run_chain(
     candidates: list[model_resolver.ResolvedModel],
-    call_fn: Callable[[model_resolver.ResolvedModel, Callable[[int, int], None]], Awaitable[Any]],
+    call_fn: Callable[[model_resolver.ResolvedModel, MeterCallback], Awaitable[Any]],
     *,
     fetch_fn=None,
     on_usage: Callable[[int, int], None] | None = None,
+    before_attempt: Callable[[], Awaitable[None]] | None = None,
 ) -> tuple[model_resolver.ResolvedModel, Any]:
     real_transport = (fetch_fn is None or fetch_fn is provider_http.fetch_json) and (
         model_resolver.dispatch_completion is _ORIG_DISPATCH_COMPLETION
@@ -159,40 +155,43 @@ async def _run_chain(
                     circuit_retry_after = wait_s if circuit_retry_after is None else min(circuit_retry_after, wait_s)
                     break
             await _validate_target_endpoint(target, resolve_dns=real_transport)
+            if before_attempt is not None:
+                await before_attempt()
             if target.id is not None and rpm_limit is not None:
                 try:
                     QUOTA_LIMITER.consume(target.id, rpm_limit)
                 except HTTPException as exc:
                     last_exc = exc
                     break
-            usage_holder = [0, 0]
+            usage = model_budgets.TokenUsage()
 
-            def _record_tokens(in_tok: int, out_tok: int) -> None:
-                usage_holder[0] = model_budgets.clamp_tokens(in_tok)
-                usage_holder[1] = model_budgets.clamp_tokens(out_tok)
+            def record_usage(result: model_budgets.TokenUsage) -> None:
+                nonlocal usage
+                usage = result
                 if on_usage is not None:
-                    on_usage(usage_holder[0], usage_holder[1])
+                    on_usage(result.input_tokens, result.output_tokens)
 
             started = time.monotonic()
             try:
-                result = await call_fn(target, _record_tokens)
+                result = await call_fn(target, record_usage)
             except ssrf_guard.SSRFValidationError as exc:
                 elapsed = int((time.monotonic() - started) * 1000)
                 detail = _sanitize_target_error(str(exc), "Blocked unsafe provider endpoint.", target)
                 await run_in_threadpool(
                     _record_outcome, target, ok=False, http_status=400, latency_ms=elapsed, error=detail,
-                    input_tokens=usage_holder[0], output_tokens=usage_holder[1],
+                    usage=usage, provider_attempted=False,
                 )
                 raise HTTPException(400, detail) from exc
             except HTTPException as exc:
                 elapsed = int((time.monotonic() - started) * 1000)
                 detail = _sanitize_target_error(str(exc.detail), "Provider call failed.", target)
+                locally_blocked = _is_ssrf_error(exc)
                 await run_in_threadpool(
                     _record_outcome, target, ok=False, http_status=exc.status_code, latency_ms=elapsed, error=detail,
-                    input_tokens=usage_holder[0], output_tokens=usage_holder[1],
+                    usage=usage, provider_attempted=not locally_blocked,
                 )
                 safe_exc = HTTPException(exc.status_code, detail, headers=getattr(exc, "headers", None))
-                if _is_ssrf_error(exc) or exc.status_code not in FAILOVER_STATUSES:
+                if locally_blocked or exc.status_code not in FAILOVER_STATUSES:
                     raise safe_exc from exc
                 last_exc = safe_exc
                 if attempt < retries:
@@ -202,7 +201,7 @@ async def _run_chain(
             elapsed = int((time.monotonic() - started) * 1000)
             await run_in_threadpool(
                 _record_outcome, target, ok=True, http_status=200, latency_ms=elapsed, error=None,
-                input_tokens=usage_holder[0], output_tokens=usage_holder[1],
+                usage=usage,
             )
             return target, result
     if budget_blocked:
@@ -218,9 +217,9 @@ async def _run_chain(
     raise HTTPException(503, "No configured model could complete the request.")
 
 
-def _dispatch_kwargs(record_tokens: Callable[[int, int], None]) -> dict[str, Any]:
+def _dispatch_kwargs(record_usage: MeterCallback) -> dict[str, Any]:
     if model_resolver.dispatch_completion is _ORIG_DISPATCH_COMPLETION:
-        return {"on_usage": record_tokens}
+        return {"on_metering": record_usage}
     return {}
 
 
@@ -234,17 +233,18 @@ async def execute_completion_chain(
     fetch_fn=None,
     max_tokens: int | None = None,
     on_usage: Callable[[int, int], None] | None = None,
+    before_attempt: Callable[[], Awaitable[None]] | None = None,
 ) -> tuple[model_resolver.ResolvedModel, tuple[str, str]]:
     candidates = await run_in_threadpool(
         resolve_candidates, capability, provider=provider, allow_reference_fallback=allow_reference_fallback
     )
 
-    async def _call(target: model_resolver.ResolvedModel, record_tokens: Callable[[int, int], None]) -> tuple[str, str]:
+    async def _call(target: model_resolver.ResolvedModel, record_usage: MeterCallback) -> tuple[str, str]:
         return await model_resolver.dispatch_completion(
-            target, instructions, prompt, fetch_fn=fetch_fn, max_tokens=max_tokens, **_dispatch_kwargs(record_tokens)
+            target, instructions, prompt, fetch_fn=fetch_fn, max_tokens=max_tokens, **_dispatch_kwargs(record_usage)
         )
 
-    return await _run_chain(candidates, _call, fetch_fn=fetch_fn, on_usage=on_usage)
+    return await _run_chain(candidates, _call, fetch_fn=fetch_fn, on_usage=on_usage, before_attempt=before_attempt)
 
 
 async def execute_reference_chain(
@@ -259,11 +259,11 @@ async def execute_reference_chain(
     fetch = fetch_fn or provider_http.fetch_json
     extra_opts = {"ssrf_safe": True} if fetch is provider_http.fetch_json else {}
 
-    async def _call(target: model_resolver.ResolvedModel, record_tokens: Callable[[int, int], None]) -> tuple[str, str]:
+    async def _call(target: model_resolver.ResolvedModel, record_usage: MeterCallback) -> tuple[str, str]:
         limit_tokens = target.config.get("max_tokens") or default_max_tokens
         if target.provider != "openai":
             model_id, text = await model_resolver.dispatch_completion(
-                target, instructions, user_input, fetch_fn=fetch, max_tokens=limit_tokens, **_dispatch_kwargs(record_tokens)
+                target, instructions, user_input, fetch_fn=fetch, max_tokens=limit_tokens, **_dispatch_kwargs(record_usage)
             )
             return f"{target.display_name} {model_id}"[:180], text
         timeout = _safe_timeout(target.config.get("timeout_s"), default=75.0, low=1.0, high=180.0)
@@ -271,7 +271,7 @@ async def execute_reference_chain(
         if target.config.get("temperature") is not None:
             payload["temperature"] = target.config["temperature"]
         data = await fetch("OpenAI", "POST", "https://api.openai.com/v1/responses", timeout=timeout, headers={"Authorization": "Bearer " + target.api_key}, json=payload, **extra_opts)
-        record_tokens(*model_budgets.extract_usage(target.provider, data))
+        record_usage(model_budgets.provider_usage(target.provider, data, capability=target.capability))
         try:
             if data.get("status") != "completed":
                 raise HTTPException(502, "OpenAI did not complete the reference answer.")
@@ -309,11 +309,11 @@ async def execute_embedding_chain(
     fetch = fetch_fn or provider_http.fetch_json
     extra_opts = {"ssrf_safe": True} if fetch is provider_http.fetch_json else {}
 
-    async def _call(target: model_resolver.ResolvedModel, record_tokens: Callable[[int, int], None]) -> list[list[float]]:
+    async def _call(target: model_resolver.ResolvedModel, record_usage: MeterCallback) -> list[list[float]]:
         url, headers, payload = request_builder(target, texts)
         timeout = _safe_timeout(target.config.get("timeout_s"), default=30.0, low=1.0, high=180.0)
         data = await fetch(model_resolver.DISPLAY_PROVIDER.get(target.provider, target.display_name), "POST", url, headers=headers, json=payload, timeout=timeout, **extra_opts)
-        record_tokens(*model_budgets.extract_usage(target.provider, data))
+        record_usage(model_budgets.provider_usage(target.provider, data, capability=target.capability))
         try:
             items = sorted(data["data"], key=lambda item: int(item["index"]))
             vectors = [_parse_embedding_vector(item["embedding"]) for item in items]
@@ -338,7 +338,7 @@ async def execute_transcription_chain(
     fetch = fetch_fn or provider_http.fetch_json
     extra_opts = {"ssrf_safe": True} if fetch is provider_http.fetch_json else {}
 
-    async def _call(target: model_resolver.ResolvedModel, record_tokens: Callable[[int, int], None]) -> list[dict[str, str]]:
+    async def _call(target: model_resolver.ResolvedModel, record_usage: MeterCallback) -> list[dict[str, str]]:
         http_url, _ = url_builder(target.endpoint)
         model_id = target.model_id or "nova-2"
         timeout = _safe_timeout(target.config.get("timeout_s"), default=180.0, low=10.0, high=300.0)
@@ -348,7 +348,7 @@ async def execute_transcription_chain(
             headers={"Authorization": f"Token {target.api_key}", "Content-Type": content_type},
             content=audio_bytes, timeout=timeout, limit=12_000_000, **extra_opts,
         )
-        record_tokens(*model_budgets.extract_usage(target.provider, data))
+        record_usage(model_budgets.provider_usage(target.provider, data, capability=target.capability))
         try:
             results = data["results"]
             segments = [{"speaker": str(item.get("speaker", "Unknown")), "text": item["transcript"]} for item in results.get("utterances", []) if isinstance(item["transcript"], str) and item["transcript"].strip()]

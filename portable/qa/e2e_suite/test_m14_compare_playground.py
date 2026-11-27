@@ -236,6 +236,9 @@ def test_m14_playground_auth_presets_run_schema_errors_and_audit(e2e_workspace, 
     with e2e_workspace.client() as admin_api:
         login_user(admin_api, email=ADMIN_EMAIL, password=ADMIN_PASS)
         m_oa = _create_model(admin_api, slug="pg-oa", name="PG OpenAI", provider="openai", capability="reference", model_id="gpt-4o", secret=OA_SECRET)
+        admin_api.patch(f"/api/admin/models/{m_oa['id']}", json={
+            "parameters": {"input_cost_per_1m_usd": 0, "output_cost_per_1m_usd": 0},
+        }).raise_for_status()
         _create_model(admin_api, slug="pg-ant", name="PG Anthropic", provider="anthropic", capability="judge", model_id="claude-sonnet-4-6", secret=ANT_SECRET)
         m_dg = _create_model(admin_api, slug="pg-dg", name="PG Deepgram", provider="deepgram", capability="transcription", model_id="nova-2", secret=DG_SECRET)
         assert admin_api.post("/api/admin/models/playground/run", json={"model_ids": [m_dg["id"]], "system_prompt": "S", "user_input": "U"}).status_code == 422
@@ -274,6 +277,7 @@ def test_m14_playground_auth_presets_run_schema_errors_and_audit(e2e_workspace, 
     oa_card, ant_card = panel.get_by_label("Result for PG OpenAI"), panel.get_by_label("Result for PG Anthropic")
     expect(oa_card).to_contain_text("Schema valid")
     expect(oa_card).to_contain_text("120 in / 40 out")
+    expect(oa_card).to_contain_text("Estimated cost $0.00")
     expect(ant_card).to_contain_text("[redacted]")
     oa_card.locator("summary", has_text="Parsed JSON").click()
     expect(oa_card).to_contain_text('"likelihood": 88')
@@ -281,14 +285,17 @@ def test_m14_playground_auth_presets_run_schema_errors_and_audit(e2e_workspace, 
     async def fake_mixed(name, method, url, **kwargs):
         if name == "Anthropic":
             raise HTTPException(502, f"Upstream failed with Bearer {ANT_SECRET}")
-        return {"choices": [{"finish_reason": "stop", "message": {"content": "not valid json"}}], "usage": {"prompt_tokens": 10, "completion_tokens": 5}}
+        return {"choices": [{"finish_reason": "stop", "message": {"content": "not valid json"}}], "usage": {"total_tokens": 15}}
 
     monkeypatch.setattr(provider_http, "fetch_json", fake_mixed)
     panel.get_by_role("button", name="Run benchmark").click()
     expect(panel.get_by_text("1 / 2 succeeded")).to_be_visible()
     expect(oa_card).to_contain_text("Schema invalid")
+    expect(oa_card).to_contain_text("Reported tokens: 15 without a breakdown")
     expect(oa_card.get_by_label("Schema validation errors")).to_be_visible()
     expect(ant_card).to_contain_text("HTTP 502")
+    expect(ant_card).to_contain_text("Cost estimate unavailable. Token usage incomplete.")
+    expect(ant_card).not_to_contain_text("$0.00")
     expect(ant_card.get_by_role("alert")).to_be_visible()
 
     panel.locator("label", has_text="PG OpenAI").locator("input[type='checkbox']").uncheck()

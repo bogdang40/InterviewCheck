@@ -1,4 +1,11 @@
+import { formatUsd } from "./adminDiagnostics"
 import { adminRequest } from "./adminModels"
+
+// Daily counters predate per-call pricing coverage.
+export function recordedCost(requests: number, usd: number): string {
+  if (requests === 0) return "No calls"
+  return usd > 0 ? `${formatUsd(usd)} recorded` : "See cost log"
+}
 
 export type UsageDay = {
   day: string
@@ -89,7 +96,20 @@ export function hasActivity(day: UsageDay): boolean {
   return Object.entries(day).some(([key, value]) => key !== "day" && typeof value === "number" && value > 0)
 }
 
-export type AiCostSums = { requests: number; errors: number; input_tokens: number; output_tokens: number; cost_usd: number }
+export type EstimateStatus = "estimated" | "missing_rates" | "missing_usage" | "unknown"
+
+export type AiCostSums = {
+  unsplit_tokens: number
+  requests: number
+  errors: number
+  input_tokens: number
+  output_tokens: number
+  cost_usd: number
+  estimated_requests: number
+  missing_rate_requests: number
+  missing_usage_requests: number
+  unknown_requests: number
+}
 
 export type AiCostRow = AiCostSums & {
   company?: string
@@ -103,6 +123,8 @@ export type AiCostRow = AiCostSums & {
 }
 
 export type AiCostCall = {
+  unsplit_tokens: number
+  estimate_status: EstimateStatus
   at: string
   account_email: string | null
   company: string
@@ -119,6 +141,8 @@ export type AiCostCall = {
 }
 
 export type AiCostResponse = {
+  through_id: string
+  companies: string[]
   days: number
   first_day: string
   last_day: string
@@ -130,10 +154,20 @@ export type AiCostResponse = {
   recent: AiCostCall[]
 }
 
-export function getAiCosts(days: number): Promise<AiCostResponse> {
-  return adminRequest<AiCostResponse>(`/api/admin/usage/ai-costs?days=${days}`)
+export function costQuery(days: number, company: string, failedOnly: boolean): string {
+  const query = new URLSearchParams({ days: String(days) })
+  if (company) query.set("company", company)
+  if (failedOnly) query.set("failed_only", "true")
+  return query.toString()
 }
 
-export function aiCostCsvUrl(days: number): string {
-  return `/api/admin/usage/ai-costs.csv?days=${days}`
+export function getAiCosts(query: string): Promise<AiCostResponse> {
+  return adminRequest<AiCostResponse>(`/api/admin/usage/ai-costs?${query}`)
+}
+
+export function aiCostCsvUrl(query: string, report: AiCostResponse): string {
+  const params = new URLSearchParams(query)
+  params.set("end_day", report.last_day)
+  params.set("through_id", report.through_id)
+  return `/api/admin/usage/ai-costs.csv?${params}`
 }
