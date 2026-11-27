@@ -121,7 +121,7 @@ export default function Roles({
       })
       onSave(role)
       setAnalyticsRefreshKey((k) => k + 1)
-      setStatus(`${isEdit ? "Saved" : "Created"} role ${role.name} (v${role.version_number ?? 1}).`)
+      setStatus(`${isEdit ? "Saved" : "Created"} role ${role.name} (v${revisionNumber(role.version_number, role.version_number_text) || "unavailable"}).`)
       setAdding(false)
       setName("")
       setDescription("")

@@ -167,3 +167,23 @@ def test_denied_history_refresh_drops_old_rows_after_a_real_restore(workspace_ur
         expect(comparison).to_have_count(0)
         expect(history).not_to_contain_text("Private first material.")
         assert client.get("/api/roles/" + role["id"]).raise_for_status().json()["version_number"] == 4
+
+
+def test_denied_restore_removes_cached_material_and_actions(workspace_url, browser_page):
+    page = browser_page
+    with httpx.Client(base_url=workspace_url, headers=HEADERS) as client:
+        role = create_versions(client)
+        history, comparison, _ = inspect_first(page, workspace_url, role)
+        comparison.get_by_text("Compare permitted materials", exact=True).click()
+        expect(comparison).to_contain_text("Private first material.")
+        path = f"/api/roles/{role['id']}/versions/1/restore"
+        page.route("**" + path, lambda route: route.fulfill(status=403, json={"detail": "Restore permission revoked."}))
+        entry = history.get_by_role("button", name="Preview interviewer guide for revision 1", exact=True).locator("..")
+        with page.expect_response(lambda r: urlsplit(r.url).path == path) as response:
+            entry.get_by_role("button", name="Restore version", exact=True).click()
+        assert response.value.status == 403
+        expect(history.get_by_role("alert")).to_contain_text("Restore permission revoked.")
+        expect(history.get_by_role("button", name="Restore version", exact=True)).to_have_count(0)
+        expect(comparison).to_have_count(0)
+        expect(history).not_to_contain_text("Private first material.")
+        assert client.get("/api/roles/" + role["id"]).raise_for_status().json()["version_number"] == 3
