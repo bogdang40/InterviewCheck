@@ -4,9 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { KeyRound, RefreshCw } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { formatCompactTokens, formatUsd } from "@/lib/adminDiagnostics"
+import { formatCompactTokens } from "@/lib/adminDiagnostics"
 import { AdminApiError } from "@/lib/adminModels"
-import { formatUsageDay, getAdminUsage, USAGE_PERIODS, type UsageResponse } from "@/lib/adminUsage"
+import { formatUsageDay, getAdminUsage, recordedCost, USAGE_PERIODS, type UsageResponse } from "@/lib/adminUsage"
 import { UsageCostLog } from "./UsageCostLog"
 import { UsageDailyTable, UsageModelsTable, UsagePeopleTable, UsageRecentList } from "./UsageTables"
 
@@ -51,7 +51,7 @@ function AiSetup({ data, onOpenModels }: { data: UsageResponse; onOpenModels: ()
 
 export function UsageTab({ onAuthInvalid, onOpenModels }: { onAuthInvalid: (msg: string) => void; onOpenModels: () => void }) {
   const [days, setDays] = useState<number>(30)
-  const [data, setData] = useState<UsageResponse | null>(null)
+  const [report, setData] = useState<UsageResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [refreshKey, setRefreshKey] = useState(0)
@@ -80,6 +80,7 @@ export function UsageTab({ onAuthInvalid, onOpenModels }: { onAuthInvalid: (msg:
     void load(days)
   }, [days, load])
 
+  const data = report?.days === days ? report : null
   const totals = data?.totals
   const partial = data && (!data.tracking_since || data.tracking_since > data.first_day)
 
@@ -91,14 +92,14 @@ export function UsageTab({ onAuthInvalid, onOpenModels }: { onAuthInvalid: (msg:
           <p className="muted">Who visited, who signed in, and how the workspace and AI were used. Days are in UTC.</p>
         </div>
         <div className="admin-header-actions">
-          <label className="field">
-            Period
-            <select value={String(days)} onChange={(e) => setDays(Number(e.target.value))}>
+          <div className="field">
+            <label htmlFor="cost-period">Period</label>
+            <select id="cost-period" value={String(days)} onChange={(e) => setDays(Number(e.target.value))}>
               {USAGE_PERIODS.map((period) => (
                 <option key={period} value={String(period)}>{periodLabel(period)}</option>
               ))}
             </select>
-          </label>
+          </div>
           <Button type="button" variant="outline" size="sm" disabled={loading} onClick={() => { void load(days); setRefreshKey((n) => n + 1) }}>
             <RefreshCw size={14} aria-hidden="true" />
             {loading ? "Refreshing..." : "Refresh usage"}
@@ -134,9 +135,9 @@ export function UsageTab({ onAuthInvalid, onOpenModels }: { onAuthInvalid: (msg:
               <small>{count(totals.answers, "answer")} checked · {count(totals.reviews, "review")} saved</small>
             </article>
             <article className={`panel admin-metric${totals.ai_errors > 0 ? " attention" : ""}`}>
-              <div className="admin-metric-label"><span>AI requests</span></div>
+              <div className="admin-metric-label"><span>Connected model requests</span></div>
               <strong>{totals.ai_requests}</strong>
-              <small>{formatUsd(totals.ai_cost_usd)} estimated · {formatCompactTokens(totals.ai_tokens)} tokens · {count(totals.ai_errors, "error")}</small>
+              <small>{recordedCost(totals.ai_requests, totals.ai_cost_usd)} · {formatCompactTokens(totals.ai_tokens)} tokens · {count(totals.ai_errors, "error")}</small>
             </article>
           </div>
 
@@ -147,7 +148,13 @@ export function UsageTab({ onAuthInvalid, onOpenModels }: { onAuthInvalid: (msg:
             </p>
           )}
 
-          <UsageCostLog days={days} refreshKey={refreshKey} onAuthInvalid={onAuthInvalid} />
+        </>
+      )}
+
+      <UsageCostLog days={days} refreshKey={refreshKey} onAuthInvalid={onAuthInvalid} onOpenModels={onOpenModels} />
+
+      {data && (
+        <>
           <UsageDailyTable daily={data.daily} />
           {data.accounts_available && <UsagePeopleTable people={data.people} period={periodLabel(data.days)} />}
           {data.accounts_available && <UsageRecentList recent={data.recent} />}

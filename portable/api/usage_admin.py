@@ -3,9 +3,7 @@
 `POST /api/usage/visit` is public: the signed-out home, sample and sign-in pages report one view.
 `GET /api/admin/usage` is for administrators and reads both the review and the account database.
 """
-import csv
-from datetime import datetime, timedelta, timezone
-import io
+from datetime import date, datetime, timedelta, timezone
 import os
 from typing import Any, Literal
 
@@ -13,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import StreamingResponse
 
 from . import access, account_db, ai_cost_log, model_resolver, rate_limit, store, usage_events
-from .exports import csv_cell
+from .exports import csv_download, csv_row
 from .models import Input
 from .origin import workspace_client
 
@@ -45,26 +43,36 @@ def usage(days: int = Query(default=30, ge=1, le=365)) -> dict[str, Any]:
     return summary(days)
 
 
+def cost_window(days: int = Query(default=30, ge=1, le=365),
+                company: str | None = Query(default=None, min_length=1, max_length=254),
+                failed_only: bool = False, end_day: date | None = None) -> ai_cost_log.CostWindow:
+    today = date.fromisoformat(usage_events.today())
+    last = end_day or today
+    if last > today:
+        raise HTTPException(422, "The reporting period must end by today.")
+    if (today - last).days + days - 1 > ai_cost_log.KEEP_DAYS:
+        raise HTTPException(409, "This reporting period has expired. Refresh the cost log.")
+    first = last - timedelta(days=days - 1)
+    return ai_cost_log.CostWindow(first.isoformat(), last.isoformat(), company, failed_only)
+
+
 @router.get("/ai-costs", dependencies=[Depends(require_admin), Depends(rate_limit.limit(rate_limit.ADMIN_READ))])
-def ai_costs(days: int = Query(default=30, ge=1, le=365)) -> dict[str, Any]:
-    first = usage_events.since(days)
+def ai_costs(window: ai_cost_log.CostWindow = Depends(cost_window)) -> dict[str, Any]:
     with store.connection() as db:
-        return {"days": days, "first_day": first, "last_day": usage_events.today(), **ai_cost_log.summary(db, first)}
+        days = (date.fromisoformat(window.last_day) - date.fromisoformat(window.first_day)).days + 1
+        return {"days": days, "first_day": window.first_day, "last_day": window.last_day, **ai_cost_log.summary(db, window)}
 
 
 @router.get("/ai-costs.csv", dependencies=[Depends(require_admin), Depends(rate_limit.limit(rate_limit.ADMIN_READ))])
-def ai_costs_csv(days: int = Query(default=30, ge=1, le=365)) -> StreamingResponse:
-    first = usage_events.since(days)
-    with store.connection() as db:
-        rows = ai_cost_log.csv_rows(db, first)
-    buffer = io.StringIO()
-    writer = csv.writer(buffer)
-    writer.writerow(ai_cost_log.CSV_COLUMNS)
-    for row in rows:
-        writer.writerow([csv_cell(value) for value in row])
-    name = f"ai-costs-{first}-to-{usage_events.today()}.csv"
-    return StreamingResponse(iter([buffer.getvalue()]), media_type="text/csv; charset=utf-8",
-                             headers={"Content-Disposition": f'attachment; filename="{name}"', "Cache-Control": "no-store"})
+def ai_costs_csv(window: ai_cost_log.CostWindow = Depends(cost_window),
+                 through_id: int | None = Query(default=None, ge=0, le=2**63 - 1)) -> StreamingResponse:
+    def rows():
+        yield csv_row(ai_cost_log.CSV_COLUMNS)
+        with store.connection() as db:
+            for row in ai_cost_log.csv_rows(db, window, through_id):
+                yield csv_row(row)
+
+    return csv_download(rows(), f"ai-costs-{window.first_day}-to-{window.last_day}.csv")
 
 
 def _iso(ms: int | None) -> str | None:
@@ -90,14 +98,14 @@ def _workspace(first: str) -> dict[str, Any]:
         reviews = _per_day(db, """SELECT substr(created_at,1,10) AS d, COUNT(*) FROM answer_review_events
                                   WHERE substr(created_at,1,10)>=? GROUP BY d""", first)
         ai = {row[0]: row for row in db.execute(
-            """SELECT usage_date, SUM(request_count), SUM(error_count), SUM(input_tokens+output_tokens),
+            """SELECT usage_date, SUM(request_count), SUM(error_count), SUM(input_tokens+output_tokens+unsplit_tokens),
                       SUM(estimated_cost_usd) FROM model_usage_daily WHERE usage_date>=? GROUP BY usage_date""",
             (first,)).fetchall()}
         models = [dict(row) for row in db.execute(
             """SELECT m.display_name AS name, m.provider, m.capability, m.model_id, m.enabled,
                       m.encrypted_api_key IS NOT NULL AS has_key,
                       COALESCE(SUM(u.request_count),0) AS requests, COALESCE(SUM(u.error_count),0) AS errors,
-                      COALESCE(SUM(u.input_tokens+u.output_tokens),0) AS tokens,
+                      COALESCE(SUM(u.input_tokens+u.output_tokens+u.unsplit_tokens),0) AS tokens,
                       COALESCE(SUM(u.estimated_cost_usd),0) AS cost_usd
                FROM connected_models m LEFT JOIN model_usage_daily u ON u.model_id=m.id AND u.usage_date>=?
                GROUP BY m.id ORDER BY requests DESC, m.display_name""", (first,)).fetchall()]

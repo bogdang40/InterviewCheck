@@ -60,16 +60,20 @@ def archive_rows():
 
 @router.get("/exports/interviews.csv")
 def archive_csv():
+    return csv_download(archive_rows(), "interviews.csv")
+
+
+def csv_download(rows, filename: str):
     # Finish the SQLite snapshot on this thread. HTTP streaming can resume on
     # another worker, and a slow download must release the SQLite read lock.
     output = SpooledTemporaryFile(max_size=1024 * 1024)
     try:
-        for row in archive_rows():
+        for row in rows:
             output.write(row.encode("utf-8"))
         output.seek(0)
         return StreamingResponse(iter(lambda: output.read(65536), b""), media_type="text/csv; charset=utf-8",
                                  background=BackgroundTask(output.close),
-                                 headers={"Content-Disposition": 'attachment; filename="interviews.csv"'})
+                                 headers={"Content-Disposition": f'attachment; filename="{filename}"', "Cache-Control": "no-store"})
     except BaseException:
         output.close()
         raise

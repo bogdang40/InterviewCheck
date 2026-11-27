@@ -12,7 +12,7 @@ from pydantic import Field, StringConstraints, model_validator
 from starlette.concurrency import run_in_threadpool
 
 from . import (
-    model_admin, model_budgets, model_execution, model_registry, model_resolver,
+    ai_cost_log, model_admin, model_budgets, model_execution, model_registry, model_resolver,
     model_telemetry, prompt_framing, provider_http, rate_limit, ssrf_guard, store,
 )
 from .error_sanitizer import sanitize_error_text
@@ -197,7 +197,8 @@ def _sanitize_playground_error(text: str, fallback: str, *, secret_value: str | 
 
 def _record_live_outcome(
     target: model_resolver.ResolvedModel, *, ok: bool, http_status: int | None,
-    latency_ms: int | None, error: str | None, input_tokens: int = 0, output_tokens: int = 0,
+    latency_ms: int | None, error: str | None, provider_attempted: bool,
+    usage: model_budgets.TokenUsage = model_budgets.TokenUsage(),
 ) -> None:
     if target.id is None:
         return
@@ -207,21 +208,29 @@ def _record_live_outcome(
             db, target.id, source="live", ok=ok, http_status=http_status,
             latency_ms=latency_ms, error=safe_error, checked_at=store.timestamp(),
         )
+        if not provider_attempted:
+            return
+        ai_cost_log.record(
+            db, replace(target, capability="playground"), ok=ok, http_status=http_status,
+            latency_ms=latency_ms, usage=usage,
+        )
         model_budgets.record_usage(
-            db, target.id, input_tokens=input_tokens, output_tokens=output_tokens, ok=ok, config=target.config,
+            db, target.id, input_tokens=usage.input_tokens, output_tokens=usage.output_tokens,
+            unsplit_tokens=usage.unsplit_tokens, ok=ok, config=target.config,
         )
 
 
 def _fail_result(
     row: dict[str, Any], *, http_status: int, error: str,
-    latency_ms: int | None = None, input_tokens: int = 0, output_tokens: int = 0,
-    secret_value: str | None = None,
+    latency_ms: int | None = None, input_tokens: int = 0, output_tokens: int = 0, unsplit_tokens: int = 0,
+    estimated_cost_usd: float = 0.0, estimate_status: str = "not_called", secret_value: str | None = None,
 ) -> dict[str, Any]:
     return {
         "model_id": row["id"], "slug": row["slug"], "display_name": row["display_name"],
         "provider": row["provider"], "capability": row["capability"], "target_model": row["model_id"],
         "ok": False, "http_status": http_status, "latency_ms": latency_ms,
-        "input_tokens": input_tokens, "output_tokens": output_tokens, "estimated_cost_usd": 0.0,
+        "input_tokens": input_tokens, "output_tokens": output_tokens, "unsplit_tokens": unsplit_tokens, "estimated_cost_usd": estimated_cost_usd,
+        "estimate_status": estimate_status,
         "output_text": None, "parsed_json": None, "schema_valid": False, "schema_errors": [],
         "error": _sanitize_playground_error(error, "Playground execution failed.", secret_value=secret_value),
     }
@@ -260,7 +269,8 @@ async def _run_single_model(row: dict[str, Any], item: PlaygroundRunInput, instr
             )
         except ssrf_guard.SSRFValidationError as exc:
             detail = _sanitize_playground_error(str(exc), "Blocked unsafe provider endpoint.", secret_value=target.api_key)
-            await run_in_threadpool(_record_live_outcome, target, ok=False, http_status=400, latency_ms=0, error=detail)
+            await run_in_threadpool(_record_live_outcome, target, ok=False, http_status=400, latency_ms=0,
+                                    error=detail, provider_attempted=False)
             return _fail_result(row, http_status=400, error=detail, latency_ms=0, secret_value=target.api_key)
 
     decision = await run_in_threadpool(_budget_decision, target)
@@ -274,46 +284,49 @@ async def _run_single_model(row: dict[str, Any], item: PlaygroundRunInput, instr
         except HTTPException as exc:
             return _fail_result(row, http_status=exc.status_code, error=str(exc.detail), secret_value=target.api_key)
 
-    usage = [0, 0]
+    usage = model_budgets.TokenUsage()
 
-    def _on_usage(in_tok: int, out_tok: int) -> None:
-        usage[0] = max(0, int(in_tok))
-        usage[1] = max(0, int(out_tok))
+    def record_usage(result: model_budgets.TokenUsage) -> None:
+        nonlocal usage
+        usage = result
 
     dispatch_kwargs: dict[str, Any] = {"max_tokens": item.max_tokens}
     if model_resolver.dispatch_completion is _ORIG_DISPATCH_COMPLETION:
-        dispatch_kwargs["on_usage"] = _on_usage
+        dispatch_kwargs["on_metering"] = record_usage
 
     started = time.monotonic()
+    status, detail, provider_attempted = 200, None, True
     try:
         resolved_model_id, raw_output = await model_resolver.dispatch_completion(
             target, instructions, prompt, **dispatch_kwargs
         )
         clean_output = _redact_secret(prompt_framing.sanitize_model_text(raw_output), target.api_key)
     except ssrf_guard.SSRFValidationError as exc:
-        elapsed = int((time.monotonic() - started) * 1000)
+        status, provider_attempted = 400, False
         detail = _sanitize_playground_error(str(exc), "Blocked unsafe provider endpoint.", secret_value=target.api_key)
-        await run_in_threadpool(_record_live_outcome, target, ok=False, http_status=400, latency_ms=elapsed, error=detail, input_tokens=usage[0], output_tokens=usage[1])
-        return _fail_result(row, http_status=400, error=detail, latency_ms=elapsed, input_tokens=usage[0], output_tokens=usage[1], secret_value=target.api_key)
     except HTTPException as exc:
-        elapsed = int((time.monotonic() - started) * 1000)
+        status, provider_attempted = exc.status_code, not model_execution._is_ssrf_error(exc)
         detail = _sanitize_playground_error(str(exc.detail), "Provider call failed.", secret_value=target.api_key)
-        await run_in_threadpool(_record_live_outcome, target, ok=False, http_status=exc.status_code, latency_ms=elapsed, error=detail, input_tokens=usage[0], output_tokens=usage[1])
-        return _fail_result(row, http_status=exc.status_code, error=detail, latency_ms=elapsed, input_tokens=usage[0], output_tokens=usage[1], secret_value=target.api_key)
     except Exception:
-        elapsed = int((time.monotonic() - started) * 1000)
-        detail = "Provider call failed."
-        await run_in_threadpool(_record_live_outcome, target, ok=False, http_status=502, latency_ms=elapsed, error=detail, input_tokens=usage[0], output_tokens=usage[1])
-        return _fail_result(row, http_status=502, error=detail, latency_ms=elapsed, input_tokens=usage[0], output_tokens=usage[1], secret_value=target.api_key)
+        status, detail = 502, "Provider call failed."
 
     elapsed = int((time.monotonic() - started) * 1000)
-    await run_in_threadpool(_record_live_outcome, target, ok=True, http_status=200, latency_ms=elapsed, error=None, input_tokens=usage[0], output_tokens=usage[1])
+    cost = model_budgets.estimate_cost_usd(usage.input_tokens, usage.output_tokens, target.config)
+    estimate_status = ai_cost_log.estimate_status(usage, target.config) if provider_attempted else "not_called"
+    await run_in_threadpool(
+        _record_live_outcome, target, ok=detail is None, http_status=status, latency_ms=elapsed,
+        error=detail, provider_attempted=provider_attempted, usage=usage,
+    )
+    if detail is not None:
+        return _fail_result(row, http_status=status, error=detail, latency_ms=elapsed, input_tokens=usage.input_tokens,
+                            output_tokens=usage.output_tokens, unsplit_tokens=usage.unsplit_tokens, estimated_cost_usd=cost, estimate_status=estimate_status,
+                            secret_value=target.api_key)
     schema_valid, schema_errors, parsed_json = validate_expected_schema(clean_output, item.expected_schema)
     return {
         "model_id": row["id"], "slug": row["slug"], "display_name": row["display_name"],
         "provider": row["provider"], "capability": row["capability"], "target_model": resolved_model_id,
-        "ok": True, "http_status": 200, "latency_ms": elapsed, "input_tokens": usage[0], "output_tokens": usage[1],
-        "estimated_cost_usd": model_budgets.estimate_cost_usd(usage[0], usage[1], target.config),
+        "ok": True, "http_status": 200, "latency_ms": elapsed, "input_tokens": usage.input_tokens, "output_tokens": usage.output_tokens,
+        "unsplit_tokens": usage.unsplit_tokens, "estimated_cost_usd": cost, "estimate_status": estimate_status,
         "output_text": clean_output, "parsed_json": parsed_json,
         "schema_valid": schema_valid, "schema_errors": schema_errors, "error": None,
     }

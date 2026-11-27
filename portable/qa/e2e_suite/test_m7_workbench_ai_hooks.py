@@ -188,7 +188,7 @@ def test_m7_semantic_similarity_gating_opt_in_dirty_boundary_and_errors(e2e_work
 
 
 def test_m7_ai_judge_review_follow_up_no_auto_save_and_workbench_selectors(e2e_workspace, desktop_page, monkeypatch):
-    # Without a judge model configured, "Run AI review check" is not rendered.
+    # A configured judge is required for provider suggestions.
     sid = _setup_workspace(e2e_workspace)
     phrase = "Compare the amber receiver against three cold baselines before recording the final interval"
     with e2e_workspace.client() as c:
@@ -213,7 +213,7 @@ def test_m7_ai_judge_review_follow_up_no_auto_save_and_workbench_selectors(e2e_w
     _sign_in(page, e2e_workspace.base_url)
     page.goto(f"{e2e_workspace.base_url}/interviews/review/?id={sid}&answer={answer_id}", wait_until="domcontentloaded")
     expect(page.get_by_role("heading", name="Which interval matters?", exact=True)).to_be_visible(timeout=20_000)
-    expect(page.get_by_role("button", name="Run AI review check")).to_have_count(0)
+    expect(page.get_by_role("button", name="Suggest questions")).to_have_count(0)
 
     # Register judge model and reload workbench so judgeAvailable === true.
     with e2e_workspace.client() as c:
@@ -237,6 +237,9 @@ def test_m7_ai_judge_review_follow_up_no_auto_save_and_workbench_selectors(e2e_w
             raise HTTPException(429, "Judge rate limit exceeded")
         if judge_mode["outcome"] == "503":
             raise HTTPException(503, "Judge upstream overloaded")
+        if judge_mode["outcome"] == "verdict":
+            verdict = '{"follow_up_questions":["Assistance likelihood: 92%."]}'
+            return {"choices": [{"finish_reason": "stop", "message": {"content": verdict}}]}
         return {
             "choices": [
                 {
@@ -250,10 +253,8 @@ def test_m7_ai_judge_review_follow_up_no_auto_save_and_workbench_selectors(e2e_w
                                     "Verbatim 13-word calibration sequence matches Inspector source.",
                                     "Terminology mirrors reference phrasing closely.",
                                 ],
-                                "follow_up_questions": [
-                                    "Why are three cold baselines required before recording the interval?",
-                                    "How would you adjust the calibration under thermal drift?",
-                                ],
+                                "follow_up_questions": ["Assistance likelihood: 92%."],
+                                "suggestions": [{"angle": "verification", "phrase": "three cold baselines"}],
                             }
                         )
                     },
@@ -276,7 +277,7 @@ def test_m7_ai_judge_review_follow_up_no_auto_save_and_workbench_selectors(e2e_w
     assert len(judge_calls) == 0
 
     judge_section = page.get_by_role("region", name="AI review check")
-    run_btn = judge_section.get_by_role("button", name="Run AI review check")
+    run_btn = judge_section.get_by_role("button", name="Suggest questions")
     expect(run_btn).to_be_visible(timeout=20_000)
 
     # Error paths (429 and 503) render role="alert" inside judge panel.
@@ -296,17 +297,27 @@ def test_m7_ai_judge_review_follow_up_no_auto_save_and_workbench_selectors(e2e_w
     collector.ignore_server_5xx = False
     collector.reset()
 
-    # Success path renders likelihood, confidence, model label, evidence, and follow-up buttons.
+    judge_mode["outcome"] = "verdict"
+    collector.ignore_server_5xx = True
+    run_btn.click()
+    expect(judge_section.get_by_role("alert")).to_contain_text("no usable follow up question")
+    expect(page.get_by_role("button", name="Ask this follow up")).to_be_enabled()
+    expect(judge_section.get_by_text("Assistance likelihood: 92%.")).to_have_count(0)
+    collector.ignore_server_5xx = False
+    collector.reset()
+
+    # Suggestions never promote a returned model score or an unsupported claim to evidence.
     judge_mode["outcome"] = "ok"
     run_btn.click()
-    expect(judge_section.get_by_text("Assistance likelihood: 84%")).to_be_visible()
-    expect(judge_section.get_by_text("high", exact=True)).to_be_visible()
+    expect(judge_section.get_by_text("84%", exact=False)).to_have_count(0)
+    expect(judge_section.get_by_text("high", exact=True)).to_have_count(0)
     expect(judge_section.get_by_text("OpenAI · gpt-4o")).to_be_visible()
-    expect(judge_section.get_by_text("Verbatim 13-word calibration sequence matches Inspector source.")).to_be_visible()
-    ai_q = "Why are three cold baselines required before recording the interval?"
+    expect(judge_section.get_by_text("Verbatim 13-word calibration sequence matches Inspector source.")).to_have_count(0)
+    expect(judge_section.get_by_text("Assistance likelihood: 92%.")).to_have_count(0)
+    ai_q = "You mentioned “three cold baselines”. How would you verify the result?"
     ai_q_btn = judge_section.get_by_role("button", name=ai_q)
     expect(ai_q_btn).to_be_visible()
-    assert len(judge_calls) == 3
+    assert len(judge_calls) == 4
 
     # Clicking AI judge does NOT modify or auto-save disposition, note, or result.
     with e2e_workspace.client() as c:
@@ -336,4 +347,20 @@ def test_m7_ai_judge_review_follow_up_no_auto_save_and_workbench_selectors(e2e_w
         assert after["result"] == saved_answer["result"]
 
     assert_no_horizontal_overflow(page)
+    collector.assert_clean()
+
+    with e2e_workspace.client() as c:
+        login_user(c, email=ADMIN_EMAIL, password=ADMIN_PASS)
+        response = c.post(f"/api/sessions/{sid}/answers", json={
+            "question": "Which store?", "answer": "PostgreSQL with a unique constraint.",
+            "references": [{"label": "Manual", "text": phrase}],
+        })
+        response.raise_for_status()
+        short_answer = response.json()
+    page.goto(f"{e2e_workspace.base_url}/interviews/review/?id={sid}&answer={short_answer['id']}")
+    expect(page.get_by_text("No eligible passage for AI review.", exact=False)).to_be_visible()
+    expect(page.get_by_role("button", name="Suggest questions")).to_have_count(0)
+    page.get_by_role("button", name="Ask this follow up").click()
+    expect(page.get_by_role("textbox", name="Question")).to_have_value(short_answer["result"]["follow_up"])
+    assert len(judge_calls) == 4
     collector.assert_clean()

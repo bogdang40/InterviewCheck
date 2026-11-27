@@ -1,12 +1,13 @@
 "use client"
 
 import { Badge } from "@/components/ui/badge"
-import { formatCompactTokens, formatUsd } from "@/lib/adminDiagnostics"
+import { formatCompactTokens } from "@/lib/adminDiagnostics"
 import { CAPABILITY_LABELS, PROVIDER_LABELS, type ModelCapability, type ModelProvider } from "@/lib/adminModels"
 import {
   formatUsageDay,
   formatWhen,
   hasActivity,
+  recordedCost,
   type UsageDay,
   type UsageEvent,
   type UsageModel,
@@ -50,7 +51,7 @@ export function UsageDailyTable({ daily }: { daily: UsageDay[] }) {
                     <td data-label="Answers" className="admin-mono">{d.answers}</td>
                     <td data-label="Reviews" className="admin-mono">{d.reviews}</td>
                     <td data-label="AI requests" className="admin-mono">{d.ai_requests}{d.ai_errors ? ` (${d.ai_errors} failed)` : ""}</td>
-                    <td data-label="AI cost" className="admin-mono">{formatUsd(d.ai_cost_usd)}</td>
+                    <td data-label="AI cost" className="admin-mono">{recordedCost(d.ai_requests, d.ai_cost_usd)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -135,7 +136,7 @@ export function UsageModelsTable({ models, period }: { models: UsageModel[]; per
   return (
     <section className="panel stack" aria-label="AI usage by model">
       <h3>AI usage by model</h3>
-      <p className="muted">{period}. Costs are estimates from the token rates set on each model.</p>
+      <p className="muted">{period}. These counters record estimated charges. The AI cost log shows which calls had prices and usage data.</p>
       {!models.length ? (
         <p className="muted">No models connected yet.</p>
       ) : (
@@ -162,7 +163,7 @@ export function UsageModelsTable({ models, period }: { models: UsageModel[]; per
                   <td data-label="Key">{m.has_key ? <Badge variant="success">Stored</Badge> : <Badge variant="outline">None</Badge>}</td>
                   <td data-label="Requests" className="admin-mono">{m.requests}{m.errors ? ` (${m.errors} failed)` : ""}</td>
                   <td data-label="Tokens" className="admin-mono">{formatCompactTokens(m.tokens)}</td>
-                  <td data-label="Estimated cost" className="admin-mono">{formatUsd(m.cost_usd)}</td>
+                  <td data-label="Estimated cost" className="admin-mono">{recordedCost(m.requests, m.cost_usd)}</td>
                 </tr>
               ))}
             </tbody>

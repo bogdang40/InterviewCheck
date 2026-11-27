@@ -19,6 +19,25 @@ import {
 import { formatLatency } from "@/lib/adminTelemetry"
 import styles from "./PlaygroundTab.module.css"
 
+function tokenSummary(item: PlaygroundModelResult): string {
+  if (item.estimate_status !== "missing_usage") return `Tokens: ${item.input_tokens} in / ${item.output_tokens} out`
+  const reported = []
+  if (item.input_tokens > 0) reported.push(`${item.input_tokens} input`)
+  if (item.output_tokens > 0) reported.push(`${item.output_tokens} output`)
+  if (item.unsplit_tokens > 0) reported.push(`${item.unsplit_tokens} without a breakdown`)
+  return reported.length ? `Reported tokens: ${reported.join(", ")}` : "Token breakdown unavailable"
+}
+
+function costSummary(item: PlaygroundModelResult): string {
+  if (item.estimate_status === "not_called") return "No provider call"
+  if (item.estimate_status === "estimated") return `Estimated cost ${formatUsd(item.estimated_cost_usd)}`
+  const reason = item.estimate_status === "missing_rates" ? "Missing price"
+    : item.estimate_status === "missing_usage" ? "Token usage incomplete" : "Estimate unverified"
+  return item.estimated_cost_usd > 0
+    ? `Partial estimate ${formatUsd(item.estimated_cost_usd)}. ${reason}.`
+    : `Cost estimate unavailable. ${reason}.`
+}
+
 function ResultCard({ item, expectedSchema }: { item: PlaygroundModelResult; expectedSchema: PlaygroundExpectedSchema }) {
   const providerLabel = PROVIDER_LABELS[item.provider as ModelProvider] ?? item.provider
   const capLabel = CAPABILITY_LABELS[item.capability as ModelCapability] ?? item.capability
@@ -47,8 +66,8 @@ function ResultCard({ item, expectedSchema }: { item: PlaygroundModelResult; exp
 
       <div className={styles.metricsRow}>
         <span>Latency: {formatLatency(item.latency_ms)}</span>
-        <span>Tokens: {item.input_tokens} in / {item.output_tokens} out</span>
-        <span>Est. cost: {formatUsd(item.estimated_cost_usd)}</span>
+        {item.estimate_status !== "not_called" && <span>{tokenSummary(item)}</span>}
+        <span>{costSummary(item)}</span>
       </div>
 
       {(!item.ok || item.error) && <p role="alert" className="error">{item.error || "Model execution failed."}</p>}

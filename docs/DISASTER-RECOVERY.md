@@ -43,7 +43,9 @@ BACKUP_ACCOUNT=<storage-account> deploy/backup.sh manual
 
 Use this procedure when `review.sqlite3`, `access.sqlite3`, or the host disk is lost or corrupted.
 
-> **Known gap:** the nightly archive holds only the two databases. The master key file `/data/.model_secret.key` (on the VM `/srv/interviewcheck/data/.model_secret.key`) and `/srv/interviewcheck/app.env` are not in it, so a restore onto a new disk without them cannot decrypt stored model credentials, TOTP secrets or alert signing secrets, and loses the sign-up and administrator secrets. Keep a copy of both outside the VM (for example in a password manager), taken after provisioning and after every key rotation: `az vm run-command invoke -g interviewcheck-rg -n interviewcheck-vm --command-id RunShellScript --scripts "cat /srv/interviewcheck/data/.model_secret.key /srv/interviewcheck/app.env" --query "value[0].message" -o tsv`. On restore, install them before the first start, or the app creates a new, different key (key file mode `0600`, owner `10001`).
+The nightly archive contains the two databases. The deployment owner must designate a primary key custodian and a backup custodian. Record their names, the approved vault entry identifier and the last successful restore drill in the operator runbook. Keep the secrets themselves in a restricted vault separate from the database backup.
+
+After provisioning and each rotation, use the organization's approved secret transfer channel to store the active master key and `/srv/interviewcheck/app.env` outside the VM. For file based encryption, the key is `/srv/interviewcheck/data/.model_secret.key`. Keep secret values out of command output, CI logs and Azure Run Command results. On a replacement host, restore the configuration and key before the first start. Set the key file mode to `0600` and owner to `10001`. Retain each prior key in the vault until the last backup encrypted with that key expires. Verify both a current backup and one from before rotation on a disposable host with the dry run in section 4.
 
 1. Stop the application container so no process holds open WAL handles or writes to `/srv/interviewcheck/data`:
    ```sh
@@ -108,7 +110,7 @@ Model API keys in `connected_models` (`aad=model_id`), webhook signing secrets i
    cd /app/portable
    PYTHONPATH=. python -m api.key_rotation --db /data/review.sqlite3 --dry-run --json
    ```
-   When recovering from retired key files or env keys directly via CLI, pass `--old-key-file <path>` or `--old-key-env <secret>`.
+   When recovering from retired key files or env keys directly via CLI, pass `--old-key-file <path>` or `--old-key-env <environment_variable_name>`.
 3. Execute the rotation to re-encrypt all rows into `v2:<active_key_id>:` envelopes, in one transaction per database (a rerun finishes a partial rotation):
    ```sh
    PYTHONPATH=. python -m api.key_rotation --db /data/review.sqlite3 --json
