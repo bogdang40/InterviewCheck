@@ -39,6 +39,10 @@ interviews.example.com {
 
 For public embedded accounts, set `INTERVIEWCHECK_TRUST_PROXY_CLIENT_IP=1` only after the HTTPS proxy replaces `X-InterviewCheck-Client-IP` with the address it observed. The workspace accepts this header on loopback requests through the configured public origin and uses it for the sign in rate limit. Keep both application listeners on loopback.
 
+## Offline interviewer guide
+
+In **Roles**, open **Role file and copy** and choose **Preview interviewer guide**. To prepare from an earlier revision, open **Versions** and choose **Preview guide** on that revision. The preview keeps the saved questions in order and includes the resource policy. Select grading criteria or permitted materials only when the recipient needs them. Review the preview before downloading. The HTML file opens and prints offline. Creating a guide does not start an interview or record candidate notice.
+
 ## Admin usage and AI keys
 
 Administrators add provider keys under **Admin > Models > Connect model**. The server encrypts each key with the master key in `INTERVIEWCHECK_MODEL_SECRET_KEY` or, without it, the `.model_secret.key` file beside the review database. Keep a copy of that file in a safe place apart from the database backups: a restored database cannot decrypt its keys without it, and anyone holding both can read them.
