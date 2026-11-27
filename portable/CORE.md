@@ -141,6 +141,14 @@ Save the assistance policy and up to eight named permitted sources in a role tem
 
 The session detail returns the policy and its `permitted_sources` snapshot. Live draft comparison, saving, editing and evaluating imported exchanges apply the same snapshot. Each answer stores its own explicit comparison sources separately. Markdown, the print view and archive CSV include the agreed materials. Older roles and sessions receive an empty source list on upgrade.
 
+## Panel discussions
+
+Open a reviewer disagreement under **Roles**, or open **Panel discussion** on a saved exchange. Entitled reviewers can inspect the recorded opinions, process state, and dates. An administrator can request follow up, complete a discussion, or reopen it. Each action requires a reason. Only administrators can read the private reasons and the identities of the administrators who recorded them. Panel decisions do not change an answer disposition, score, or hiring outcome.
+
+A change to the saved exchange content or a new reviewer opinion requires another panel review, even if the wording or opinion is later restored. Editing only a reviewer note leaves the existing process state in place. A former decision remains in the history when the current context changes. Cases with required follow up remain in the open view. The history page shows up to ten changes per read.
+
+Private panel records live in the review SQLite database and are covered by the consistent database backup. The ordinary workspace JSON and calibration exports omit them. Restoring a workspace JSON into an empty database recovers the underlying reviews and starts any disagreement without a panel decision. Replaying a matching JSON file preserves local decisions. Trash hides the discussion. Retention anonymization and permanent purge erase its history.
+
 ## Review brief
 
 Open an interview and choose **Review brief** for a handoff based on saved outcomes. The default Markdown identifies the interview by its local session UUID and refers to exchanges by their order. It includes capture state, comparison counts and mutually exclusive interviewer outcome counts. Pending review counts only passage matches awaiting review. Exchanges with a pending disposition and no match have their own group. Human disclosures and unresolved outcomes are recorded independently of the comparison result.
