@@ -14,6 +14,8 @@ import { watchWorksheetAccess } from "@/lib/worksheetPrivacy"
 
 const ReviewWorksheet = dynamic(() => import("./ReviewWorksheet"), { ssr: false })
 
+const PanelDiscussion = dynamic(() => import("./PanelDiscussion"), { ssr: false })
+
 const ConflictReview = dynamic(() => import("./ConflictReview"), { ssr: false })
 
 const RevisionHistory = dynamic(() => import("./RevisionHistory"), { ssr: false })
@@ -255,6 +257,7 @@ export default function Evidence({
       <h2>{item.question}</h2>
       <CandidateResponse item={item}/>
       <Findings result={item.result} />
+      <PanelDiscussion sessionId={sessionId} item={item} locked={busy || dirty} onDirty={onDirty} />
       <JudgeAssist key={`${item.id}:${item.revision}`} sessionId={sessionId} item={item}
         judgeAvailable={judgeAvailable} onFollowUp={onFollowUp} />
       {onFollowUp && (
