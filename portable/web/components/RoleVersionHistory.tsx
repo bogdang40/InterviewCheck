@@ -77,7 +77,7 @@ export default function RoleVersionHistory({ role, onRestored, onConflictReload,
     setConflict(false)
     void loadVersions(controller.signal)
     return () => controller.abort()
-  }, [loadVersions, role.version, role.version_number])
+  }, [loadVersions, role.version, role.version_number, role.version_number_text])
 
   async function handleRestore(versionNumber: string) {
     setRestoringVersion(versionNumber)
@@ -96,7 +96,9 @@ export default function RoleVersionHistory({ role, onRestored, onConflictReload,
       onRestored(updated)
       await loadVersions()
     } catch (err) {
-      if (err instanceof RoleApiError && err.status === 409) {
+      if (err instanceof RoleApiError && [401, 402, 403, 404].includes(err.status)) {
+        unavailable(err.message)
+      } else if (err instanceof RoleApiError && err.status === 409) {
         setConflict(true)
         setError(`Version conflict (409): ${err.message || "The saved role changed before restore."} Reload the latest role before rolling back.`)
       } else {
