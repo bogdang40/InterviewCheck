@@ -47,6 +47,8 @@ export type SimulateChainResponse = {
   active_chain: SimulatedChainCandidate[]
   skipped: SimulatedChainCandidate[]
   would_fail_503: boolean
+  would_fail_429: boolean
+  failure_reason: "no_candidate" | "circuit_open" | "workspace_allowance" | "model_budget" | "model_rpm" | null
 }
 
 export type ModelUsageSummary = {

@@ -134,14 +134,17 @@ def test_presets_and_concurrent_multi_model_benchmark_telemetry_and_audit(env, m
         enc1 = db.execute("SELECT encrypted_api_key FROM connected_models WHERE id=?", (m1["id"],)).fetchone()[0]
 
     in_flight = max_in_flight = 0
+    all_models_started = asyncio.Barrier(3)
     captured_calls = []
 
     async def fake_fetch(name, method, url, **kwargs):
         nonlocal in_flight, max_in_flight
         in_flight += 1
         max_in_flight = max(max_in_flight, in_flight)
-        await asyncio.sleep(0.02)
-        in_flight -= 1
+        try:
+            await asyncio.wait_for(all_models_started.wait(), timeout=10)
+        finally:
+            in_flight -= 1
         captured_calls.append((name, url, kwargs["json"]))
         if name == "Anthropic":
             return {"stop_reason": "end_turn", "content": [{"type": "text", "text": f'["Q1?", "{s2}"]'}], "usage": {"input_tokens": 50, "output_tokens": 20}}

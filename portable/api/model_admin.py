@@ -32,14 +32,14 @@ async def require_admin(request: Request) -> dict[str, Any]:
     return user
 
 
-def _record_audit(review_db, *, actor: dict[str, Any], action: str, model_uuid: str, details: dict[str, Any], post_commit: list) -> None:
+def _record_audit(review_db, *, actor: dict[str, Any], action: str, model_uuid: str | None, details: dict[str, Any], post_commit: list) -> None:
     actor_id = actor.get("id")
     if account_db.database().is_file():
         # Queued in the same transaction as the change; _flush_account_audits delivers it after commit.
         admin_audit_outbox.stage(review_db, action=action, target=model_uuid, actor_user_id=actor_id, details=details)
         post_commit.append((action, model_uuid, actor_id, details))
     else:
-        model_registry.write_fallback_audit(review_db, actor_user_id=actor_id, action=action, model_uuid=model_uuid, details=details)
+        model_registry.write_fallback_audit(review_db, actor_user_id=actor_id, action=action, model_uuid=model_uuid or "workspace", details=details)
 
 
 def _flush_account_audits(post_commit: list) -> None:

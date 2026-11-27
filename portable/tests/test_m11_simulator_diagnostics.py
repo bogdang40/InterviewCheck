@@ -173,7 +173,8 @@ def test_simulate_chain_dry_run_no_http_no_decrypt_and_no_secret_exposure(env, m
     model_execution.QUOTA_LIMITER.consume(m_primary["id"], 3)
     model_execution.QUOTA_LIMITER.consume(m_primary["id"], 3)
     slug_res = env.post("/api/admin/models/simulate-chain", json={"capability": "question_planning", "provider": m_primary["slug"]})
-    assert slug_res.status_code == 200 and slug_res.json()["would_fail_503"] is True
+    assert slug_res.status_code == 200 and slug_res.json()["would_fail_429"] is True
+    assert slug_res.json()["failure_reason"] == "model_rpm"
     assert slug_res.json()["skipped"][0]["skip_reason"] == "rpm_quota_exceeded"
     assert slug_res.json()["skipped"][0]["rpm_remaining"] == 0
 

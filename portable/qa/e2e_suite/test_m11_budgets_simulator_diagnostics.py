@@ -199,7 +199,7 @@ def test_m11_routing_simulator_chain_budget_skip_and_readonly(e2e_workspace, des
 
     sim.get_by_label("Simulator provider or slug (optional)").fill("openai")
     sim.get_by_role("button", name="Test capability chain").click()
-    expect(sim.get_by_text("Would fail 503 (no active candidate)")).to_be_visible()
+    expect(sim.get_by_text("Would fail 429 (model budget reached)")).to_be_visible()
 
     sim.get_by_label("Simulator provider or slug (optional)").fill("")
     sim.get_by_label("Capability").select_option("question_planning")

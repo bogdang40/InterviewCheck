@@ -285,7 +285,7 @@ export default function AdminConsole() {
       </AdminTabPanel>
 
       <AdminTabPanel id="accounts" active={tab === "accounts"} opened={openedTabs.has("accounts")}><AccountsTab onAuthInvalid={onAuthInvalid} /></AdminTabPanel>
-      <AdminTabPanel id="usage" active={tab === "usage"} opened={openedTabs.has("usage")}><UsageTab onAuthInvalid={onAuthInvalid} onOpenModels={() => selectTab("models")} /></AdminTabPanel>
+      <AdminTabPanel id="usage" active={tab === "usage"} opened={openedTabs.has("usage")}><UsageTab onAuthInvalid={onAuthInvalid} onOpenModels={() => selectTab("models")} onDirtyChange={reporterFor("usage-allowance")} /></AdminTabPanel>
       <AdminTabPanel id="audit" active={tab === "audit"} opened={openedTabs.has("audit")}><AuditLogTab onAuthInvalid={onAuthInvalid} /></AdminTabPanel>
       <AdminTabPanel id="diagnostics" active={tab === "diagnostics"} opened={openedTabs.has("diagnostics")}><DiagnosticsTab models={models} onAuthInvalid={onAuthInvalid} /></AdminTabPanel>
       <AdminTabPanel id="playground" active={tab === "playground"} opened={openedTabs.has("playground")}><PlaygroundTab models={models} onAuthInvalid={onAuthInvalid} /></AdminTabPanel>

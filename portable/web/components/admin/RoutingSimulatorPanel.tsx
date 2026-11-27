@@ -22,6 +22,16 @@ function providerLabel(provider: string): string {
   return PROVIDER_LABELS[provider as ModelProvider] ?? provider
 }
 
+function routingResult(result: SimulateChainResponse) {
+  switch (result.failure_reason) {
+    case "workspace_allowance": return "Would fail 429 (workspace attempt allowance reached)"
+    case "model_budget": return "Would fail 429 (model budget reached)"
+    case "model_rpm": return "Would fail 429 (model request rate reached)"
+    case "circuit_open": return "Would fail 503 (model circuit open)"
+    default: return result.would_fail_503 ? "Would fail 503 (no active candidate)" : `Chain ready (${result.active_chain.length} active)`
+  }
+}
+
 function budgetLabel(status: string): string {
   if (status === "daily_token_limit_exceeded") return "Daily token limit exceeded"
   if (status === "monthly_cost_limit_exceeded") return "Monthly cost limit exceeded"
@@ -53,7 +63,8 @@ function CandidateRow({ item, skipped = false }: { item: SimulatedChainCandidate
         <span>RPM remaining: {item.rpm_remaining != null ? item.rpm_remaining : "Unlimited"}</span>
         <span>{budgetLabel(item.budget_status)}</span>
       </div>
-      {item.skip_reason && <p className="admin-sim-reason">{item.skip_reason}</p>}
+      {item.skip_reason && <p className="admin-sim-reason">{item.skip_reason === "workspace_attempt_allowance_exhausted"
+        ? "Workspace monthly attempt allowance reached" : item.skip_reason}</p>}
     </li>
   )
 }
@@ -145,8 +156,8 @@ export function RoutingSimulatorPanel({ onAuthInvalid }: { onAuthInvalid: (msg: 
       {result && (
         <div className="stack" aria-live="polite">
           <div className="admin-model-title">
-            <Badge variant={result.would_fail_503 ? "destructive" : "success"}>
-              {result.would_fail_503 ? "Would fail 503 (no active candidate)" : `Chain ready (${result.active_chain.length} active)`}
+            <Badge variant={result.would_fail_503 || result.would_fail_429 ? "destructive" : "success"}>
+              {routingResult(result)}
             </Badge>
             <span className="admin-mono">
               {CAPABILITY_LABELS[result.capability] ?? result.capability}
