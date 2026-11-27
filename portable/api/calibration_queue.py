@@ -37,15 +37,12 @@ def _collect_disagreements(
     params: tuple[Any, ...] = (str(role_id),) if role_id is not None else ()
 
     rows = db.execute(
-        f"""SELECT e.id, e.session_id, e.answer_id, COALESCE(c.role_id, e.role_id) AS role_id,
-                   e.reviewer_id, e.reviewer_email, e.disposition, e.created_at,
-                   a.question AS question, a.disposition AS current_disposition,
-                   s.candidate AS candidate, COALESCE(r.name, s.role) AS role_name
+        f"""SELECT e.answer_id, COALESCE(c.role_id, e.role_id) AS role_id,
+                   e.reviewer_id, e.reviewer_email, e.disposition, e.created_at
             FROM answer_review_events e
             JOIN active_sessions s ON s.id = e.session_id
             JOIN answers a ON a.id = e.answer_id AND a.session_id = s.id
             LEFT JOIN session_context c ON c.session_id = s.id
-            LEFT JOIN roles r ON r.id = COALESCE(c.role_id, e.role_id)
             WHERE 1=1 {anon_clause} {role_clause}
             ORDER BY e.id ASC""",
         params,
@@ -57,40 +54,34 @@ def _collect_disagreements(
         latest[aid][uid] = row
         generations[aid][uid] += 1
 
-    states = panel_ledger.queue_states(db, latest, generations) if panel_view else {}
+    states = {}
+    if panel_view == "all":
+        times = panel_ledger.decision_times(db, latest)
+    else:
+        states = panel_ledger.queue_states(db, latest, generations) if panel_view else {}
+        times = {aid: at for aid, (_, at) in states.items()}
+
     active_reviewers, role_ids_with_disagreements = set(), set()
-    disagreed_items = []
+    ranked = []
     splits = 0
     for answer_id, by_reviewer in latest.items():
-        first = next(iter(by_reviewer.values()))
         rev_rows = [r for r in by_reviewer.values() if r["disposition"] != "pending"]
         active_reviewers.update(r["reviewer_id"] for r in rev_rows)
-        split = len({r["disposition"] for r in rev_rows}) > 1
-        if split:
+        if len({r["disposition"] for r in rev_rows}) > 1:
             splits += 1
-            if first["role_id"]:
-                role_ids_with_disagreements.add(first["role_id"])
-        elif answer_id not in states:
+            role = next(iter(by_reviewer.values()))["role_id"]
+            if role:
+                role_ids_with_disagreements.add(role)
+        elif answer_id not in times:
             continue
-        panel_status, decision_at = states.get(answer_id, ("open", ""))
-        if panel_view == "open" and panel_status == "discussion_complete":
-            continue
-        if panel_view == "completed" and panel_status != "discussion_complete":
-            continue
-        ordered = sorted(rev_rows, key=lambda r: (r["created_at"], r["reviewer_email"].casefold(), r["reviewer_id"]))
-        item = {"_latest_ts": max(decision_at, *(r["created_at"] for r in (by_reviewer.values() if panel_view else ordered))),
-                "role_id": first["role_id"], "role_name": first["role_name"], "session_id": first["session_id"],
-                "candidate": first["candidate"], "answer_id": answer_id, "question": first["question"],
-                "current_disposition": first["current_disposition"],
-                "reviewers": [{"reviewer_email": r["reviewer_email"], "disposition": r["disposition"],
-                               "created_at": r["created_at"]} for r in ordered]}
-        if panel_view:
-            item["panel_status"] = panel_status
-        disagreed_items.append(item)
-
-    disagreed_items.sort(key=lambda item: (item["_latest_ts"], item["answer_id"]), reverse=True)
-    for item in disagreed_items:
-        item.pop("_latest_ts", None)
+        if panel_view in ("open", "completed"):
+            completed = states.get(answer_id, ("open", ""))[0] == "discussion_complete"
+            if completed != (panel_view == "completed"):
+                continue
+        # A pending vote contributes to panel order but not to the legacy disagreement export.
+        vote_time = max(r["created_at"] for r in (by_reviewer.values() if panel_view else rev_rows))
+        ranked.append((max(vote_time, times.get(answer_id, "")), answer_id))
+    ranked.sort(reverse=True)
 
     summary = {
         "roles_with_disagreements": len(role_ids_with_disagreements),
@@ -100,12 +91,39 @@ def _collect_disagreements(
     offset = 0
     result = {"summary": summary}
     if panel_view:
-        total = len(disagreed_items)
+        total = len(ranked)
         actual_page = min(page, max(1, (total + limit - 1) // limit))
         offset = (actual_page - 1) * limit
         result.update(matching_cases=total, page=actual_page)
-    result["items"] = disagreed_items[offset:offset + limit]
+    ids = [aid for _, aid in ranked[offset:offset + limit]]
+    if panel_view == "all":
+        states = panel_ledger.queue_states(db, latest, generations, answer_ids=(aid for aid in ids if aid in times))
+    result["items"] = _page_items(db, ids, latest, states, panel_view)
     return result
+
+
+def _page_items(db, ids, latest, states, panel_view):
+    # Preserve each case's selected role even when an old review has only its event role ID.
+    if not ids:
+        return []
+    keys = [(aid, next(iter(latest[aid].values()))["role_id"]) for aid in ids]
+    rows = db.execute("""SELECT a.id AS answer_id,a.session_id,a.question,a.disposition AS current_disposition,
+                               s.candidate,json_extract(k.value,'$[1]') AS role_id,COALESCE(r.name,s.role) AS role_name
+                        FROM json_each(?) k JOIN answers a ON a.id=json_extract(k.value,'$[0]')
+                        JOIN active_sessions s ON s.id=a.session_id LEFT JOIN roles r ON r.id=json_extract(k.value,'$[1]')
+                        ORDER BY k.key""", (json.dumps(keys),))
+    items = []
+    for row in rows:
+        aid = row["answer_id"]
+        reviews = sorted((r for r in latest[aid].values() if r["disposition"] != "pending"),
+                         key=lambda r: (r["created_at"], r["reviewer_email"].casefold(), r["reviewer_id"]))
+        item = dict(row)
+        item["reviewers"] = [{"reviewer_email": r["reviewer_email"], "disposition": r["disposition"],
+                              "created_at": r["created_at"]} for r in reviews]
+        if panel_view:
+            item["panel_status"] = states.get(aid, ("open", ""))[0]
+        items.append(item)
+    return items
 
 
 def _collect_reviewer_metrics(has_events: bool, *, role_id: UUID | None) -> list[dict[str, Any]]:
