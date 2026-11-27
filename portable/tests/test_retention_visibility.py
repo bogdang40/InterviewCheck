@@ -30,7 +30,8 @@ def receipt(db, sid):
                             (sid,)).fetchone())
 
 
-@pytest.mark.parametrize("older_state", ["current_note", "history_only", "answer_text", "finding", "follow_up"])
+@pytest.mark.parametrize("older_state", ["current_note", "history_only", "answer_text", "finding",
+                                        "follow_up", "unprefixed_follow_up", "explanation"])
 def test_upgrade_withholds_each_conflicting_record_without_changing_its_contents(client, monkeypatch, older_state):
     sid, aid = retained(client)
     clean, _ = retained(client)
@@ -51,8 +52,12 @@ def test_upgrade_withholds_each_conflicting_record_without_changing_its_contents
             found = store.get_answer(db, sid, aid)["result"]
             if older_state == "finding":
                 found["passages"] = [{"answer_excerpt": MARKER}]
-            else:
+            elif older_state == "follow_up":
                 found["follow_up"] = f"You said “{MARKER}”. Give an example."
+            elif older_state == "unprefixed_follow_up":
+                found["follow_up"] = MARKER
+            else:
+                found["explanation"] = MARKER
             db.execute("UPDATE answers SET result=? WHERE id=?", (json.dumps(found), aid))
         before = tuple(db.execute("SELECT * FROM answers WHERE id=?", (aid,)).fetchone())
         history = db.execute("SELECT snapshot FROM answer_history WHERE answer_id=?", (aid,)).fetchall()
@@ -130,3 +135,26 @@ def test_a_clean_receipt_keeps_the_original_grade_and_handoff_policy(client, pre
     assert (row["weight"], row["rating"], row["updated_by"]) == (2, 4, OWNER)
     assert row["rationale"] == ("Basis of the grade" if preserve else "")
     client.get(path + "/report").raise_for_status()
+
+
+@pytest.mark.parametrize("recreate_old_view", [False, True])
+def test_recovery_reinstalls_missing_or_changed_visibility_objects(client, recreate_old_view):
+    sid, aid = retained(client)
+    with store.connection(write=True) as db:
+        db.execute("DROP VIEW active_sessions")
+        if recreate_old_view:
+            db.execute("""CREATE VIEW active_sessions AS SELECT s.rowid AS rowid,s.* FROM sessions s
+                       WHERE NOT EXISTS (SELECT 1 FROM session_trash t WHERE t.session_id=s.id)""")
+        db.execute("DROP TRIGGER retention_hold_answers_UPDATE")
+        db.execute("CREATE TRIGGER retention_hold_answers_UPDATE AFTER UPDATE ON answers BEGIN SELECT 1; END")
+        db.execute("UPDATE answers SET note=? WHERE id=?", (MARKER, aid))
+        assert not db.execute("SELECT 1 FROM retention_read_holds WHERE session_id=?", (sid,)).fetchone()
+    for _ in range(2):
+        store.initialize(store.db_path())
+        assert client.get(f"/api/sessions/{sid}/report").status_code == 409
+        assert client.get("/api/exports/interviews.csv").status_code == 409
+        assert client.get("/api/sessions").raise_for_status().json() == []
+    other, other_aid = retained(client)
+    with store.connection(write=True) as db:
+        db.execute("UPDATE answers SET note=? WHERE id=?", (MARKER, other_aid))
+    assert client.get(f"/api/sessions/{other}/report").status_code == 409

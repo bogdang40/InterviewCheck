@@ -1,21 +1,22 @@
-"""Withhold records an earlier writer changed after their confirmed erasure."""
+"""Withhold records that conflict with a confirmed erasure receipt."""
+import re
+
 from fastapi import HTTPException
 
-from .evidence import Words, probe
+from . import retained_narratives
+from .retained_finding import TEXT_PARAMS, UNSAFE_TEXT_SQL
 from .retention_anonymizer import REDACTED_TEXT
 
 
 CANDIDATE = "r.candidate != 'Candidate [Anonymized ' || substr(r.id,1,8) || ']' OR r.legacy IS NOT NULL"
-ANSWER = """r.answer!=:marker OR r.note!='' OR r.legacy IS NOT NULL OR r.import_origin IS NOT NULL OR
+ANSWER = f"""r.answer!=:marker OR r.note!='' OR r.legacy IS NOT NULL OR r.import_origin IS NOT NULL OR
     CASE WHEN json_valid(r.result) THEN json_type(r.result,'$.passages') IS NOT 'array'
-      OR json_type(r.result,'$.follow_up') IS NOT 'text' OR json_type(r.result,'$.explanation') IS NOT 'text'
-      OR (instr(json_extract(r.result,'$.follow_up'),'You said')>0
-          AND json_extract(r.result,'$.follow_up')!=:safe_probe) OR EXISTS (
+      OR ({UNSAFE_TEXT_SQL}) OR EXISTS (
         SELECT 1 FROM json_each(r.result,'$.passages') p
         WHERE CASE WHEN p.type='object' THEN coalesce(json_extract(p.value,'$.answer_excerpt'),'')!=:marker ELSE 1 END)
     ELSE 1 END"""
 EXPORT = "r.draft!=:marker OR r.recipient!=:marker"
-PARAMS = {"marker": REDACTED_TEXT, "safe_probe": probe("", Words(REDACTED_TEXT))}
+PARAMS = {"marker": REDACTED_TEXT, **TEXT_PARAMS}
 ACTIVE_CONDITION = """NOT EXISTS (SELECT 1 FROM session_trash t WHERE t.session_id=s.id)
                   AND NOT EXISTS (SELECT 1 FROM retention_read_holds h WHERE h.session_id=s.id)"""
 
@@ -31,13 +32,25 @@ def _conflicts(scope):
            OR EXISTS (SELECT 1 FROM note_exports r WHERE r.session_id=s.id AND ({EXPORT})))"""
 
 
+def _install(db, kind, name, definition):
+    # Inspect the actual definition. A physical restore can retain derived tables and lose
+    # or revert an associated view or trigger. Stable definitions need no schema rewrite.
+    statement = f"CREATE {kind} {name} {definition}"
+    existing = db.execute("SELECT sql FROM sqlite_master WHERE type=? AND name=?", (kind.lower(), name)).fetchone()
+    if existing and existing[0] == statement:
+        return
+    if existing:
+        db.execute(f"DROP {kind} {name}")
+    db.execute(statement)
+
+
 def _track_changes(db):
-    # SQLite does not permit parameters in trigger definitions. Quote only the application's
-    # fixed redaction marker. Interview values remain SQL column references.
+    # SQLite does not permit parameters in trigger definitions. Quote the fixed release
+    # vocabulary once. User text appears only as a reference to the stored column.
+    literals = {name: db.execute("SELECT quote(?)", (value,)).fetchone()[0] for name, value in PARAMS.items()}
+
     def fixed_values(sql):
-        for name, value in PARAMS.items():
-            sql = sql.replace(":" + name, db.execute("SELECT quote(?)", (value,)).fetchone()[0])
-        return sql
+        return re.sub(r":([A-Za-z_]\w*)", lambda match: literals[match[1]], sql)
     sources = (
         ("sessions", "NEW.id", CANDIDATE),
         ("answers", "NEW.session_id", ANSWER),
@@ -45,30 +58,29 @@ def _track_changes(db):
         ("session_drafts", "NEW.session_id", "1"),
         ("transcript_imports", "NEW.session_id", "1"),
         ("note_exports", "NEW.session_id", EXPORT),
+        ("session_handoff_notes", "NEW.session_id", "NEW.body!=''"),
+        ("session_scorecards", "NEW.session_id", "NEW.rationale!=''"),
     )
     for table, sid, predicate in sources:
         condition = fixed_values(predicate.replace("r.", "NEW."))
         for event in ("INSERT", "UPDATE"):
-            db.execute(f"""CREATE TRIGGER IF NOT EXISTS retention_hold_{table}_{event} AFTER {event} ON {table}
+            _install(db, "TRIGGER", f"retention_hold_{table}_{event}", f"""AFTER {event} ON {table}
                 WHEN EXISTS (SELECT 1 FROM session_anonymizations WHERE session_id={sid}) AND ({condition})
                 BEGIN INSERT OR IGNORE INTO retention_read_holds(session_id) VALUES({sid}); END""")
     check_receipt = fixed_values(_conflicts("x.session_id=NEW.session_id"))
-    db.execute(f"""CREATE TRIGGER IF NOT EXISTS retention_hold_receipt AFTER INSERT ON session_anonymizations
+    _install(db, "TRIGGER", "retention_hold_receipt", f"""AFTER INSERT ON session_anonymizations
         BEGIN INSERT OR IGNORE INTO retention_read_holds(session_id) {check_receipt}; END""")
 
 
 def refresh(db):
     # Only membership is rebuilt. The original rows and erasure receipt remain available
     # in a consistent physical backup. Current writers enforce protection in their transaction.
-    first = db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='retention_read_holds'").fetchone() is None
     db.execute("""CREATE TABLE IF NOT EXISTS retention_read_holds (
                   session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE)""")
     db.execute("DELETE FROM retention_read_holds")
     db.execute(f"INSERT INTO retention_read_holds(session_id) {_conflicts('1')}", PARAMS)
-    if first:
-        db.execute("DROP VIEW active_sessions")
-        db.execute(f"""CREATE VIEW active_sessions AS
-            SELECT s.rowid AS rowid,s.* FROM sessions s WHERE {ACTIVE_CONDITION}""")
+    retained_narratives.refresh(db)
+    _install(db, "VIEW", "active_sessions", f"AS SELECT s.rowid AS rowid,s.* FROM sessions s WHERE {ACTIVE_CONDITION}")
     _track_changes(db)
 
 
