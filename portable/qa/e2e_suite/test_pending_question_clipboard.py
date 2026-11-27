@@ -35,7 +35,9 @@ def test_copy_reads_back_from_disposable_chromium_clipboard(e2e_workspace, deskt
         page.evaluate("() => navigator.clipboard.writeText('Synthetic clipboard test precondition')")
         click_copy(page, handoff, observed, approved)
         expect(handoff.get_by_text("Handoff copied.", exact=True)).to_be_visible()
-        assert page.evaluate("() => navigator.clipboard.readText()") == approved["text"]
+        text = approved["text"]
+        acceptable = {text, text.replace("\n", "\r\n")} if os.name == "nt" else {text}
+        assert page.evaluate("() => navigator.clipboard.readText()") in acceptable
         assert [route for route, _ in observed.calls] == [observed.preview_path, observed.verify_path]
         assert observed.downloads == []
         assert state(ws.review_db, sid) == before
