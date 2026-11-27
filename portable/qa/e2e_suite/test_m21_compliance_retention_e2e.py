@@ -29,7 +29,7 @@ def _sign_in_admin(page, base_url: str) -> None:
     page.get_by_label("Operator email").fill(ADMIN_EMAIL)
     page.get_by_label("Password", exact=True).fill(ADMIN_PASS)
     page.get_by_role("button", name="Sign in", exact=True).click()
-    expect(page.get_by_role("heading", name="Model administration")).to_be_visible()
+    expect(page.get_by_text(f"Admin: {ADMIN_EMAIL}", exact=True)).to_be_visible()
 
 
 def _seed_compliance_sessions(c) -> tuple[str, str, str]:

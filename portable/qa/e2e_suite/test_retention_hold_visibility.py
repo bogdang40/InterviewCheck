@@ -46,7 +46,9 @@ def test_admin_count_public_visibility_and_preselected_backup_refusal(e2e_worksp
     transfer.on("download", lambda download: downloads.append(download))
     try:
         # The reviewer selected this scope while its erasure receipt was consistent.
-        transfer.goto(base + "/data/", wait_until="domcontentloaded")
+        with transfer.expect_response(lambda r: urlsplit(r.url).path == "/api/interviews/feed") as catalog:
+            transfer.goto(base + "/data/", wait_until="domcontentloaded")
+        assert catalog.value.status == 200 and held in {item["id"] for item in catalog.value.json()["items"]}
         picker = transfer.get_by_label("Backup contents")
         picker.select_option(held)
         link = transfer.get_by_role("link", name="Download backup for this interview")
