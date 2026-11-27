@@ -1,4 +1,5 @@
 """Exercise panel review through the Roles queue and saved exchange with real account roles."""
+from collections import Counter
 import re
 
 from playwright.sync_api import expect
@@ -62,6 +63,54 @@ def test_panel_chair_records_private_reason_and_member_sees_process_only(e2e_wor
         assert member.get(answer).json() == original
 
 
+def sign_out_other_tab(page, sibling, collector, base, sid, aid, reason):
+    collector.assert_clean()
+    protected = base + f"/api/calibration/sessions/{sid}/answers/{aid}/panel"
+    permitted_reads = {protected, protected + "/edit", protected + "/private", base + "/api/integrations/account"}
+    denials, errors, writes = [], [], []
+
+    def response(event):
+        if event.status >= 400:
+            denials.append((event.request.method, event.url, event.status, event.request.resource_type))
+
+    def console(event):
+        if event.type == "error":
+            errors.append((event.text, event.location.get("url")))
+
+    def request(event):
+        if event.method not in ("GET", "HEAD", "OPTIONS"):
+            # Redirecting this tab to a public page can record a signed-out page visit.
+            if (event.method == "POST" and event.url == base + "/api/usage/visit"
+                    and event.post_data_json in ({"page": "signin"}, {"page": "home"})):
+                return
+            writes.append((event.method, event.url))
+
+    page.on("response", response)
+    page.on("console", console)
+    page.on("request", request)
+    try:
+        sibling.get_by_role("button", name="Sign out", exact=True).click()
+        expect(sibling.get_by_role("button", name="Sign in", exact=True)).to_be_visible()
+        expect(reason).to_have_count(0, timeout=15_000)
+        page.wait_for_load_state("networkidle", timeout=15_000)
+    finally:
+        page.remove_listener("request", request)
+        page.remove_listener("console", console)
+        page.remove_listener("response", response)
+
+    assert not writes and not collector.page_errors and not collector.server_errors
+    assert all(method == "GET" and url in permitted_reads and status == 401 and resource in ("xhr", "fetch")
+               for method, url, status, resource in denials), denials
+    responses = Counter(url for _, url, _, _ in denials)
+    assert [text for text, _ in errors] == collector.console_errors
+    for text, url in errors:
+        assert re.fullmatch(r"Failed to load resource: the server responded with a status of 401 \(Unauthorized\)", text), text
+        assert responses[url] > 0, (url, denials)
+        responses[url] -= 1
+    # The following administrator sign-in starts with the normal strict collector.
+    collector.console_errors.clear()
+
+
 def test_private_panel_draft_disappears_across_browser_account_switch(e2e_workspace, desktop_page):
     from e2e_suite.harness import signup_user
     from e2e_suite.test_m23_alerts_calibration_e2e import BOOTSTRAP_SECRET
@@ -102,9 +151,7 @@ def test_private_panel_draft_disappears_across_browser_account_switch(e2e_worksp
     sibling = page.context.new_page()
     try:
         sibling.goto(base + "/account/", wait_until="domcontentloaded")
-        sibling.get_by_role("button", name="Sign out", exact=True).click()
-        expect(sibling.get_by_role("button", name="Sign in", exact=True)).to_be_visible()
-        expect(reason).to_have_count(0, timeout=15_000)
+        sign_out_other_tab(page, sibling, collector, base, sid, aid, reason)
         _sign_in_browser(sibling, base, second_email)
         # The application can return this tab to its sign-in gate on logout.
         if not page.url.startswith(base + "/interviews/review"):
@@ -121,6 +168,6 @@ def test_private_panel_draft_disappears_across_browser_account_switch(e2e_worksp
         assert [(event["actor_email"], event["rationale"]) for event in result["history"]] == [
             (second_email, "Independent B note"), (ADMIN_EMAIL, "Private chair history")]
         assert "Private A draft" not in str(result)
-        assert not collector.page_errors
+        collector.assert_clean()
     finally:
         sibling.close()
