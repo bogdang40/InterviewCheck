@@ -326,3 +326,61 @@ def test_unicode_worksheet_whitespace_keeps_a_single_confirmed_save(e2e_workspac
         stored = client.get(path).raise_for_status().json()
         assert stored["note"] == "Reviewed" and stored["revision"] == 2 and writes == ["PATCH"]
         collector.assert_clean()
+
+
+@pytest.mark.tier3
+def test_late_patch_failure_after_a_verified_read_denial_does_not_restore_a_private_edit(e2e_workspace, desktop_page):
+    page, collector = desktop_page
+    with e2e_workspace.client() as client:
+        sid, (aid, _) = seed(client)
+        path = f"/api/sessions/{sid}/answers/{aid}"
+        url = e2e_workspace.base_url + path
+        card, editor = stage_example(page, e2e_workspace, sid, aid)
+        private = "Private worksheet edit pending at the moment of revocation."
+        editor.fill(private)
+        key = f"ic_draft_v1:{sid}:review:{aid}"
+        held = []
+
+        def hold_patch(route):
+            if route.request.method == "PATCH":
+                held.append(route)
+            else:
+                route.continue_()
+
+        page.route("**" + path, hold_patch)
+        with page.expect_request(lambda r: r.method == "PATCH" and r.url == url):
+            page.get_by_role("button", name="Save review", exact=True).click()
+        guard = "() => !window.dispatchEvent(new Event('beforeunload', {cancelable:true}))"
+        assert page.evaluate(guard)
+        marker = client.post(f"/api/sessions/{sid}/trash").raise_for_status().json()
+        with page.expect_response(lambda r: r.request.method == "GET" and r.url == url + "/worksheet") as denied:
+            card.get_by_role("button", name="Preview worksheet").click()
+        assert denied.value.status == 404
+        cleared = page.get_by_role("region", name="Worksheet unavailable")
+        expect(cleared).to_be_visible()
+        expect(editor).to_have_count(0)
+        assert not page.evaluate(guard)
+        assert len(held) == 1 and held[0].request.post_data_json["note"] == private
+
+        with page.expect_request_finished(lambda r: r.method == "PATCH" and r.url == url):
+            held[0].fulfill(status=409, json={"detail": "The earlier worksheet operation failed."})
+        # Let the fetch failure and React's dirty-state effect finish before inspecting navigation.
+        page.evaluate("""async () => {
+            await new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done)));
+            window.dispatchEvent(new Event('pagehide'));
+        }""")
+        expect(cleared).to_be_visible()
+        expect(page.get_by_text(private, exact=True)).to_have_count(0)
+        assert page.evaluate("key => localStorage.getItem(key)", key) is None
+        assert not page.evaluate(guard)
+        dialogs = []
+        page.on("dialog", lambda d: (dialogs.append(d.type), d.dismiss()))
+        page.get_by_role("navigation", name="Workspace").get_by_role("link", name="Overview", exact=True).click()
+        expect(page).to_have_url(e2e_workspace.base_url + "/")
+        assert not dialogs and len(held) == 1
+        client.post(f"/api/trash/{sid}/restore", json={"operation_version": marker["operation_version"]}).raise_for_status()
+        saved = client.get(path).raise_for_status().json()
+        assert (saved["note"], saved["revision"]) == ("", 1)
+        assert all("404" in error or "409" in error for error in collector.console_errors)
+        collector.console_errors.clear()
+        collector.assert_clean()
