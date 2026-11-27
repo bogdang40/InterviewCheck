@@ -43,7 +43,7 @@ def test_admin_count_public_visibility_and_preselected_backup_refusal(e2e_worksp
     transfer_errors = ConsoleErrorCollector()
     transfer_errors.attach(transfer)
     downloads = []
-    transfer.on("download", downloads.append)
+    transfer.on("download", lambda download: downloads.append(download))
     try:
         # The reviewer selected this scope while its erasure receipt was consistent.
         transfer.goto(base + "/data/", wait_until="domcontentloaded")

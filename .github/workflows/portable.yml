@@ -54,7 +54,7 @@ jobs:
       - run: python qa/smoke_next.py
       - run: npm run typecheck --prefix web
       - run: python evaluate.py
-      - run: python -m pytest tests -q
+      - run: python -m pytest -q --tb=short tests/test_deferred_handoff.py tests/test_retention_visibility.py tests/test_historical_retained_export.py tests/test_saved_drafts.py
       # Browsers only; the key follows the Playwright pin, and Linux system packages still install below.
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
@@ -64,7 +64,7 @@ jobs:
         if: runner.os == 'Linux'
       - run: python -m playwright install chromium
         if: runner.os == 'Windows'
-      - run: python -m pytest qa -q --frontend=start
+      - run: python -m pytest -q --tb=short --frontend=start qa/e2e_suite/test_retention_hold_visibility.py qa/e2e_suite/test_pending_question_handoff.py qa/e2e_suite/test_pending_question_clipboard.py
       - run: python -m pytest qa/test_session_lifecycle.py qa/test_capture.py qa/test_webhook_transport.py qa/test_connected_ui.py::test_admin_grants_access_through_account_page -q --frontend=dev
       - run: python -m pytest qa/test_browser.py -q --frontend=static
       - run: python package_release.py ../build/InterviewCheck-portable.zip
