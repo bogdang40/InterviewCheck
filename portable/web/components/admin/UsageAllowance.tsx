@@ -113,7 +113,8 @@ export function UsageAllowance({ refreshKey, onAuthInvalid, onDirtyChange }: Pro
             <Input id="ai-attempt-limit" inputMode="numeric" value={value} disabled={working === "write"}
               aria-describedby="ai-attempt-guidance" aria-invalid={invalid}
               onChange={event => {
-                setDraft({ value: event.target.value, revision: draft?.revision ?? report.revision })
+                const next = event.target.value
+                setDraft(next === limitText(report.monthly_limit) ? null : { value: next, revision: draft?.revision ?? report.revision })
                 setNotice("")
               }} />
             <small className="muted" id="ai-attempt-guidance">Leave blank for unlimited. Enter 0 to pause new attempts.</small>

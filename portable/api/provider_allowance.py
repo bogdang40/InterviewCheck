@@ -2,6 +2,7 @@
 import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+import re
 import sqlite3
 import threading
 
@@ -30,6 +31,18 @@ CREATE TABLE IF NOT EXISTS ai_attempt_months (
 
 class AdmissionError(HTTPException):
     """The application declined a send before contacting the provider."""
+
+
+class InvalidHeaders(AdmissionError):
+    """A locally constructed request cannot be transmitted."""
+
+
+def check_headers(headers) -> None:
+    # HTTPX encodes string headers as ASCII. h11 also rejects leading/trailing
+    # whitespace and control bytes. Validate both before reserving any quota.
+    for value in (headers or {}).values():
+        if not isinstance(value, str) or not re.fullmatch(r"[!-~](?:[\t -~]*[!-~])?", value):
+            raise InvalidHeaders(503, "The configured model cannot create a valid HTTP credential header.")
 
 
 class TargetRefusal(AdmissionError):
@@ -103,7 +116,8 @@ def _admit(model_id, use_circuit, abandoned) -> _Slot | None:
             if limit is not None and state["used"] >= limit:
                 headers = {"X-InterviewCheck-Limit": "ai-attempts"}
                 if limit:
-                    headers["Retry-After"] = str(max(1, int((reset - now).total_seconds()) + 1))
+                    # Known local refusals and policy edits can release a slot before reset.
+                    headers["Retry-After"] = str(min(60, max(1, int((reset - now).total_seconds()) + 1)))
                 raise AdmissionError(429, "The workspace monthly AI attempt allowance has been reached.", headers=headers)
             probe_until = None
             if use_circuit and model_id:
@@ -111,9 +125,7 @@ def _admit(model_id, use_circuit, abandoned) -> _Slot | None:
                 decision = model_circuit.can_execute(db, model_id)
                 if not decision.allowed:
                     raise TargetRefusal(503, "Model circuit is open.", headers={"Retry-After": str(decision.retry_after_s)})
-                if decision.state == "half_open":
-                    probe_until = db.execute("SELECT half_open_probe_until FROM model_circuit_state WHERE model_id=?",
-                                             (model_id,)).fetchone()[0]
+                probe_until = decision.probe_until
             db.execute("""INSERT INTO ai_attempt_months(month, used) VALUES(?, 1)
                           ON CONFLICT(month) DO UPDATE SET used=used+1""", (month,))
         return _Slot(month, model_id, probe_until)
@@ -126,9 +138,8 @@ def _release_local_refusal(slot: _Slot) -> None:
         with store.connection(write=True) as db:
             db.execute("UPDATE ai_attempt_months SET used=used-1 WHERE month=? AND used>0", (slot.month,))
             if slot.probe_until:
-                db.execute("""UPDATE model_circuit_state SET half_open_probe_until=NULL
-                              WHERE model_id=? AND state='half_open' AND half_open_probe_until=?""",
-                           (slot.model_id, slot.probe_until))
+                from .model_circuit import return_probe
+                return_probe(db, slot.model_id, slot.probe_until)
     except sqlite3.Error as exc:
         raise AdmissionError(503, "A blocked connection could not return its AI allowance slot.") from exc
 
@@ -166,6 +177,7 @@ async def _return_slot(slot):
 async def send(fetch, *args, before_send=None, admission_target=None, use_circuit=False, **kwargs):
     from .model_execution_policy import QUOTA_LIMITER, _is_ssrf_error, _rpm_limit
 
+    check_headers(kwargs.get("headers"))
     model_id = admission_target.id if admission_target is not None else None
     pending = _PendingAdmission()
     try:

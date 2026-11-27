@@ -1,12 +1,14 @@
 import asyncio
 import pytest
 from fastapi import HTTPException
-from api import authoring
+from api import authoring, store
 from api.authoring import Draft, Example
 
 
 @pytest.mark.parametrize("provider", authoring.MODEL_KEYS)
-def test_reference_names_provider_and_excludes_candidate_data(monkeypatch, provider):
+def test_reference_names_provider_and_excludes_candidate_data(tmp_path, monkeypatch, provider):
+    monkeypatch.setenv("INTERVIEWCHECK_DB", str(tmp_path / "review.sqlite3"))
+    store.initialize(store.db_path())
     for key in authoring.MODEL_KEYS[provider]:
         value = "https://workspace.openai.azure.com" if key.endswith("ENDPOINT") else "fixture"
         monkeypatch.setenv(key, value)

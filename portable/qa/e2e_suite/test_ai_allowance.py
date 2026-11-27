@@ -138,3 +138,27 @@ def test_allowance_navigation_protects_each_admin_editor(e2e_workspace, desktop_
     overview.click()
     expect(page).to_have_url(re.compile(r"^" + re.escape(e2e_workspace.base_url.rstrip("/")) + r"/?$"), timeout=15_000)
     collector.assert_clean()
+
+
+@pytest.mark.tier3
+def test_reverting_allowance_edit_follows_later_policy_refresh(e2e_workspace, desktop_page):
+    e2e_workspace.configure_embedded_auth(admin_emails=(EMAIL,), bootstrap_secret=BOOTSTRAP)
+    e2e_workspace.restart()
+    with e2e_workspace.client() as other:
+        signup_user(other, email=EMAIL, password=PASS, admin_secret=BOOTSTRAP)
+        login_user(other, email=EMAIL, password=PASS)
+        page, collector = desktop_page
+        card = open_card(page, e2e_workspace)
+        field = card.get_by_label("Monthly attempt limit")
+        expect(field).to_have_value("")
+        for before, edited, newer in (("", "5", 6), ("6", "0", 10)):
+            field.fill(edited)
+            expect(card.get_by_role("button", name="Save allowance")).to_be_enabled()
+            field.fill(before)
+            expect(card.get_by_role("button", name="Save allowance")).to_be_disabled()
+            policy = other.get(ALLOWANCE).raise_for_status().json()
+            other.put(ALLOWANCE, json={"expected_revision": policy["revision"], "monthly_limit": newer}).raise_for_status()
+            page.get_by_role("button", name="Refresh usage").click()
+            expect(field).to_have_value(str(newer))
+            expect(card.get_by_text("Reload the saved policy to keep editing.", exact=False)).to_have_count(0)
+        collector.assert_clean()

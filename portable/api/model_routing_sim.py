@@ -6,7 +6,7 @@ from typing import Any
 
 from pydantic import Field, field_validator
 
-from . import model_budgets, model_execution, model_registry, model_resolver, provider_allowance, ssrf_guard
+from . import model_budgets, model_circuit, model_execution, model_registry, model_resolver, provider_allowance, ssrf_guard
 from .model_schemas import Capability, KEY_REQUIRED_PROVIDERS
 from .models import Input
 
@@ -87,10 +87,12 @@ def _evaluate_row(db: sqlite3.Connection, row: sqlite3.Row, *, forced_skip: str 
             skip = "disabled"
         elif row["provider"] in KEY_REQUIRED_PROVIDERS and not row["has_key"]:
             skip = "missing_api_key"
-        elif not _endpoint_valid(row["provider"], row["endpoint"]):
-            skip = "invalid_endpoint"
         elif not budget.allowed:
             skip = budget_status
+        elif not model_circuit.can_execute(db, row["id"], claim=False).allowed:
+            skip = "circuit_open"
+        elif not _endpoint_valid(row["provider"], row["endpoint"]):
+            skip = "invalid_endpoint"
         elif rpm_rem == 0:
             skip = "rpm_quota_exceeded"
     return {
@@ -125,19 +127,34 @@ def _evaluate_env_candidates(capability: str, norm_provider: str | None, suppres
 def _sim_payload(
     db: sqlite3.Connection, capability: str, provider_filter: str | None, allow_ref: bool, active: list[dict[str, Any]], skipped: list[dict[str, Any]]
 ) -> dict[str, Any]:
-    blocked = bool(active) and capability != "transcription" and provider_allowance.summary(db)["remaining"] == 0
-    if blocked:
-        for entry in active:
+    # Admission sees the workspace policy after model budget and circuit checks,
+    # but before consuming RPM. Preserve that order when several limits coincide.
+    rpm_blocked = [entry for entry in skipped if entry["skip_reason"] == "rpm_quota_exceeded"]
+    if (active or rpm_blocked) and capability != "transcription" and provider_allowance.summary(db)["remaining"] == 0:
+        for entry in [*active, *rpm_blocked]:
             entry.update(eligible=False, skip_reason="workspace_attempt_allowance_exhausted")
         skipped = [*active, *skipped]
         active = []
+    reasons = {entry["skip_reason"] for entry in skipped}
+    failure = None
+    if not active:
+        if "workspace_attempt_allowance_exhausted" in reasons:
+            failure = "workspace_allowance"
+        elif reasons & {"daily_token_limit_exceeded", "monthly_cost_limit_exceeded"}:
+            failure = "model_budget"
+        elif "rpm_quota_exceeded" in reasons:
+            failure = "model_rpm"
+        elif "circuit_open" in reasons:
+            failure = "circuit_open"
+        else:
+            failure = "no_candidate"
     for idx, entry in enumerate(active, start=1):
         entry["rank"] = idx
     return {
         "capability": capability, "provider_filter": provider_filter,
         "allow_reference_fallback": allow_ref,
-        "active_chain": active, "skipped": skipped, "would_fail_503": not active and not blocked,
-        "would_fail_429": blocked,
+        "active_chain": active, "skipped": skipped, "would_fail_503": failure in {"no_candidate", "circuit_open"},
+        "would_fail_429": failure in {"workspace_allowance", "model_budget", "model_rpm"}, "failure_reason": failure,
     }
 
 

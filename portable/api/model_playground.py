@@ -290,6 +290,10 @@ async def _run_single_model(row: dict[str, Any], item: PlaygroundRunInput, instr
             target, instructions, prompt, record_usage=record_usage, use_circuit=False, max_tokens=item.max_tokens
         )
         clean_output = _redact_secret(prompt_framing.sanitize_model_text(raw_output), target.api_key)
+    except provider_allowance.InvalidHeaders as exc:
+        await run_in_threadpool(_record_live_outcome, target, ok=False, http_status=exc.status_code, latency_ms=0,
+                                error=exc.detail, provider_attempted=False)
+        return _fail_result(row, http_status=exc.status_code, error=exc.detail)
     except provider_allowance.AdmissionError as exc:
         return _fail_result(row, http_status=exc.status_code, error=str(exc.detail), secret_value=target.api_key)
     except ssrf_guard.SSRFValidationError as exc:

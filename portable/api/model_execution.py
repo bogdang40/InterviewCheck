@@ -85,14 +85,13 @@ async def _run_chain(
     circuit_retry_after: int | None = None
     for target in candidates:
         retries = _clamped_retries(target)
-        transcription = target.capability == "transcription"
         for attempt in range(retries + 1):
             # A failed response can contain paid tokens. Apply the recorded spend before retrying.
             decision = await run_in_threadpool(_check_target_budget, target)
             if decision is not None and not decision.allowed:
                 budget_blocked = True
                 break
-            circuit = await run_in_threadpool(model_circuit.check_target, target.id, claim=transcription)
+            circuit = await run_in_threadpool(model_circuit.check_target, target.id, claim=False)
             if circuit is not None and not circuit.allowed:
                 wait_s = max(1, int(circuit.retry_after_s or 1))
                 circuit_retry_after = wait_s if circuit_retry_after is None else min(circuit_retry_after, wait_s)
@@ -100,12 +99,6 @@ async def _run_chain(
             await _validate_target_endpoint(target, resolve_dns=real_transport)
             if before_attempt is not None:
                 await before_attempt()
-            if transcription and target.id and (rpm := _rpm_limit(target)) is not None:
-                try:
-                    QUOTA_LIMITER.consume(target.id, rpm)
-                except HTTPException as exc:
-                    last_exc = exc
-                    break
             usage = model_budgets.TokenUsage()
 
             def record_usage(result: model_budgets.TokenUsage) -> None:
@@ -117,6 +110,11 @@ async def _run_chain(
             started = time.monotonic()
             try:
                 result = await call_fn(target, record_usage)
+            except provider_allowance.InvalidHeaders as exc:
+                await run_in_threadpool(_record_outcome, target, ok=False, http_status=exc.status_code,
+                                        latency_ms=0, error=exc.detail, provider_attempted=False)
+                last_exc = exc
+                break
             except provider_allowance.TargetRefusal as exc:
                 if exc.status_code == 503:
                     wait = int(exc.headers["Retry-After"])
@@ -157,7 +155,7 @@ async def _run_chain(
             )
             return target, result
     if budget_blocked:
-        raise HTTPException(429, "Model budget ceiling reached.")
+        raise HTTPException(429, "Model budget ceiling reached.", headers={"X-InterviewCheck-Limit": "model-budget"})
     if last_exc is not None:
         raise last_exc
     if circuit_retry_after is not None:
@@ -298,12 +296,30 @@ async def execute_transcription_chain(
         http_url, _ = url_builder(target.endpoint)
         model_id = target.model_id or "nova-2"
         timeout = _safe_timeout(target.config.get("timeout_s"), default=180.0, low=10.0, high=300.0)
-        data = await fetch(
-            "Deepgram", "POST", http_url,
-            params={"model": model_id, "diarize": "true", "utterances": "true", "punctuate": "true"},
-            headers={"Authorization": f"Token {target.api_key}", "Content-Type": content_type},
-            content=audio_bytes, timeout=timeout, limit=12_000_000, **extra_opts,
-        )
+        headers = {"Authorization": f"Token {target.api_key}", "Content-Type": content_type}
+        provider_allowance.check_headers(headers)
+        circuit = await run_in_threadpool(model_circuit.check_target, target.id)
+        if circuit is not None and not circuit.allowed:
+            raise provider_allowance.TargetRefusal(503, "Model circuit is open.", headers={"Retry-After": str(circuit.retry_after_s)})
+        quota_window = None
+        try:
+            if target.id and (rpm := _rpm_limit(target)) is not None:
+                try:
+                    quota_window = QUOTA_LIMITER.consume(target.id, rpm)
+                except HTTPException as exc:
+                    raise provider_allowance.TargetRefusal(exc.status_code, exc.detail, headers=exc.headers) from exc
+            data = await fetch(
+                "Deepgram", "POST", http_url,
+                params={"model": model_id, "diarize": "true", "utterances": "true", "punctuate": "true"},
+                headers=headers, content=audio_bytes, timeout=timeout, limit=12_000_000, **extra_opts,
+            )
+        except (HTTPException, ssrf_guard.SSRFValidationError) as exc:
+            if isinstance(exc, provider_allowance.TargetRefusal) or _is_ssrf_error(exc):
+                if quota_window is not None:
+                    QUOTA_LIMITER.release(target.id, quota_window)
+                if circuit is not None and circuit.probe_until:
+                    await run_in_threadpool(model_circuit.return_target_probe, target.id, circuit.probe_until)
+            raise
         record_usage(model_budgets.provider_usage(target.provider, data, capability=target.capability))
         try:
             results = data["results"]

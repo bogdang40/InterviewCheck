@@ -1,5 +1,5 @@
 """Per-model consecutive-failure circuit breaker state machine and SLA percentile analytics."""
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 import math
 import sqlite3
@@ -37,6 +37,7 @@ class CircuitDecision:
     allowed: bool
     state: str
     retry_after_s: int = 0
+    probe_until: str | None = field(default=None, compare=False)
 
 
 class CircuitPolicyInput(Input):
@@ -157,7 +158,7 @@ def can_execute(db: sqlite3.Connection, model_uuid: str, *, now: datetime | str 
             (probe_until, now_dt.isoformat(), model_uuid, row["half_open_probe_until"]),
         )
         if cur.rowcount == 1:
-            return CircuitDecision(allowed=True, state="half_open", retry_after_s=0)
+            return CircuitDecision(allowed=True, state="half_open", retry_after_s=0, probe_until=probe_until)
         return CircuitDecision(allowed=False, state="half_open", retry_after_s=1)
     retry_dt = _to_utc(row["next_retry_at"])
     if retry_dt is not None and now_dt < retry_dt:
@@ -170,7 +171,7 @@ def can_execute(db: sqlite3.Connection, model_uuid: str, *, now: datetime | str 
         (probe_until, now_dt.isoformat(), model_uuid),
     )
     if cur.rowcount == 1:
-        return CircuitDecision(allowed=True, state="half_open", retry_after_s=0)
+        return CircuitDecision(allowed=True, state="half_open", retry_after_s=0, probe_until=probe_until)
     return CircuitDecision(allowed=False, state="half_open", retry_after_s=1)
 
 
@@ -182,6 +183,16 @@ def check_target(model_uuid: str | None, *, now: datetime | str | None = None, c
             return can_execute(db, model_uuid, now=now, claim=claim)
     except sqlite3.Error:
         return None
+
+
+def return_probe(db, model_id: str, probe_until: str) -> None:
+    db.execute("""UPDATE model_circuit_state SET half_open_probe_until=NULL
+                  WHERE model_id=? AND state='half_open' AND half_open_probe_until=?""", (model_id, probe_until))
+
+
+def return_target_probe(model_id: str, probe_until: str) -> None:
+    with store.connection(write=True) as db:
+        return_probe(db, model_id, probe_until)
 
 
 def record_outcome(

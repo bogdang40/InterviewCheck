@@ -41,7 +41,7 @@ def _record_outcome(
             if provider_attempted:
                 model_budgets.record_usage(db, target.id, input_tokens=usage.input_tokens, output_tokens=usage.output_tokens,
                                            ok=ok, config=target.config, unsplit_tokens=usage.unsplit_tokens)
-            model_circuit.record_outcome(db, target.id, ok=ok, error=safe_error, secret=target.api_key)
+                model_circuit.record_outcome(db, target.id, ok=ok, error=safe_error, secret=target.api_key)
     except (sqlite3.Error, OverflowError, ValueError):
         pass
 
