@@ -72,27 +72,35 @@ def status(basis, split, last):
     return last["action"]
 
 
-def queue_states(db, latest, counts):
-    """Read evidence once per previously adjudicated exchange in the authorized queue."""
-    states = {}
-    if not latest or db.execute("SELECT 1 FROM panel_decisions LIMIT 1").fetchone() is None:
-        return states
-    ids = list(latest)
+def _latest_decisions(db, answer_ids, *, with_evidence):
+    ids = list(answer_ids)
+    if not ids or db.execute("SELECT 1 FROM panel_decisions LIMIT 1").fetchone() is None:
+        return
+    columns = f"{EVIDENCE},p.basis,p.action,p.created_at" if with_evidence else "a.id AS answer_id,p.created_at"
+    context = "LEFT JOIN session_context c ON c.session_id=s.id" if with_evidence else ""
     for start in range(0, len(ids), 300):
-        batch = ids[start:start + 300]
-        rows = db.execute(f"""SELECT {EVIDENCE},p.basis,p.action,p.created_at
-                              FROM json_each(?) k JOIN answers a ON a.id=k.value
-                              JOIN active_sessions s ON s.id=a.session_id
-                              LEFT JOIN session_context c ON c.session_id=s.id
-                              JOIN panel_decisions p ON p.answer_id=a.id AND p.session_id=s.id
-                              WHERE p.sequence=(SELECT MAX(d.sequence) FROM panel_decisions d WHERE d.answer_id=a.id)""",
-                          (json.dumps(batch),))
-        for row in rows:
-            aid = row["answer_id"]
-            votes = vote_basis(latest[aid], counts[aid])
-            split = len({v[2] for v in votes if v[2] != "pending"}) > 1
-            basis = decision_basis(row, material(row), votes)
-            states[aid] = (status(basis, split, row), row["created_at"])
+        yield from db.execute(f"""SELECT {columns}
+                    FROM json_each(?) k JOIN answers a ON a.id=k.value
+                    JOIN active_sessions s ON s.id=a.session_id {context}
+                    JOIN panel_decisions p ON p.answer_id=a.id AND p.session_id=s.id
+                    WHERE p.sequence=(SELECT MAX(d.sequence) FROM panel_decisions d WHERE d.answer_id=a.id)""",
+                              (json.dumps(ids[start:start + 300]),))
+
+
+def decision_times(db, answer_ids):
+    """The all view includes a previously discussed case even when its evidence has changed."""
+    return {r["answer_id"]: r["created_at"] for r in _latest_decisions(db, answer_ids, with_evidence=False)}
+
+
+def queue_states(db, latest, counts, *, answer_ids=None):
+    states = {}
+    ids = latest if answer_ids is None else answer_ids
+    for row in _latest_decisions(db, ids, with_evidence=True):
+        aid = row["answer_id"]
+        votes = vote_basis(latest[aid], counts[aid])
+        split = len({v[2] for v in votes if v[2] != "pending"}) > 1
+        basis = decision_basis(row, material(row), votes)
+        states[aid] = (status(basis, split, row), row["created_at"])
     return states
 
 
