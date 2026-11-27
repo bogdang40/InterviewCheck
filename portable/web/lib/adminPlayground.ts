@@ -80,7 +80,7 @@ export const SCHEMA_LABELS: Record<PlaygroundExpectedSchema, string> = {
 export const PRESET_LABELS: Record<PlaygroundPresetId, string> = {
   custom: "Custom prompt",
   authoring_questions: "Authoring questions",
-  ai_judge_rubric: "AI judge rubric",
+  ai_judge_rubric: "Ad hoc judge verdict",
   prompt_injection_probe: "Prompt injection probe",
 }
 
