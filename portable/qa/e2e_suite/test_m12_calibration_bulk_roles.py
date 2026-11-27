@@ -166,7 +166,9 @@ def test_m12_rubric_authoring_versioning_diff_rollback_and_409_guard(e2e_workspa
     expect(v1_card).to_contain_text("Diff vs live v2")
     expect(v1_card).to_contain_text("Changed fields: questions, rubric")
     expect(v1_card).to_contain_text("Design log compaction.")
-    expect(v1_card).to_contain_text("Failure recovery (w:40)")
+    added = v1_card.get_by_label("Grading changes")
+    expect(added).to_contain_text("Failure recovery")
+    expect(added).to_contain_text("Weight 40")
 
     # Advance live role in background so browser holds a stale version hash and hits 409 on rollback.
     with e2e_workspace.client() as c:

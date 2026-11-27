@@ -1,11 +1,12 @@
 """Immutable rubric and template version history, diffing, and safe restore."""
+from collections import Counter
 from datetime import datetime, timezone
 import json
 import sqlite3
-from typing import Any
+from typing import Annotated, Any
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, HTTPException, Path, Request
+from fastapi import APIRouter, HTTPException, Path, Query, Request
 from starlette.concurrency import run_in_threadpool
 
 from . import access, role_kits, sql_script
@@ -83,6 +84,7 @@ def _version_dict(row: sqlite3.Row) -> dict[str, Any]:
         "id": row["id"],
         "role_id": row["role_id"],
         "version_number": int(row["version_number"]),
+        "version_number_text": str(row["version_number"]),
         "version": row["content_sha256"],
         "content_sha256": row["content_sha256"],
         "name": row["name"],
@@ -102,6 +104,7 @@ def _fallback_from_live(live: dict[str, Any]) -> dict[str, Any]:
         "id": live["id"],
         "role_id": live["id"],
         "version_number": live["version_number"],
+        "version_number_text": str(live["version_number"]),
         "version": live["version"],
         "content_sha256": live["version"],
         "name": live["name"],
@@ -116,11 +119,47 @@ def _fallback_from_live(live: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _diff_list(old_items: list[str], new_items: list[str]) -> dict[str, list[str]]:
-    old_set, new_set = set(old_items), set(new_items)
+def _ordered_excess(items, counts):
+    excess = []
+    for item in items:
+        if counts[item] > 0:
+            excess.append(item)
+            counts[item] -= 1
+    return excess
+
+
+def _diff_list(old_items: list[str], new_items: list[str]) -> dict[str, Any]:
+    old, new = Counter(old_items), Counter(new_items)
     return {
-        "added": [item for item in new_items if item not in old_set],
-        "removed": [item for item in old_items if item not in new_set],
+        "added": _ordered_excess(new_items, new - old),
+        "removed": _ordered_excess(old_items, old - new),
+        "occurrences": [{"text": text, "before": old[text], "after": new[text]}
+                        for text in dict.fromkeys([*old_items, *new_items]) if old[text] != new[text]],
+        # Repeated prompts have no persistent identity. Report a reorder only for a pure permutation.
+        "reordered": old == new and old_items != new_items,
+    }
+
+
+def _diff_questions(before, after):
+    delta = _diff_list(before, after)
+    old_counts, new_counts = Counter(before), Counter(after)
+    common = {text for text, count in old_counts.items() if count == 1 and new_counts[text] == 1}
+    old_order = [text for text in before if text in common]
+    new_order = [text for text in after if text in common]
+    delta["reordered_common"] = {"before": old_order, "after": new_order} if old_order != new_order else None
+    return delta
+
+
+def _diff_materials(old_items, new_items):
+    old = [(r["label"], r["text"]) for r in old_items]
+    new = [(r["label"], r["text"]) for r in new_items]
+    old_counts, new_counts = Counter(old), Counter(new)
+    labels = _diff_list([label for label, _ in old], [label for label, _ in new])
+    return {
+        **labels,
+        "reordered": old_counts == new_counts and old != new,
+        "added_entries": [{"label": label, "text": text} for label, text in _ordered_excess(new, new_counts - old_counts)],
+        "removed_entries": [{"label": label, "text": text} for label, text in _ordered_excess(old, old_counts - new_counts)],
     }
 
 
@@ -130,6 +169,7 @@ def _diff_rubric(old_rubric: list[dict[str, Any]], new_rubric: list[dict[str, An
     return {
         "added": [item for item in new_rubric if item["id"] not in old_map],
         "removed": [item for item in old_rubric if item["id"] not in new_map],
+        "reordered": [key for key in old_map if key in new_map] != [key for key in new_map if key in old_map],
         "modified": [
             {"id": key, "version": old_map[key], "live": new_map[key]}
             for key in new_map if key in old_map and old_map[key] != new_map[key]
@@ -140,16 +180,16 @@ def _diff_rubric(old_rubric: list[dict[str, Any]], new_rubric: list[dict[str, An
 def compute_diff(version: dict[str, Any], live: dict[str, Any]) -> dict[str, Any]:
     fields = ("name", "description", "policy", "questions", "permitted_sources", "rubric")
     changes = {f: {"version": version[f], "live": live[f]} for f in fields if version[f] != live[f]}
-    old_labels = [entry["label"] for entry in version["permitted_sources"]]
-    new_labels = [entry["label"] for entry in live["permitted_sources"]]
     return {
         "against_version_number": live["version_number"],
+        "against_version_number_text": str(live["version_number"]),
+        "against_version": live["version"],
         "has_changes": bool(changes),
         "changed_fields": list(changes),
         "changes": changes,
-        "questions": _diff_list(version["questions"], live["questions"]),
+        "questions": _diff_questions(version["questions"], live["questions"]),
         "rubric": _diff_rubric(version["rubric"], live["rubric"]),
-        "permitted_sources": _diff_list(old_labels, new_labels),
+        "permitted_sources": _diff_materials(version["permitted_sources"], live["permitted_sources"]),
     }
 
 
@@ -165,11 +205,36 @@ def list_versions(rid: UUID):
         live = role_kits.role_row(role_row)
         rows = db.execute("SELECT * FROM role_versions WHERE role_id=? ORDER BY version_number DESC", (key,)).fetchall()
         versions = [_version_dict(row) for row in rows] if rows else [_fallback_from_live(live)]
-    return {"role_id": key, "current_version": live["version"], "current_version_number": live["version_number"], "versions": versions}
+    return {"role_id": key, "current_version": live["version"], "current_version_number": live["version_number"],
+            "current_version_number_text": str(live["version_number"]), "versions": versions}
+
+
+def _verified_snapshot(row, live):
+    try:
+        snapshot = _version_dict(row)
+        actual = role_kits.content_version({**snapshot, "id": live["id"]})
+    except (TypeError, ValueError, KeyError) as exc:
+        raise HTTPException(409, "The stored role revision could not be verified. Inspect the SQLite backup.") from exc
+    if (actual != snapshot["content_sha256"] or snapshot["version_number"] > live["version_number"] or
+            (snapshot["version_number"] == live["version_number"] and actual != live["version"])):
+        raise HTTPException(409, "The stored role revision conflicts with its recorded contents. Inspect the SQLite backup.")
+    return snapshot
+
+
+def _saved_version(db, live, number):
+    row = db.execute("SELECT * FROM role_versions WHERE role_id=? AND version_number=?", (live["id"], number)).fetchone()
+    if row is not None:
+        return _verified_snapshot(row, live)
+    if number == live["version_number"]:
+        history = db.execute("SELECT 1 FROM role_versions WHERE role_id=? LIMIT 1", (live["id"],)).fetchone()
+        if history is None:
+            return _fallback_from_live(live)
+    raise HTTPException(404, "Role version does not exist.")
 
 
 @router.get("/roles/{rid}/versions/{version_number}")
-def version_detail(rid: UUID, version_number: int = Path(ge=1, le=2**63 - 1)):
+def version_detail(rid: UUID, version_number: int = Path(ge=1, le=2**63 - 1),
+                   compare_to: Annotated[int | None, Query(ge=1, le=2**63 - 1)] = None):
     from . import store
 
     key = str(rid)
@@ -178,23 +243,17 @@ def version_detail(rid: UUID, version_number: int = Path(ge=1, le=2**63 - 1)):
         if role_row is None:
             raise HTTPException(404, "Role does not exist.")
         live = role_kits.role_row(role_row)
-        row = db.execute(
-            "SELECT * FROM role_versions WHERE role_id=? AND version_number=?", (key, version_number)
-        ).fetchone()
-        if row is None:
-            has_any = db.execute("SELECT 1 FROM role_versions WHERE role_id=? LIMIT 1", (key,)).fetchone()
-            if has_any is None and version_number == live["version_number"]:
-                target = _fallback_from_live(live)
-            else:
-                raise HTTPException(404, "Role version does not exist.")
-        else:
-            target = _version_dict(row)
+        source = _saved_version(db, live, version_number)
+        target = live
+        if compare_to is not None:
+            target = source if compare_to == version_number else _saved_version(db, live, compare_to)
     return {
         "role_id": key,
         "current_version": live["version"],
         "current_version_number": live["version_number"],
-        "version": target,
-        "diff": compute_diff(target, live),
+        "current_version_number_text": str(live["version_number"]),
+        "version": source,
+        "diff": compute_diff(source, target),
     }
 
 
@@ -220,7 +279,8 @@ def _restore_version(key: str, item: RoleRestoreInput, version_number: int, acto
         ).fetchone()
         if target is None:
             raise HTTPException(404, "Role version does not exist.")
-        next_version = int(existing["version_number"]) + 1
+        _verified_snapshot(target, role_kits.role_row(existing))
+        next_version = role_kits.next_version_number(db, existing)
         db.execute(
             """UPDATE roles
                SET name=?, description=?, questions=?, policy=?, permitted_sources=?, rubric_json=?, version_number=?
@@ -232,4 +292,4 @@ def _restore_version(key: str, item: RoleRestoreInput, version_number: int, acto
         note = item.change_note or f"Restored from version {version_number}"
         record_snapshot_row(db, updated, change_note=note, created_by=actor_email)
         result = role_kits.role_row(updated)
-    return {**result, "restored_from_version": version_number}
+    return {**result, "restored_from_version": version_number, "restored_from_version_text": str(version_number)}

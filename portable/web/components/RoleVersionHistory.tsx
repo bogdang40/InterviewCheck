@@ -3,19 +3,24 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { GitCompare, History, RotateCcw, X } from "lucide-react"
 import { dateLabel } from "@/lib/api"
+import { revisionNumber } from "@/lib/revisionNumber"
 import {
-  fetchRoleVersionDiff,
   fetchRoleVersions,
   restoreRoleVersion,
   RoleApiError,
   type CalibratedRole,
-  type RoleVersionDetailResponse,
   type RoleVersionsResponse,
 } from "@/lib/roleCalibration"
+import dynamic from "next/dynamic"
 import { GuideButton } from "./InterviewerGuide"
 import { Badge } from "./ui/badge"
 import { Button } from "./ui/button"
 import { Input } from "./ui/input"
+
+const RoleVersionComparison = dynamic(() => import("./RoleVersionComparison"), {
+  ssr: false,
+  loading: () => <p className="muted" role="status">Opening the comparison...</p>,
+})
 
 type Props = {
   role: CalibratedRole
@@ -31,23 +36,37 @@ export default function RoleVersionHistory({ role, onRestored, onConflictReload,
   const [conflict, setConflict] = useState(false)
   const [status, setStatus] = useState("")
   const [restoreNote, setRestoreNote] = useState("")
-  const [restoringVersion, setRestoringVersion] = useState<number | null>(null)
-  const [selectedDiff, setSelectedDiff] = useState<RoleVersionDetailResponse | null>(null)
-  const [diffLoading, setDiffLoading] = useState(false)
-  const restoredVersionRef = useRef<number | null>(null)
+  const [restoringVersion, setRestoringVersion] = useState<string | null>(null)
+  const [inspected, setInspected] = useState<string | null>(null)
+  const restoredVersionRef = useRef<string | null>(null)
+
+  const loadSequence = useRef(0)
+  const unavailable = useCallback((message: string) => {
+    ++loadSequence.current
+    setData(null)
+    setInspected(null)
+    setLoading(false)
+    setError(message)
+  }, [])
 
   const loadVersions = useCallback(async (signal?: AbortSignal) => {
+    const request = ++loadSequence.current
     setLoading(true)
     setError("")
     try {
-      setData(await fetchRoleVersions(role.id, signal))
+      const history = await fetchRoleVersions(role.id, signal)
+      if (signal?.aborted || request !== loadSequence.current) return
+      if (history.role_id !== role.id) throw new Error("The history did not match the selected role.")
+      setData(history)
     } catch (err) {
-      if (err instanceof DOMException && err.name === "AbortError") return
-      setError(err instanceof Error ? err.message : "Failed to load version history.")
+      if (signal?.aborted || request !== loadSequence.current) return
+      const message = err instanceof Error ? err.message : "Failed to load version history."
+      if (err instanceof RoleApiError && [401, 402, 403, 404].includes(err.status)) unavailable(message)
+      else setError(message)
     } finally {
-      setLoading(false)
+      if (!signal?.aborted && request === loadSequence.current) setLoading(false)
     }
-  }, [role.id])
+  }, [role.id, unavailable])
 
   useEffect(() => {
     setStatus("")
@@ -55,34 +74,17 @@ export default function RoleVersionHistory({ role, onRestored, onConflictReload,
   }, [role.id])
 
   useEffect(() => {
-    if (restoredVersionRef.current !== null && role.version_number === restoredVersionRef.current) {
+    if (restoredVersionRef.current !== null && revisionNumber(role.version_number, role.version_number_text) === restoredVersionRef.current) {
       restoredVersionRef.current = null
       return
     }
     const controller = new AbortController()
-    setSelectedDiff(null)
     setConflict(false)
     void loadVersions(controller.signal)
     return () => controller.abort()
-  }, [loadVersions, role.version, role.version_number])
+  }, [loadVersions, role.version, role.version_number, role.version_number_text])
 
-  async function inspectDiff(versionNumber: number) {
-    if (selectedDiff?.version.version_number === versionNumber) {
-      setSelectedDiff(null)
-      return
-    }
-    setDiffLoading(true)
-    setError("")
-    try {
-      setSelectedDiff(await fetchRoleVersionDiff(role.id, versionNumber))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to inspect version diff.")
-    } finally {
-      setDiffLoading(false)
-    }
-  }
-
-  async function handleRestore(versionNumber: number) {
+  async function handleRestore(versionNumber: string) {
     setRestoringVersion(versionNumber)
     setError("")
     setStatus("")
@@ -92,14 +94,16 @@ export default function RoleVersionHistory({ role, onRestored, onConflictReload,
         expected_version: role.version,
         change_note: restoreNote.trim(),
       })
-      restoredVersionRef.current = updated.version_number ?? null
+      restoredVersionRef.current = revisionNumber(updated.version_number, updated.version_number_text)
       setRestoreNote("")
-      setSelectedDiff(null)
-      setStatus(`Restored version ${versionNumber} as version ${updated.version_number ?? "latest"}.`)
+      setInspected(null)
+      setStatus(`Restored version ${versionNumber} as version ${restoredVersionRef.current || "latest"}.`)
       onRestored(updated)
       await loadVersions()
     } catch (err) {
-      if (err instanceof RoleApiError && err.status === 409) {
+      if (err instanceof RoleApiError && [401, 402, 403, 404].includes(err.status)) {
+        unavailable(err.message)
+      } else if (err instanceof RoleApiError && err.status === 409) {
         setConflict(true)
         setError(`Version conflict (409): ${err.message || "The saved role changed before restore."} Reload the latest role before rolling back.`)
       } else {
@@ -110,7 +114,7 @@ export default function RoleVersionHistory({ role, onRestored, onConflictReload,
     }
   }
 
-  const diff = selectedDiff?.diff
+  const liveNumber = data ? revisionNumber(data.current_version_number, data.current_version_number_text) : revisionNumber(role.version_number, role.version_number_text)
 
   return (
     <section className="panel stack" aria-label={`Version history for ${role.name}`}>
@@ -121,7 +125,7 @@ export default function RoleVersionHistory({ role, onRestored, onConflictReload,
             <History className="size-5 shrink-0" aria-hidden="true" />
             <span>Version history</span>
           </h2>
-          <p className="muted text-sm">{`${role.name} | Current live version: v${data?.current_version_number ?? role.version_number ?? 1}`}</p>
+          <p className="muted text-sm">{`${role.name} | Current live version: v${liveNumber || "unavailable"}`}</p>
         </div>
         {onClose && (
           <Button type="button" variant="outline" size="sm" onClick={onClose}>
@@ -142,6 +146,7 @@ export default function RoleVersionHistory({ role, onRestored, onConflictReload,
       {error && (
         <div className="error stack" role="alert">
           <p>{error}</p>
+          {!data && <Button type="button" size="sm" variant="outline" onClick={() => void loadVersions()}>Reload history</Button>}
           {conflict && (
             <div>
               <Button type="button" variant="outline" size="sm" onClick={() => {
@@ -158,32 +163,33 @@ export default function RoleVersionHistory({ role, onRestored, onConflictReload,
           {status}
         </p>
       )}
-      {loading ? (
+      {loading && !data ? (
         <p className="muted text-sm" role="status">Loading version history...</p>
-      ) : !data?.versions.length ? (
+      ) : !data && error ? null : !data?.versions.length ? (
         <p className="muted text-sm">No saved versions found for this role.</p>
       ) : (
         <div className="stack">
           {data.versions.map((entry) => {
-            const isLive = entry.version_number === data.current_version_number
-            const isInspected = selectedDiff?.version.version_number === entry.version_number
+            const number = revisionNumber(entry.version_number, entry.version_number_text)
+            const isLive = number === liveNumber && entry.content_sha256 === data.current_version
+            const isInspected = inspected === entry.id
             return (
               <div key={entry.id} className="rounded-lg border border-[var(--line)] bg-[var(--subtle)] p-3 stack">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex flex-wrap items-center gap-2 min-w-0">
-                    <Badge variant={isLive ? "default" : "outline"}>v{entry.version_number}</Badge>
+                    <Badge variant={isLive ? "default" : "outline"}>v{number || "unavailable"}</Badge>
                     {isLive && <Badge variant="success">Live</Badge>}
                     <strong className="text-sm">{entry.change_note || "No change note"}</strong>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <GuideButton role={entry} historical />
-                    <Button type="button" variant="outline" size="sm" disabled={diffLoading} onClick={() => void inspectDiff(entry.version_number)}>
+                    <Button type="button" variant="outline" size="sm" disabled={!number} aria-expanded={isInspected} onClick={() => setInspected(isInspected ? null : entry.id)}>
                       <GitCompare aria-hidden="true" />
                       {isInspected ? "Hide diff" : "Inspect diff"}
                     </Button>
-                    <Button type="button" variant="outline" size="sm" disabled={isLive || restoringVersion !== null} onClick={() => void handleRestore(entry.version_number)}>
+                    <Button type="button" variant="outline" size="sm" disabled={!number || isLive || restoringVersion !== null} onClick={() => void handleRestore(number)}>
                       <RotateCcw aria-hidden="true" />
-                      {restoringVersion === entry.version_number ? "Restoring..." : "Restore version"}
+                      {restoringVersion === number ? "Restoring..." : "Restore version"}
                     </Button>
                   </div>
                 </div>
@@ -193,31 +199,7 @@ export default function RoleVersionHistory({ role, onRestored, onConflictReload,
                   <span>{entry.rubric.length} rubric criteria</span>
                   {entry.created_at && <span>{dateLabel(entry.created_at)}</span>}
                 </div>
-                {isInspected && diff && (
-                  <div className="rounded-md border border-[var(--line)] bg-[var(--surface)] p-3 text-sm stack">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <strong>Diff vs live v{diff.against_version_number}</strong>
-                      <Badge variant={diff.has_changes ? "warning" : "secondary"}>
-                        {diff.has_changes ? `${diff.changed_fields.length} changed fields` : "Identical to live"}
-                      </Badge>
-                    </div>
-                    {diff.has_changes && (
-                      <div className="stack text-xs">
-                        <p className="text-[var(--muted)]">Changed fields: {diff.changed_fields.join(", ")}</p>
-                        {diff.questions.added.length > 0 && <p>Questions added in live: {diff.questions.added.join(" | ")}</p>}
-                        {diff.questions.removed.length > 0 && <p>Questions removed since v{entry.version_number}: {diff.questions.removed.join(" | ")}</p>}
-                        {diff.rubric.added.length > 0 && <p>Rubric criteria added in live: {diff.rubric.added.map((c) => `${c.criterion} (w:${c.weight})`).join(", ")}</p>}
-                        {diff.rubric.removed.length > 0 && <p>Rubric criteria removed since v{entry.version_number}: {diff.rubric.removed.map((c) => `${c.criterion} (w:${c.weight})`).join(", ")}</p>}
-                        {diff.rubric.modified.length > 0 && (
-                          <p>Rubric modified: {diff.rubric.modified.map((m) => `${m.version.criterion} (w:${m.version.weight} -> w:${m.live.weight})`).join(", ")}</p>
-                        )}
-                        {diff.permitted_sources.added.length + diff.permitted_sources.removed.length > 0 && (
-                          <p>Permitted sources changed: +{diff.permitted_sources.added.length} / -{diff.permitted_sources.removed.length}</p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
+                {isInspected && <RoleVersionComparison source={entry} versions={data.versions} onUnavailable={unavailable} />}
               </div>
             )
           })}

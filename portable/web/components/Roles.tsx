@@ -1,7 +1,9 @@
 import { useRef, useState, type FormEvent } from "react"
+import dynamic from "next/dynamic"
 import { ArrowRight, BriefcaseBusiness, Copy, History, Plus } from "lucide-react"
 import { api, message, RoleConflict, type PermittedMaterial } from "@/lib/api"
 import type { CalibratedRole, RubricCriterion } from "@/lib/roleCalibration"
+import { revisionNumber } from "@/lib/revisionNumber"
 import { cloneRole } from "@/lib/roleTemplates"
 import { useDraftGuard } from "@/lib/useDraftGuard"
 import ReloadRole from "./ReloadRole"
@@ -9,11 +11,15 @@ import ResourcePolicy from "./ResourcePolicy"
 import RoleFileActions from "./RoleFileActions"
 import Authoring from "./Authoring"
 import RoleRubricEditor, { sanitizeRubric } from "./RoleRubricEditor"
-import RoleVersionHistory from "./RoleVersionHistory"
 import RoleAnalyticsPanel from "./RoleAnalyticsPanel"
 import { Button } from "./ui/button"
 import { Input } from "./ui/input"
 import { Textarea } from "./ui/textarea"
+
+const RoleVersionHistory = dynamic(() => import("./RoleVersionHistory"), {
+  ssr: false,
+  loading: () => <p className="muted" role="status">Loading role history...</p>,
+})
 
 type RoleFormFields = [string, string, string, PermittedMaterial[], string, RubricCriterion[], string]
 const roleFormSnapshot = (fields: RoleFormFields) => JSON.stringify(fields)
@@ -120,7 +126,7 @@ export default function Roles({
       })
       onSave(role)
       setAnalyticsRefreshKey((k) => k + 1)
-      setStatus(`${isEdit ? "Saved" : "Created"} role ${role.name} (v${role.version_number ?? 1}).`)
+      setStatus(`${isEdit ? "Saved" : "Created"} role ${role.name} (v${revisionNumber(role.version_number, role.version_number_text) || "unavailable"}).`)
       setAdding(false)
       setName("")
       setDescription("")
@@ -250,7 +256,7 @@ export default function Roles({
               <strong>{r.name}</strong>
               <p>{r.description || `${r.questions.length} planned questions`}</p>
               <small>
-                v{r.version_number ?? 1}
+                v{revisionNumber(r.version_number, r.version_number_text) || "unavailable"}
                 {!!r.rubric?.length && ` | ${r.rubric.length} rubric ${r.rubric.length === 1 ? "criterion" : "criteria"}`}
                 {!!r.permitted_sources?.length && ` | ${r.permitted_sources.length} permitted ${r.permitted_sources.length === 1 ? "source" : "sources"}`}
               </small>
@@ -321,7 +327,7 @@ export default function Roles({
           onRestored={(updated) => {
             onSave(updated)
             setAnalyticsRefreshKey((k) => k + 1)
-            setStatus(`Restored role ${updated.name} to version ${updated.version_number ?? 1}.`)
+            setStatus(`Restored role ${updated.name} to version ${revisionNumber(updated.version_number, updated.version_number_text) || "unavailable"}.`)
           }}
           onConflictReload={() => {
             onReloadAll?.()
