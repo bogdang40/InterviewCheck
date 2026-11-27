@@ -13,6 +13,14 @@ def _fingerprint(key: bytes, tag: str, fields) -> str:
     return hmac.new(key, payload, hashlib.sha256).hexdigest()
 
 
+def material_context(session, plan):
+    context = {name: session[name] for name in ("candidate", "role", "created_at", "policy", "role_id")}
+    context.update(consent=bool(session["consent"]),
+                   planned_questions=json.loads(plan["questions"] or "[]") if plan else [],
+                   permitted_sources=json.loads(plan["permitted_sources"] or "[]") if plan else [])
+    return context
+
+
 def state(db, sid: str, aid: str, *, answer=None) -> dict:
     row = db.execute("""SELECT s.candidate,s.role,s.created_at,s.policy,s.consent,c.role_id,
                                c.questions,c.permitted_sources,
@@ -26,9 +34,7 @@ def state(db, sid: str, aid: str, *, answer=None) -> dict:
         raise HTTPException(403, "This interview does not permit worksheet use.",
                             headers={"X-InterviewCheck-Worksheet": "unavailable"})
     saved = answer if answer is not None else store.get_answer(db, sid, aid)
-    context = {name: row[name] for name in ("candidate", "role", "created_at", "policy", "role_id")}
-    context.update(consent=bool(row["consent"]), planned_questions=json.loads(row["questions"] or "[]"),
-                   permitted_sources=json.loads(row["permitted_sources"] or "[]"))
+    context = material_context(row, row)
     evidence = {k: v for k, v in saved.items() if k not in {"revision", "disposition", "note"}}
     key = answer_identity.binding_key(db, aid)
     material = _fingerprint(key, "material-v1", [sid, aid, row["ordinal"], context, evidence])
