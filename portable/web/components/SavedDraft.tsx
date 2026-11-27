@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { FilePenLine } from "lucide-react"
+import { accessLost } from "@/lib/deferredQuestions"
 import { api, message, DeferredConflict, DraftConflict, type Draft, type DraftSummary } from "@/lib/api"
 import { Button } from "./ui/button"
 
@@ -10,6 +11,7 @@ export default function SavedDraft({
   resume,
   discard,
   refresh,
+  onUnavailable,
 }: {
   sessionId: string
   summary: DraftSummary
@@ -17,6 +19,7 @@ export default function SavedDraft({
   resume: (d: Draft) => void
   discard: () => void
   refresh: (d: Draft | null) => void
+  onUnavailable: () => void
 }) {
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("")
@@ -29,7 +32,7 @@ export default function SavedDraft({
         const ack = await api<{ discarded: boolean }>("sessions/" + sessionId + "/draft/discard", "POST", {
           id: confirm.id,
           expected_revision: confirm.revision,
-          ...(confirm.deferred_question ? { deferred_question: confirm.deferred_question } : {}),
+          ...(confirm.deferred_question ? { deferred_question: confirm.deferred_question, deferred_draft_token: confirm.deferred_draft_token } : {}),
         })
         if (!ack?.discarded) throw new Error("The server did not confirm the discard. Check the current draft.")
         discard()
@@ -39,11 +42,12 @@ export default function SavedDraft({
         else discard()
       }
     } catch (e) {
+      if (summary.deferred_question && accessLost(e)) { onUnavailable(); return }
       if (remove && (e instanceof DeferredConflict || e instanceof DraftConflict)) {
         try {
           refresh(await api<Draft | null>("sessions/" + sessionId + "/draft"))
           setError("The saved draft changed. Review the current draft before confirming a discard.")
-        } catch (readError) { setError(message(readError)) }
+        } catch (readError) { if (summary.deferred_question && accessLost(readError)) onUnavailable(); else setError(message(readError)) }
       } else setError(message(e))
     } finally {
       setBusy(false)
@@ -89,10 +93,12 @@ export default function SavedDraft({
 }
 
 export function DraftConflictView({
+  onUnavailable,
   sessionId,
   resolve,
 }: {
   sessionId: string
+  onUnavailable?: () => void
   resolve: (latest: Draft | null, keep: boolean) => void
 }) {
   const [latest, setLatest] = useState<Draft | null | undefined>(undefined)
@@ -102,7 +108,8 @@ export function DraftConflictView({
       setLatest(await api<Draft | null>("sessions/" + sessionId + "/draft"))
       setError("")
     } catch (e) {
-      setError(message(e))
+      if (onUnavailable && accessLost(e)) onUnavailable()
+      else setError(message(e))
     }
   }
   return (
