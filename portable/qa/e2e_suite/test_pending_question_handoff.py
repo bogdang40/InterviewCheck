@@ -172,3 +172,42 @@ def test_late_verified_reply_cannot_copy_a_replaced_selection(e2e_workspace, des
         assert state(ws.review_db, sid) == before
         observed.assert_private()
         collector.assert_clean()
+
+
+def test_selected_parent_note_edit_and_queue_reload_preserve_inspected_text(e2e_workspace, desktop_page):
+    ws = e2e_workspace
+    page, collector = desktop_page
+    with records(ws, page, 2) as (client, sid, path, parents, items):
+        seen = Observed(page, ws.base_url, path)
+        queue, handoff = controls(page, ws.base_url, sid, parents[0])
+        toggle(page, queue, 1, SHARED)
+        inspected = show_preview(page, handoff, seen, f"1. {SHARED}\n")
+        answer_path = path + "/answers/" + parents[0]["id"]
+        old = client.get(answer_path).raise_for_status().json()
+        before = state(ws.review_db, sid)
+        changed_note = "A revised ordinary review note. Keep this out of the handoff."
+        page.get_by_role("textbox", name="Interviewer note", exact=True).fill(changed_note)
+        with page.expect_response(lambda r: r.request.method == "PATCH" and urlsplit(r.url).path == answer_path) as update:
+            page.get_by_role("button", name="Save review", exact=True).click()
+        assert update.value.status == 200
+        expect(page.get_by_text("Review saved", exact=True)).to_be_visible()
+        assert client.get(answer_path).json() == {**old, "revision": old["revision"] + 1, "note": changed_note}
+        parent_state = state(ws.review_db, sid)
+        assert parent_state["votes"] == before["votes"] and parent_state["history"][0] == before["history"][0] + 1
+        assert parent_state["deferred"] == before["deferred"]
+        current = client.get(path + "/deferred-questions/" + items[0]["id"]).raise_for_status().json()
+        assert current["version"] == items[0]["version"] and not current["needs_reconfirmation"]
+
+        with page.expect_response(lambda r: r.request.method == "GET" and urlsplit(r.url).path == path + "/deferred-questions"):
+            queue.get_by_role("button", name="Reload questions", exact=True).click()
+        expect(handoff.get_by_role("textbox", name="Exact handoff text")).to_have_value(inspected["text"])
+        expect(queue.get_by_role("checkbox", name="Include question from exchange 1", checked=True)).to_have_count(1)
+        with page.expect_response(lambda r: urlsplit(r.url).path == seen.verify_path) as verified:
+            handoff.get_by_role("button", name="Copy text", exact=True).click()
+        assert verified.value.status == 200 and verified.value.json() == inspected
+        page.wait_for_function("window.handoffCopies.length === 1")
+        assert bytes(page.evaluate("window.handoffCopies[0]")) == inspected["text"].encode("utf-8")
+        assert [url for url, _ in seen.calls] == [seen.preview_path, seen.verify_path]
+        assert seen.workspace_writes == [("PATCH", answer_path)] and not seen.external and not seen.downloads
+        assert state(ws.review_db, sid) == parent_state
+        collector.assert_clean()
