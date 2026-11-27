@@ -55,7 +55,7 @@ export default function InterviewView({ session, answerId, assignmentDirty, onDi
   const [deferredDirty, setDeferredDirty] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
-  const [captureNotice, setCaptureNotice] = useState("")
+  const [captureNotice, setCaptureNotice] = useState<{ id: string; text: string } | null>(null)
   const deferredPanel = useRef<HTMLDetailsElement | null>(null)
   const [deferredReady, setDeferredReady] = useState(false)
   const attachDeferred = useCallback((node: HTMLDetailsElement | null) => {
@@ -122,6 +122,7 @@ export default function InterviewView({ session, answerId, assignmentDirty, onDi
   }, [answerId, selected])
 
   function select(id: string, replace = false) {
+    setCaptureNotice(null)
     setEdit(null)
     if (answerId === id) return
     const url = new URL(window.location.href)
@@ -165,7 +166,7 @@ export default function InterviewView({ session, answerId, assignmentDirty, onDi
     select(destination, !advance)
   }
   function begin(question = "", origin?: QuestionOrigin) {
-    setCaptureNotice("")
+    setCaptureNotice(null)
     setFirstOrigin(origin)
     setFollowUp(question)
     setEdit("new")
@@ -199,7 +200,7 @@ export default function InterviewView({ session, answerId, assignmentDirty, onDi
           )}
         </div>
       </header>
-      {captureNotice && <p role="status">{captureNotice}</p>}
+      {captureNotice && captureNotice.id === selected?.id && <p role="status">{captureNotice.text}</p>}
       {error && (
         <p className="error" role="alert">
           {error}
@@ -283,7 +284,7 @@ export default function InterviewView({ session, answerId, assignmentDirty, onDi
                 }}
                 initial={session.answers.find((a) => a.id === edit)}
                 onDirty={onDirty}
-                onSave={(answer, notice) => { setCaptureNotice(notice ?? ""); save(answer) }}
+                onSave={(answer, notice) => { save(answer); if (notice) setCaptureNotice({ id: answer.id, text: notice }) }}
                 onCancel={() => { setEdit(null); focusTarget.current?.focus({ preventScroll: true }) }}
                 embeddingAvailable={capabilities.embedding}
               />
