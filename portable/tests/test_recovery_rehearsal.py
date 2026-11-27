@@ -359,3 +359,31 @@ def test_required_alert_uses_text_identifiers(copies):
         db.execute(sql.replace("id TEXT PRIMARY KEY", "id INTEGER PRIMARY KEY", 1))
     report = recovery_rehearsal.rehearse(review, access, [key], ["RECOVERED_PREVIOUS"])
     assert report["status"] == "failed" and report["databases"]["review"]["status"] == "schema_mismatch"
+
+
+@pytest.mark.parametrize("changed_during_hash", [False, True])
+def test_hashing_compares_timestamps_through_the_same_file_interface(tmp_path, monkeypatch, changed_during_hash):
+    from types import SimpleNamespace
+
+    snapshot = tmp_path / "snapshot"
+    snapshot.write_bytes(b"fixed synthetic snapshot")
+    digest = hashlib.sha256(snapshot.read_bytes()).hexdigest()
+    initial = recovery_snapshot._identity(snapshot)
+    fstat = os.fstat
+    reads = 0
+
+    def descriptor_stat(fd):
+        nonlocal reads
+        reads += 1
+        info = fstat(fd)
+        return SimpleNamespace(st_dev=info.st_dev, st_ino=info.st_ino, st_size=info.st_size, st_mode=info.st_mode,
+                               st_mtime_ns=info.st_mtime_ns,
+                               st_ctime_ns=initial[1] + (reads if changed_during_hash else 1))
+
+    monkeypatch.setattr(os, "fstat", descriptor_stat)
+    if changed_during_hash:
+        with pytest.raises(recovery_snapshot.SnapshotError, match="snapshot_changed"):
+            recovery_snapshot._check_digest(snapshot, digest, initial)
+    else:
+        recovery_snapshot._check_digest(snapshot, digest, initial)
+    assert reads >= 2

@@ -56,7 +56,11 @@ class SnapshotError(Exception):
     """Only fixed public outcome codes are passed to this exception."""
 
 
-def _identity(path: Path) -> tuple[int, int, int, int, int]:
+def _file_signature(info: os.stat_result) -> tuple[int, int, int, int]:
+    return info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns
+
+
+def _identity(path: Path) -> tuple[tuple[int, int, int, int], int]:
     try:
         info = path.lstat()
     except FileNotFoundError as exc:
@@ -69,7 +73,7 @@ def _identity(path: Path) -> tuple[int, int, int, int, int]:
         except FileNotFoundError:
             continue
         raise SnapshotError("snapshot_has_sidecar")
-    return info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns
+    return _file_signature(info), info.st_ctime_ns
 
 
 def _check_schema(db: sqlite3.Connection, kind: str) -> None:
@@ -160,9 +164,14 @@ def _check_digest(path, expected, initial):
     flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0)
     with os.fdopen(os.open(path, flags), "rb") as source:
         info = os.fstat(source.fileno())
-        if (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns) != initial:
+        # Windows can return a different ctime through lstat and fstat for the
+        # same NTFS file. Compare ctime only between reads through the same API.
+        if not stat.S_ISREG(info.st_mode) or _file_signature(info) != initial[0]:
             raise SnapshotError("snapshot_changed")
         digest = hashlib.file_digest(source, "sha256").hexdigest()
+        after = os.fstat(source.fileno())
+        if _file_signature(after) != initial[0] or after.st_ctime_ns != info.st_ctime_ns:
+            raise SnapshotError("snapshot_changed")
     if digest != expected:
         raise SnapshotError("snapshot_digest_mismatch")
 
