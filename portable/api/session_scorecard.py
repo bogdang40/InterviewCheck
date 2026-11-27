@@ -298,6 +298,7 @@ def delete_handoff_note(sid: UUID, nid: UUID):
     note_id = str(nid)
     with store.connection(write=True) as db:
         store.get_summary(db, key)
+        session_privacy.require_content_writable(db, key)
         cur = db.execute(
             "DELETE FROM session_handoff_notes WHERE id=? AND session_id=?",
             (note_id, key),

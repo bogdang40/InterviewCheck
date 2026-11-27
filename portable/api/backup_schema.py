@@ -242,7 +242,7 @@ class Backup(Record):
 
     @model_validator(mode="after")
     def check_extensions(self):
-        role_ids = {r.id for r in self.roles}
+        live_versions = {r.id: r.version_number for r in self.roles}
         unique((n.id for s in self.sessions for n in s.handoff_notes), "handoff note ID")
         unique((v.id for r in self.roles for v in r.versions), "role version ID")
         for r in self.roles:
@@ -258,13 +258,16 @@ class Backup(Record):
                 raise ValueError("Version 6 requires a rubric snapshot field on every interview.")
             if (self.version >= 6 and s.privacy is None) or (self.version < 6 and "privacy" in s.model_fields_set):
                 raise ValueError("Version 6 requires an interview privacy record.")
-            if s.rubric_snapshot and s.role_id and s.rubric_snapshot.role_id != s.role_id:
-                raise ValueError("The rubric snapshot belongs to another role.")
+            if s.rubric_snapshot and s.role_id:
+                if s.rubric_snapshot.role_id != s.role_id:
+                    raise ValueError("The rubric snapshot belongs to another role.")
+                if s.role_id in live_versions and s.rubric_snapshot.version_number > live_versions[s.role_id]:
+                    raise ValueError("The interview rubric refers to a revision newer than its linked role.")
             aids = {a.id for a in s.answers}
             for ev in s.review_events:
                 if ev.answer_id not in aids:
                     raise ValueError("A review event refers to a missing exchange.")
-                if ev.role_id is not None and ev.role_id not in role_ids:
+                if ev.role_id is not None and ev.role_id not in live_versions:
                     raise ValueError("A review event refers to a missing role.")
         return self
 

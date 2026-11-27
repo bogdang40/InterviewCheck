@@ -172,3 +172,38 @@ def test_detached_restore_replays_only_the_original_explicit_role_and_digest(cli
         assert client.post("/api/sessions", json={**request, **replacement}).status_code == 409
     assert card(client, sid) == original
     assert client.get("/api/roles").json() == [] and len(client.get("/api/sessions").json()) == 1
+
+
+def test_linked_future_rubric_is_invalid_but_detached_and_older_sources_remain_valid(client, tmp_path, monkeypatch):
+    role = role_with(client, [FIRST])
+    sid = setup(client, role)["id"]
+    client.put("/api/roles/" + role["id"], json={**role, "rubric": [SECOND]}).raise_for_status()
+    original = client.get("/api/backups/workspace").raise_for_status().json()
+    role_record, = original["roles"]
+    role_record["versions"] = [v for v in role_record["versions"] if v["version_number"] == 2]
+    assert role_record["version_number"] == 2 and original["sessions"][0]["rubric_snapshot"]["version_number"] == 1
+
+    def fresh(name):
+        path = tmp_path / name
+        store.initialize(path)
+        monkeypatch.setenv("INTERVIEWCHECK_DB", str(path))
+
+    fresh("linked.sqlite")
+    future = deepcopy(original)
+    future["sessions"][0]["rubric_snapshot"]["version_number"] = 3
+    raw = json.dumps(future).encode()
+    assert client.post("/api/backups/preview", content=raw).status_code == 422
+    assert restore(client, raw, {"fingerprint": sha256(raw).hexdigest()}).status_code == 422
+    assert client.get("/api/roles").json() == [] and client.get("/api/sessions").json() == []
+
+    # The source revision may be older than the available journal.
+    raw = json.dumps(original).encode()
+    restore(client, raw, preview(client, raw)).raise_for_status()
+    assert card(client, sid)["rubric_snapshot"] == original["sessions"][0]["rubric_snapshot"]
+
+    # A detached interview has no live role authority, even if the file also carries a role of the same ID.
+    fresh("detached-future.sqlite")
+    future["sessions"][0]["role_id"] = None
+    raw = json.dumps(future).encode()
+    restore(client, raw, preview(client, raw)).raise_for_status()
+    assert card(client, sid)["rubric_snapshot"] == future["sessions"][0]["rubric_snapshot"]

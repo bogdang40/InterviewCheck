@@ -138,7 +138,7 @@ export default function PanelHandoffNotes({ sessionId, initial, visible, onDirty
     } catch (err) { failed(err) } finally { setBusy(false) }
   }
   async function remove(note: HandoffNote, index: number) {
-    if (!data || busy) return
+    if (!data || busy || readOnly) return
     requestFocus(data.items[index + 1]?.id ?? data.items[index - 1]?.id ?? "status")
     setBusy(true); setWriteError(""); setStatus("")
     try {
@@ -190,10 +190,10 @@ export default function PanelHandoffNotes({ sessionId, initial, visible, onDirty
           <span className={`${styles.catBadge} ${styles["cat_" + note.category] ?? ""}`}>{categories[note.category]}</span>
           <span className={styles.noteMeta}>{note.author_email} &middot; <NoteTime value={note.created_at} /></span>
         </div>
-          <Button id={prefix + note.id} type="button" variant="ghost" size="sm" disabled={busy}
+          {!readOnly && <Button id={prefix + note.id} type="button" variant="ghost" size="sm" disabled={busy}
             aria-label={`Delete ${categories[note.category].toLowerCase()} note`} aria-describedby={prefix + "-body-" + note.id}
             onClick={() => void remove(note, index)}>
-            <Trash2 size={14} aria-hidden="true" />Delete</Button>
+            <Trash2 size={14} aria-hidden="true" />Delete</Button>}
         </div>
         <p id={prefix + "-body-" + note.id} className={styles.noteBody}>{note.body || "No note text retained."}</p>
       </li>)}</ul>

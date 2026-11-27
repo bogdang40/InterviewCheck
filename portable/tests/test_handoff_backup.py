@@ -194,3 +194,32 @@ def test_absent_notes_table_does_not_silently_discard_notes(client, tmp_path, mo
     new = create_session(client)
     doc = client.get("/api/backups/workspace", params={"session_id": new}).json()
     assert doc["sessions"][0]["handoff_notes"] == []
+
+
+@pytest.mark.parametrize("protection", ["anonymized", "legacy_unverified"])
+def test_delete_cannot_remove_retained_handoff_or_its_attribution(client, monkeypatch, protection):
+    from api.retention_anonymizer import SessionAnonymizer
+
+    author = "original-panelist@example.test"
+
+    async def actor(request):
+        return "fixture-panelist", author
+
+    monkeypatch.setattr(access, "optional_actor", actor)
+    sid = create_session(client)
+    saved = add_note(client, sid, "decision", "Synthetic private rationale.")
+    path = f"/api/sessions/{sid}/handoff-notes"
+    with store.connection(write=True) as db:
+        SessionAnonymizer(db, sid).run(preserve_scorecard_aggregates=False,
+                                       actor_email="retention-fixture@example.test", now_iso=store.timestamp())
+        if protection == "legacy_unverified":
+            db.execute("DELETE FROM session_anonymizations WHERE session_id=?", (sid,))
+            db.execute("INSERT INTO legacy_privacy_holds(session_id) VALUES(?)", (sid,))
+    # A stale authorized tab knows the original note ID and can still attempt the request.
+    refused = client.delete(path + "/" + saved["id"])
+    assert refused.status_code == 409
+    assert refused.headers["X-InterviewCheck-Conflict"] == "interview-privacy"
+    retained = {**saved, "body": ""}
+    assert client.get(path).raise_for_status().json()["items"] == [retained]
+    assert notes(client, sid) == [retained]
+    assert retained["author_email"] == author

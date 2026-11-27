@@ -229,3 +229,35 @@ def test_failed_handoff_write_respects_keyboard_focus(workspace_url, browser_pag
     expect(error).to_be_visible()
     expect(criterion).to_be_focused()
     expect(composer).to_have_value("Keep this note until saved.")
+
+
+@pytest.mark.parametrize("protection", ["anonymized", "legacy_unverified"])
+def test_protected_handoff_rows_remain_readable_without_delete_controls(workspace_url, browser_page, protection):
+    from api import store
+    from api.retention_anonymizer import SessionAnonymizer
+
+    page = browser_page
+    with httpx.Client(base_url=workspace_url, headers={"X-InterviewCheck": "1"}) as client:
+        sid = client.post("/api/sessions", json={"candidate": "Panel fixture", "role": "Engineer",
+                          "policy": "Manuals", "consent": True}).raise_for_status().json()["id"]
+        path = f"/api/sessions/{sid}/handoff-notes"
+        original = client.post(path, json={"category": "decision", "body": "Private panel explanation."}).raise_for_status().json()
+        page.goto(workspace_url + "/interviews/review/?id=" + sid)
+        notes = page.get_by_role("region", name="Panel handoff notes")
+        remove = notes.get_by_role("button", name="Delete decision note")
+        expect(remove).to_be_visible()
+        with store.connection(write=True) as db:
+            SessionAnonymizer(db, sid).run(preserve_scorecard_aggregates=False,
+                                           actor_email="retention-fixture@example.test", now_iso=store.timestamp())
+            if protection == "legacy_unverified":
+                db.execute("DELETE FROM session_anonymizations WHERE session_id=?", (sid,))
+                db.execute("INSERT INTO legacy_privacy_holds(session_id) VALUES(?)", (sid,))
+        page.reload()
+        row = notes.get_by_role("listitem")
+        expect(row).to_have_count(1)
+        expect(row).to_contain_text(original["author_email"])
+        expect(row).to_contain_text("No note text retained.")
+        expect(row.locator("time")).to_have_attribute("datetime", original["created_at"])
+        expect(remove).to_have_count(0)
+        expect(notes.get_by_role("button", name="Add handoff note")).to_have_count(0)
+        expect(notes).not_to_contain_text("Private panel explanation.")
