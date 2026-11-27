@@ -66,7 +66,8 @@ def all_notes(db, sid):
 
 
 def read(db, sid, category, limit, cursor):
-    active = db.execute("SELECT 1 FROM active_sessions WHERE id=?", (sid,)).fetchone()
+    active = db.execute(f"SELECT 1 FROM sessions s WHERE s.id=? AND {retention_visibility.ACTIVE_CONDITION}",
+                        (sid,)).fetchone()
     if active is None:
         retention_visibility.require_available(db, sid)
         raise HTTPException(404, "Session does not exist.")

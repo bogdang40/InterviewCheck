@@ -16,6 +16,8 @@ ANSWER = """r.answer!=:marker OR r.note!='' OR r.legacy IS NOT NULL OR r.import_
     ELSE 1 END"""
 EXPORT = "r.draft!=:marker OR r.recipient!=:marker"
 PARAMS = {"marker": REDACTED_TEXT, "safe_probe": probe("", Words(REDACTED_TEXT))}
+ACTIVE_CONDITION = """NOT EXISTS (SELECT 1 FROM session_trash t WHERE t.session_id=s.id)
+                  AND NOT EXISTS (SELECT 1 FROM retention_read_holds h WHERE h.session_id=s.id)"""
 
 
 def _conflicts(scope):
@@ -65,10 +67,8 @@ def refresh(db):
     db.execute(f"INSERT INTO retention_read_holds(session_id) {_conflicts('1')}", PARAMS)
     if first:
         db.execute("DROP VIEW active_sessions")
-        db.execute("""CREATE VIEW active_sessions AS
-            SELECT s.rowid AS rowid,s.* FROM sessions s
-            WHERE NOT EXISTS (SELECT 1 FROM session_trash t WHERE t.session_id=s.id)
-              AND NOT EXISTS (SELECT 1 FROM retention_read_holds h WHERE h.session_id=s.id)""")
+        db.execute(f"""CREATE VIEW active_sessions AS
+            SELECT s.rowid AS rowid,s.* FROM sessions s WHERE {ACTIVE_CONDITION}""")
     _track_changes(db)
 
 

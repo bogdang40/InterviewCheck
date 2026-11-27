@@ -1,5 +1,5 @@
 """Select bounded snippets after choosing the highest ranked field for each record."""
-from . import search_fts
+from . import retention_visibility, search_fts
 from .search_cursor import Position
 
 
@@ -14,8 +14,8 @@ TITLE_FIELDS = (
 BODY_FIELD = ("answer", "answer", "answer", 4)
 SOURCES = {
     "role": ("roles r", "r", "NULL", "fts_roles"),
-    "session": ("active_sessions s", "s", "s.id", "fts_sessions"),
-    "answer": ("answers a JOIN active_sessions s ON s.id=a.session_id", "a", "a.session_id", "fts_answers"),
+    "session": ("sessions s", "s", "s.id", "fts_sessions"),
+    "answer": ("answers a JOIN sessions s ON s.id=a.session_id", "a", "a.session_id", "fts_answers"),
 }
 
 
@@ -25,6 +25,10 @@ def _candidates(field, fts, body_filter):
     conditions = []
     if fts:
         conditions.append(f"{alias}.rowid IN (SELECT rowid FROM {index} WHERE {column} MATCH :fts)")
+    # Keep the column projection narrow. Expanding the complete active_sessions view also
+    # authorizes reads of policy and native payload columns for a title-only query.
+    if kind != "role":
+        conditions.append(retention_visibility.ACTIVE_CONDITION)
     if name == "answer" and body_filter:
         conditions.append(body_filter)
     where = " WHERE " + " AND ".join(conditions) if conditions else ""
