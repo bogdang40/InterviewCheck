@@ -254,7 +254,7 @@ export default function Roles({
                 {!!r.rubric?.length && ` | ${r.rubric.length} rubric ${r.rubric.length === 1 ? "criterion" : "criteria"}`}
                 {!!r.permitted_sources?.length && ` | ${r.permitted_sources.length} permitted ${r.permitted_sources.length === 1 ? "source" : "sources"}`}
               </small>
-              <RoleFileActions id={r.id} disabled={adding} onDuplicate={onSave} onEdit={open} />
+              <RoleFileActions role={r} disabled={adding} onDuplicate={onSave} onEdit={open} />
             </div>
             <span className="ml-auto flex flex-wrap items-center gap-2 max-sm:w-full">
               <Button
@@ -316,6 +316,7 @@ export default function Roles({
       </section>
       {historyRole && (
         <RoleVersionHistory
+          key={historyRole.id}
           role={historyRole}
           onRestored={(updated) => {
             onSave(updated)

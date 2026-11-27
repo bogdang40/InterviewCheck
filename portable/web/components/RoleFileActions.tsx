@@ -2,14 +2,17 @@ import { useRef, useState } from "react"
 import { api, message, type Role } from "@/lib/api"
 import { saveBlob } from "@/lib/download"
 import { detailOr, send } from "@/lib/http"
+import type { CalibratedRole } from "@/lib/roleCalibration"
+import { GuideButton } from "./InterviewerGuide"
 import { Button } from "./ui/button"
 
-export default function RoleFileActions({ id, disabled, onDuplicate, onEdit }: {
-  id: string
+export default function RoleFileActions({ role, disabled, onDuplicate, onEdit }: {
+  role: CalibratedRole
   disabled: boolean
   onDuplicate: (role: Role) => void
   onEdit: (role: Role) => void
 }) {
+  const id = role.id
   const copyId = useRef<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
@@ -43,6 +46,7 @@ export default function RoleFileActions({ id, disabled, onDuplicate, onEdit }: {
   return <details className="import">
     <summary>Role file and copy</summary>
     <div className="stack">
+      <div><GuideButton role={role} disabled={disabled} /></div>
       <p>Export the saved questions, grading rubric, description, policy and permitted materials for another portable workspace.</p>
       <div><Button type="button" size="sm" variant="outline" disabled={busy || disabled}
         onClick={() => perform("export")}>Export role file</Button></div>

@@ -64,6 +64,7 @@ function RoleLibrary() {
         <div><Button className="min-h-[44px] md:min-h-9" onClick={() => prepare({ candidate: "", role: role.name, roleId: role.id })}>Prepare interview</Button></div>
       </section>
       <RoleVersionHistory
+        key={role.id}
         role={role}
         onRestored={(updated) => { setDetailStatus(`Reloaded ${updated.name} (v${updated.version_number ?? 1}).`); item.reload() }}
         onConflictReload={() => { setDetailStatus("Reloaded saved role."); item.reload() }}

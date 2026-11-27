@@ -12,6 +12,7 @@ import {
   type RoleVersionDetailResponse,
   type RoleVersionsResponse,
 } from "@/lib/roleCalibration"
+import { GuideButton } from "./InterviewerGuide"
 import { Badge } from "./ui/badge"
 import { Button } from "./ui/button"
 import { Input } from "./ui/input"
@@ -175,6 +176,7 @@ export default function RoleVersionHistory({ role, onRestored, onConflictReload,
                     <strong className="text-sm">{entry.change_note || "No change note"}</strong>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
+                    <GuideButton role={entry} historical />
                     <Button type="button" variant="outline" size="sm" disabled={diffLoading} onClick={() => void inspectDiff(entry.version_number)}>
                       <GitCompare aria-hidden="true" />
                       {isInspected ? "Hide diff" : "Inspect diff"}
