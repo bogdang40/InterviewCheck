@@ -88,10 +88,6 @@ textarea:focus-visible {
   .field input:not([type="checkbox"]):not([type="radio"]):not([type="file"]) {
     min-height: 44px;
   }
-  .check {
-    min-height: 44px;
-    align-items: center;
-  }
   input[type="checkbox"],
   input[type="radio"] {
     min-width: 18px;

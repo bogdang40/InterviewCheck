@@ -153,6 +153,13 @@ def answer_detail(sid: UUID, aid: UUID):
         return store.get_answer(db, str(sid), str(aid))
 
 
+@workspace.get("/sessions/{sid}/answers/{aid}/worksheet")
+def worksheet_state(sid: UUID, aid: UUID):
+    from . import review_worksheet
+    with store.connection() as db:
+        return review_worksheet.state(db, str(sid), str(aid))
+
+
 @workspace.put("/sessions/{sid}/answers/{aid}")
 def revise(sid: UUID, aid: UUID, item: AnswerEdit, actor=Depends(mutation_actor)):
     with store.connection(write=True) as db:

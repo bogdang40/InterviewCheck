@@ -43,6 +43,7 @@ export type Interview = Session & { privacy_state?: "unmarked" | "anonymized" | 
 export type Role = { id: string; version: string; name: string; description: string; questions: string[]; policy: string; permitted_sources: PermittedMaterial[] }
 
 export class RevisionConflict extends Error {}
+export class WorksheetUnavailable extends Error {}
 export class DraftConflict extends Error {}
 export class RoleConflict extends Error {}
 
@@ -56,7 +57,13 @@ export async function api<T>(path: string, method = "GET", body?: unknown, signa
   })
   if (!response.ok) {
     const data = await response.json().catch(() => ({}))
-    const detail = typeof data.detail === "string" ? data.detail : data.detail?.[0]?.msg
+    const detail = typeof data?.detail === "string" ? data.detail : data?.detail?.[0]?.msg
+    const guardedSave = method === "PATCH" && typeof body === "object" && body !== null && "worksheet_guard" in body
+    const unavailable = [401, 402, 403, 404].includes(response.status)
+      || response.headers.get("X-InterviewCheck-Worksheet") === "unavailable"
+    if (unavailable && (guardedSave || (method === "GET" && path.endsWith("/worksheet")))) {
+      throw new WorksheetUnavailable(detail || "The worksheet exchange is no longer available.")
+    }
     if (response.status === 409 && response.headers.get("X-InterviewCheck-Conflict") === "role-version") {
       throw new RoleConflict(detail)
     }

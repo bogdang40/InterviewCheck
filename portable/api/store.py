@@ -123,6 +123,8 @@ def initialize(path):
         from . import admin_audit_outbox
         admin_audit_outbox.migrate(db)
         usage_events.migrate(db)
+        from . import answer_identity
+        answer_identity.migrate(db)
         from . import ai_cost_log, provider_allowance
         ai_cost_log.migrate(db)
         provider_allowance.migrate(db)
@@ -296,11 +298,16 @@ def write_answer(db, key, item: AnswerInput, replace_id=None, *, session=None, a
 
 def update_review(db, key, aid, review: ReviewInput, *, actor: tuple[str, str] = ("local-operator", "local-operator"), history_actor=None):
     current = get_answer(db, key, aid)
-    session_privacy.require_content_writable(db, key)
-    check_revision(current, review.expected_revision)
-    prior_actor_disp = role_analytics.latest_reviewer_disposition(db, aid, actor[0])
-    effective_prev = prior_actor_disp if prior_actor_disp is not None else "pending"
-    actor_changed = effective_prev != review.disposition
+    if review.worksheet_guard is not None:
+        from . import review_worksheet
+        review_worksheet.check_save(db, key, aid, current, review)
+        # A staged note must not cast a reviewer decision.
+        actor_changed = False
+    else:
+        session_privacy.require_content_writable(db, key)
+        check_revision(current, review.expected_revision)
+        previous_disposition = role_analytics.latest_reviewer_disposition(db, aid, actor[0]) or "pending"
+        actor_changed = previous_disposition != review.disposition
     answer_changed = (current["disposition"], current["note"]) != (review.disposition, review.note)
     if not answer_changed and not actor_changed:
         return current
@@ -316,7 +323,7 @@ def update_review(db, key, aid, review: ReviewInput, *, actor: tuple[str, str] =
             answer_id=aid,
             reviewer_id=actor[0],
             reviewer_email=actor[1],
-            previous_disposition=effective_prev,
+            previous_disposition=previous_disposition,
             disposition=review.disposition,
         )
     saved = get_answer(db, key, aid)

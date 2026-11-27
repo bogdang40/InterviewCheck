@@ -91,6 +91,14 @@ def smoke(archive):
                     assert response.headers.get_content_type() == "text/html"
                     entry = (root / "web" / "out" / "index.html").read_bytes()
                     assert entry and response.read() == entry, "Expected the packaged workspace entry page."
+                # Next's client router reads these static Flight payloads while
+                # prefetching links, including before an account signs in.
+                for route in ("account", "admin", "interviews/review"):
+                    filename = "__next." + route.replace("/", ".") + ".__PAGE__.txt"
+                    relative = route + "/" + filename
+                    expected = (root / "web" / "out" / relative).read_bytes()
+                    with urlopen(base + "/" + relative, timeout=5) as response:
+                        assert response.status == 200 and expected and response.read() == expected, relative
                 try:
                     urlopen(base + "/api/sessions", timeout=5).close()
                 except HTTPError as denied:

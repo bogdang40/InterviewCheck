@@ -233,6 +233,10 @@ def test_m11_lazy_diagnostics_tab_usage_transcription_and_audio_check(e2e_worksp
 
         monkeypatch.setattr(integrations, "fetch_json", fake_diag_fetch)
         assert admin_api.post("/api/integrations/reference", json={"role": "Backend", "question": "Q"}).status_code == 200
+        history = admin_api.get(f"/api/admin/models/{diag_model['id']}/health").raise_for_status().json()["history"]
+        assert sorted(check["source"] for check in history) == ["live", "probe"]
+        latencies = {check["source"]: check["latency_ms"] for check in history}
+        assert latencies["probe"] == 45 and latencies["live"] >= 0
 
     page, collector = desktop_page
     install_audio_mock(page)
@@ -244,7 +248,10 @@ def test_m11_lazy_diagnostics_tab_usage_transcription_and_audio_check(e2e_worksp
     expect(diag_panel.get_by_role("heading", name="Diagnostics & usage")).to_be_visible()
 
     summary = diag_panel.get_by_label("Fleet diagnostic summary")
-    expect(summary).to_contain_text("45 ms")
+    latency = summary.get_by_role("article").filter(has_text="Fleet P95 latency")
+    # With two observations the nearest-rank P95 is the slower one.
+    expect(latency.locator("strong")).to_have_text(f"{max(latencies.values())} ms")
+    expect(latency).to_contain_text(f"Avg {round(sum(latencies.values()) / 2)} ms · Uptime 100.0%")
     expect(summary).to_contain_text("2.0k")
     expect(summary).to_contain_text("Not ready")
 
