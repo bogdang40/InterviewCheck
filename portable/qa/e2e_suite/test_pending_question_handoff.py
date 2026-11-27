@@ -59,7 +59,7 @@ def test_scoped_handoff_keyboard_paging_exact_clipboard_and_file(e2e_workspace, 
         with page.expect_response(lambda r: urlsplit(r.url).path == observation.verify_path) as copy_check:
             handoff.get_by_role("button", name="Copy text", exact=True).click()
         assert copy_check.value.status == 200 and copy_check.value.json() == approved
-        page.wait_for_function("() => window.handoffCopies.length === 1")
+        expect(handoff.get_by_text("Handoff copied.", exact=True)).to_be_visible()
         assert bytes(page.evaluate("window.handoffCopies[0]")) == expected_text.encode()
         with page.expect_download() as downloaded, page.expect_response(lambda r: urlsplit(r.url).path == observation.verify_path) as file_check:
             handoff.get_by_role("button", name="Download text file", exact=True).click()
@@ -113,7 +113,8 @@ def test_change_after_preview_refuses_transfer_and_erases_preview(e2e_workspace,
         elif change == "trash":
             client.post(path + "/trash").raise_for_status()
         else:
-            assert page.request.post(ws.base_url + "/api/integrations/access/logout", headers=HEADERS, data={}).ok
+            signed_out = page.request.post(ws.base_url + "/api/integrations/logout", headers=HEADERS)
+            assert signed_out.ok and signed_out.json()["signed_out"] is True
         after_change = state(ws.review_db, sid)
         collector.assert_clean()
         with page.expect_response(lambda r: urlsplit(r.url).path == observed.verify_path) as rejected:
@@ -147,8 +148,8 @@ def test_late_verified_reply_cannot_copy_a_replaced_selection(e2e_workspace, des
             const response = await normal(...args);
             if (!response.ok || !new URL(response.url).pathname.endsWith('/handoff/verify') || !window.holdHandoff) return response;
             const body = await response.text();
-            await new Promise(resolve => { window.releaseHandoff = resolve; window.handoffWaiting = true; });
-            requestAnimationFrame(() => requestAnimationFrame(() => { window.handoffReturned = true; }));
+            await new Promise(resolve => { window.releaseHandoff = resolve; document.documentElement.dataset.handoffWaiting = "1"; });
+            requestAnimationFrame(() => requestAnimationFrame(() => { document.documentElement.dataset.handoffReturned = "1"; }));
             return new Response(body,{status: response.status,headers: response.headers});
           };
         })()""")
@@ -159,13 +160,13 @@ def test_late_verified_reply_cannot_copy_a_replaced_selection(e2e_workspace, des
         page.evaluate("window.holdHandoff = true")
         handoff.get_by_role("button", name="Copy text", exact=True).click()
         try:
-            page.wait_for_function("window.handoffWaiting === true")
+            expect(page.locator("html")).to_have_attribute("data-handoff-waiting", "1")
             expect(toggle(page, queue, 1, SHARED)).not_to_be_checked()
             expect(toggle(page, queue, 1, SECOND)).to_be_checked()
             disabled_transfer(page, handoff)
         finally:
             page.evaluate("() => { window.holdHandoff = false; window.releaseHandoff?.(); }")
-        page.wait_for_function("window.handoffReturned === true")
+        expect(page.locator("html")).to_have_attribute("data-handoff-returned", "1")
         show_preview(page, handoff, observed, f"1. {SECOND}\n")
         assert [key for key, _ in observed.calls] == [observed.preview_path, observed.verify_path, observed.preview_path]
         assert page.evaluate("window.handoffCopies") == [] and observed.downloads == []
@@ -205,7 +206,7 @@ def test_selected_parent_note_edit_and_queue_reload_preserve_inspected_text(e2e_
         with page.expect_response(lambda r: urlsplit(r.url).path == seen.verify_path) as verified:
             handoff.get_by_role("button", name="Copy text", exact=True).click()
         assert verified.value.status == 200 and verified.value.json() == inspected
-        page.wait_for_function("window.handoffCopies.length === 1")
+        expect(handoff.get_by_text("Handoff copied.", exact=True)).to_be_visible()
         assert bytes(page.evaluate("window.handoffCopies[0]")) == inspected["text"].encode("utf-8")
         assert [url for url, _ in seen.calls] == [seen.preview_path, seen.verify_path]
         assert seen.workspace_writes == [("PATCH", answer_path)] and not seen.external and not seen.downloads
