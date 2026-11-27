@@ -12,6 +12,7 @@ export type RubricCriterion = {
 export type CalibratedRole = Role & {
   rubric?: RubricCriterion[]
   version_number?: number
+  version_number_text?: string
 }
 
 export type RoleSavePayload = {
@@ -107,6 +108,7 @@ export type RoleVersionSnapshot = {
   id: string
   role_id: string
   version_number: number
+  version_number_text: string
   version: string
   content_sha256: string
   name: string
@@ -124,16 +126,18 @@ export type RoleVersionsResponse = {
   role_id: string
   current_version: string
   current_version_number: number
+  current_version_number_text: string
   versions: RoleVersionSnapshot[]
 }
 
 export type RoleVersionDiff = {
   against_version: string
   against_version_number: number
+  against_version_number_text: string
   has_changes: boolean
   changed_fields: string[]
-  changes: Record<string, { version: unknown; live: unknown }>
-  questions: { added: string[]; removed: string[]; reordered: boolean; occurrences: { text: string; before: number; after: number }[] }
+  changes: { [K in "name" | "description" | "questions" | "policy" | "rubric" | "permitted_sources"]?: { version: RoleVersionSnapshot[K]; live: RoleVersionSnapshot[K] } }
+  questions: { added: string[]; removed: string[]; reordered: boolean; reordered_common: { before: string[]; after: string[] } | null; occurrences: { text: string; before: number; after: number }[] }
   rubric: {
     reordered: boolean
     added: RubricCriterion[]
@@ -147,6 +151,7 @@ export type RoleVersionDetailResponse = {
   role_id: string
   current_version: string
   current_version_number: number
+  current_version_number_text: string
   version: RoleVersionSnapshot
   diff: RoleVersionDiff
 }
@@ -186,12 +191,12 @@ export function fetchRoleVersions(roleId: string, signal?: AbortSignal): Promise
   return requestRoleApi<RoleVersionsResponse>(`/api/roles/${encodeURIComponent(roleId)}/versions`, { method: "GET", signal })
 }
 
-export function fetchRoleVersionDiff(roleId: string, versionNumber: number, signal?: AbortSignal, compareTo?: number): Promise<RoleVersionDetailResponse> {
+export function fetchRoleVersionDiff(roleId: string, versionNumber: number | string, signal?: AbortSignal, compareTo?: number | string): Promise<RoleVersionDetailResponse> {
   const query = compareTo === undefined ? "" : `?compare_to=${compareTo}`
   return requestRoleApi<RoleVersionDetailResponse>(`/api/roles/${encodeURIComponent(roleId)}/versions/${versionNumber}${query}`, { method: "GET", signal })
 }
 
-export function restoreRoleVersion(roleId: string, versionNumber: number, payload: RoleRestoreRequest): Promise<RoleRestoreResponse> {
+export function restoreRoleVersion(roleId: string, versionNumber: number | string, payload: RoleRestoreRequest): Promise<RoleRestoreResponse> {
   return requestRoleApi<RoleRestoreResponse>(`/api/roles/${encodeURIComponent(roleId)}/versions/${versionNumber}/restore`, {
     method: "POST",
     body: JSON.stringify(payload),
