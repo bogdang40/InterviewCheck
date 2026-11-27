@@ -16,8 +16,8 @@ export type LocalDraftPayload = {
 
 export type DraftRecord = { key: string; raw: string; data: LocalDraftPayload }
 
-export function editorDraftKey(sessionId: string, answerId?: string, savedDraftId?: string) {
-  const suffix = answerId ?? (savedDraftId ? "saved:" + savedDraftId : "new")
+export function editorDraftKey(sessionId: string, answerId?: string, savedDraftId?: string, fingerprint?: string) {
+  const suffix = answerId ?? (savedDraftId ? "saved:" + savedDraftId + (fingerprint ? ":life:" + fingerprint : "") : "new")
   return `${DRAFT_KEY_PREFIX}${sessionId}:editor:${suffix}`
 }
 
@@ -103,26 +103,29 @@ export function ambiguous(record: DraftRecord | null): boolean {
   return !!record && !!record.data.baseRevision && !record.data.answerId && !record.data.draftId && record.key.endsWith(":editor:new")
 }
 
-/** Old editors shared one key between new exchanges and all resumed server drafts. */
-export function preserveUnlinked(sessionId: string): DraftRecord | null {
+/** Earlier editors either shared the new-exchange key or knew only the saved draft UUID. */
+export function preserveUnlinked(sessionId: string, legacySavedId?: string): DraftRecord | null {
   const storage = draftStorage()
-  const old = readRecord(editorDraftKey(sessionId))
-  if (!storage || !old || !ambiguous(old)) return null
+  const old = readRecord(editorDraftKey(sessionId, undefined, legacySavedId))
+  if (!storage || !old || (!legacySavedId && !ambiguous(old))) return null
   try {
     let key = unlinkedPrefix(sessionId) + encodeURIComponent(old.data.savedAt)
+    // Copy the validated edit fields. Any unrecognized metadata stays out of the recovery file.
+    const raw = JSON.stringify(old.data)
     const existing = storage.getItem(key)
-    if (existing !== null && existing !== old.raw) key += ":" + crypto.randomUUID()
-    storage.setItem(key, old.raw)
+    if (existing !== null && existing !== raw) key += ":" + crypto.randomUUID()
+    storage.setItem(key, raw)
     removeRecord(old)
-    return { ...old, key }
+    return { key, raw, data: old.data }
   } catch {
     // When storage is full, keep the original readable and never overwrite it.
     return old
   }
 }
 
-export function latestUnlinked(sessionId: string): DraftRecord | null {
-  const moved = preserveUnlinked(sessionId)
+export function latestUnlinked(sessionId: string, legacySavedId?: string): DraftRecord | null {
+  const shared = preserveUnlinked(sessionId)
+  const moved = (legacySavedId && preserveUnlinked(sessionId, legacySavedId)) || shared
   const storage = draftStorage()
   if (!storage) return moved
   let latest = moved

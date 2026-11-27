@@ -86,8 +86,11 @@ export default function AnswerEditor({
     return () => onDirty("editor", false)
   }, [onDirty, dirty])
   const snapshot = JSON.stringify([question, answer, sources, origin.parent_answer_id ?? null, origin.planned_slot ?? null])
+  const fingerprint = baseline?.recovery_fingerprint
+  const bufferKey = baseline && !/^[0-9a-f]{32}$/.test(fingerprint ?? "") ? null
+    : editorDraftKey(session.id, initial?.id, baseline?.id, fingerprint)
   const { recovered, clear: clearLocalBuffer, markRestored } = useLocalDraftRecovery(
-    editorDraftKey(session.id, initial?.id, baseline?.id), contentDirty, snapshot,
+    bufferKey, contentDirty, snapshot,
     () => ({ text: answer, question, sources, origin, answerId: initial?.id, draftId: baseline?.id, baseRevision: serverRevision }),
     (b) => {
       if ((b.answerId && b.answerId !== initial?.id) || (b.draftId && b.draftId !== baseline?.id)) return true
@@ -184,7 +187,8 @@ export default function AnswerEditor({
             }
           }} />
       </section>}
-      <UnlinkedDraftCopy sessionId={session.id} afterDiscard={() => answerField.current?.focus()} />
+      {baseline && bufferKey === null && <p className="muted">This server did not identify the saved draft lifetime. Save the draft before leaving to keep your edits.</p>}
+      <UnlinkedDraftCopy sessionId={session.id} legacySavedId={baseline?.id} afterDiscard={() => answerField.current?.focus()} />
       {recovered && (
         <section className="notice stack" role="region" aria-label="Local draft recovery" style={{ marginBottom: "14px" }}>
           <div className="spread">
