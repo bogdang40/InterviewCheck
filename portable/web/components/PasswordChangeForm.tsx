@@ -42,8 +42,8 @@ export function PasswordChangeForm({
       setNewPassword("")
       setConfirmPassword("")
       setStatus("Password updated and session rotated.")
-      notifyAccountChanged()
       onRotated?.(next)
+      notifyAccountChanged("rotation")
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not update password.")
     } finally {
