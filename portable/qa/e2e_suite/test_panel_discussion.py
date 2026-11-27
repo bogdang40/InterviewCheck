@@ -60,3 +60,67 @@ def test_panel_chair_records_private_reason_and_member_sees_process_only(e2e_wor
     with e2e_workspace.client() as member:
         login_user(member, email=BOB_EMAIL, password=PASS)
         assert member.get(answer).json() == original
+
+
+def test_private_panel_draft_disappears_across_browser_account_switch(e2e_workspace, desktop_page):
+    from e2e_suite.harness import signup_user
+    from e2e_suite.test_m23_alerts_calibration_e2e import BOOTSTRAP_SECRET
+
+    second_email = "second-chair-browser@example.test"
+    e2e_workspace.configure_embedded_auth(admin_emails=(ADMIN_EMAIL, second_email), bootstrap_secret=BOOTSTRAP_SECRET)
+    e2e_workspace.restart()
+    with e2e_workspace.client() as first, e2e_workspace.client() as second:
+        signup_user(first, email=ADMIN_EMAIL, password=PASS, admin_secret=BOOTSTRAP_SECRET)
+        signup_user(second, email=second_email, password=PASS, admin_secret=BOOTSTRAP_SECRET)
+        login_user(first, email=ADMIN_EMAIL, password=PASS)
+        login_user(second, email=second_email, password=PASS)
+        role = _create_role(first, name="Private operator change", questions=["Explain the release."])
+        sid, (aid,) = _seed_session(first, role=role, candidate="Fixture", questions=["Explain the release."])
+        answer = f"/api/sessions/{sid}/answers/{aid}"
+        for user, opinion in ((first, "explained"), (second, "unresolved")):
+            user.patch(answer, json={"disposition": opinion, "note": "Original opinion."}).raise_for_status()
+
+    page, collector = desktop_page
+    base = e2e_workspace.base_url
+    _sign_in_browser(page, base, ADMIN_EMAIL)
+    url = base + f"/interviews/review/?id={sid}&answer={aid}#panel-discussion"
+    page.goto(url, wait_until="domcontentloaded")
+    panel = page.locator("#panel-discussion")
+    reason = panel.get_by_label("Reason for this panel decision")
+    panel.get_by_label("Discussion action").select_option("discussion_complete")
+    reason.fill("Private chair history")
+    panel.get_by_role("button", name="Record panel decision").click()
+    expect(panel.get_by_text("Panel decision recorded.")).to_be_visible()
+    panel.get_by_role("button", name="Read private panel notes").click()
+    expect(panel.get_by_text("Private chair history", exact=True)).to_be_visible()
+    panel.get_by_label("Discussion action").select_option("reopened")
+    reason.fill("Private A draft")
+    expect(panel.get_by_role("button", name="Record panel decision")).to_be_enabled()
+
+    # The login cookie is shared by browser tabs. The cross-tab listener must clear
+    # A's private editor even while the first page is left open at its original URL.
+    sibling = page.context.new_page()
+    try:
+        sibling.goto(base + "/account/", wait_until="domcontentloaded")
+        sibling.get_by_role("button", name="Sign out", exact=True).click()
+        expect(sibling.get_by_role("button", name="Sign in", exact=True)).to_be_visible()
+        expect(reason).to_have_count(0, timeout=15_000)
+        _sign_in_browser(sibling, base, second_email)
+        # The application can return this tab to its sign-in gate on logout.
+        if not page.url.startswith(base + "/interviews/review"):
+            page.goto(url, wait_until="domcontentloaded")
+        expect(reason).to_be_visible(timeout=15_000)
+        expect(reason).to_have_value("")
+        expect(panel.get_by_text("Private chair history", exact=True)).to_have_count(0)
+        expect(panel.get_by_label("Discussion action")).to_have_value("")
+        panel.get_by_label("Discussion action").select_option("reopened")
+        reason.fill("Independent B note")
+        panel.get_by_role("button", name="Record panel decision").click()
+        expect(panel.get_by_text("Panel decision recorded.")).to_be_visible()
+        result = page.request.get(base + f"/api/calibration/sessions/{sid}/answers/{aid}/panel/private").json()
+        assert [(event["actor_email"], event["rationale"]) for event in result["history"]] == [
+            (second_email, "Independent B note"), (ADMIN_EMAIL, "Private chair history")]
+        assert "Private A draft" not in str(result)
+        assert not collector.page_errors
+    finally:
+        sibling.close()
