@@ -54,6 +54,8 @@ def test_keyboard_comparison_keeps_selected_revisions_during_edits(workspace_url
     expect(grading).to_contain_text("Measured signal")
     expect(grading).not_to_contain_text("Weight 2")
     expect(section).not_to_contain_text("Original material")
+    expect(section).to_contain_text("permitted materials")
+    expect(section).not_to_contain_text("permitted_sources")
     disclosure = section.get_by_text("Compare permitted materials", exact=True)
     disclosure.focus()
     disclosure.press("Enter")
