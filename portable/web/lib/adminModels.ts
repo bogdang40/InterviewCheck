@@ -1,3 +1,5 @@
+import { orderedAccountRequest } from "./accountCookie"
+import { readAccountSnapshot, type AccountSnapshot } from "./accountSnapshot"
 import { ApiError, errorMessage, readJson, request, type HttpOptions } from "./http"
 
 export type ModelProvider =
@@ -270,14 +272,16 @@ export function listAdminAudit(): Promise<{ entries: AuditEntry[] }> {
   return adminRequest<{ entries: AuditEntry[] }>("/api/integrations/admin/audit")
 }
 
-export function rotateOwnPassword(
+export async function rotateOwnPassword(
   currentPassword: string,
   newPassword: string,
-): Promise<{ email: string; active: boolean; admin?: boolean }> {
-  return adminRequest<{ email: string; active: boolean; admin?: boolean }>(
-    "/api/integrations/access/password",
-    { method: "POST", body: JSON.stringify({ currentPassword, newPassword }) },
-  )
+): Promise<AccountSnapshot> {
+  return orderedAccountRequest(async () => {
+    const response = await adminRequest<unknown>("/api/integrations/access/password", {
+      method: "POST", body: JSON.stringify({ currentPassword, newPassword }),
+    })
+    return readAccountSnapshot(response)
+  })
 }
 
 export function parseOptionalFloat(raw: string, label: string, min: number, max: number): number | null {

@@ -2,22 +2,23 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AccountSecurityPanel } from "./AccountSecurityPanel";
 import { AdminAccounts } from "./AdminAccounts";
+import { PasswordChangeNotice, setPasswordChangeUnconfirmed } from "./PasswordChangeNotice";
 import { PasswordChangeForm } from "./PasswordChangeForm";
 import WorkspaceError from "./WorkspaceError";
 import { message } from "@/lib/api";
 import { sweepLocalDrafts } from "@/lib/localDraftSweep";
 import { nextPathFromLocation } from "@/lib/safeNextPath";
-import { integration, submit } from "@/lib/integrations";
+import { integration, signOutAccount, submit } from "@/lib/integrations";
 import { submitAccessAuth } from "@/lib/totpApi";
 import { notifyAccountChanged } from "@/lib/useAccountStatus";
+import { readAccountSnapshot, type AccountSnapshot as Account } from "@/lib/accountSnapshot";
 
-type Account = { email: string; active: boolean; admin?: boolean };
 
 
 export function AccountConnection({
@@ -53,13 +54,21 @@ export function AccountConnection({
   const [signup, setSignup] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const refresh = useCallback(async () => {
-    const response = await fetch("/api/integrations/account", { cache: "no-store" });
+  const accountRead = useRef(0);
+  const [rotating, setRotating] = useState(false);
+  const refresh = useCallback(async (notify = true) => {
+    const read = ++accountRead.current;
+    const response = await fetch("/api/integrations/account", { cache: "no-store" }).catch(err => {
+      if (read === accountRead.current) throw err;
+      return null;
+    });
+    if (!response || read !== accountRead.current) return;
     if (response.status === 401) { setAccount(null); return; }
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Could not load the account.");
-    setAccount(data as Account);
-    notifyAccountChanged();
+    if (read !== accountRead.current) return;
+    if (!response.ok) throw new Error(typeof data?.detail === "string" ? data.detail : "Could not load the account.");
+    setAccount(readAccountSnapshot(data));
+    if (notify) notifyAccountChanged("refresh");
   }, []);
   useEffect(() => {
     if (!enabled || signedIn === false) { setInitializing(false); setInitError(""); return; }
@@ -69,7 +78,7 @@ export function AccountConnection({
     refresh()
       .catch(e => { if (active) setInitError(message(e)); })
       .finally(() => { if (active) setInitializing(false); });
-    return () => { active = false; };
+    return () => { active = false; ++accountRead.current; };
   }, [enabled, signedIn, refresh, initSeq]);
 
   useEffect(() => {
@@ -105,6 +114,7 @@ export function AccountConnection({
   if (leaving) return <section className="panel stack"><p role="status">
     {leaving === "in" ? "Signed in. Opening your workspace…" : "Signed out."}</p></section>;
   return <section className="panel stack">{variant === "settings" && <h2>Account and billing</h2>}
+    {!account && !initializing && <PasswordChangeNotice />}
     {!enabled ? <p className="muted">Local workspace. Enable embedded accounts or configure a remote access service to sign in.</p> :
       initializing ? <p className="panel inset muted" role="status">Loading account status…</p> :
       initError ? <WorkspaceError text={initError} retry={() => setInitSeq(n => n + 1)} /> :
@@ -117,10 +127,29 @@ export function AccountConnection({
           <Button variant="outline" disabled={busy} onClick={() => act(() => billing("portal"))}>Billing portal</Button>
         </div> : <p className="muted">Billing plans are unavailable.</p>}
         <div className="row">
-          <Button variant="outline" disabled={busy} onClick={() => act(refresh)}>Refresh access</Button>
-          <Button variant="ghost" disabled={busy} onClick={() => act(async () => { await submit("logout"); sweepLocalDrafts(); setLeaving("out"); setAccount(null); notifyAccountChanged(); })}>Sign out</Button>
+          <Button variant="outline" disabled={busy || rotating} onClick={() => act(refresh)}>Refresh access</Button>
+          <Button variant="ghost" disabled={busy} onClick={() => act(async () => { await signOutAccount(); sweepLocalDrafts(); setLeaving("out"); setAccount(null); notifyAccountChanged(); })}>Sign out</Button>
         </div>
-        <PasswordChangeForm onRotated={next => setAccount(next)} />
+        <PasswordChangeForm
+          onStart={() => {
+            ++accountRead.current;
+            setRotating(true);
+          }}
+          onRotated={next => {
+            ++accountRead.current;
+            setRotating(false);
+            setAccount(next);
+          }}
+          onUnconfirmed={uncertain => {
+            setRotating(false);
+            const check = accountRead.current + 1;
+            void refresh(false).catch(err => {
+              if (check !== accountRead.current) return;
+              if (uncertain) setAccount(null);
+              setError(message(err));
+            });
+          }}
+        />
         <AccountSecurityPanel
           isAdmin={Boolean(account.admin)}
           onCurrentSessionRevoked={() => {
@@ -144,7 +173,7 @@ export function AccountConnection({
         if (!signup && totpRequired && !totpCode.trim()) {
           throw new Error("Enter your 6-digit authenticator code or backup code.");
         }
-        const res = await submitAccessAuth<Account>(signup ? "signup" : "login", {
+        const res = await submitAccessAuth(signup ? "signup" : "login", {
           email,
           password,
           ...(!signup && totpRequired && totpCode.trim() ? { totpCode: totpCode.trim() } : {}),
@@ -156,6 +185,7 @@ export function AccountConnection({
           setTotpCode("");
           return;
         }
+        setPasswordChangeUnconfirmed(false);
         setPassword(""); setTotpCode(""); setTotpRequired(false); setInvite(""); setAdminSecret("");
         if (variant === "signin") {
           // The shell swaps this screen for the workspace once its status refreshes; until then

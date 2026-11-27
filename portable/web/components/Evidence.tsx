@@ -4,7 +4,6 @@ import { ClipboardCheck, Pencil, Quote } from "lucide-react"
 import { api, message, RevisionConflict, statusText, WorksheetUnavailable, type Answer, type Disposition, type Interview } from "@/lib/api"
 import CandidateResponse from "./CandidateResponse"
 import MarkedText from "./MarkedText"
-import JudgeAssist from "./JudgeAssist"
 import { Button } from "./ui/button"
 import { Textarea } from "./ui/textarea"
 import { formatDraftTimestamp, reviewDraftKey, useLocalDraftRecovery } from "@/lib/localDraftBuffer"
@@ -12,7 +11,13 @@ import UnlinkedDraftCopy from "./UnlinkedDraftCopy"
 import { confirmsWorksheetSave, currentWorksheet, MAX_NOTE_CHARACTERS, normalizedWorksheetNote, type WorksheetGuard, type WorksheetState } from "@/lib/reviewWorksheet"
 import { watchWorksheetAccess } from "@/lib/worksheetPrivacy"
 
+const JudgeAssist = dynamic(() => import("./JudgeAssist"), {
+  ssr: false,
+  loading: () => <p role="status">Loading AI follow up controls…</p>,
+})
 const ReviewWorksheet = dynamic(() => import("./ReviewWorksheet"), { ssr: false })
+
+const PanelDiscussion = dynamic(() => import("./PanelDiscussion"), { ssr: false })
 
 const ConflictReview = dynamic(() => import("./ConflictReview"), { ssr: false })
 
@@ -255,8 +260,9 @@ export default function Evidence({
       <h2>{item.question}</h2>
       <CandidateResponse item={item}/>
       <Findings result={item.result} />
-      <JudgeAssist key={`${item.id}:${item.revision}`} sessionId={sessionId} item={item}
-        judgeAvailable={judgeAvailable} onFollowUp={onFollowUp} />
+      <PanelDiscussion sessionId={sessionId} item={item} locked={busy || dirty || conflict || !!worksheet} onDirty={onDirty} />
+      {judgeAvailable !== false && <JudgeAssist key={`${item.id}:${item.revision}`} sessionId={sessionId} item={item}
+        judgeAvailable={judgeAvailable} onFollowUp={onFollowUp} />}
       {onFollowUp && (
         <Button variant="outline" size="sm" onClick={() => onFollowUp()}>
           Ask this follow up

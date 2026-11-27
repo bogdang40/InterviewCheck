@@ -4,37 +4,11 @@ import re
 import pytest
 from playwright.sync_api import expect
 
-from e2e_suite.harness import (
-    ConsoleErrorCollector,
-    DESKTOP_VIEWPORT,
-    assert_no_horizontal_overflow,
-    signup_user,
+from e2e_suite.account_rotation_fixture import (
+    ADMIN1_EMAIL, ADMIN_PASS, BOOTSTRAP_SECRET, MEMBER_EMAIL, MEMBER_PASS, NEW_ADMIN_PASS,
+    delay_rotation_deliveries, open_account_context, sign_in_on_account,
 )
-
-ADMIN1_EMAIL = "admin1-t3@example.test"
-MEMBER_EMAIL = "member-t3@example.test"
-BOOTSTRAP_SECRET = "t3-admin-bootstrap-1234"
-ADMIN_PASS = "Synthetic-T3-Admin-Pass-1"
-NEW_ADMIN_PASS = "Synthetic-T3-Admin-Pass-2"
-MEMBER_PASS = "Synthetic-T3-Member-Pass-1"
-
-
-def _open_context(browser):
-    ctx = browser.new_context(viewport=DESKTOP_VIEWPORT, reduced_motion="reduce")
-    page = ctx.new_page()
-    page.set_default_timeout(10_000)
-    page.set_default_navigation_timeout(30_000)
-    collector = ConsoleErrorCollector()
-    collector.attach(page)
-    return ctx, page, collector
-
-
-def _sign_in_on_account(page, base_url: str, email: str, password: str) -> None:
-    page.goto(base_url + "/account/", wait_until="domcontentloaded")
-    page.get_by_label("Operator email").fill(email)
-    page.get_by_label("Password", exact=True).fill(password)
-    page.get_by_role("button", name="Sign in", exact=True).click()
-    expect(page.get_by_text(email)).to_be_visible()
+from e2e_suite.harness import assert_no_horizontal_overflow, signup_user
 
 
 def _sign_in_on_admin(page, base_url: str, email: str, password: str) -> None:
@@ -73,7 +47,7 @@ def test_admin_gate_fails_closed_for_local_unauth_and_non_admin_browser_sessions
     assert_no_horizontal_overflow(page)
 
     # Non-admin member sees access-denied gate and signs out cleanly.
-    _sign_in_on_account(page, e2e_workspace.base_url, MEMBER_EMAIL, MEMBER_PASS)
+    sign_in_on_account(page, e2e_workspace.base_url, MEMBER_EMAIL, MEMBER_PASS)
     expect(page.get_by_role("navigation", name="Workspace").get_by_role("link", name="Admin", exact=True)).to_have_count(0)
     page.goto(e2e_workspace.base_url + "/admin/", wait_until="domcontentloaded")
     expect(page.get_by_role("heading", name="Administrator access required")).to_be_visible(timeout=15_000)
@@ -186,11 +160,11 @@ def test_admin_accounts_role_promotion_disable_and_cross_context_token_revocatio
     with e2e_workspace.client() as c:
         signup_user(c, email=MEMBER_EMAIL, password=MEMBER_PASS)
 
-    admin_ctx, admin_page, admin_collector = _open_context(e2e_browser)
-    member_ctx, member_page, member_collector = _open_context(e2e_browser)
+    admin_ctx, admin_page, admin_collector = open_account_context(e2e_browser)
+    member_ctx, member_page, member_collector = open_account_context(e2e_browser)
     try:
         _sign_in_on_admin(admin_page, e2e_workspace.base_url, ADMIN1_EMAIL, ADMIN_PASS)
-        _sign_in_on_account(member_page, e2e_workspace.base_url, MEMBER_EMAIL, MEMBER_PASS)
+        sign_in_on_account(member_page, e2e_workspace.base_url, MEMBER_EMAIL, MEMBER_PASS)
 
         # Open Accounts tab and confirm self-disable 409 guard.
         admin_page.get_by_role("tab", name="Accounts").click()
@@ -295,24 +269,55 @@ def test_admin_audit_log_tab_records_and_filters_model_and_account_events(e2e_wo
 
 
 @pytest.mark.tier3
-def test_account_password_rotation_revokes_other_browser_context_session(e2e_workspace, e2e_browser):
+@pytest.mark.parametrize("expired_read_first", [False, True], ids=["rotation-first", "expired-read-first"])
+def test_account_password_rotation_revokes_other_browser_context_session(e2e_workspace, e2e_browser, expired_read_first):
     e2e_workspace.configure_embedded_auth(admin_emails=(ADMIN1_EMAIL,), bootstrap_secret=BOOTSTRAP_SECRET)
     with e2e_workspace.client() as c:
         signup_user(c, email=ADMIN1_EMAIL, password=ADMIN_PASS, admin_secret=BOOTSTRAP_SECRET)
 
-    ctx_a, page_a, collector_a = _open_context(e2e_browser)
-    ctx_b, page_b, collector_b = _open_context(e2e_browser)
+    ctx_a, page_a, collector_a = open_account_context(e2e_browser)
+    ctx_b, page_b, collector_b = open_account_context(e2e_browser)
     try:
-        _sign_in_on_account(page_a, e2e_workspace.base_url, ADMIN1_EMAIL, ADMIN_PASS)
-        _sign_in_on_account(page_b, e2e_workspace.base_url, ADMIN1_EMAIL, ADMIN_PASS)
+        sign_in_on_account(page_a, e2e_workspace.base_url, ADMIN1_EMAIL, ADMIN_PASS)
+        sign_in_on_account(page_b, e2e_workspace.base_url, ADMIN1_EMAIL, ADMIN_PASS)
 
-        # Rotate password in context A.
+        # A manual refresh issued before rotation can resolve on either side of the write acknowledgment.
+        account_url = e2e_workspace.base_url + "/api/integrations/account"
+        page_a.wait_for_load_state("networkidle", timeout=15_000)
+        collector_a.assert_clean()
+        delay_rotation_deliveries(page_a)
+        page_a.get_by_role("button", name="Refresh access").click()
+        expect(page_a.locator("html")).to_have_attribute("data-rotation-read", "waiting")
         pw_form = page_a.get_by_role("form", name="Change password")
         pw_form.get_by_label("Current password").fill(ADMIN_PASS)
         pw_form.get_by_label("New password", exact=True).fill(NEW_ADMIN_PASS)
         pw_form.get_by_label("Confirm new password").fill(NEW_ADMIN_PASS)
         pw_form.get_by_role("button", name="Update password").click()
-        expect(pw_form.get_by_role("status")).to_contain_text("Password updated and session rotated.")
+        expect(page_a.locator("html")).to_have_attribute("data-rotation-password", "waiting")
+        assert page_a.evaluate("window.rotationFixture.passwordStatus") == 200
+        current = page_a.request.get(account_url)
+        expired = page_b.request.get(account_url)
+        assert current.ok and current.json()["email"] == ADMIN1_EMAIL and current.json()["admin"]
+        assert expired.status == 401
+
+        def deliver_old_read():
+            page_a.evaluate("r => window.rotationFixture.releaseRead(r)", {"status": expired.status, "body": expired.text()})
+            expect(page_a.locator("html")).to_have_attribute("data-rotation-read", "returned")
+            page_a.evaluate("() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done)))")
+
+        if expired_read_first:
+            deliver_old_read()
+            expect(pw_form).to_be_visible()
+            expect(pw_form.get_by_role("status")).to_have_count(0)
+        page_a.evaluate("() => window.rotationFixture.releasePassword()")
+        expect(page_a.locator("html")).to_have_attribute("data-rotation-status", "waiting")
+        expect(pw_form.get_by_role("status")).to_have_text("Password updated and session rotated.")
+        if not expired_read_first:
+            deliver_old_read()
+        page_a.evaluate("() => window.rotationFixture.releaseStatus()")
+        expect(pw_form.get_by_role("status")).to_have_text("Password updated and session rotated.")
+        expect(page_a.get_by_role("link", name="Open model admin panel")).to_be_visible()
+        collector_a.assert_clean()
 
         # Context A keeps an active rotated session.
         page_a.get_by_role("button", name="Refresh access").click()
@@ -340,3 +345,51 @@ def test_account_password_rotation_revokes_other_browser_context_session(e2e_wor
     finally:
         ctx_a.close()
         ctx_b.close()
+
+
+@pytest.mark.tier3
+def test_unconfirmed_password_reply_rechecks_the_session_without_retrying(e2e_workspace, desktop_page):
+    e2e_workspace.configure_embedded_auth(admin_emails=(ADMIN1_EMAIL,), bootstrap_secret=BOOTSTRAP_SECRET)
+    with e2e_workspace.client() as client:
+        signup_user(client, email=ADMIN1_EMAIL, password=ADMIN_PASS, admin_secret=BOOTSTRAP_SECRET)
+    page, collector = desktop_page
+    base = e2e_workspace.base_url
+    sign_in_on_account(page, base, ADMIN1_EMAIL, ADMIN_PASS)
+    page.wait_for_load_state("networkidle", timeout=15_000)
+    # The original response applies its real Set-Cookie. Only its JSON acknowledgment is lost.
+    page.evaluate("""() => {
+        const original = window.fetch.bind(window);
+        window.rotationCheck = { writes: 0, reads: 0, committed: false };
+        window.fetch = async (input, init) => {
+          const path = new URL(input instanceof Request ? input.url : input, location.href).pathname;
+          const reply = await original(input, init);
+          const state = window.rotationCheck;
+          if (path === '/api/integrations/access/password') {
+            state.writes++;
+            state.committed = reply.ok;
+            return new Response('{}', {status: 200, headers: {'Content-Type': 'application/json'}});
+          }
+          if (path === '/api/integrations/account' && state.committed && reply.ok) {
+            state.reads++;
+            document.documentElement.dataset.rotationRecheck = 'confirmed';
+          }
+          return reply;
+        };
+    }""")
+    form = page.get_by_role("form", name="Change password")
+    form.get_by_label("Current password").fill(ADMIN_PASS)
+    form.get_by_label("New password", exact=True).fill(NEW_ADMIN_PASS)
+    form.get_by_label("Confirm new password").fill(NEW_ADMIN_PASS)
+    form.get_by_role("button", name="Update password").click()
+    expect(form.get_by_role("alert")).to_contain_text("The change was not confirmed.")
+    expect(page.locator("html")).to_have_attribute("data-rotation-recheck", "confirmed")
+    expect(form.get_by_role("status")).to_have_count(0)
+    assert page.evaluate("window.rotationCheck.writes") == 1
+    assert page.request.get(base + "/api/integrations/account").json()["email"] == ADMIN1_EMAIL
+    page.get_by_role("button", name="Sign out", exact=True).click()
+    expect(page.get_by_role("button", name="Sign in", exact=True)).to_be_visible()
+    assert page.request.get(base + "/api/integrations/account").status == 401
+    expect(page.get_by_text("The last password change in this tab was not confirmed.", exact=False)).to_be_visible()
+    page.get_by_role("button", name="Dismiss notice").click()
+    expect(page.get_by_role("button", name="Dismiss notice")).to_have_count(0)
+    collector.assert_clean()

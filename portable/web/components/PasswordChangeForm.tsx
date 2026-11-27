@@ -1,15 +1,20 @@
 "use client"
 
-import { useState, type FormEvent } from "react"
+import { useEffect, useRef, useState, type FormEvent } from "react"
 import { KeyRound } from "lucide-react"
+import { setPasswordChangeUnconfirmed } from "./PasswordChangeNotice"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { rotateOwnPassword } from "@/lib/adminModels"
-import { notifyAccountChanged } from "@/lib/useAccountStatus"
+import { AdminApiError, rotateOwnPassword } from "@/lib/adminModels"
+import { cancelPreRotationStatusRead, notifyAccountChanged } from "@/lib/useAccountStatus"
 
 export function PasswordChangeForm({
+  onStart,
   onRotated,
+  onUnconfirmed,
 }: {
+  onStart?: () => void
+  onUnconfirmed?: (uncertain: boolean) => void
   onRotated?: (account: { email: string; active: boolean; admin?: boolean }) => void
 }) {
   const [currentPassword, setCurrentPassword] = useState("")
@@ -18,6 +23,12 @@ export function PasswordChangeForm({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
   const [status, setStatus] = useState("")
+
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => { mounted.current = false }
+  }, [])
 
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -36,18 +47,30 @@ export function PasswordChangeForm({
       return
     }
     setBusy(true)
+    onStart?.()
+    cancelPreRotationStatusRead()
     try {
       const next = await rotateOwnPassword(currentPassword, newPassword)
-      setCurrentPassword("")
-      setNewPassword("")
-      setConfirmPassword("")
-      setStatus("Password updated and session rotated.")
-      notifyAccountChanged()
-      onRotated?.(next)
+      setPasswordChangeUnconfirmed(false)
+      if (mounted.current) {
+        setCurrentPassword("")
+        setNewPassword("")
+        setConfirmPassword("")
+        setStatus("Password updated and session rotated.")
+        onRotated?.(next)
+      }
+      notifyAccountChanged("rotation")
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not update password.")
+      const uncertain = !(err instanceof AdminApiError) || err.status >= 500
+      if (uncertain) setPasswordChangeUnconfirmed(true)
+      if (mounted.current) {
+        const detail = err instanceof Error ? err.message : "Could not update password."
+        setError(uncertain ? `The change was not confirmed. Checking access. ${detail}` : detail)
+        onUnconfirmed?.(uncertain)
+      }
+      notifyAccountChanged(uncertain ? "rotation" : "refresh")
     } finally {
-      setBusy(false)
+      if (mounted.current) setBusy(false)
     }
   }
 
