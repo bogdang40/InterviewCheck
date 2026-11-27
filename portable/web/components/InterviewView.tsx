@@ -289,7 +289,7 @@ export default function InterviewView({ session, answerId, assignmentDirty, onDi
             ) : selected ? (
               <Evidence
                 key={selected.id}
-                sessionId={session.id}
+                session={session}
                 item={selected}
                 index={index}
                 onDirty={onDirty}

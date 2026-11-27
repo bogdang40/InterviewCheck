@@ -1,7 +1,7 @@
 import dynamic from "next/dynamic"
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type MutableRefObject } from "react"
 import { ClipboardCheck, Pencil, Quote } from "lucide-react"
-import { api, message, RevisionConflict, statusText, type Answer, type Disposition } from "@/lib/api"
+import { api, message, RevisionConflict, statusText, WorksheetUnavailable, type Answer, type Disposition, type Interview } from "@/lib/api"
 import CandidateResponse from "./CandidateResponse"
 import MarkedText from "./MarkedText"
 import JudgeAssist from "./JudgeAssist"
@@ -9,6 +9,10 @@ import { Button } from "./ui/button"
 import { Textarea } from "./ui/textarea"
 import { formatDraftTimestamp, reviewDraftKey, useLocalDraftRecovery } from "@/lib/localDraftBuffer"
 import UnlinkedDraftCopy from "./UnlinkedDraftCopy"
+import type { WorksheetGuard, WorksheetState } from "@/lib/reviewWorksheet"
+import { watchWorksheetAccess } from "@/lib/worksheetPrivacy"
+
+const ReviewWorksheet = dynamic(() => import("./ReviewWorksheet"), { ssr: false })
 
 const ConflictReview = dynamic(() => import("./ConflictReview"), { ssr: false })
 
@@ -60,7 +64,7 @@ export function Findings({ result }: { result: Answer["result"] }) {
 export default function Evidence({
   item: initial,
   index,
-  sessionId,
+  session,
   onSave,
   onEdit,
   onDirty,
@@ -71,7 +75,7 @@ export default function Evidence({
 }: {
   item: Answer
   index: number
-  sessionId: string
+  session: Interview
   onSave: (a: Answer, advance?: boolean) => void
   canAdvance?: boolean
   onFollowUp?: (questionText?: string) => void
@@ -80,7 +84,12 @@ export default function Evidence({
   judgeAvailable?: boolean
   controlsRef?: MutableRefObject<EvidenceHotkeyControls | null>
 }) {
+  const sessionId = session.id
   const [item, setItem] = useState(initial)
+  const [worksheet, setWorksheet] = useState<WorksheetGuard | null>(null)
+  const [worksheetBlocked, setWorksheetBlocked] = useState(false)
+  const [withdrawn, setWithdrawn] = useState(false)
+  const worksheetEpoch = useRef(0)
   const [conflict, setConflict] = useState(false)
   const [note, setNote] = useState(item.note)
   const [disposition, setDisposition] = useState<Disposition>(item.disposition)
@@ -88,12 +97,24 @@ export default function Evidence({
     [error, setError] = useState(""),
     [saved, setSaved] = useState(false)
   const noteRef = useRef<HTMLTextAreaElement>(null)
-  const dirty = note !== item.note || disposition !== item.disposition
+  const dirty = !withdrawn && (note !== item.note || disposition !== item.disposition)
   const { recovered, clear: clearLocalBuffer, markRestored } = useLocalDraftRecovery(
-    reviewDraftKey(sessionId, item.id), dirty, JSON.stringify([note, disposition]),
+    reviewDraftKey(sessionId, item.id), dirty && !worksheet, JSON.stringify([note, disposition]),
     () => ({ text: note, note, disposition, baseRevision: item.revision }),
     (b) => (b.note ?? b.text) === item.note && (b.disposition === undefined || b.disposition === item.disposition),
   )
+  useEffect(() => {
+    if (!worksheet) return
+    return watchWorksheetAccess(sessionId, () => {
+      ++worksheetEpoch.current
+      setWithdrawn(true); setWorksheet(null); setNote(""); setSaved(false); setError("")
+    })
+  }, [worksheet, sessionId, item])
+  function stageWorksheet(current: WorksheetState, proposed: string) {
+    setItem(current.answer); setDisposition(current.answer.disposition); setNote(proposed)
+    setWorksheet({ material: current.material, review: current.review }); setWorksheetBlocked(false)
+    setSaved(false); setError(""); noteRef.current?.focus()
+  }
   const restoreLocalDraft = () => {
     noteRef.current?.focus()
     if (!recovered || !markRestored()) return
@@ -117,7 +138,7 @@ export default function Evidence({
     if (!controlsRef) return
     const handle: EvidenceHotkeyControls = {
       setOutcome: (value) => {
-        if (busy || conflict) return false
+        if (busy || conflict || worksheet) return false
         setDisposition(value)
         setSaved(false)
         return true
@@ -133,18 +154,23 @@ export default function Evidence({
     return () => {
       if (controlsRef.current === handle) controlsRef.current = null
     }
-  }, [controlsRef, busy, conflict])
+  }, [controlsRef, busy, conflict, worksheet])
   async function save(e: FormEvent) {
     e.preventDefault()
-    if (busy || conflict) return
+    if (busy || conflict || worksheetBlocked || (worksheet && !dirty)) return
+    const savingEpoch = worksheetEpoch.current
     const submitter = (e.nativeEvent as SubmitEvent).submitter
     const advance = !!canAdvance && disposition !== "pending" && submitter?.getAttribute("value") === "next"
     setError("")
     setBusy(true)
     try {
       const result = await api<Answer>(`sessions/${sessionId}/answers/${item.id}`, "PATCH", {
-        note, disposition, expected_revision: item.revision,
+        note, disposition, expected_revision: item.revision, ...(worksheet ? { worksheet_guard: worksheet } : {}),
       })
+      if (worksheet && savingEpoch !== worksheetEpoch.current) return
+      if (worksheet && (result?.id !== item.id || result.disposition !== disposition || result.note !== note.trim()
+        || result.revision !== item.revision + 1)) throw new Error("The server did not confirm the worksheet save.")
+      setWorksheet(null); setWorksheetBlocked(false)
       clearLocalBuffer()
       setItem(result)
       setNote(result.note)
@@ -152,12 +178,21 @@ export default function Evidence({
       onSave(result, advance)
       setSaved(true)
     } catch (e) {
-      if (e instanceof RevisionConflict) setConflict(true)
+      if (worksheet && e instanceof WorksheetUnavailable) {
+        setWithdrawn(true); setWorksheet(null); setNote(""); clearLocalBuffer(); setError(e.message)
+      } else if (worksheet) {
+        setWorksheetBlocked(true)
+        setError(message(e) + " Discard this staged edit and preview the worksheet again.")
+      } else if (e instanceof RevisionConflict) setConflict(true)
       else setError(message(e))
     } finally {
       setBusy(false)
     }
   }
+  if (withdrawn) return <section className="panel stack" role="region" aria-label="Worksheet unavailable">
+    <p role="alert">The worksheet edit was cleared because access to this exchange changed.</p>
+    <Button type="button" variant="outline" onClick={() => window.location.reload()}>Reload interview</Button>
+  </section>
   const stale = recovered && recovered.baseRevision !== undefined && recovered.baseRevision !== item.revision
   return (
     <article className="panel evidence">
@@ -201,6 +236,9 @@ export default function Evidence({
           <pre>{JSON.stringify(item.legacy, null, 2)}</pre>
         </details>
       )}
+      <ReviewWorksheet key={item.id + ":" + item.revision} session={session} item={item} ordinal={index + 1}
+        editorBusy={dirty || busy || conflict || !!worksheet || !!recovered} stage={stageWorksheet} />
+      {worksheet && <p role="status" className="notice">Worksheet note staged in this tab. Saving keeps the current review outcome.</p>}
       <UnlinkedDraftCopy sessionId={sessionId} afterDiscard={() => noteRef.current?.focus()} />
       {recovered && (
         <section className="notice stack" role="region" aria-label="Local draft recovery" style={{ marginTop: "12px" }}>
@@ -221,7 +259,7 @@ export default function Evidence({
           <label className="field">
             Review outcome
             <select
-              disabled={busy}
+              disabled={!!worksheet || busy || conflict}
               value={disposition}
               onChange={(e) => setDisposition(e.target.value as Disposition)}
             >
@@ -252,19 +290,19 @@ export default function Evidence({
         }} />}
         {error && <p role="alert" className="error">{error}</p>}
         <div className="row">
-          <Button disabled={busy || conflict} variant="outline">
+          <Button disabled={busy || conflict || worksheetBlocked || (!!worksheet && !dirty)} variant="outline">
             <ClipboardCheck />
             Save review
           </Button>
           {canAdvance && disposition !== "pending" &&
-            <Button type="submit" value="next" disabled={busy || conflict}>Save and review next</Button>}
-          {dirty && !conflict && (
+            <Button type="submit" value="next" disabled={busy || conflict || worksheetBlocked || (!!worksheet && !dirty)}>Save and review next</Button>}
+          {(dirty || worksheet) && !conflict && (
             <Button
               type="button"
               variant="ghost"
               disabled={busy}
               onClick={() => {
-                clearLocalBuffer()
+                clearLocalBuffer(); setWorksheet(null); setWorksheetBlocked(false)
                 setNote(item.note); setDisposition(item.disposition)
                 if (item.revision > initial.revision) onSave(item)
                 setError(""); setSaved(false)
