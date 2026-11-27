@@ -13,6 +13,14 @@ Extract the entire InterviewCheck folder to a writable location. Install Python 
 
 Open [the workspace](http://127.0.0.1:8765). Leave the terminal open while using it. Ctrl+C stops the service. To use another local port, pass `--port 8766`. Start in the same extracted folder to reopen your interviews.
 
+## Common tasks
+
+- **Prepare an offline guide.** In **Roles**, open **Role file and copy**, choose **Preview interviewer guide**, then **Download guide**. The HTML opens and prints offline. [Offline interviewer guide](WEB.md#offline-interviewer-guide)
+- **Keep a follow up with its exchange.** During an open interview, select a saved exchange, open **Questions for later**, enter the question and choose **Keep for later**. If the save reply is lost, choose **Check saved question** there. Select **Open answer draft** when ready to ask it. [Deferred questions](CORE.md#deferred-questions)
+- **Return an offline note.** Open **Offline review worksheet** on a saved exchange. Preview the exact text before copying or downloading it. Import the edited file on the same exchange, compare the notes, then choose **Stage proposed note** and **Save review**. [Offline review worksheet](CORE.md#offline-review-worksheet)
+- **Try the saved review rules.** Sign in as an administrator and open **Admin > Playground > Rehearse saved review**. The fictional cases and scripted replies use no provider calls. [Saved review rehearsal](WEB.md#rehearse-saved-review)
+- **Control AI use.** In **Admin > Usage**, inspect the cost log or set the **Monthly AI attempt allowance** for text generation and embeddings. Enter zero to pause new attempts. **Admin > Models** sets each connected model's prices and monthly threshold on recorded spend. [Usage and AI keys](WEB.md#admin-usage-and-ai-keys)
+
 ## Build the optional distribution from source
 
 Install Node.js 22.13 or later with npm and Python 3.11 or later. Run the Windows or Linux command above from the repository's `portable` directory. The launcher builds the Next.js export, checks changes to its inputs at each start and serves it from FastAPI. Use `--build-only` for a build without a server. The API and interface share one origin.
@@ -27,9 +35,9 @@ Install Node.js 22.13 or later with npm and Python 3.11 or later. Run the Window
 
 ## Data and services
 
-This is a single operator workstation. Its default address is loopback. The local SQLite database lives in `portable/data/review.sqlite3` in the checkout or `data/review.sqlite3` inside the distribution. Set `INTERVIEWCHECK_DB` to choose another path. Use a SQLite backup or stop the service before copying the entire data directory. Local data is plaintext under the operating system account. The web interface does not display or store provider keys.
+This is a single operator workstation. Its default address is loopback. The local SQLite database lives in `portable/data/review.sqlite3` in the checkout or `data/review.sqlite3` inside the distribution. Set `INTERVIEWCHECK_DB` to choose another path. Use a SQLite backup or stop the service before copying the entire data directory. Interview content is stored as plaintext under the operating system account. In **Admin > Models > Connect model**, an administrator can enter a provider key. The server encrypts it in the review database. The model list shows a masked hint after saving. [Administrator setup](CONNECTIONS.md#account-administration)
 
-Optional generation uses the selected provider's configured model. Set one group of environment variables before starting the server. Generation sends the role and question, or the role and job description for drafting. The resulting reference and questions remain editable. The operator controls each request.
+Optional generation uses the selected provider's configured model. For a model configured through the environment, set one group of variables before starting the server. Generation sends the role and question, or the role and job description for drafting. The resulting reference and questions remain editable. The operator controls each request.
 
 | Provider | Environment variables |
 | --- | --- |
@@ -38,6 +46,10 @@ Optional generation uses the selected provider's configured model. Set one group
 | Azure OpenAI | `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_DEPLOYMENT`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_VERSION` |
 
 See [connection setup and limits](CONNECTIONS.md) for live audio, calendars, ATS and account services. FastAPI can serve accounts and Stripe billing directly. The original access service is also supported for existing deployments.
+
+**Backup and custody.** In **Data**, a workspace JSON download from this edition uses version 7. Check that the destination supports version 7 before transferring it. [Workspace recovery](CORE.md#workspace-recovery)
+
+To rehearse a hosted recovery, use copies of the review and access databases with the separately recovered master key. Keep the completed custody register in private storage. Use vault references for secret items. [Offline recovery rehearsal](VERIFICATION.md#rehearse-a-hosted-backup-offline) · [Private recovery register](RECOVERY-REGISTER-TEMPLATE.md#deployment-and-custody)
 
 ## Native migration coverage
 
