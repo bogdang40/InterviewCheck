@@ -11,11 +11,16 @@ import {
   type CalibratedRole,
   type RoleVersionsResponse,
 } from "@/lib/roleCalibration"
-import RoleVersionComparison from "./RoleVersionComparison"
+import dynamic from "next/dynamic"
 import { GuideButton } from "./InterviewerGuide"
 import { Badge } from "./ui/badge"
 import { Button } from "./ui/button"
 import { Input } from "./ui/input"
+
+const RoleVersionComparison = dynamic(() => import("./RoleVersionComparison"), {
+  ssr: false,
+  loading: () => <p className="muted" role="status">Opening the comparison...</p>,
+})
 
 type Props = {
   role: CalibratedRole

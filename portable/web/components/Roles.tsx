@@ -1,4 +1,5 @@
 import { useRef, useState, type FormEvent } from "react"
+import dynamic from "next/dynamic"
 import { ArrowRight, BriefcaseBusiness, Copy, History, Plus } from "lucide-react"
 import { api, message, RoleConflict, type PermittedMaterial } from "@/lib/api"
 import type { CalibratedRole, RubricCriterion } from "@/lib/roleCalibration"
@@ -10,11 +11,15 @@ import ResourcePolicy from "./ResourcePolicy"
 import RoleFileActions from "./RoleFileActions"
 import Authoring from "./Authoring"
 import RoleRubricEditor, { sanitizeRubric } from "./RoleRubricEditor"
-import RoleVersionHistory from "./RoleVersionHistory"
 import RoleAnalyticsPanel from "./RoleAnalyticsPanel"
 import { Button } from "./ui/button"
 import { Input } from "./ui/input"
 import { Textarea } from "./ui/textarea"
+
+const RoleVersionHistory = dynamic(() => import("./RoleVersionHistory"), {
+  ssr: false,
+  loading: () => <p className="muted" role="status">Loading role history...</p>,
+})
 
 type RoleFormFields = [string, string, string, PermittedMaterial[], string, RubricCriterion[], string]
 const roleFormSnapshot = (fields: RoleFormFields) => JSON.stringify(fields)
