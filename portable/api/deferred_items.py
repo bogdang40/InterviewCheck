@@ -89,7 +89,10 @@ def find(db, sid, qid):
 
 
 def token(db, row, revision=None):
-    key = answer_identity.binding_key(db, row["parent_answer_id"])
+    return version_with_key(row, answer_identity.binding_key(db, row["parent_answer_id"]), revision)
+
+
+def version_with_key(row, key, revision=None):
     payload = f"deferred-v1:{row['session_id']}:{row['id']}:{revision or row['revision_id']}".encode()
     return hmac.new(key, payload, sha256).hexdigest()
 
