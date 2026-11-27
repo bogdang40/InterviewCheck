@@ -8,10 +8,12 @@ import { accessLost, changeDeferred, deferredStates, listDeferred, matchesDeferr
 import { Button } from "./ui/button"
 import DeferredSourceCheck from "./DeferredSourceCheck"
 import KeepQuestion from "./KeepQuestion"
+import { PendingHandoffControls, usePendingQuestionHandoff } from "./PendingQuestionHandoff"
+import { MAX_HANDOFF_ITEMS } from "@/lib/pendingHandoff"
 
 import type { DeferredQueueProps } from "./DeferredQuestions"
 
-export default function DeferredQuestionQueue({ session, parent, locked, onDirty, openDraft, foundDraft, select, onUnavailable }: DeferredQueueProps) {
+export default function DeferredQuestionQueue({ session, parent, locked, onDirty, openDraft, foundDraft, select, onUnavailable, open }: DeferredQueueProps & { open: boolean }) {
   const [filter, setFilter] = useState<DeferredFilter>("all")
   const [page, setPage] = useState(1)
   const [tick, setTick] = useState(0)
@@ -31,6 +33,8 @@ export default function DeferredQuestionQueue({ session, parent, locked, onDirty
   useEffect(() => () => active.current?.abort(), [])
 
   function reload() { setTick(n => n + 1) }
+  const canHandoff = open && filter === "pending" && session.consent && (!session.privacy_state || session.privacy_state === "unmarked")
+  const handoff = usePendingQuestionHandoff(session, canHandoff, controlsLocked, report, onUnavailable, reload)
   useEffect(() => {
     const request = new AbortController()
     setReport(null); setReadError("")
@@ -41,6 +45,7 @@ export default function DeferredQuestionQueue({ session, parent, locked, onDirty
       else setReport(next)
     }).catch(err => {
       if (!request.signal.aborted) {
+        handoff.invalidate(true)
         if (accessLost(err)) { childId.current = null; onUnavailable(); return }
         setReadError(message(err))
       }
@@ -92,7 +97,7 @@ export default function DeferredQuestionQueue({ session, parent, locked, onDirty
       <div className="spread flex-wrap">
         <label className="field">Show questions
           <select aria-label="Deferred question status" value={filter} disabled={controlsLocked}
-            onChange={e => { setFilter(e.target.value as DeferredFilter); setPage(1); setNotice("") }}>
+            onChange={e => { handoff.invalidate(true); setFilter(e.target.value as DeferredFilter); setPage(1); setNotice("") }}>
             <option value="all">All</option>
             {deferredStates.map(state => <option key={state} value={state}>{state[0].toUpperCase() + state.slice(1)}</option>)}
           </select>
@@ -103,12 +108,21 @@ export default function DeferredQuestionQueue({ session, parent, locked, onDirty
       {actionError && <p className="error" role="alert">{actionError}</p>}
       {notice && <p role="status">{notice}</p>}
       {!report && !readError && <p className="muted" role="status">Loading deferred questions…</p>}
+      {canHandoff && authorized && <PendingHandoffControls handoff={handoff} locked={controlsLocked} />}
       {report && <>
         {report.items.length === 0 ? <p className="muted">No {filter === "all" ? "deferred" : filter} questions.</p>
           : <p className="muted">{report.pending_count} pending · Page {page} of {Math.max(1, Math.ceil(report.total / report.page_size))}</p>}
         <ol className="stack">
           {report.items.map(item => <li key={item.id} className="panel inset stack" aria-label={`Deferred question from exchange ${ordinal(item.parent_answer_id)}`}>
-            <div><strong className="whitespace-pre-wrap break-words">{item.question}</strong> <span className="muted">{item.status}</span></div>
+            <div><strong id={`deferred-wording-${item.id}`} className="whitespace-pre-wrap break-words">{item.question}</strong> <span className="muted">{item.status}</span></div>
+            {canHandoff && item.status === "pending" && <label className="row">
+              <input type="checkbox" aria-describedby={`deferred-wording-${item.id}`}
+                checked={handoff.selected.some(r => r.id === item.id && r.version === item.version)}
+                disabled={controlsLocked || item.needs_reconfirmation || !ordinal(item.parent_answer_id) ||
+                  (handoff.selected.length >= MAX_HANDOFF_ITEMS && !handoff.selected.some(r => r.id === item.id))}
+                onChange={event => handoff.choose(item, event.target.checked)} />
+              Include question from exchange {ordinal(item.parent_answer_id) || "unavailable"}
+            </label>}
             <div className="row flex-wrap">
               <Button type="button" size="sm" variant="outline" disabled={controlsLocked} onClick={() => select(item.parent_answer_id)}>
                 View source exchange {ordinal(item.parent_answer_id) || ""}

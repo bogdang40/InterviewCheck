@@ -36,6 +36,10 @@ export async function listDeferred(sid: string, filter: DeferredFilter, page: nu
     throw new Error("The server returned an incomplete deferred question list.")
   }
   result.items.forEach(item => checked(item, sid))
+  if (new Set(result.items.map(item => item.id)).size !== result.items.length ||
+      (filter !== "all" && result.items.some(item => item.status !== filter))) {
+    throw new Error("The server returned inconsistent deferred question rows.")
+  }
   return result
 }
 
