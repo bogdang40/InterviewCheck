@@ -9,7 +9,7 @@ import { Button } from "./ui/button"
 import { Textarea } from "./ui/textarea"
 import { formatDraftTimestamp, reviewDraftKey, useLocalDraftRecovery } from "@/lib/localDraftBuffer"
 import UnlinkedDraftCopy from "./UnlinkedDraftCopy"
-import type { WorksheetGuard, WorksheetState } from "@/lib/reviewWorksheet"
+import { confirmsWorksheetSave, currentWorksheet, MAX_NOTE_CHARACTERS, type WorksheetGuard, type WorksheetState } from "@/lib/reviewWorksheet"
 import { watchWorksheetAccess } from "@/lib/worksheetPrivacy"
 
 const ReviewWorksheet = dynamic(() => import("./ReviewWorksheet"), { ssr: false })
@@ -87,8 +87,11 @@ export default function Evidence({
   const sessionId = session.id
   const [item, setItem] = useState(initial)
   const [worksheet, setWorksheet] = useState<WorksheetGuard | null>(null)
-  const [worksheetBlocked, setWorksheetBlocked] = useState(false)
+  const [submittedNote, setSubmittedNote] = useState<string | null>(null)
+  const [compared, setCompared] = useState<WorksheetState | null>(null)
+  const worksheetBlocked = submittedNote !== null
   const [withdrawn, setWithdrawn] = useState(false)
+  const [reconcileNotice, setReconcileNotice] = useState("")
   const worksheetEpoch = useRef(0)
   const [conflict, setConflict] = useState(false)
   const [note, setNote] = useState(item.note)
@@ -97,23 +100,27 @@ export default function Evidence({
     [error, setError] = useState(""),
     [saved, setSaved] = useState(false)
   const noteRef = useRef<HTMLTextAreaElement>(null)
+  const oversizedWorksheetNote = !!worksheet && Array.from(note.trim()).length > MAX_NOTE_CHARACTERS
   const dirty = !withdrawn && (note !== item.note || disposition !== item.disposition)
   const { recovered, clear: clearLocalBuffer, markRestored } = useLocalDraftRecovery(
     reviewDraftKey(sessionId, item.id), dirty && !worksheet, JSON.stringify([note, disposition]),
     () => ({ text: note, note, disposition, baseRevision: item.revision }),
     (b) => (b.note ?? b.text) === item.note && (b.disposition === undefined || b.disposition === item.disposition),
   )
+  function withdrawWorksheet() {
+    ++worksheetEpoch.current
+    setWithdrawn(true); setBusy(false); setConflict(false); setWorksheet(null); setSubmittedNote(null); setCompared(null)
+    setNote(""); setSaved(false); setError(""); clearLocalBuffer()
+  }
   useEffect(() => {
     if (!worksheet) return
-    return watchWorksheetAccess(sessionId, () => {
-      ++worksheetEpoch.current
-      setWithdrawn(true); setWorksheet(null); setNote(""); setSaved(false); setError("")
-    })
-  }, [worksheet, sessionId, item])
+    return watchWorksheetAccess(sessionId, withdrawWorksheet)
+  }, [worksheet, sessionId, clearLocalBuffer])
+  useEffect(() => () => { ++worksheetEpoch.current }, [])
   function stageWorksheet(current: WorksheetState, proposed: string) {
     setItem(current.answer); setDisposition(current.answer.disposition); setNote(proposed)
-    setWorksheet({ material: current.material, review: current.review }); setWorksheetBlocked(false)
-    setSaved(false); setError(""); noteRef.current?.focus()
+    setWorksheet({ material: current.material, review: current.review }); setSubmittedNote(null); setCompared(null)
+    setSaved(false); setError(""); setReconcileNotice(""); noteRef.current?.focus()
   }
   const restoreLocalDraft = () => {
     noteRef.current?.focus()
@@ -126,19 +133,19 @@ export default function Evidence({
     setSaved(false)
   }
   useEffect(() => {
-    if (!dirty && !busy && !conflict && initial.revision > item.revision) {
+    if (!worksheet && !dirty && !busy && !conflict && initial.revision > item.revision) {
       setItem(initial); setNote(initial.note); setDisposition(initial.disposition); setSaved(false)
     }
-  }, [initial, item.revision, dirty, busy, conflict])
+  }, [initial, item.revision, dirty, busy, conflict, worksheet])
   useIsomorphicLayoutEffect(() => {
-    onDirty(item.id, dirty || busy || conflict)
+    onDirty(item.id, dirty || busy || conflict || worksheetBlocked)
     return () => onDirty(item.id, false)
-  }, [item.id, dirty, busy, conflict, onDirty])
+  }, [item.id, dirty, busy, conflict, worksheetBlocked, onDirty])
   useIsomorphicLayoutEffect(() => {
     if (!controlsRef) return
     const handle: EvidenceHotkeyControls = {
       setOutcome: (value) => {
-        if (busy || conflict || worksheet) return false
+        if (busy || conflict || worksheet || withdrawn) return false
         setDisposition(value)
         setSaved(false)
         return true
@@ -154,23 +161,25 @@ export default function Evidence({
     return () => {
       if (controlsRef.current === handle) controlsRef.current = null
     }
-  }, [controlsRef, busy, conflict, worksheet])
+  }, [controlsRef, busy, conflict, worksheet, withdrawn])
   async function save(e: FormEvent) {
     e.preventDefault()
-    if (busy || conflict || worksheetBlocked || (worksheet && !dirty)) return
+    if (busy || conflict || worksheetBlocked || oversizedWorksheetNote || (worksheet && !dirty)) return
     const savingEpoch = worksheetEpoch.current
+    const proposed = worksheet ? note.trim() : note
     const submitter = (e.nativeEvent as SubmitEvent).submitter
     const advance = !!canAdvance && disposition !== "pending" && submitter?.getAttribute("value") === "next"
-    setError("")
+    setError(""); setReconcileNotice("")
     setBusy(true)
     try {
       const result = await api<Answer>(`sessions/${sessionId}/answers/${item.id}`, "PATCH", {
-        note, disposition, expected_revision: item.revision, ...(worksheet ? { worksheet_guard: worksheet } : {}),
+        note: proposed, disposition, expected_revision: item.revision, ...(worksheet ? { worksheet_guard: worksheet } : {}),
       })
       if (worksheet && savingEpoch !== worksheetEpoch.current) return
-      if (worksheet && (result?.id !== item.id || result.disposition !== disposition || result.note !== note.trim()
-        || result.revision !== item.revision + 1)) throw new Error("The server did not confirm the worksheet save.")
-      setWorksheet(null); setWorksheetBlocked(false)
+      if (worksheet && !confirmsWorksheetSave(result, item, proposed)) {
+        throw new Error("The server did not confirm the worksheet save.")
+      }
+      setWorksheet(null); setSubmittedNote(null); setCompared(null)
       clearLocalBuffer()
       setItem(result)
       setNote(result.note)
@@ -179,14 +188,51 @@ export default function Evidence({
       setSaved(true)
     } catch (e) {
       if (worksheet && e instanceof WorksheetUnavailable) {
-        setWithdrawn(true); setWorksheet(null); setNote(""); clearLocalBuffer(); setError(e.message)
+        withdrawWorksheet()
       } else if (worksheet) {
-        setWorksheetBlocked(true)
-        setError(message(e) + " Discard this staged edit and preview the worksheet again.")
+        setSubmittedNote(proposed); setCompared(null)
+        setError(message(e) + " Check the saved review before sending another change.")
       } else if (e instanceof RevisionConflict) setConflict(true)
       else setError(message(e))
     } finally {
       setBusy(false)
+    }
+  }
+  async function reconcile(acceptCurrent: boolean) {
+    if (!worksheet || submittedNote === null || busy) return
+    const epoch = worksheetEpoch.current
+    setBusy(true)
+    try {
+      const live = await currentWorksheet(session, item, index + 1)
+      if (worksheetEpoch.current !== epoch) return
+      if (live.material !== worksheet.material) {
+        setCompared(null); setError("The original exchange has been replaced. Your edit cannot be applied to this record.")
+        return
+      }
+      const alreadySaved = live.answer.note === submittedNote
+      if (!alreadySaved && live.review !== worksheet.review && (!acceptCurrent || compared?.review !== live.review)) {
+        setCompared(live); setError("The saved review changed. Compare it with your edited note.")
+        return
+      }
+      const unfinished = note.trim() !== live.answer.note
+      setItem(live.answer); setDisposition(live.answer.disposition)
+      setSubmittedNote(null); setCompared(null); setError("")
+      if (unfinished) {
+        setWorksheet({ material: live.material, review: live.review })
+        setSaved(false)
+      } else {
+        setWorksheet(null); setNote(live.answer.note); setSaved(true)
+        clearLocalBuffer(); onSave(live.answer)
+      }
+      setReconcileNotice(alreadySaved ? "The submitted note is already saved."
+        : acceptCurrent ? "Your edited note is staged against the reviewed version." : "The saved review is unchanged. Your edits are still staged.")
+      noteRef.current?.focus()
+    } catch (e) {
+      if (worksheetEpoch.current !== epoch) return
+      if (e instanceof WorksheetUnavailable) withdrawWorksheet()
+      else setError(message(e) + " Your edits remain in this tab.")
+    } finally {
+      if (worksheetEpoch.current === epoch) setBusy(false)
     }
   }
   if (withdrawn) return <section className="panel stack" role="region" aria-label="Worksheet unavailable">
@@ -237,7 +283,8 @@ export default function Evidence({
         </details>
       )}
       <ReviewWorksheet key={item.id + ":" + item.revision} session={session} item={item} ordinal={index + 1}
-        editorBusy={dirty || busy || conflict || !!worksheet || !!recovered} stage={stageWorksheet} />
+        editorBusy={dirty || busy || conflict || !!worksheet || !!recovered} stage={stageWorksheet}
+        onDenied={() => { if (worksheet) withdrawWorksheet() }} />
       {worksheet && <p role="status" className="notice">Worksheet note staged in this tab. Saving keeps the current review outcome.</p>}
       <UnlinkedDraftCopy sessionId={sessionId} afterDiscard={() => noteRef.current?.focus()} />
       {recovered && (
@@ -276,7 +323,8 @@ export default function Evidence({
             ref={noteRef}
             disabled={busy}
             required={disposition === "disclosed"}
-            maxLength={12000 + (note.startsWith(earlierNotePrefix) ? earlierNotePrefix.length : 0)}
+            maxLength={worksheet ? 2 * MAX_NOTE_CHARACTERS : 12000 + (note.startsWith(earlierNotePrefix) ? earlierNotePrefix.length : 0)}
+            aria-invalid={oversizedWorksheetNote || undefined}
             value={note}
             onChange={(e) => setNote(e.target.value)}
             placeholder="Record the candidate’s explanation and your observations."
@@ -288,21 +336,31 @@ export default function Evidence({
             clearLocalBuffer(); setNote(latest.note); setDisposition(latest.disposition); onSave(latest)
           }
         }} />}
+        {oversizedWorksheetNote && <p role="alert">A worksheet note can contain up to 12,000 characters.</p>}
+        {worksheetBlocked && <section className="notice stack" aria-label="Worksheet save reconciliation">
+          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void reconcile(false)}>Check saved review</Button>
+          {compared && <>
+            <div><strong>Current saved note</strong><p className="transcript-text">{compared.answer.note || "No saved note."}</p></div>
+            <p>Saved outcome: {compared.answer.disposition}</p>
+            <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void reconcile(true)}>Keep my edited note on this version</Button>
+          </>}
+        </section>}
+        {reconcileNotice && <p role="status">{reconcileNotice}</p>}
         {error && <p role="alert" className="error">{error}</p>}
         <div className="row">
-          <Button disabled={busy || conflict || worksheetBlocked || (!!worksheet && !dirty)} variant="outline">
+          <Button disabled={busy || conflict || worksheetBlocked || oversizedWorksheetNote || (!!worksheet && !dirty)} variant="outline">
             <ClipboardCheck />
             Save review
           </Button>
           {canAdvance && disposition !== "pending" &&
-            <Button type="submit" value="next" disabled={busy || conflict || worksheetBlocked || (!!worksheet && !dirty)}>Save and review next</Button>}
+            <Button type="submit" value="next" disabled={busy || conflict || worksheetBlocked || oversizedWorksheetNote || (!!worksheet && !dirty)}>Save and review next</Button>}
           {(dirty || worksheet) && !conflict && (
             <Button
               type="button"
               variant="ghost"
               disabled={busy}
               onClick={() => {
-                clearLocalBuffer(); setWorksheet(null); setWorksheetBlocked(false)
+                clearLocalBuffer(); setWorksheet(null); setSubmittedNote(null); setCompared(null); setReconcileNotice("")
                 setNote(item.note); setDisposition(item.disposition)
                 if (item.revision > initial.revision) onSave(item)
                 setError(""); setSaved(false)

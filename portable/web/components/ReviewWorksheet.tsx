@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { type Answer, type Interview, message } from "@/lib/api"
+import { type Answer, type Interview, message, WorksheetUnavailable } from "@/lib/api"
 import { saveBlob } from "@/lib/download"
 import {
   currentWorksheet, type Disclosure, readWorksheetFile, verifyWorksheet, type Worksheet, type WorksheetState, worksheetText,
@@ -12,10 +12,11 @@ import { Button } from "./ui/button"
 type Props = {
   item: Answer; ordinal: number; session: Interview; editorBusy: boolean
   stage: (state: WorksheetState, note: string) => void
+  onDenied: () => void
 }
 type Imported = { file: Worksheet; state: WorksheetState }
 
-export default function ReviewWorksheet({ item, ordinal, session, editorBusy, stage }: Props) {
+export default function ReviewWorksheet({ item, ordinal, session, editorBusy, stage, onDenied }: Props) {
   const [fields, setFields] = useState<Disclosure>({ question: false, excerpt: false })
   const [exportText, setExportText] = useState("")
   const [imported, setImported] = useState<Imported | null>(null)
@@ -45,6 +46,7 @@ export default function ReviewWorksheet({ item, ordinal, session, editorBusy, st
     catch (e) {
       if (!controller.signal.aborted) {
         setExportText(""); setImported(null); setError(message(e))
+        if (e instanceof WorksheetUnavailable) onDenied()
       }
     } finally {
       if (!controller.signal.aborted) setBusy(false)
