@@ -1,15 +1,14 @@
 """Resilient model chain execution with RPM quotas, retries, failover, and live telemetry."""
 import asyncio
 from collections.abc import Awaitable, Callable
-import sqlite3
 import time
 from typing import Any
 
 from fastapi import HTTPException
 from starlette.concurrency import run_in_threadpool
 
-from . import ai_cost_log, model_budgets, model_circuit, model_resolver, model_telemetry, provider_http, ssrf_guard, store
-from .error_sanitizer import sanitize_error_text
+from . import model_budgets, model_circuit, model_resolver, provider_allowance, provider_http, ssrf_guard
+from .model_outcomes import _check_target_budget, _record_outcome, _redact_target_secrets, _sanitize_target_error
 from .model_execution_policy import (
     ModelQuotaLimiter, QUOTA_LIMITER,
     _clamped_retries,
@@ -53,57 +52,6 @@ def resolve_candidates(
     return chain
 
 
-def _redact_target_secrets(text: str | None, target: model_resolver.ResolvedModel | None) -> str | None:
-    if not text or target is None:
-        return text
-    cleaned = str(text)
-    for attr in ("api_key", "signing_secret"):
-        secret = getattr(target, attr, None)
-        if isinstance(secret, str) and len(secret) >= 4 and secret in cleaned:
-            cleaned = cleaned.replace(secret, "[REDACTED]")
-    return cleaned
-
-
-def _sanitize_target_error(
-    text: str | None, fallback: str, target: model_resolver.ResolvedModel | None, *, max_len: int = 400
-) -> str:
-    return sanitize_error_text(_redact_target_secrets(text, target), fallback, max_len=max_len)
-
-
-def _record_outcome(
-    target: model_resolver.ResolvedModel, *, ok: bool, http_status: int | None,
-    latency_ms: int | None, error: str | None,
-    usage: model_budgets.TokenUsage = model_budgets.TokenUsage(), provider_attempted: bool = True,
-) -> None:
-    safe_error = _redact_target_secrets(error, target) if (not ok and error) else error
-    try:
-        with store.connection(write=True) as db:
-            if provider_attempted:
-                ai_cost_log.record(db, target, ok=ok, http_status=http_status, latency_ms=latency_ms, usage=usage)
-            if target.id is None:
-                return  # server-setting models have no registry row for telemetry, budgets or circuits
-            model_telemetry.record_check(
-                db, target.id, source="live", ok=ok, http_status=http_status,
-                latency_ms=latency_ms, error=safe_error, checked_at=store.timestamp(),
-            )
-            if provider_attempted:
-                model_budgets.record_usage(db, target.id, input_tokens=usage.input_tokens, output_tokens=usage.output_tokens,
-                                           ok=ok, config=target.config, unsplit_tokens=usage.unsplit_tokens)
-            model_circuit.record_outcome(db, target.id, ok=ok, error=safe_error, secret=target.api_key)
-    except (sqlite3.Error, OverflowError, ValueError):
-        pass
-
-
-def _check_target_budget(target: model_resolver.ResolvedModel) -> model_budgets.BudgetDecision | None:
-    if target.id is None:
-        return None
-    try:
-        with store.connection() as db:
-            return model_budgets.check_budget(db, target.id, target.config)
-    except sqlite3.Error:
-        return None
-
-
 async def _validate_target_endpoint(target: model_resolver.ResolvedModel, *, resolve_dns: bool) -> None:
     if target.provider in ("azure_openai", "openai_compatible"):
         ssrf_provider = target.provider
@@ -136,30 +84,25 @@ async def _run_chain(
     budget_blocked = False
     circuit_retry_after: int | None = None
     for target in candidates:
-        decision = await run_in_threadpool(_check_target_budget, target)
-        if decision is not None and not decision.allowed:
-            budget_blocked = True
-            continue
-        c_decision = await run_in_threadpool(model_circuit.check_target, target.id)
-        if c_decision is not None and not c_decision.allowed:
-            wait_s = max(1, int(c_decision.retry_after_s or 1))
-            circuit_retry_after = wait_s if circuit_retry_after is None else min(circuit_retry_after, wait_s)
-            continue
         retries = _clamped_retries(target)
-        rpm_limit = _rpm_limit(target)
+        transcription = target.capability == "transcription"
         for attempt in range(retries + 1):
-            if attempt > 0:
-                retry_circuit = await run_in_threadpool(model_circuit.check_target, target.id)
-                if retry_circuit is not None and not retry_circuit.allowed:
-                    wait_s = max(1, int(retry_circuit.retry_after_s or 1))
-                    circuit_retry_after = wait_s if circuit_retry_after is None else min(circuit_retry_after, wait_s)
-                    break
+            # A failed response can contain paid tokens. Apply the recorded spend before retrying.
+            decision = await run_in_threadpool(_check_target_budget, target)
+            if decision is not None and not decision.allowed:
+                budget_blocked = True
+                break
+            circuit = await run_in_threadpool(model_circuit.check_target, target.id, claim=transcription)
+            if circuit is not None and not circuit.allowed:
+                wait_s = max(1, int(circuit.retry_after_s or 1))
+                circuit_retry_after = wait_s if circuit_retry_after is None else min(circuit_retry_after, wait_s)
+                break
             await _validate_target_endpoint(target, resolve_dns=real_transport)
             if before_attempt is not None:
                 await before_attempt()
-            if target.id is not None and rpm_limit is not None:
+            if transcription and target.id and (rpm := _rpm_limit(target)) is not None:
                 try:
-                    QUOTA_LIMITER.consume(target.id, rpm_limit)
+                    QUOTA_LIMITER.consume(target.id, rpm)
                 except HTTPException as exc:
                     last_exc = exc
                     break
@@ -174,6 +117,15 @@ async def _run_chain(
             started = time.monotonic()
             try:
                 result = await call_fn(target, record_usage)
+            except provider_allowance.TargetRefusal as exc:
+                if exc.status_code == 503:
+                    wait = int(exc.headers["Retry-After"])
+                    circuit_retry_after = wait if circuit_retry_after is None else min(circuit_retry_after, wait)
+                else:
+                    last_exc = exc
+                break
+            except provider_allowance.AdmissionError:
+                raise
             except ssrf_guard.SSRFValidationError as exc:
                 elapsed = int((time.monotonic() - started) * 1000)
                 detail = _sanitize_target_error(str(exc), "Blocked unsafe provider endpoint.", target)
@@ -217,10 +169,14 @@ async def _run_chain(
     raise HTTPException(503, "No configured model could complete the request.")
 
 
-def _dispatch_kwargs(record_usage: MeterCallback) -> dict[str, Any]:
-    if model_resolver.dispatch_completion is _ORIG_DISPATCH_COMPLETION:
-        return {"on_metering": record_usage}
-    return {}
+async def dispatch_completion(target, instructions, prompt, *, record_usage, before_send=None,
+                              use_circuit=True, **kwargs):
+    dispatch = model_resolver.dispatch_completion
+    if dispatch is _ORIG_DISPATCH_COMPLETION:
+        return await dispatch(target, instructions, prompt, on_metering=record_usage, before_send=before_send,
+                              use_circuit=use_circuit, **kwargs)
+    return await provider_allowance.send(dispatch, target, instructions, prompt, admission_target=target,
+                                         before_send=before_send, use_circuit=use_circuit, **kwargs)
 
 
 async def execute_completion_chain(
@@ -240,8 +196,8 @@ async def execute_completion_chain(
     )
 
     async def _call(target: model_resolver.ResolvedModel, record_usage: MeterCallback) -> tuple[str, str]:
-        return await model_resolver.dispatch_completion(
-            target, instructions, prompt, fetch_fn=fetch_fn, max_tokens=max_tokens, **_dispatch_kwargs(record_usage)
+        return await dispatch_completion(
+            target, instructions, prompt, fetch_fn=fetch_fn, max_tokens=max_tokens, record_usage=record_usage, before_send=before_attempt
         )
 
     return await _run_chain(candidates, _call, fetch_fn=fetch_fn, on_usage=on_usage, before_attempt=before_attempt)
@@ -262,15 +218,15 @@ async def execute_reference_chain(
     async def _call(target: model_resolver.ResolvedModel, record_usage: MeterCallback) -> tuple[str, str]:
         limit_tokens = target.config.get("max_tokens") or default_max_tokens
         if target.provider != "openai":
-            model_id, text = await model_resolver.dispatch_completion(
-                target, instructions, user_input, fetch_fn=fetch, max_tokens=limit_tokens, **_dispatch_kwargs(record_usage)
+            model_id, text = await dispatch_completion(
+                target, instructions, user_input, fetch_fn=fetch, max_tokens=limit_tokens, record_usage=record_usage
             )
             return f"{target.display_name} {model_id}"[:180], text
         timeout = _safe_timeout(target.config.get("timeout_s"), default=75.0, low=1.0, high=180.0)
         payload: dict[str, Any] = {"model": target.model_id, "store": False, "max_output_tokens": limit_tokens, "instructions": instructions, "input": user_input}
         if target.config.get("temperature") is not None:
             payload["temperature"] = target.config["temperature"]
-        data = await fetch("OpenAI", "POST", "https://api.openai.com/v1/responses", timeout=timeout, headers={"Authorization": "Bearer " + target.api_key}, json=payload, **extra_opts)
+        data = await provider_allowance.send(fetch, "OpenAI", "POST", "https://api.openai.com/v1/responses", admission_target=target, use_circuit=True, timeout=timeout, headers={"Authorization": "Bearer " + target.api_key}, json=payload, **extra_opts)
         record_usage(model_budgets.provider_usage(target.provider, data, capability=target.capability))
         try:
             if data.get("status") != "completed":
@@ -312,7 +268,7 @@ async def execute_embedding_chain(
     async def _call(target: model_resolver.ResolvedModel, record_usage: MeterCallback) -> list[list[float]]:
         url, headers, payload = request_builder(target, texts)
         timeout = _safe_timeout(target.config.get("timeout_s"), default=30.0, low=1.0, high=180.0)
-        data = await fetch(model_resolver.DISPLAY_PROVIDER.get(target.provider, target.display_name), "POST", url, headers=headers, json=payload, timeout=timeout, **extra_opts)
+        data = await provider_allowance.send(fetch, model_resolver.DISPLAY_PROVIDER.get(target.provider, target.display_name), "POST", url, admission_target=target, use_circuit=True, headers=headers, json=payload, timeout=timeout, **extra_opts)
         record_usage(model_budgets.provider_usage(target.provider, data, capability=target.capability))
         try:
             items = sorted(data["data"], key=lambda item: int(item["index"]))

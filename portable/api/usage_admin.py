@@ -9,8 +9,9 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import StreamingResponse
+from pydantic import Field
 
-from . import access, account_db, ai_cost_log, model_resolver, rate_limit, store, usage_events
+from . import access, account_db, ai_cost_log, model_admin, model_resolver, provider_allowance, rate_limit, store, usage_events
 from .exports import csv_download, csv_row
 from .models import Input
 from .origin import workspace_client
@@ -41,6 +42,31 @@ async def require_admin(request: Request) -> dict[str, Any]:
 @router.get("", dependencies=[Depends(require_admin), Depends(rate_limit.limit(rate_limit.ADMIN_READ))])
 def usage(days: int = Query(default=30, ge=1, le=365)) -> dict[str, Any]:
     return summary(days)
+
+
+class AllowanceEdit(Input):
+    monthly_limit: int | None = Field(ge=0, le=provider_allowance.MAX_MONTHLY_LIMIT)
+    expected_revision: int = Field(ge=1)
+
+
+@router.get("/ai-allowance", dependencies=[Depends(require_admin), Depends(rate_limit.limit(rate_limit.ADMIN_READ))])
+def read_allowance():
+    with store.connection() as db:
+        return provider_allowance.summary(db)
+
+
+@router.put("/ai-allowance", dependencies=[Depends(rate_limit.limit(rate_limit.ADMIN_WRITE))])
+def edit_allowance(item: AllowanceEdit, actor: dict = Depends(require_admin)):
+    post_commit = []
+    with store.connection(write=True) as db:
+        previous, changed = provider_allowance.set_limit(db, item.monthly_limit, item.expected_revision)
+        if changed:
+            model_admin._record_audit(db, actor=actor, action="admin.usage.allowance", model_uuid=None,
+                                      details={"scope": "workspace", "previous_limit": previous["monthly_limit"], "monthly_limit": item.monthly_limit,
+                                               "revision": previous["revision"] + 1}, post_commit=post_commit)
+        result = provider_allowance.summary(db)
+    model_admin._flush_account_audits(post_commit)
+    return result
 
 
 def cost_window(days: int = Query(default=30, ge=1, le=365),

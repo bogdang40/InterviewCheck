@@ -131,7 +131,7 @@ def _redact_model_secret(db: sqlite3.Connection, model_uuid: str, text: str, *, 
     return cleaned
 
 
-def can_execute(db: sqlite3.Connection, model_uuid: str, *, now: datetime | str | None = None) -> CircuitDecision:
+def can_execute(db: sqlite3.Connection, model_uuid: str, *, now: datetime | str | None = None, claim: bool = True) -> CircuitDecision:
     row = db.execute(
         "SELECT state, cooldown_seconds, next_retry_at, half_open_probe_until FROM model_circuit_state WHERE model_id=?",
         (model_uuid,),
@@ -149,6 +149,8 @@ def can_execute(db: sqlite3.Connection, model_uuid: str, *, now: datetime | str 
                 state="half_open",
                 retry_after_s=max(1, math.ceil((lease_dt - now_dt).total_seconds())),
             )
+        if not claim:
+            return CircuitDecision(True, "half_open")
         cur = db.execute(
             "UPDATE model_circuit_state SET half_open_probe_until=?, updated_at=? "
             "WHERE model_id=? AND state='half_open' AND (half_open_probe_until IS NULL OR half_open_probe_until=?)",
@@ -160,6 +162,8 @@ def can_execute(db: sqlite3.Connection, model_uuid: str, *, now: datetime | str 
     retry_dt = _to_utc(row["next_retry_at"])
     if retry_dt is not None and now_dt < retry_dt:
         return CircuitDecision(allowed=False, state="open", retry_after_s=max(1, math.ceil((retry_dt - now_dt).total_seconds())))
+    if not claim:
+        return CircuitDecision(True, "half_open")
     cur = db.execute(
         "UPDATE model_circuit_state SET state='half_open', half_open_probe_until=?, updated_at=? "
         "WHERE model_id=? AND state='open'",
@@ -170,12 +174,12 @@ def can_execute(db: sqlite3.Connection, model_uuid: str, *, now: datetime | str 
     return CircuitDecision(allowed=False, state="half_open", retry_after_s=1)
 
 
-def check_target(model_uuid: str | None, *, now: datetime | str | None = None) -> CircuitDecision | None:
+def check_target(model_uuid: str | None, *, now: datetime | str | None = None, claim: bool = True) -> CircuitDecision | None:
     if model_uuid is None:
         return None
     try:
-        with store.connection(write=True) as db:
-            return can_execute(db, model_uuid, now=now)
+        with store.connection(write=claim) as db:
+            return can_execute(db, model_uuid, now=now, claim=claim)
     except sqlite3.Error:
         return None
 

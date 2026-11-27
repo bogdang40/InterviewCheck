@@ -13,7 +13,7 @@ from starlette.concurrency import run_in_threadpool
 
 from . import (
     ai_cost_log, model_admin, model_budgets, model_execution, model_registry, model_resolver,
-    model_telemetry, prompt_framing, provider_http, rate_limit, ssrf_guard, store,
+    model_telemetry, prompt_framing, provider_allowance, provider_http, rate_limit, ssrf_guard, store,
 )
 from .error_sanitizer import sanitize_error_text
 from .models import Input, RequestID
@@ -277,30 +277,21 @@ async def _run_single_model(row: dict[str, Any], item: PlaygroundRunInput, instr
     if not decision.allowed:
         return _fail_result(row, http_status=429, error="Model budget ceiling reached.", secret_value=target.api_key)
 
-    rpm_limit = target.config.get("rpm_limit")
-    if isinstance(rpm_limit, int) and not isinstance(rpm_limit, bool) and rpm_limit >= 1:
-        try:
-            model_execution.QUOTA_LIMITER.consume(target.id or row["id"], rpm_limit)
-        except HTTPException as exc:
-            return _fail_result(row, http_status=exc.status_code, error=str(exc.detail), secret_value=target.api_key)
-
     usage = model_budgets.TokenUsage()
 
     def record_usage(result: model_budgets.TokenUsage) -> None:
         nonlocal usage
         usage = result
 
-    dispatch_kwargs: dict[str, Any] = {"max_tokens": item.max_tokens}
-    if model_resolver.dispatch_completion is _ORIG_DISPATCH_COMPLETION:
-        dispatch_kwargs["on_metering"] = record_usage
-
     started = time.monotonic()
     status, detail, provider_attempted = 200, None, True
     try:
-        resolved_model_id, raw_output = await model_resolver.dispatch_completion(
-            target, instructions, prompt, **dispatch_kwargs
+        resolved_model_id, raw_output = await model_execution.dispatch_completion(
+            target, instructions, prompt, record_usage=record_usage, use_circuit=False, max_tokens=item.max_tokens
         )
         clean_output = _redact_secret(prompt_framing.sanitize_model_text(raw_output), target.api_key)
+    except provider_allowance.AdmissionError as exc:
+        return _fail_result(row, http_status=exc.status_code, error=str(exc.detail), secret_value=target.api_key)
     except ssrf_guard.SSRFValidationError as exc:
         status, provider_attempted = 400, False
         detail = _sanitize_playground_error(str(exc), "Blocked unsafe provider endpoint.", secret_value=target.api_key)

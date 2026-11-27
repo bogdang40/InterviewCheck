@@ -6,7 +6,7 @@ from typing import Any
 
 from pydantic import Field, field_validator
 
-from . import model_budgets, model_execution, model_registry, model_resolver, ssrf_guard
+from . import model_budgets, model_execution, model_registry, model_resolver, provider_allowance, ssrf_guard
 from .model_schemas import Capability, KEY_REQUIRED_PROVIDERS
 from .models import Input
 
@@ -123,14 +123,21 @@ def _evaluate_env_candidates(capability: str, norm_provider: str | None, suppres
 
 
 def _sim_payload(
-    capability: str, provider_filter: str | None, allow_ref: bool, active: list[dict[str, Any]], skipped: list[dict[str, Any]]
+    db: sqlite3.Connection, capability: str, provider_filter: str | None, allow_ref: bool, active: list[dict[str, Any]], skipped: list[dict[str, Any]]
 ) -> dict[str, Any]:
+    blocked = bool(active) and capability != "transcription" and provider_allowance.summary(db)["remaining"] == 0
+    if blocked:
+        for entry in active:
+            entry.update(eligible=False, skip_reason="workspace_attempt_allowance_exhausted")
+        skipped = [*active, *skipped]
+        active = []
     for idx, entry in enumerate(active, start=1):
         entry["rank"] = idx
     return {
         "capability": capability, "provider_filter": provider_filter,
         "allow_reference_fallback": allow_ref,
-        "active_chain": active, "skipped": skipped, "would_fail_503": len(active) == 0,
+        "active_chain": active, "skipped": skipped, "would_fail_503": not active and not blocked,
+        "would_fail_429": blocked,
     }
 
 
@@ -148,7 +155,7 @@ def simulate_chain(
         if direct is not None:
             entry = _evaluate_row(db, direct)
             (active_chain if entry["eligible"] else skipped).append(entry)
-        return _sim_payload(capability, clean_provider, allow_reference_fallback, active_chain, skipped)
+        return _sim_payload(db, capability, clean_provider, allow_reference_fallback, active_chain, skipped)
 
     rows = _query_rows(db, capability, norm_provider)
     for row in rows:
@@ -165,7 +172,7 @@ def simulate_chain(
 
     for entry in _evaluate_env_candidates(capability, norm_provider, blocked):
         (active_chain if entry["eligible"] else skipped).append(entry)
-    return _sim_payload(capability, clean_provider, allow_reference_fallback, active_chain, skipped)
+    return _sim_payload(db, capability, clean_provider, allow_reference_fallback, active_chain, skipped)
 
 
 def transcription_diagnostics(db: sqlite3.Connection) -> dict[str, Any]:

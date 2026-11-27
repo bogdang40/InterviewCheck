@@ -53,7 +53,8 @@ function CandidateRow({ item, skipped = false }: { item: SimulatedChainCandidate
         <span>RPM remaining: {item.rpm_remaining != null ? item.rpm_remaining : "Unlimited"}</span>
         <span>{budgetLabel(item.budget_status)}</span>
       </div>
-      {item.skip_reason && <p className="admin-sim-reason">{item.skip_reason}</p>}
+      {item.skip_reason && <p className="admin-sim-reason">{item.skip_reason === "workspace_attempt_allowance_exhausted"
+        ? "Workspace monthly attempt allowance reached" : item.skip_reason}</p>}
     </li>
   )
 }
@@ -145,8 +146,9 @@ export function RoutingSimulatorPanel({ onAuthInvalid }: { onAuthInvalid: (msg: 
       {result && (
         <div className="stack" aria-live="polite">
           <div className="admin-model-title">
-            <Badge variant={result.would_fail_503 ? "destructive" : "success"}>
-              {result.would_fail_503 ? "Would fail 503 (no active candidate)" : `Chain ready (${result.active_chain.length} active)`}
+            <Badge variant={result.would_fail_503 || result.would_fail_429 ? "destructive" : "success"}>
+              {result.would_fail_429 ? "Would fail 429 (workspace attempt allowance reached)"
+                : result.would_fail_503 ? "Would fail 503 (no active candidate)" : `Chain ready (${result.active_chain.length} active)`}
             </Badge>
             <span className="admin-mono">
               {CAPABILITY_LABELS[result.capability] ?? result.capability}

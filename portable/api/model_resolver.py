@@ -8,7 +8,7 @@ from typing import Any, Literal
 
 from fastapi import HTTPException
 
-from . import model_budgets, model_registry, provider_http, secret_box, ssrf_guard, store
+from . import model_budgets, model_registry, provider_allowance, provider_http, secret_box, ssrf_guard, store
 
 CANONICAL_PROVIDER: dict[str, str] = {
     "OpenAI": "openai",
@@ -316,6 +316,8 @@ async def dispatch_completion(
     max_tokens: int | None = None,
     on_usage: Callable[[int, int], None] | None = None,
     on_metering: Callable[[model_budgets.TokenUsage], None] | None = None,
+    before_send=None,
+    use_circuit=False,
 ) -> tuple[str, str]:
     fetch = fetch_fn or provider_http.fetch_json
     extra_fetch_opts = {"ssrf_safe": True} if fetch is provider_http.fetch_json else {}
@@ -340,8 +342,8 @@ async def dispatch_completion(
         }
         if target.config.get("temperature") is not None:
             body["temperature"] = target.config["temperature"]
-        data = await fetch(
-            "Anthropic", "POST", "https://api.anthropic.com/v1/messages",
+        data = await provider_allowance.send(
+            fetch, "Anthropic", "POST", "https://api.anthropic.com/v1/messages", before_send=before_send, admission_target=target, use_circuit=use_circuit,
             headers={"x-api-key": target.api_key, "anthropic-version": "2023-06-01"},
             json=body, timeout=timeout, **extra_fetch_opts,
         )
@@ -378,7 +380,7 @@ async def dispatch_completion(
             body = {"model": target.model_id, "messages": messages, "max_completion_tokens": limit_tokens or 2000, "store": False}
         if target.config.get("temperature") is not None:
             body["temperature"] = target.config["temperature"]
-        data = await fetch(label, "POST", url, json=body, headers=headers, params=params, timeout=timeout, **extra_fetch_opts)
+        data = await provider_allowance.send(fetch, label, "POST", url, before_send=before_send, admission_target=target, use_circuit=use_circuit, json=body, headers=headers, params=params, timeout=timeout, **extra_fetch_opts)
         report_usage(data)
         try:
             choice = data["choices"][0]

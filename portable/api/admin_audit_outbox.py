@@ -26,11 +26,11 @@ def migrate(db: sqlite3.Connection) -> None:
     db.execute(SCHEMA)
 
 
-def stage(db: sqlite3.Connection, *, action: str, target: str, actor_user_id: str | None, details: dict[str, Any] | None) -> None:
-    """Queue an entry inside the caller's review transaction."""
+def stage(db: sqlite3.Connection, *, action: str, target: str | None, actor_user_id: str | None, details: dict[str, Any] | None) -> None:
+    """Queue an entry inside the review transaction. An empty target represents no account."""
     db.execute(
         "INSERT INTO admin_audit_outbox(at,action,target,actor_user_id,details) VALUES (?,?,?,?,?)",
-        (account_db.now(), action, target, actor_user_id, json.dumps(details) if details else None),
+        (account_db.now(), action, target or "", actor_user_id, json.dumps(details) if details else None),
     )
 
 
@@ -47,7 +47,7 @@ def deliver_pending() -> int:
             with account_db.connection(write=True) as adb:
                 for entry in pending:
                     details = json.loads(entry["details"]) if entry["details"] else None
-                    account_db.audit(adb, entry["action"], entry["target"], entry["actor_user_id"], details, at=entry["at"])
+                    account_db.audit(adb, entry["action"], entry["target"] or None, entry["actor_user_id"], details, at=entry["at"])
             db.execute("DELETE FROM admin_audit_outbox WHERE id<=?", (pending[-1]["id"],))
     except Exception as error:  # A committed admin change must never become an error response.
         _report_failure(pending, error)

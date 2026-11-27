@@ -1,5 +1,6 @@
 "use client"
 
+import type { DirtyReporter } from "@/lib/dirtyTracking"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { KeyRound, RefreshCw } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
@@ -7,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { formatCompactTokens } from "@/lib/adminDiagnostics"
 import { AdminApiError } from "@/lib/adminModels"
 import { formatUsageDay, getAdminUsage, recordedCost, USAGE_PERIODS, type UsageResponse } from "@/lib/adminUsage"
+import { UsageAllowance } from "./UsageAllowance"
 import { UsageCostLog } from "./UsageCostLog"
 import { UsageDailyTable, UsageModelsTable, UsagePeopleTable, UsageRecentList } from "./UsageTables"
 
@@ -49,7 +51,9 @@ function AiSetup({ data, onOpenModels }: { data: UsageResponse; onOpenModels: ()
   )
 }
 
-export function UsageTab({ onAuthInvalid, onOpenModels }: { onAuthInvalid: (msg: string) => void; onOpenModels: () => void }) {
+export function UsageTab({ onAuthInvalid, onOpenModels, onDirtyChange }: {
+  onAuthInvalid: (msg: string) => void; onOpenModels: () => void; onDirtyChange: DirtyReporter
+}) {
   const [days, setDays] = useState<number>(30)
   const [report, setData] = useState<UsageResponse | null>(null)
   const [loading, setLoading] = useState(true)
@@ -151,6 +155,7 @@ export function UsageTab({ onAuthInvalid, onOpenModels }: { onAuthInvalid: (msg:
         </>
       )}
 
+      <UsageAllowance refreshKey={refreshKey} onAuthInvalid={onAuthInvalid} onDirtyChange={onDirtyChange} />
       <UsageCostLog days={days} refreshKey={refreshKey} onAuthInvalid={onAuthInvalid} onOpenModels={onOpenModels} />
 
       {data && (
