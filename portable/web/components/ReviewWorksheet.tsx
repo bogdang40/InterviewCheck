@@ -115,8 +115,8 @@ export default function ReviewWorksheet({ item, ordinal, session, editorBusy, st
     <summary>Offline review worksheet</summary>
     <p className="muted">Take one exchange to a text editor. The default file contains return metadata.
       Copies outside InterviewCheck remain there after signout, Trash or retention.</p>
-    <label><input type="checkbox" checked={fields.question} onChange={e => { clear(); setFields({ ...fields, question: e.target.checked }) }} /> Include the question</label>
-    <label><input type="checkbox" checked={fields.excerpt} onChange={e => { clear(); setFields({ ...fields, excerpt: e.target.checked }) }} /> Include the first 240 characters of the answer</label>
+    <label className="check"><input type="checkbox" checked={fields.question} onChange={e => { clear(); setFields({ ...fields, question: e.target.checked }) }} /><span>Include the question</span></label>
+    <label className="check"><input type="checkbox" checked={fields.excerpt} onChange={e => { clear(); setFields({ ...fields, excerpt: e.target.checked }) }} /><span>Include the first 240 characters of the answer</span></label>
     <div className="row"><Button type="button" variant="outline" disabled={busy} onClick={() => prepare("preview")}>Preview worksheet</Button></div>
     {exportText && <>
       <label className="field">Exact worksheet contents
