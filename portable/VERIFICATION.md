@@ -93,7 +93,7 @@ python package_release.py ../build/InterviewCheck-portable.zip
 python qa/smoke_archive.py ../build/InterviewCheck-portable.zip
 ~~~
 
-On a minimal Linux installation use `python -m playwright install --with-deps chromium`. In Windows PowerShell, `py -3.13` can select Python. The workflow in `.github/workflows/portable.yml` performs these checks on Ubuntu and Windows x64 and attaches the tested ZIP to each successful job. No Windows runner was available in this local session. Its first CI run is pending.
+On a minimal Linux installation use `python -m playwright install --with-deps chromium`. In Windows PowerShell, `py -3.13` can select Python. The portable workflow runs the checks on Ubuntu and Windows x64 and attaches the tested ZIP to each successful job. Both platforms passed for the monthly model allowance release. [Build and artifacts for `9f1c795`](https://github.com/bogdang40/InterviewCheck/actions/runs/45961992290)
 
 The Linux tests cover browser media APIs with synthetic tracks. The operating system source picker, real call audio and live vendor credentials still require platform acceptance. The provider tests use fixtures. The account test stops before Stripe checkout. Detection accuracy requires independently labeled interviews and a representative sample. The synthetic cases establish behavior under their stated inputs.
 
