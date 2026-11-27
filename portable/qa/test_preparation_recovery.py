@@ -131,7 +131,7 @@ def test_permission_snapshot_and_browser_restore(workspace_url, browser_page, mo
         file = tmp_path / "fixture.json"
         download.value.save_as(file)
         backup = json.loads(file.read_bytes())
-        assert backup["version"] == 6
+        assert backup["version"] == 7
         assert [r["id"] for r in backup["roles"]] == [rid]
         assert [r["id"] for r in backup["sessions"]] == [sid]
         assert backup["sessions"][0]["assignment"] == {

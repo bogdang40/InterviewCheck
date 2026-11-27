@@ -1,8 +1,10 @@
+import DeferredSourceCheck from "./DeferredSourceCheck"
+import { sameSources, saveDeferredDraft } from "@/lib/deferredQuestions"
 import { useRef, useState, type FormEvent } from "react"
 import { flushSync } from "react-dom"
 import dynamic from "next/dynamic"
 import { Plus, Trash2, ScanText } from "lucide-react"
-import { api, message, DraftConflict, type Draft, type QuestionOrigin, RevisionConflict, type Answer, type Interview, type Source } from "@/lib/api"
+import { api, message, DeferredConflict, DraftConflict, type Draft, type QuestionOrigin, RevisionConflict, type Answer, type Interview, type Source } from "@/lib/api"
 import { Button } from "./ui/button"
 import { Input } from "./ui/input"
 import { Textarea } from "./ui/textarea"
@@ -53,6 +55,8 @@ export default function AnswerEditor({
   const [initial, setInitial] = useState(original)
   const [conflict, setConflict] = useState(false)
   const [baseline,setBaseline] = useState(resumed)
+  const [deferredConflict, setDeferredConflict] = useState(false)
+  const deferred = baseline?.deferred_question
   const [draftConflict,setDraftConflict] = useState(false)
   const [id,setId] = useState(() => initial?.id || resumed?.id || crypto.randomUUID())
   const [origin, setOrigin] = useState<QuestionOrigin>(originOf(initial || resumed || firstOrigin))
@@ -74,7 +78,7 @@ export default function AnswerEditor({
     question !== (initial?.question ?? baseline?.question ?? "") ||
     answer !== (initial?.answer ?? baseline?.answer ?? "") ||
     sourcesJson !== JSON.stringify(initial?.references ?? baseline?.references ?? [])
-  const dirty = contentDirty || draftConflict || conflict || capturePending || generating || !!busy
+  const dirty = contentDirty || draftConflict || deferredConflict || conflict || capturePending || generating || !!busy
   useIsomorphicLayoutEffect(() => {
     onDirty("editor", dirty)
     return () => onDirty("editor", false)
@@ -97,20 +101,27 @@ export default function AnswerEditor({
     answerField.current?.focus()
     if (!recovered || !markRestored()) return
     authoringVersion.current += 1
-    if (recovered.question !== undefined) writeQuestion(recovered.question)
+    if (!deferred && recovered.question !== undefined) writeQuestion(recovered.question)
     setAnswer(recovered.text)
     if (recovered.sources !== undefined) setSources(recovered.sources)
-    if (recovered.origin !== undefined) setOrigin(recovered.origin)
+    if (!deferred && recovered.origin !== undefined) setOrigin(recovered.origin)
   }
   const setQuestion = (value: string) => { authoringVersion.current += 1; writeQuestion(value) }
   const change = (index: number, update: Partial<Source>) => setSources((s) => s.map((r, i) => (i === index ? { ...r, ...update } : r)))
   async function park() {
-    if(capturePending || generating || busy || draftConflict) return
+    if(capturePending || generating || busy || draftConflict || deferredConflict) return
     setBusy("draft");setError("")
     try{
-      const saved=await api<Draft>("sessions/"+session.id+"/draft","PUT",{id,question,answer,references:sources,...origin,expected_revision:baseline?.revision??0})
+      const saved=await api<Draft>("sessions/"+session.id+"/draft","PUT",{id,question,answer,references:sources,...origin,
+        ...(deferred ? { deferred_question: deferred } : {}), expected_revision:baseline?.revision??0})
+      if (deferred && (saved.id !== id || saved.deferred_question?.id !== deferred.id ||
+          saved.deferred_question.version !== deferred.version || saved.question !== question || saved.parent_answer_id !== origin.parent_answer_id ||
+          saved.answer !== answer || saved.planned_slot != null || !Number.isSafeInteger(saved.revision) || saved.revision < 1 ||
+          !sameSources(saved.references, sources))) {
+        throw new Error("The server did not confirm the deferred draft. Check the saved exchange before retrying.")
+      }
       clearLocalBuffer(); onDraftSaved(saved)
-    }catch(e){if(e instanceof DraftConflict)setDraftConflict(true);else setError(message(e))}finally{setBusy("")}
+    }catch(e){if(e instanceof DeferredConflict)setDeferredConflict(true);else if(e instanceof DraftConflict)setDraftConflict(true);else setError(message(e))}finally{setBusy("")}
   }
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -118,17 +129,22 @@ export default function AnswerEditor({
     setBusy("save"); setError("")
     try {
       const path = baseline ? `sessions/${session.id}/draft/publish` : `sessions/${session.id}/answers` + (initial ? `/${initial.id}` : "")
-      const saved = await api<Answer>(path, initial ? "PUT" : "POST", { id, question, answer, references: sources, ...origin,
+      const saved = await api<Answer & { deferred_replay?: boolean }>(path, initial ? "PUT" : "POST", { id, question, answer, references: sources, ...origin,
+        ...(deferred ? { deferred_question: deferred } : {}),
         ...(initial || baseline ? { expected_revision: (initial || baseline)?.revision } : {}) })
-      if (!confirmsExchange(saved, id)) {
+      if (!confirmsExchange(saved, id) || deferred && (saved.parent_answer_id !== origin.parent_answer_id ||
+          saved.question !== question || saved.answer !== answer || saved.planned_slot != null || !sameSources(saved.references, sources))) {
         throw new Error("The server did not confirm this exchange. Your edits are still here. Check the saved interview before submitting again.")
       }
       clearLocalBuffer()
       // Native navigation can start as soon as the saved evidence enters the DOM.
       flushSync(() => onDirty("editor", false))
+      // A replay acknowledgement is not part of the persisted exchange evidence.
+      delete saved.deferred_replay
       onSave(saved)
     } catch (e) {
-      if(e instanceof DraftConflict) setDraftConflict(true)
+      if(e instanceof DeferredConflict) setDeferredConflict(true)
+      else if(e instanceof DraftConflict) setDraftConflict(true)
       else if (e instanceof RevisionConflict) setConflict(true)
       else setError(message(e))
     } finally { setBusy("") }
@@ -140,6 +156,16 @@ export default function AnswerEditor({
         <span className="eyebrow">CAPTURE</span>
         <h2>{initial ? "Edit exchange" : "Add an exchange"}</h2>
       </div>
+      {deferred && <p className="notice">This draft answers a kept question. Its source exchange and question are fixed.</p>}
+      {deferred && deferredConflict && baseline && <section className="notice stack" aria-label="Deferred draft source check">
+        <p role="status">The saved question or its source changed. Your answer is still here.</p>
+        <DeferredSourceCheck sessionId={session.id} questionId={deferred.id} disabled={capturePending || generating}
+          confirmLabel="Confirm source and save this draft" onBusy={active => setBusy(active ? "deferred" : "")}
+          onConfirmed={async (item, signal) => {
+            const updated = await saveDeferredDraft(item, id, baseline.revision, answer, sources, signal)
+            if (!signal.aborted) { setBaseline(updated); setDeferredConflict(false); setError("") }
+          }} />
+      </section>}
       <UnlinkedDraftCopy sessionId={session.id} afterDiscard={() => answerField.current?.focus()} />
       {recovered && (
         <section className="notice stack" role="region" aria-label="Local draft recovery" style={{ marginBottom: "14px" }}>
@@ -157,21 +183,22 @@ export default function AnswerEditor({
       <form className="stack" onSubmit={submit}>
         <fieldset className="editor-fields stack" disabled={!!busy}>
 
-        <TranscriptImport
+        {!deferred && <TranscriptImport
           apply={(q, a) => {
             setQuestion(q)
             setAnswer(a)
             setOrigin(noQuestionOrigin)
           }}
-        />
-        <OriginPicker session={session} answerId={id} origin={origin} change={(value, text) => {
+        />}
+        {!deferred && <OriginPicker session={session} answerId={id} origin={origin} change={(value, text) => {
           authoringVersion.current += 1
           setOrigin(value); if (text !== undefined) setQuestion(text)
-        }} />
+        }} />}
         <label className="field">
           Question
           <Textarea
             value={question}
+            readOnly={!!deferred}
             onChange={(e) => setQuestion(e.target.value)}
             required
             maxLength={4000}
@@ -283,15 +310,20 @@ export default function AnswerEditor({
           </p>
         )}
         {draftConflict && <DraftConflictView sessionId={session.id} resolve={(latest,keep)=>{
+          if (deferred && (!latest || latest.id !== id || latest.deferred_question?.id !== deferred.id)) {
+            setDraftConflict(false); setDeferredConflict(true)
+            setError("The saved draft no longer belongs to this question. Your answer is still here.")
+            return
+          }
           setBaseline(latest??undefined);setId(latest?.id??crypto.randomUUID());setDraftConflict(false)
           if(latest && !keep){writeQuestion(latest.question);setAnswer(latest.answer);setSources(latest.references);setOrigin(originOf(latest));clearLocalBuffer()}
         }}/>}
         <div className="row">
-          <Button disabled={!!busy || generating || capturePending || conflict || draftConflict}>
+          <Button disabled={!!busy || generating || capturePending || conflict || draftConflict || deferredConflict}>
             <ScanText />
             {busy === "save" ? "Saving…" : "Save and compare"}
           </Button>
-          {!initial && <Button type="button" variant="outline" disabled={!!busy || capturePending || generating || draftConflict ||
+          {!initial && <Button type="button" variant="outline" disabled={!!busy || capturePending || generating || draftConflict || deferredConflict ||
             !(question.trim() || answer.trim() || sources.some(s=>s.label.trim() || s.text.trim()))} onClick={park}>Save draft</Button>}
           {onCancel && (
             <Button

@@ -159,7 +159,7 @@ def test_older_server_reply_without_download_header_or_review_counts(workspace_u
     doc = json.loads(path.read_bytes())
     doc["version"] = 1
     for record in doc["sessions"]:
-        for field in ("assignment", "handoff_notes", "scorecard_items", "rubric_snapshot", "privacy"):
+        for field in ("assignment", "handoff_notes", "scorecard_items", "rubric_snapshot", "privacy", "deferred_questions"):
             del record[field]
     path.write_bytes(json.dumps(doc).encode())
 
