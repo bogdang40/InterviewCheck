@@ -1,6 +1,6 @@
 import DeferredSourceCheck from "./DeferredSourceCheck"
 import { deferredFields, expectedReceipt, matchesReceipt, type DeferredReply } from "@/lib/deferredSubmission"
-import { sameSources, saveDeferredDraft } from "@/lib/deferredQuestions"
+import { accessLost, sameSources, saveDeferredDraft } from "@/lib/deferredQuestions"
 import { useRef, useState, type FormEvent } from "react"
 import { flushSync } from "react-dom"
 import dynamic from "next/dynamic"
@@ -40,9 +40,10 @@ function confirmsExchange(saved: Answer | null | undefined, id: string): boolean
 
 export default function AnswerEditor({
   session, onDirty, initial: original, firstQuestion = "", firstOrigin,
-  draft: resumed, onDraftSaved, onSave, onCancel, embeddingAvailable,
+  draft: resumed, onDraftSaved, onSave, onCancel, embeddingAvailable, onDeferredUnavailable,
 }: {
   session: Interview
+  onDeferredUnavailable: () => void
   onDirty: (id: string, value: boolean) => void
   draft?: Draft
   onDraftSaved: (saved:Draft)=>void
@@ -115,15 +116,16 @@ export default function AnswerEditor({
     try{
       const fields = deferred ? deferredFields(question, answer, sources) : { question, answer, references: sources }
       const saved=await api<Draft>("sessions/"+session.id+"/draft","PUT",{id,...fields,...origin,
-        ...(deferred ? { deferred_question: deferred } : {}), expected_revision:baseline?.revision??0})
+        ...(deferred ? { deferred_question: deferred, deferred_draft_token: baseline?.deferred_draft_token } : {}), expected_revision:baseline?.revision??0})
       if (deferred && (saved.id !== id || saved.deferred_question?.id !== deferred.id ||
-          saved.deferred_question.version !== deferred.version || saved.question !== fields.question || saved.parent_answer_id !== origin.parent_answer_id ||
+          saved.deferred_question.version !== deferred.version || !baseline?.deferred_draft_token ||
+          saved.deferred_draft_token !== baseline.deferred_draft_token || saved.question !== fields.question || saved.parent_answer_id !== origin.parent_answer_id ||
           saved.answer !== fields.answer || saved.planned_slot != null || !Number.isSafeInteger(saved.revision) || saved.revision < 1 ||
           !sameSources(saved.references, fields.references))) {
         throw new Error("The server did not confirm the deferred draft. Check the saved exchange before retrying.")
       }
       clearLocalBuffer(); onDraftSaved(saved)
-    }catch(e){if(e instanceof DeferredConflict)setDeferredConflict(true);else if(e instanceof DraftConflict)setDraftConflict(true);else setError(message(e))}finally{setBusy("")}
+    }catch(e){if(deferred && accessLost(e))onDeferredUnavailable();else if(e instanceof DeferredConflict)setDeferredConflict(true);else if(e instanceof DraftConflict)setDraftConflict(true);else setError(message(e))}finally{setBusy("")}
   }
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -135,7 +137,7 @@ export default function AnswerEditor({
       const receipt = deferred && origin.parent_answer_id ? await expectedReceipt(deferred.id, id, origin.parent_answer_id, fields) : null
       if (deferred && !receipt) throw new Error("This deferred draft is missing its source exchange.")
       const saved = await api<DeferredReply>(path, initial ? "PUT" : "POST", { id, ...fields, ...origin,
-        ...(deferred ? { deferred_question: deferred } : {}),
+        ...(deferred ? { deferred_question: deferred, deferred_draft_token: baseline?.deferred_draft_token } : {}),
         ...(initial || baseline ? { expected_revision: (initial || baseline)?.revision } : {}) })
       if (!confirmsExchange(saved, id) || receipt && (!matchesReceipt(saved, receipt) ||
           saved.parent_answer_id !== receipt.parent_answer_id || saved.planned_slot != null || (saved.deferred_replay !== true &&
@@ -152,7 +154,8 @@ export default function AnswerEditor({
       delete saved.deferred_receipt
       onSave(saved, notice)
     } catch (e) {
-      if(e instanceof DeferredConflict) setDeferredConflict(true)
+      if (deferred && accessLost(e)) onDeferredUnavailable()
+      else if(e instanceof DeferredConflict) setDeferredConflict(true)
       else if(e instanceof DraftConflict) setDraftConflict(true)
       else if (e instanceof RevisionConflict) setConflict(true)
       else setError(message(e))
@@ -168,11 +171,11 @@ export default function AnswerEditor({
       {deferred && <p className="notice">This draft answers a kept question. Its source exchange and question are fixed.</p>}
       {deferred && deferredConflict && !draftConflict && baseline && <section className="notice stack" aria-label="Deferred draft source check">
         <p role="status">The saved question or its source changed. Your answer is still here.</p>
-        <DeferredSourceCheck sessionId={session.id} questionId={deferred.id} disabled={capturePending || generating}
+        <DeferredSourceCheck onUnavailable={onDeferredUnavailable} sessionId={session.id} questionId={deferred.id} disabled={capturePending || generating}
           confirmLabel="Confirm source and save this draft" onBusy={active => setBusy(active ? "deferred" : "")}
           onConfirmed={async (item, signal) => {
             try {
-              const updated = await saveDeferredDraft(item, id, baseline.revision, answer, sources, signal)
+              const updated = await saveDeferredDraft(item, id, baseline.revision, answer, sources, signal, baseline.deferred_draft_token)
               if (!signal.aborted) { setBaseline(updated); setDeferredConflict(false); setError("") }
             } catch (e) {
               if (!(e instanceof DraftConflict) || signal.aborted) throw e
@@ -324,11 +327,14 @@ export default function AnswerEditor({
             {error}
           </p>
         )}
-        {draftConflict && <DraftConflictView sessionId={session.id} resolve={(latest,keep)=>{
+        {draftConflict && <DraftConflictView onUnavailable={deferred ? onDeferredUnavailable : undefined} sessionId={session.id} resolve={(latest,keep)=>{
           if (deferred && (!latest || latest.id !== id || latest.deferred_question?.id !== deferred.id)) {
             setDraftConflict(false); setDeferredConflict(true)
             setError("The saved draft no longer belongs to this question. Your answer is still here.")
             return
+          }
+          if (deferred && keep && latest?.deferred_draft_token !== baseline?.deferred_draft_token) {
+            setError("This saved draft was recreated. Use the saved draft or copy your local answer before leaving."); return
           }
           setBaseline(latest??undefined);setId(latest?.id??crypto.randomUUID());setDraftConflict(false);setError("")
           if (deferred && latest?.deferred_question?.version !== deferred.version) setDeferredConflict(true)

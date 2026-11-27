@@ -14,11 +14,14 @@ from .models import Fingerprint, Input, RequestID
 router = APIRouter(prefix="/sessions/{sid}/deferred-questions", tags=["interview-follow-ups"])
 
 
-class Add(Input):
-    id: RequestID
+class KeepSource(Input):
     parent_answer_id: RequestID
     question: SelectedQuestion
     expected_material: Fingerprint
+
+
+class Add(KeepSource):
+    id: RequestID
 
 
 class Change(Input):
@@ -56,6 +59,26 @@ def read(sid: UUID, qid: UUID):
         return items.public(db, items.find(db, str(sid), str(qid)))
 
 
+def _creation_outcome(row, sid, payload):
+    if row is None or row["session_id"] != sid:
+        return "missing"
+    if (row["parent_answer_id"], row["question"]) != (str(payload.parent_answer_id), payload.question):
+        return "mismatch"
+    if not row["creation_receipt"]:
+        return "matching_unconfirmed"
+    return "confirmed" if hmac.compare_digest(row["creation_receipt"], payload.expected_material) else "mismatch"
+
+
+@router.post("/{qid}/creation-check")
+def check_creation(sid: UUID, qid: UUID, payload: KeepSource):
+    with store.connection() as db:
+        key = str(sid)
+        items.access_session(db, key)
+        row = db.execute("SELECT * FROM deferred_questions WHERE session_id=? AND id=?", (key, str(qid))).fetchone()
+        outcome = _creation_outcome(row, key, payload)
+        return {"outcome": outcome, "item": items.public(db, row) if outcome == "confirmed" else None}
+
+
 @router.post("", status_code=201)
 def add(sid: UUID, payload: Add):
     sid, qid, parent = str(sid), str(payload.id), str(payload.parent_answer_id)
@@ -63,9 +86,11 @@ def add(sid: UUID, payload: Add):
         session = items.access_session(db, sid)
         existing = db.execute("SELECT * FROM deferred_questions WHERE id=?", (qid,)).fetchone()
         if existing:
-            if ((existing["session_id"], existing["parent_answer_id"], existing["question"]) == (sid, parent, payload.question)
-                    and existing["creation_receipt"] and hmac.compare_digest(existing["creation_receipt"], payload.expected_material)):
+            outcome = _creation_outcome(existing, sid, payload)
+            if outcome == "confirmed":
                 return items.public(db, existing)
+            if outcome == "matching_unconfirmed":
+                raise items.conflict("A matching question exists, but its original Keep operation cannot be confirmed.")
             raise items.conflict("This deferred question ID is already in use.")
         if session["ended_at"]:
             raise items.conflict("Reopen the interview before keeping a new question.")

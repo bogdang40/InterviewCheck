@@ -47,6 +47,7 @@ def test_v7_keeps_graph_and_draft_but_rebinds_local_tokens(client, tmp_path, mon
     assert record["draft"]["deferred_question_id"] == items["pending"]["id"]
     assert all(q["version"].encode() not in raw for q in items.values())
     assert b"fulfillment_digest" not in raw and b"previous_revision_id" not in raw
+    assert draft["deferred_draft_token"].encode() not in raw
     recover_to(tmp_path, monkeypatch, "v7.sqlite")
     plan = preview(client, raw)
     assert plan["deferred_questions"] == 4
@@ -68,7 +69,7 @@ def test_v7_keeps_graph_and_draft_but_rebinds_local_tokens(client, tmp_path, mon
     assert client.post(base + "/draft/publish", json={**proposed, "expected_revision": draft["revision"]}).status_code == 409
     assert client.get(base + "/draft").json() == linked
     client.post(base + "/draft/publish", json={**proposed, "deferred_question": linked["deferred_question"],
-                                               "expected_revision": linked["revision"]}).raise_for_status()
+                                               "deferred_draft_token": linked["deferred_draft_token"], "expected_revision": linked["revision"]}).raise_for_status()
     assert get_item(client, base, items["pending"])["child_answer_id"] == proposed["id"]
 
 
