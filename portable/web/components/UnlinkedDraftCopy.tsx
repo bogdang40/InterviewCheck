@@ -4,11 +4,12 @@ import { formatDraftTimestamp, useUnlinkedEditorDraft, type LocalDraftPayload } 
 import { Button } from "./ui/button"
 import { Textarea } from "./ui/textarea"
 
-export default function UnlinkedDraftCopy({ sessionId, afterDiscard }: {
+export default function UnlinkedDraftCopy({ sessionId, legacySavedId, afterDiscard }: {
   sessionId: string
+  legacySavedId?: string
   afterDiscard: () => void
 }) {
-  const { unlinked, discardUnlinked } = useUnlinkedEditorDraft(sessionId)
+  const { unlinked, discardUnlinked } = useUnlinkedEditorDraft(sessionId, legacySavedId)
   const [inspected, setInspected] = useState<LocalDraftPayload | null>(null)
   const [status, setStatus] = useState("")
   const field = useRef<HTMLTextAreaElement>(null)
@@ -32,7 +33,7 @@ export default function UnlinkedDraftCopy({ sessionId, afterDiscard }: {
     <section className="notice stack" aria-label="Unlinked local draft">
       <strong>Unlinked local draft</strong>
       <p>This browser saved a copy on <time dateTime={unlinked.savedAt}>{formatDraftTimestamp(unlinked.savedAt)}</time>.
-        {" "}Its draft ID is missing. Inspect the copy to recover its contents.</p>
+        {" "}The original draft lifetime cannot be verified. Inspect the copy separately.</p>
       <div className="row">
         <Button type="button" variant="outline" size="sm" aria-expanded={open} aria-controls={detailsId}
           onClick={() => { setInspected(open ? null : unlinked); setStatus("") }}>
