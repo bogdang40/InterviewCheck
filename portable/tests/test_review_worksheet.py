@@ -131,12 +131,29 @@ def test_erasure_and_lost_notice_block_preview_and_save(web, mode):
 def test_preview_is_read_only_and_binding_key_never_leaves_database(web):
     sid, (aid, _) = exchange(web)
     with store.connection() as db:
-        key = db.execute("SELECT binding_key FROM worksheet_workspace").fetchone()[0]
+        key = db.execute("SELECT binding_key FROM answer_instances WHERE answer_id=?", (aid,)).fetchone()[0]
         before = store.get_answer(db, sid, aid)
     first = read(web, sid, aid)
     assert first == read(web, sid, aid)
     assert key.hex() not in json.dumps(first)
     backup = web.get("/api/backups/workspace")
-    assert key.hex() not in backup.text and "worksheet_workspace" not in backup.text
+    assert key.hex() not in backup.text and "answer_instances" not in backup.text
     with store.connection() as db:
         assert store.get_answer(db, sid, aid) == before
+
+def test_purge_and_restore_on_same_workspace_invalidates_the_old_worksheet(web):
+    sid, (aid, _) = exchange(web)
+    original = read(web, sid, aid)
+    raw = web.get("/api/backups/workspace", params={"session_id": sid}).content
+    web.post(f"/api/sessions/{sid}/trash").raise_for_status()
+    trashed = web.get("/api/trash").json()
+    entry = next(row for row in trashed["items"] if row["id"] == sid)
+    web.post(f"/api/trash/{sid}/purge", json={"operation_version": entry["operation_version"],
+                                             "confirm_session_id": sid}).raise_for_status()
+    headers = {"Content-Type": "application/json"}
+    plan = web.post("/api/backups/preview", content=raw, headers=headers).raise_for_status().json()
+    web.post("/api/backups/restore", content=raw, headers={**headers, "X-Backup-Preview": plan["fingerprint"]}).raise_for_status()
+    restored = read(web, sid, aid)
+    assert restored["answer"] == original["answer"] and restored["material"] != original["material"]
+    assert apply(web, sid, aid, original).status_code == 409
+    assert apply(web, sid, aid, restored).status_code == 200
