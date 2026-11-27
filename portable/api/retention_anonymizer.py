@@ -47,7 +47,7 @@ class SessionAnonymizer:
         self._redact_history()
         self._redact_answers()
         self._redact_note_exports()
-        for table in ("session_drafts", "transcript_imports", "legacy_privacy_holds", "ats_access_versions"):
+        for table in ("session_drafts", "transcript_imports", "legacy_privacy_holds", "ats_access_versions", "panel_decisions"):
             if _has_table(self.db, table):
                 self.db.execute(f"DELETE FROM {table} WHERE session_id=?", (self.sid,))
         if not preserve_scorecard_aggregates:
