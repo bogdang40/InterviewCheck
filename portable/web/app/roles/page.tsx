@@ -6,12 +6,16 @@ import { useSearchParams } from "next/navigation"
 import { Suspense, useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import Roles from "@/components/Roles"
-import RoleVersionHistory from "@/components/RoleVersionHistory"
 import Migration from "@/components/Migration"
 import WorkspaceError from "@/components/WorkspaceError"
 import { usePreparation, useResource } from "@/lib/workspace"
 import { revisionNumber } from "@/lib/revisionNumber"
 import type { CalibratedRole } from "@/lib/roleCalibration"
+
+const RoleVersionHistory = dynamic(() => import("@/components/RoleVersionHistory"), {
+  ssr: false,
+  loading: () => <p className="muted" role="status">Loading role history...</p>,
+})
 
 const CalibrationQueuePanel = dynamic(() => import("@/components/CalibrationQueuePanel"), {
   ssr: false,
