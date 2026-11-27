@@ -38,7 +38,7 @@ export type Session = {
   review_count: number
 }
 export type DraftSummary = {id:string;revision:number;updated_at:string;deferred_question?: { id:string;version:string } | null; deferred_draft_token?: string}
-export type Draft = QuestionOrigin & DraftSummary & {question:string;answer:string;references:Source[]}
+export type Draft = QuestionOrigin & DraftSummary & {question:string;answer:string;references:Source[];recovery_fingerprint?:string}
 export type Interview = Session & { privacy_state?: "unmarked" | "anonymized" | "legacy_unverified"; draft:DraftSummary|null; answers: Answer[]; planned_questions: string[]; permitted_sources: PermittedMaterial[] }
 export type Role = { id: string; version: string; name: string; description: string; questions: string[]; policy: string; permitted_sources: PermittedMaterial[] }
 
@@ -63,6 +63,7 @@ export async function api<T>(path: string, method = "GET", body?: unknown, signa
     const guardedSave = method === "PATCH" && typeof body === "object" && body !== null && "worksheet_guard" in body
     const unavailable = [401, 402, 403, 404].includes(response.status)
       || response.headers.get("X-InterviewCheck-Worksheet") === "unavailable"
+      || (response.status === 409 && response.headers.get("X-InterviewCheck-Conflict") === "interview-privacy")
     if (unavailable && ((body && typeof body === "object" && "deferred_question" in body) || (method === "GET" && path.endsWith("/draft")))) {
       throw new DeferredUnavailable(detail || "This interview no longer permits deferred questions.")
     }
