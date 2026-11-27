@@ -1,6 +1,7 @@
+import { revisionNumber } from "./revisionNumber"
 import type { CalibratedRole } from "./roleCalibration"
 
-export type GuideRole = Pick<CalibratedRole, "name" | "version_number" | "questions" | "policy" | "rubric" | "permitted_sources">
+export type GuideRole = Pick<CalibratedRole, "name" | "version_number" | "version_number_text" | "questions" | "policy" | "rubric" | "permitted_sources">
 export type GuideOptions = { rubric: boolean; materials: boolean }
 
 export const guideStyles = `
@@ -50,7 +51,7 @@ export function guideDocument(role: GuideRole, options: GuideOptions): Document 
   const main = append(doc.body, "main")
   main.className = "interviewer-guide"
   append(main, "h1", role.name)
-  append(main, "p", "Interviewer guide · Revision " + (role.version_number ?? 1))
+  append(main, "p", "Interviewer guide · Revision " + revisionNumber(role.version_number, role.version_number_text))
   append(main, "h2", "Resource policy")
   append(main, "p", role.policy || "No policy recorded for this revision.")
   append(main, "h2", "Planned questions")

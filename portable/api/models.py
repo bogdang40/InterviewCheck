@@ -118,6 +118,7 @@ class RubricCriterion(Input):
 class RoleInput(Input):
     version: RoleVersion | None = None
     version_number: int | None = Field(default=None, ge=1, le=2**63 - 1)
+    version_number_text: str | None = Field(default=None, exclude=True)
     policy: str = Field(default="", max_length=4000)
     permitted_sources: Materials = Field(default_factory=list)
     id: RequestID | None = None
@@ -126,6 +127,26 @@ class RoleInput(Input):
     questions: list[Question] = Field(default_factory=list, max_length=100)
     rubric: list[RubricCriterion] = Field(default_factory=list, max_length=25)
     change_note: str = Field(default="", max_length=300)
+
+    @model_validator(mode="before")
+    @classmethod
+    def exact_version_number(cls, data):
+        if not isinstance(data, dict) or data.get("version_number_text") is None:
+            return data
+        text = data["version_number_text"]
+        if not isinstance(text, str) or not 1 <= len(text) <= 19 or not text.isascii() or not text.isdecimal() or text[0] == "0":
+            raise ValueError("Use a positive decimal role revision number.")
+        exact = int(text)
+        if exact >= 2**63:
+            raise ValueError("The role revision exceeds the supported range.")
+        number = data.get("version_number")
+        if number is not None:
+            if type(number) is not int or not 0 < number < 10**19:
+                raise ValueError("Invalid numeric role revision.")
+            # A browser can round an integer it received before serializing it back to JSON.
+            if number != exact and (exact <= 2**53 - 1 or float(number) != float(exact)):
+                raise ValueError("The numeric and text role revisions disagree.")
+        return {**data, "version_number": exact}
 
     @field_validator("rubric")
     @classmethod
