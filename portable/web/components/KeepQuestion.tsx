@@ -26,9 +26,9 @@ export default function KeepQuestion({ session, parent, ordinal, disabled, onDir
   useEffect(() => () => abort.current?.abort(), [])
   useReportDirty(busy || uncertain || (custom && !!value.trim() && !saved), onDirty)
 
-  function acknowledge() {
+  function acknowledge(confirmed: string) {
     operation.current = null
-    setUncertain(false); setSavedText(text); setError(""); onSaved()
+    setUncertain(false); setSavedText(confirmed); setError(""); onSaved()
   }
   async function keep(checkOnly = false) {
     if (disabled || !text || abort.current) return
@@ -41,17 +41,23 @@ export default function KeepQuestion({ session, parent, ordinal, disabled, onDir
         operation.current = { id: crypto.randomUUID(), text, material: source.material }
       }
       const { id, text: queued, material } = operation.current
-      if (checkOnly) {
-        const stored = await readDeferred(session.id, id, controller.signal)
-        if (stored.parent_answer_id !== parent.id || stored.question !== queued) throw new Error("The stored item does not match this question.")
-      } else {
-        await keepDeferred(session.id, id, parent.id, queued, material, controller.signal)
+      if (checkOnly || uncertain) {
+        try {
+          const stored = await readDeferred(session.id, id, controller.signal)
+          if (stored.parent_answer_id !== parent.id || stored.question !== queued) throw new Error("The stored item does not match this question.")
+          if (!controller.signal.aborted) acknowledge(queued)
+          return
+        } catch (e) {
+          // Only an explicit retry may resend the original operation, and only after a missing-item read.
+          if (checkOnly || !(e instanceof ApiError && e.status === 404)) throw e
+        }
       }
-      if (!controller.signal.aborted) acknowledge()
+      await keepDeferred(session.id, id, parent.id, queued, material, controller.signal)
+      if (!controller.signal.aborted) acknowledge(queued)
     } catch (e) {
       if (!controller.signal.aborted) {
         const rejected = e instanceof ApiError && [400, 401, 402, 403, 409, 422].includes(e.status)
-        if (rejected && !checkOnly) operation.current = null
+        if (rejected && !uncertain && !checkOnly) operation.current = null
         setUncertain(!!operation.current)
         setError(message(e))
       }
@@ -77,7 +83,8 @@ export default function KeepQuestion({ session, parent, ordinal, disabled, onDir
         {custom ? "Use suggested question" : "Write a different question"}
       </Button>}
     </div>
-    {saved && <p role="status">Question kept for later.</p>}
+    {savedText !== null && <p role="status">{saved ? "Question kept for later."
+      : "Your earlier question was kept. Review the current suggestion before adding it."}</p>}
     {uncertain && <p role="status">The save is unconfirmed. Check the saved question or retry the same request.</p>}
     {error && <p className="error" role="alert">{error}</p>}
   </section>
