@@ -18,14 +18,17 @@ import { useReportDirty, type DirtyReporter } from "@/lib/dirtyTracking"
 import { useReviewHotkeys } from "@/lib/useReviewHotkeys"
 import { useScoringCapabilities } from "@/lib/scoringHooks"
 import AnswerEditor from "./LazyAnswerEditor"
-import SavedDraft from "./SavedDraft"
+import DeferredQuestions from "./DeferredQuestions"
 import MoveToTrash from "./MoveToTrash"
 import ReportExport from "./ReportExport"
 import Evidence, { type EvidenceHotkeyControls } from "./Evidence"
 import QuestionLineage from "./QuestionLineage"
 import QuestionNavigator, { needsReview, nextPending } from "./QuestionNavigator"
 
-const DeferredQuestions = dynamic(() => import("./DeferredQuestions"), { ssr: false })
+const SavedDraft = dynamic(() => import("./SavedDraft"), {
+  ssr: false,
+  loading: () => <p role="status">Loading saved draft controls…</p>,
+})
 const ATSNote = dynamic(() => import("./ATSNote"), { ssr: false })
 const LocalRecordingPlayback = dynamic(() => import("./LocalRecordingPlayback"), { ssr: false })
 const TranscriptBatchImport = dynamic(() => import("./TranscriptBatchImport"), { ssr: false })
