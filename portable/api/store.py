@@ -113,6 +113,8 @@ def initialize(path):
         db.execute(answer_history.SCHEMA)
         role_versions.migrate(db)
         role_analytics.migrate(db)
+        from . import panel_ledger
+        panel_ledger.migrate(db)
         bulk_operations.migrate(db)
         model_registry.migrate(db)
         search_fts.migrate(db)
@@ -284,7 +286,8 @@ def write_answer(db, key, item: AnswerInput, replace_id=None, *, session=None, a
         note = current["note"]
         if note and not note.startswith(EARLIER_ANSWER_NOTE):
             note = EARLIER_ANSWER_NOTE + note
-        db.execute("UPDATE answers SET question=?,answer=?,refs=?,result=?,status=?,parent_answer_id=?,planned_slot=?,disposition='pending',note=?,revision=revision+1 WHERE id=?",
+        db.execute("""UPDATE answers SET question=?,answer=?,refs=?,result=?,status=?,parent_answer_id=?,planned_slot=?,disposition='pending',note=?,revision=revision+1,
+                   panel_evidence_generation=panel_evidence_generation+1 WHERE id=?""",
                    (*fields, note, aid))
     else:
         db.execute("INSERT INTO answers(question,answer,refs,result,status,parent_answer_id,planned_slot,id,session_id) VALUES (?,?,?,?,?,?,?,?,?)",
