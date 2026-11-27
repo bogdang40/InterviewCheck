@@ -3,16 +3,16 @@
 import { useEffect, useRef, useState } from "react"
 import { message } from "@/lib/api"
 import { ApiError } from "@/lib/http"
-import { changeDeferred, readDeferred, readDeferredSource, type DeferredQuestion, type SourceReview } from "@/lib/deferredQuestions"
+import { accessLost, changeDeferred, readDeferred, readDeferredSource, type DeferredQuestion, type SourceReview } from "@/lib/deferredQuestions"
 import { Button } from "./ui/button"
 
 type Props = {
   sessionId: string; questionId: string; reopen?: boolean; disabled?: boolean; confirmLabel?: string
   onConfirmed: (item: DeferredQuestion, signal: AbortSignal) => Promise<void> | void
-  onBusy: (busy: boolean) => void
+  onBusy: (busy: boolean) => void; onUnavailable: () => void
 }
 
-export default function DeferredSourceCheck({ sessionId, questionId, reopen, disabled, confirmLabel, onConfirmed, onBusy }: Props) {
+export default function DeferredSourceCheck({ sessionId, questionId, reopen, disabled, confirmLabel, onConfirmed, onBusy, onUnavailable }: Props) {
   const [review, setReview] = useState<{ item: DeferredQuestion; source: SourceReview } | null>(null)
   const [error, setError] = useState("")
   const [working, setWorking] = useState(false)
@@ -58,7 +58,11 @@ export default function DeferredSourceCheck({ sessionId, questionId, reopen, dis
         }
       }
     } catch (e) {
-      if (!controller.signal.aborted) { setReview(null); setError(message(e)) }
+      if (!controller.signal.aborted) {
+        setReview(null)
+        if (accessLost(e)) onUnavailable()
+        else setError(message(e))
+      }
     } finally {
       if (!controller.signal.aborted) setWorking(false)
       request.current = null; onBusy(false)
@@ -70,6 +74,17 @@ export default function DeferredSourceCheck({ sessionId, questionId, reopen, dis
       <h4>Source exchange {review.source.ordinal}</h4>
       <p className="whitespace-pre-wrap break-words">{review.source.answer.question}</p>
       <p className="whitespace-pre-wrap break-words">{review.source.answer.answer}</p>
+      <h5>Saved comparison finding</h5>
+      <p>{review.source.answer.result.status === "match" ? "Passage match" :
+        review.source.answer.result.status === "no_match" ? "No passage match" : "Limited evidence"}</p>
+      <p className="whitespace-pre-wrap break-words">{review.source.answer.result.explanation}</p>
+      {review.source.answer.result.passages.length ? <ol>{review.source.answer.result.passages.map((passage, index) =>
+        <li key={index} className="stack">
+          <strong>{passage.label} · {passage.words} matched words</strong>
+          <span>Answer excerpt</span><blockquote className="whitespace-pre-wrap break-words">{passage.answer_excerpt}</blockquote>
+          <span>Source excerpt</span><blockquote className="whitespace-pre-wrap break-words">{passage.source_excerpt}</blockquote>
+        </li>)}</ol> : <p className="muted">No matched passages were recorded.</p>}
+      <p>Suggested follow up: {review.source.answer.result.follow_up}</p>
       <h5>Resource policy</h5>
       <p className="whitespace-pre-wrap break-words">{review.source.session.policy}</p>
       <h5>Exchange sources</h5>

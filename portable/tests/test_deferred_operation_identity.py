@@ -22,7 +22,8 @@ def test_old_discard_cannot_remove_a_restored_draft_and_new_discard_leaves_quest
     item, _ = select(client, base, parent)
     proposed = child(item)
     draft = client.put(base + "/draft", json={**proposed, "expected_revision": 0}).raise_for_status().json()
-    discard = {"id": draft["id"], "expected_revision": draft["revision"], "deferred_question": draft["deferred_question"]}
+    discard = {"id": draft["id"], "expected_revision": draft["revision"], "deferred_question": draft["deferred_question"],
+               "deferred_draft_token": draft["deferred_draft_token"]}
     assert client.get(base).json()["draft"]["deferred_question"] == draft["deferred_question"]
     raw = client.get("/api/backups/workspace").raise_for_status().content
     fresh_database(tmp_path, monkeypatch)
@@ -36,9 +37,11 @@ def test_old_discard_cannot_remove_a_restored_draft_and_new_discard_leaves_quest
         assert client.get(base + "/draft").json() == recovered
     # Changing the parent stales the item. The current parked binding still authorizes discarding that draft.
     client.put(base + "/answers/" + parent, json={**PARENT, "answer": "A changed explanation."}).raise_for_status()
-    current = client.get(base).json()["draft"]["deferred_question"]
-    assert current == recovered["deferred_question"]
-    client.post(base + "/draft/discard", json={**discard, "deferred_question": current}).raise_for_status()
+    summary = client.get(base).json()["draft"]
+    assert summary["deferred_question"] == recovered["deferred_question"]
+    assert summary["deferred_draft_token"] == recovered["deferred_draft_token"] != draft["deferred_draft_token"]
+    client.post(base + "/draft/discard", json={**discard, "deferred_question": summary["deferred_question"],
+                                               "deferred_draft_token": summary["deferred_draft_token"]}).raise_for_status()
     assert client.get(base + "/draft").json() is None
     queued = get_item(client, base, item)
     assert queued["status"] == "pending" and queued["needs_reconfirmation"] and queued["child_answer_id"] is None
@@ -61,7 +64,8 @@ def test_ordinary_draft_read_does_not_reveal_a_blocked_linked_draft(client, bloc
                 db.execute("INSERT INTO legacy_privacy_holds(session_id) VALUES(?)", (sid,))
     response = client.get(base + "/draft")
     assert response.status_code == (404 if block == "trash" else 403)
-    assert all(value not in response.text for value in (item["question"], request["answer"], draft["deferred_question"]["version"]))
+    assert all(value not in response.text for value in (item["question"], request["answer"], draft["deferred_question"]["version"],
+                                                        draft["deferred_draft_token"]))
     session = client.get(base)
     if block == "trash":
         assert session.status_code == 404

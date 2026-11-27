@@ -36,12 +36,13 @@ type Props = {
   answerId: string | null
   assignmentDirty: boolean
   onDirtyChange: DirtyReporter
+  onDeferredUnavailable: () => void
   changed: (id: string, answer: Answer) => void
   onDraftChange: (draft: DraftSummary | null) => void
   onTransition: (session: Interview) => void
 }
 
-export default function InterviewView({ session, answerId, assignmentDirty, onDirtyChange, changed, onTransition, onDraftChange }: Props) {
+export default function InterviewView({ session, answerId, assignmentDirty, onDirtyChange, changed, onTransition, onDraftChange, onDeferredUnavailable }: Props) {
   const protectedRecord = session.privacy_state === "anonymized" || session.privacy_state === "legacy_unverified"
   const captureAllowed = !protectedRecord && session.consent && !session.ended_at
   const [edit, setEdit] = useState<string | null>(
@@ -243,6 +244,7 @@ export default function InterviewView({ session, answerId, assignmentDirty, onDi
           disabled={blocked || !!edit}
           discard={() => onDraftChange(null)}
           refresh={onDraftChange}
+          onUnavailable={onDeferredUnavailable}
           resume={(draft) => {
             setResumed(draft)
             setEdit("draft")
@@ -273,6 +275,7 @@ export default function InterviewView({ session, answerId, assignmentDirty, onDi
           <div className="review-pane" tabIndex={-1} ref={focusTarget} aria-label="Selected exchange">
             {captureAllowed && edit ? (
               <AnswerEditor
+                onDeferredUnavailable={onDeferredUnavailable}
                 key={edit}
                 session={session}
                 firstQuestion={edit === "new" ? followUp : ""}
@@ -351,7 +354,7 @@ export default function InterviewView({ session, answerId, assignmentDirty, onDi
         </div>
       </fieldset>
       {!protectedRecord && session.consent && session.answers.length > 0 && <DeferredQuestions
-        detailsRef={attachDeferred} session={session} parent={selected} locked={busy || !!edit || assignmentDirty || scorecardDirty || dirty.size > 0}
+        onUnavailable={onDeferredUnavailable} detailsRef={attachDeferred} session={session} parent={selected} locked={busy || !!edit || assignmentDirty || scorecardDirty || dirty.size > 0}
         onDirty={setDeferredDirty} foundDraft={onDraftChange} select={async id => {
           if (!session.answers.some(a => a.id === id)) {
             setBusy(true)

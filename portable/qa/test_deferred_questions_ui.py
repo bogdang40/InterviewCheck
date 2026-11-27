@@ -214,8 +214,8 @@ def test_finished_questions_are_read_only_and_erasure_removes_the_queue(workspac
                                            now_iso=store.timestamp())
         # The open copy must forget its previously loaded list after a denied refresh.
         queue.get_by_role("button", name="Reload questions").click()
-        expect(queue.get_by_role("alert")).to_be_visible()
-        expect(queue.get_by_text(REPEATED, exact=True)).to_have_count(0)
+        expect(page.get_by_role("region", name="Interview access changed").get_by_role("alert")).to_be_visible()
+        expect(page.locator("#deferred-questions")).to_have_count(0)
         page.reload()
         expect(page.locator("#deferred-questions")).to_have_count(0)
         assert client.get(path + "/deferred-questions").status_code == 403
