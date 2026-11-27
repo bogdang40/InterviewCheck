@@ -104,7 +104,7 @@ def test_admin_count_public_visibility_and_preselected_backup_refusal(e2e_worksp
         response = denied.value
         assert response.status == 409 and "attachment" not in response.headers.get("content-disposition", "")
         assert HISTORY_ONLY.encode() not in response.body() and "sessions" not in response.json()
-        expect(transfer.get_by_role("alert")).to_contain_text("consistent SQLite backup")
+        expect(transfer.get_by_role("alert").filter(has_text="consistent SQLite backup")).to_be_visible()
         assert not downloads
         assert not transfer_errors.page_errors and not transfer_errors.server_errors
         assert all("409" in message for message in transfer_errors.console_errors), transfer_errors.console_errors

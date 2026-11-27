@@ -198,9 +198,17 @@ def test_failed_handoff_write_respects_keyboard_focus(workspace_url, browser_pag
     page.add_init_script("""
       const send = window.fetch.bind(window);
       let attempts = 0;
+      const listReady = new Promise(resolve => document.addEventListener("show-note-list", resolve, {once:true}));
       window.fetch = async (input, init) => {
         const path = new URL(input instanceof Request ? input.url : input, location.href).pathname;
-        if (!path.endsWith("/handoff-notes") || init?.method !== "POST") return send(input, init);
+        if (!path.endsWith("/handoff-notes")) return send(input, init);
+        const method = init?.method ?? (input instanceof Request ? input.method : "GET");
+        if (method === "GET") {
+          const response = await send(input, init);
+          await listReady;
+          return response;
+        }
+        if (method !== "POST") return send(input, init);
         await new Promise(resolve => {
           document.documentElement.dataset.failedWriteHeld = String(++attempts);
           document.addEventListener("fail-note-write", resolve, {once:true});
@@ -214,7 +222,13 @@ def test_failed_handoff_write_respects_keyboard_focus(workspace_url, browser_pag
     add = notes.get_by_role("button", name="Add handoff note")
     error = notes.get_by_role("alert", name="Handoff note change failed")
     composer.fill("Keep this note until saved.")
-    add.press("Enter")
+    expect(add).to_be_disabled()
+    page.evaluate("document.dispatchEvent(new Event('show-note-list'))")
+    expect(add).to_be_enabled()
+    expect(composer).to_be_focused()
+    composer.press("Tab")
+    expect(add).to_be_focused()
+    page.keyboard.press("Enter")
     expect(page.locator("html")).to_have_attribute("data-failed-write-held", "1")
     page.evaluate("document.dispatchEvent(new Event('fail-note-write'))")
     expect(error).to_be_focused()
@@ -223,6 +237,7 @@ def test_failed_handoff_write_respects_keyboard_focus(workspace_url, browser_pag
 
     add.press("Enter")
     expect(page.locator("html")).to_have_attribute("data-failed-write-held", "2")
+    expect(error).to_be_hidden()
     criterion = page.get_by_role("textbox", name="Add criterion", exact=True)
     criterion.fill("Keep keyboard here")
     page.evaluate("document.dispatchEvent(new Event('fail-note-write'))")
