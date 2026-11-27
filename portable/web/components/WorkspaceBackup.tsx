@@ -18,6 +18,7 @@ function FileContents({ preview }: { preview: BackupPreview }) {
     [preview.answers, "captured exchange", "captured exchanges"], [preview.drafts, "saved draft", "saved drafts"],
     [preview.assignments, "review assignment", "review assignments"], [preview.handoff_notes, "panel handoff note", "panel handoff notes"],
     [preview.scorecard_items, "rubric score", "rubric scores"],
+    [preview.deferred_questions, "deferred question", "deferred questions"],
   ]
   const known = fields.flatMap(([n, one, many]) => n === undefined ? [] : [`${n} ${n === 1 ? one : many}`])
   const missing = fields.filter(([n]) => n === undefined).map(([, , many]) => many)
@@ -86,7 +87,9 @@ export default function WorkspaceBackup() {
         }
       } else {
         setSuccess(
-          `Restored ${result.sessions.new} interviews and ${result.roles.new} roles. Skipped ${result.sessions.identical + result.roles.identical} identical records.`,
+          `Restored ${result.sessions.new} interviews and ${result.roles.new} roles. Skipped ${result.sessions.identical + result.roles.identical} identical records.` +
+          (result.deferred_questions === undefined ? "" :
+            ` The selected file contains ${result.deferred_questions} deferred ${result.deferred_questions === 1 ? "question" : "questions"}.`),
         )
         setPreview(undefined)
         setFile(undefined)

@@ -1,4 +1,5 @@
 import DeferredSourceCheck from "./DeferredSourceCheck"
+import { deferredFields, expectedReceipt, matchesReceipt, type DeferredReply } from "@/lib/deferredSubmission"
 import { sameSources, saveDeferredDraft } from "@/lib/deferredQuestions"
 import { useRef, useState, type FormEvent } from "react"
 import { flushSync } from "react-dom"
@@ -48,7 +49,7 @@ export default function AnswerEditor({
   firstQuestion?: string
   firstOrigin?: QuestionOrigin
   initial?: Answer
-  onSave: (a: Answer) => void
+  onSave: (a: Answer, notice?: string) => void
   onCancel?: () => void
   embeddingAvailable?: boolean
 }) {
@@ -112,12 +113,13 @@ export default function AnswerEditor({
     if(capturePending || generating || busy || draftConflict || deferredConflict) return
     setBusy("draft");setError("")
     try{
-      const saved=await api<Draft>("sessions/"+session.id+"/draft","PUT",{id,question,answer,references:sources,...origin,
+      const fields = deferred ? deferredFields(question, answer, sources) : { question, answer, references: sources }
+      const saved=await api<Draft>("sessions/"+session.id+"/draft","PUT",{id,...fields,...origin,
         ...(deferred ? { deferred_question: deferred } : {}), expected_revision:baseline?.revision??0})
       if (deferred && (saved.id !== id || saved.deferred_question?.id !== deferred.id ||
-          saved.deferred_question.version !== deferred.version || saved.question !== question || saved.parent_answer_id !== origin.parent_answer_id ||
-          saved.answer !== answer || saved.planned_slot != null || !Number.isSafeInteger(saved.revision) || saved.revision < 1 ||
-          !sameSources(saved.references, sources))) {
+          saved.deferred_question.version !== deferred.version || saved.question !== fields.question || saved.parent_answer_id !== origin.parent_answer_id ||
+          saved.answer !== fields.answer || saved.planned_slot != null || !Number.isSafeInteger(saved.revision) || saved.revision < 1 ||
+          !sameSources(saved.references, fields.references))) {
         throw new Error("The server did not confirm the deferred draft. Check the saved exchange before retrying.")
       }
       clearLocalBuffer(); onDraftSaved(saved)
@@ -129,19 +131,26 @@ export default function AnswerEditor({
     setBusy("save"); setError("")
     try {
       const path = baseline ? `sessions/${session.id}/draft/publish` : `sessions/${session.id}/answers` + (initial ? `/${initial.id}` : "")
-      const saved = await api<Answer & { deferred_replay?: boolean }>(path, initial ? "PUT" : "POST", { id, question, answer, references: sources, ...origin,
+      const fields = deferred ? deferredFields(question, answer, sources) : { question, answer, references: sources }
+      const receipt = deferred && origin.parent_answer_id ? await expectedReceipt(deferred.id, id, origin.parent_answer_id, fields) : null
+      if (deferred && !receipt) throw new Error("This deferred draft is missing its source exchange.")
+      const saved = await api<DeferredReply>(path, initial ? "PUT" : "POST", { id, ...fields, ...origin,
         ...(deferred ? { deferred_question: deferred } : {}),
         ...(initial || baseline ? { expected_revision: (initial || baseline)?.revision } : {}) })
-      if (!confirmsExchange(saved, id) || deferred && (saved.parent_answer_id !== origin.parent_answer_id ||
-          saved.question !== question || saved.answer !== answer || saved.planned_slot != null || !sameSources(saved.references, sources))) {
+      if (!confirmsExchange(saved, id) || receipt && (!matchesReceipt(saved, receipt) ||
+          saved.parent_answer_id !== receipt.parent_answer_id || saved.planned_slot != null || (saved.deferred_replay !== true &&
+          (saved.question !== fields.question || saved.answer !== fields.answer || !sameSources(saved.references, fields.references))))) {
         throw new Error("The server did not confirm this exchange. Your edits are still here. Check the saved interview before submitting again.")
       }
+      const notice = receipt && saved.deferred_replay === true
+        ? "Your original response was already recorded. The current saved exchange is shown." : undefined
       clearLocalBuffer()
       // Native navigation can start as soon as the saved evidence enters the DOM.
       flushSync(() => onDirty("editor", false))
       // A replay acknowledgement is not part of the persisted exchange evidence.
       delete saved.deferred_replay
-      onSave(saved)
+      delete saved.deferred_receipt
+      onSave(saved, notice)
     } catch (e) {
       if(e instanceof DeferredConflict) setDeferredConflict(true)
       else if(e instanceof DraftConflict) setDraftConflict(true)
@@ -162,8 +171,14 @@ export default function AnswerEditor({
         <DeferredSourceCheck sessionId={session.id} questionId={deferred.id} disabled={capturePending || generating}
           confirmLabel="Confirm source and save this draft" onBusy={active => setBusy(active ? "deferred" : "")}
           onConfirmed={async (item, signal) => {
-            const updated = await saveDeferredDraft(item, id, baseline.revision, answer, sources, signal)
-            if (!signal.aborted) { setBaseline(updated); setDeferredConflict(false); setError("") }
+            try {
+              const updated = await saveDeferredDraft(item, id, baseline.revision, answer, sources, signal)
+              if (!signal.aborted) { setBaseline(updated); setDeferredConflict(false); setError("") }
+            } catch (e) {
+              if (!(e instanceof DraftConflict) || signal.aborted) throw e
+              setDeferredConflict(false); setDraftConflict(true)
+              setError("Another tab changed the saved draft. Compare it with your edits before confirming this source.")
+            }
           }} />
       </section>}
       <UnlinkedDraftCopy sessionId={session.id} afterDiscard={() => answerField.current?.focus()} />
@@ -315,7 +330,8 @@ export default function AnswerEditor({
             setError("The saved draft no longer belongs to this question. Your answer is still here.")
             return
           }
-          setBaseline(latest??undefined);setId(latest?.id??crypto.randomUUID());setDraftConflict(false)
+          setBaseline(latest??undefined);setId(latest?.id??crypto.randomUUID());setDraftConflict(false);setError("")
+          if (deferred && latest?.deferred_question?.version !== deferred.version) setDeferredConflict(true)
           if(latest && !keep){writeQuestion(latest.question);setAnswer(latest.answer);setSources(latest.references);setOrigin(originOf(latest));clearLocalBuffer()}
         }}/>}
         <div className="row">
