@@ -1,7 +1,9 @@
 import { api, type Answer, type Interview } from "./api"
+import { MAX_NOTE_CHARACTERS, normalizedWorksheetNote } from "./worksheetNote"
+
+export { MAX_NOTE_CHARACTERS, normalizedWorksheetNote } from "./worksheetNote"
 
 export const MAX_WORKSHEET_BYTES = 96 * 1024
-export const MAX_NOTE_CHARACTERS = 12_000
 // Four UTF-8 bytes per scalar, plus a possible BOM, ten CRLF header lines and a final CRLF.
 const NOTE_RESERVE = 4 * MAX_NOTE_CHARACTERS + 15
 const title = "InterviewCheck review worksheet v1"
@@ -97,11 +99,6 @@ function disclosed(text: string) {
     if (typeof value === "string" && text === display(value)) return value
   } catch { /* Use the same error for invalid JSON and edited header syntax. */ }
   throw new Error("The disclosure fields have changed. Edit only the proposed note.")
-}
-
-// ReviewInput strips Unicode White_Space before validating and storing the note.
-export function normalizedWorksheetNote(raw: string): string {
-  return raw.replace(/^\p{White_Space}+|\p{White_Space}+$/gu, "")
 }
 
 export function parseWorksheet(raw: string): Worksheet {
