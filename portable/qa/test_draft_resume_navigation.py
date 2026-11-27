@@ -5,6 +5,7 @@ import httpx
 from playwright.sync_api import expect
 import pytest
 
+from e2e_suite.network_quiet import InFlightRequests
 from test_deferred_questions_ui import keep_custom, open_queue, review_url, seed
 
 
@@ -274,29 +275,69 @@ def test_pending_interview_read_distinguishes_withdrawal_from_retry(workspace_ur
             assert [a for a in saved["answers"] if a.get("import_origin")] == [imported]
 
 
-def test_back_during_committed_import_keeps_explicit_exchange_selection(workspace_url, browser_page):
+@pytest.mark.parametrize("navigation", ["back", "replace-state", "back-between-documents"])
+def test_back_during_committed_import_keeps_explicit_exchange_selection(workspace_url, browser_page, navigation):
     page = browser_page
     page.on("dialog", lambda dialog: dialog.accept())
     with httpx.Client(base_url=workspace_url, headers={"X-InterviewCheck": "1"}) as client:
         sid, path, (first, second) = seed(client)
         start = review_url(workspace_url, sid, first["id"])
+        next_url = review_url(workspace_url, sid, second["id"])
         page.goto(start)
-        page.get_by_role("navigation", name="Interview questions").get_by_role("button", name="02", exact=False).click()
-        expect(page).to_have_url(review_url(workspace_url, sid, second["id"]))
+        if navigation == "back-between-documents":
+            page.goto(next_url)
+        else:
+            page.get_by_role("navigation", name="Interview questions").get_by_role("button", name="02", exact=False).click()
+        expect(page).to_have_url(next_url)
         button = prepare_import(page)
         url = workspace_url + path + "/imports/webvtt"
         posts = []
+        api_requests = InFlightRequests(page, path_prefix=path)
         page.on("request", lambda req: posts.append(req.post_data_json["request_id"]) if req.method == "POST" and req.url == url else None)
-        route, committed = hold_reply(page, url, "POST", button)
-        child, = committed.json()["answer_ids"]
-        assert committed.json()["saved"] == 1 and client.get(path).raise_for_status().json()["answer_count"] == 3
-        page.go_back()
+        # Deliver the real POST over HTTP and pause only its return to the submitting component.
+        button.evaluate("""(button, url) => {
+            const original = window.fetch.bind(window);
+            const gate = window.importReply = { form: button.closest("details") };
+            window.fetch = async (input, init) => {
+                const response = await original(input, init);
+                if (init?.method === "POST" && response.url === url) {
+                    await response.clone().text();
+                    await new Promise(resolve => {
+                        gate.release = resolve;
+                        window.addEventListener("pagehide", resolve, {once: true});
+                    });
+                }
+                return response;
+            };
+        }""", url)
+        with page.expect_response(lambda res: res.request.method == "POST" and res.url == url) as committed:
+            button.click()
+        receipt = committed.value.json()
+        child, = receipt["answer_ids"]
+        assert committed.value.ok and receipt["saved"] == 1 and client.get(path).raise_for_status().json()["answer_count"] == 3
+        page.wait_for_function("() => typeof window.importReply?.release === 'function'")
+        if navigation == "replace-state":
+            # Use the review router's same-document exchange selection path to guarantee a live callback.
+            page.evaluate("url => history.replaceState(null, '', url)", start)
+        else:
+            page.go_back()
         expect(page).to_have_url(start)
         expect(page.locator(".review-pane")).to_contain_text(first["answer"])
-        with page.expect_response(lambda res: res.url == workspace_url + path and res.request.method == "GET") as refreshed:
-            release_reply(page, route, committed)
-        assert refreshed.value.ok
-        expect(page.get_by_role("alert").filter(has_text="Exchanges were saved.")).to_be_visible()
+        mounted = page.evaluate("""() => {
+            const gate = window.importReply;
+            if (!gate) return false;
+            const mounted = gate.form.isConnected;
+            gate.release();
+            return mounted;
+        }""")
+        if navigation == "replace-state":
+            assert mounted, "The same-document case must exercise the original import component."
+        elif navigation == "back-between-documents":
+            assert not mounted, "Back must restore the separate first document."
+        if mounted:
+            expect(page.get_by_text("Saved 1. Already imported 0. Not selected 0.", exact=True)).to_be_attached()
+            expect(page.get_by_role("alert").filter(has_text="Exchanges were saved.")).to_be_visible()
+        api_requests.wait_until_quiet()
         expect(page).to_have_url(start)
         expect(page.locator(".review-pane")).to_contain_text(first["answer"])
         saved = client.get(path).raise_for_status().json()
