@@ -45,7 +45,7 @@ def test_handoff_roundtrip_with_trash_retention_and_stable_ids(client, tmp_path,
     client.post(f"/api/sessions/{archived}/trash").raise_for_status()
     single = client.get("/api/backups/workspace", params={"session_id": archived}).content
     doc = client.get("/api/backups/workspace").json()
-    assert doc["version"] == json.loads(single)["version"] == 6
+    assert doc["version"] == json.loads(single)["version"] == 7
     for session in doc["sessions"]:
         sid = session["id"]
         assert session["handoff_notes"] == [{k: v for k, v in row.items() if k != "session_id"} for row in expected[sid]]
@@ -75,6 +75,7 @@ def test_legacy_backups_preserve_local_notes(client, version):
     sid = create_session(client)
     doc = client.get("/api/backups/workspace").json()
     doc["version"] = version
+    del doc["sessions"][0]["deferred_questions"]
     del doc["sessions"][0]["privacy"]
     del doc["sessions"][0]["rubric_snapshot"]
     record = doc["sessions"][0]
@@ -174,6 +175,7 @@ def test_v4_detects_content_changes_and_handles_invalid_stored_notes(client):
     assert preview(client, raw)["sessions"]["conflict"] == 1
     assert restore(client, raw, plan).status_code == 409
     doc["version"] = 3
+    del doc["sessions"][0]["deferred_questions"]
     del doc["sessions"][0]["privacy"]
     del doc["sessions"][0]["rubric_snapshot"]
     del doc["sessions"][0]["scorecard_items"]

@@ -89,6 +89,7 @@ def test_restored_redacted_label_limits_display_without_recreating_a_retention_r
     document = client.get("/api/backups/workspace", params={"session_id": sid}).raise_for_status().json()
     document["version"] = 5
     for record in document["sessions"]:
+        del record["deferred_questions"]
         del record["privacy"]
         del record["rubric_snapshot"]
     backup = json.dumps(document).encode()
