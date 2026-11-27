@@ -83,7 +83,7 @@ def test_explicit_disclosure_compare_stage_then_save(e2e_workspace, mobile_page)
 
         # Only notes changed while the worksheet was away. A second change requires another explicit comparison.
         client.patch(route, json={"expected_revision": 1, "disposition": "explained", "note": "First review."}).raise_for_status()
-        upload(card, "\ufeff" + (original + NOTE).replace("\n", "\r\n"))
+        upload(card, "\ufeff" + (original + "\u0085" + NOTE + "\u0085").replace("\n", "\r\n"))
         comparison = card.get_by_role("region", name="Worksheet note comparison")
         expect(comparison).to_contain_text("The saved review differs")
         expect(comparison).to_contain_text("First review.")
@@ -310,3 +310,19 @@ def test_large_native_question_reserves_space_for_full_unicode_note(e2e_workspac
         page.get_by_role("button", name="Save review", exact=True).click()
         expect(page.get_by_text("Review saved", exact=True)).to_be_visible()
         assert client.get(f"/api/sessions/{sid}/answers/{aid}").json()["note"] == note
+
+@pytest.mark.tier3
+def test_unicode_worksheet_whitespace_keeps_a_single_confirmed_save(e2e_workspace, desktop_page):
+    page, collector = desktop_page
+    with e2e_workspace.client() as client:
+        sid, (aid, _) = seed(client)
+        _, editor = stage_example(page, e2e_workspace, sid, aid)
+        writes = []
+        path = f"/api/sessions/{sid}/answers/{aid}"
+        page.on("request", lambda req: writes.append(req.method) if req.method == "PATCH" and req.url.endswith(path) else None)
+        editor.fill("\u0085Reviewed\u0085")
+        page.get_by_role("button", name="Save review", exact=True).click()
+        expect(editor).to_have_value("Reviewed")
+        stored = client.get(path).raise_for_status().json()
+        assert stored["note"] == "Reviewed" and stored["revision"] == 2 and writes == ["PATCH"]
+        collector.assert_clean()
