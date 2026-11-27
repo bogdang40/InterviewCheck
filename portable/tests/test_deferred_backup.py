@@ -78,6 +78,8 @@ def test_v6_replay_preserves_newer_queue_and_draft_link(client, tmp_path, monkey
     v6["version"] = 6
     record, = v6["sessions"]
     del record["deferred_questions"]
+    for answer in record["answers"]:
+        answer.pop("deferred_origin", None)
     del record["draft"]["deferred_question_id"], record["draft"]["deferred_revision_id"]
     raw = json.dumps(v6).encode()
     plan = preview(client, raw)

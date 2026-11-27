@@ -126,7 +126,7 @@ def test_deferred_child_commits_once_across_lost_reply_and_competing_tab(workspa
         try:
             other.goto(url)
             other.get_by_role("button", name="Resume draft").click()
-            page.get_by_label("Candidate answer").fill("The first tab recorded the accepted response.")
+            page.get_by_label("Candidate answer").fill("  The first tab recorded the accepted response.  ")
             other.get_by_label("Candidate answer").fill("The second tab has a different response.")
             pattern = "**" + path + "/draft/publish"
             attempts, handler = drop_ack_then_read(page, pattern, "POST")
@@ -134,11 +134,20 @@ def test_deferred_child_commits_once_across_lost_reply_and_competing_tab(workspa
             expect(page.get_by_role("alert").filter(has_text="did not confirm")).to_be_visible()
             assert len(attempts) == 1 and attempts[0]["id"] == draft["id"]
             page.unroute(pattern, handler)
+            original = client.get(path + "/answers/" + draft["id"]).raise_for_status().json()
+            assert original["answer"] == "The first tab recorded the accepted response."
+            correction = "The owner clarified the accepted response after publication."
+            client.put(path + "/answers/" + draft["id"], json={"question": REPEATED, "answer": correction,
+                       "expected_revision": original["revision"]}).raise_for_status()
             other.get_by_role("button", name="Save and compare", exact=True).click()
             expect(other.get_by_role("region", name="Deferred draft source check")).to_be_visible()
             expect(other.get_by_label("Candidate answer")).to_have_value("The second tab has a different response.")
-            page.get_by_role("button", name="Save and compare", exact=True).click()
+            with page.expect_response(lambda r: r.request.method == "POST" and r.url.endswith(path + "/draft/publish")) as replay:
+                page.get_by_role("button", name="Save and compare", exact=True).click()
+            assert replay.value.json()["deferred_replay"] is True
+            expect(page.get_by_text("Your original response was already recorded.", exact=False)).to_be_visible()
             expect(page.get_by_role("heading", name=REPEATED, exact=True)).to_be_visible()
+            expect(page.get_by_text(correction, exact=True).first).to_be_visible()
             page.reload()
             queue = open_queue(page)
             expect(queue.get_by_text("fulfilled", exact=True)).to_be_visible()
@@ -146,7 +155,7 @@ def test_deferred_child_commits_once_across_lost_reply_and_competing_tab(workspa
             expect(page.get_by_role("heading", name=REPEATED, exact=True)).to_be_visible()
             current = client.get(path).raise_for_status().json()
             children = [a for a in current["answers"] if a["parent_answer_id"] == parent["id"]]
-            assert [(a["id"], a["answer"]) for a in children] == [(draft["id"], "The first tab recorded the accepted response.")]
+            assert [(a["id"], a["answer"]) for a in children] == [(draft["id"], correction)]
             assert client.get(path + "/deferred-questions/" + saved_item["id"]).json()["child_answer_id"] == draft["id"]
         finally:
             other.close()
@@ -161,7 +170,7 @@ def test_deferred_draft_keeps_typed_answer_when_parent_changes(workspace_url, br
         keep_custom(queue)
         queue.get_by_role("button", name="Open answer draft").click()
         answer = page.get_by_label("Candidate answer")
-        answer.fill("An unsubmitted answer retained across the parent change.")
+        answer.fill("  An unsubmitted answer retained across the parent change.  ")
         before = client.get(path + "/draft").raise_for_status().json()
         client.put(path + "/answers/" + parent["id"], json={"question": parent["question"],
                    "answer": "The parent was changed by a second reviewer.", "expected_revision": parent["revision"]}).raise_for_status()
@@ -169,7 +178,7 @@ def test_deferred_draft_keeps_typed_answer_when_parent_changes(workspace_url, br
         check = page.get_by_role("region", name="Deferred draft source check")
         check.get_by_role("button", name="Review current source").click()
         expect(check.get_by_role("region", name="Current source exchange")).to_contain_text("changed by a second reviewer")
-        expect(answer).to_have_value("An unsubmitted answer retained across the parent change.")
+        expect(answer).to_have_value("  An unsubmitted answer retained across the parent change.  ")
         check.get_by_role("button", name="Confirm source and save this draft").click()
         expect(check).to_have_count(0)
         after = client.get(path + "/draft").raise_for_status().json()

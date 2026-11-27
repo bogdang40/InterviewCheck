@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { message } from "@/lib/api"
+import { ApiError } from "@/lib/http"
 import { changeDeferred, readDeferred, readDeferredSource, type DeferredQuestion, type SourceReview } from "@/lib/deferredQuestions"
 import { Button } from "./ui/button"
 
@@ -35,9 +36,22 @@ export default function DeferredSourceCheck({ sessionId, questionId, reopen, dis
         if (latest.material !== review.source.material) throw new Error("The source changed again. Inspect the current exchange.")
         const item = await readDeferred(sessionId, questionId, controller.signal)
         if (item.version !== review.item.version || item.status !== review.item.status) throw new Error("The saved question changed. Inspect it again.")
-        const saved = (reopen || item.needs_reconfirmation)
-          ? await changeDeferred(item, reopen ? "reopen" : "reconfirm", controller.signal, latest.material)
-          : item
+        let saved = item
+        if (reopen || item.needs_reconfirmation) {
+          try {
+            saved = await changeDeferred(item, reopen ? "reopen" : "reconfirm", controller.signal, latest.material)
+          } catch (e) {
+            if (controller.signal.aborted || e instanceof ApiError && e.status < 500 && e.status !== 409) throw e
+            // A PATCH acknowledgement can be lost after the write. Recover by reading
+            // the exact item and the material inspected, without a second write.
+            const stored = await readDeferred(sessionId, questionId, controller.signal)
+            const current = await readDeferredSource(sessionId, review.item.parent_answer_id, controller.signal)
+            if (stored.status !== "pending" || stored.needs_reconfirmation || stored.version === item.version ||
+                stored.parent_answer_id !== item.parent_answer_id || stored.question !== item.question ||
+                current.material !== review.source.material) throw e
+            saved = stored
+          }
+        }
         if (!controller.signal.aborted) {
           await onConfirmed(saved, controller.signal)
           if (!controller.signal.aborted) setReview(null)
@@ -56,6 +70,17 @@ export default function DeferredSourceCheck({ sessionId, questionId, reopen, dis
       <h4>Source exchange {review.source.ordinal}</h4>
       <p className="whitespace-pre-wrap break-words">{review.source.answer.question}</p>
       <p className="whitespace-pre-wrap break-words">{review.source.answer.answer}</p>
+      <h5>Resource policy</h5>
+      <p className="whitespace-pre-wrap break-words">{review.source.session.policy}</p>
+      <h5>Exchange sources</h5>
+      {review.source.answer.references.length ? <ul>{review.source.answer.references.map((r, i) => <li key={i}>
+        <details><summary className="break-words">{r.label} · {r.permitted ? "Permitted" : "Comparison only"}</summary>
+          <p className="whitespace-pre-wrap break-words">{r.text}</p></details>
+      </li>)}</ul> : <p className="muted">No exchange sources.</p>}
+      <h5>Interview permitted materials</h5>
+      {review.source.session.permitted_sources.length ? <ul>{review.source.session.permitted_sources.map((r, i) => <li key={i}>
+        <details><summary className="break-words">{r.label}</summary><p className="whitespace-pre-wrap break-words">{r.text}</p></details>
+      </li>)}</ul> : <p className="muted">No permitted materials recorded.</p>}
       <p>Question to keep: {review.item.question}</p>
     </section>}
     <div className="row flex-wrap">

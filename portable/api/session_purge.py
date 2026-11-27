@@ -15,6 +15,7 @@ SESSION_CHILD_TABLES = (
     "session_assignments",
     "session_tags",
     "session_drafts",
+    "deferred_publications",
     "deferred_questions",
     "ats_access_versions",
     "note_exports",
