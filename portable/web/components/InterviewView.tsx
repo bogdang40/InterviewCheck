@@ -25,6 +25,7 @@ import Evidence, { type EvidenceHotkeyControls } from "./Evidence"
 import QuestionLineage from "./QuestionLineage"
 import QuestionNavigator, { needsReview, nextPending } from "./QuestionNavigator"
 
+const DeferredQuestions = dynamic(() => import("./DeferredQuestions"), { ssr: false })
 const ATSNote = dynamic(() => import("./ATSNote"), { ssr: false })
 const LocalRecordingPlayback = dynamic(() => import("./LocalRecordingPlayback"), { ssr: false })
 const TranscriptBatchImport = dynamic(() => import("./TranscriptBatchImport"), { ssr: false })
@@ -51,8 +52,14 @@ export default function InterviewView({ session, answerId, assignmentDirty, onDi
   const [firstOrigin,setFirstOrigin] = useState<QuestionOrigin>()
   const [dirty, setDirty] = useState<Set<string>>(() => new Set())
   const [scorecardDirty, setScorecardDirty] = useState(false)
+  const [deferredDirty, setDeferredDirty] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
+  const deferredPanel = useRef<HTMLDetailsElement | null>(null)
+  const [deferredReady, setDeferredReady] = useState(false)
+  const attachDeferred = useCallback((node: HTMLDetailsElement | null) => {
+    deferredPanel.current = node; setDeferredReady(!!node)
+  }, [])
   const focusTarget = useRef<HTMLDivElement>(null)
   const evidenceControls = useRef<EvidenceHotkeyControls | null>(null)
   const focusOnChange = useRef(false)
@@ -60,7 +67,7 @@ export default function InterviewView({ session, answerId, assignmentDirty, onDi
   const selected = answerId ? session.answers.find((a) => a.id === answerId) : session.answers[0]
   const index = selected ? session.answers.indexOf(selected) : -1
   const next = selected && nextPending(session.answers, selected.id)
-  const unsaved = dirty.size > 0 || scorecardDirty
+  const unsaved = dirty.size > 0 || scorecardDirty || deferredDirty
   const blocked = unsaved || busy
   const pending = session.answers.filter(needsReview).length
   const capabilities = useScoringCapabilities()
@@ -300,6 +307,13 @@ export default function InterviewView({ session, answerId, assignmentDirty, onDi
                         begin(questionText ?? selected.result.follow_up, { parent_answer_id: selected.id })
                     : undefined
                 }
+                onOpenDeferred={deferredReady && captureAllowed && !blocked ? () => {
+                  if (deferredPanel.current) {
+                    deferredPanel.current.open = true
+                    deferredPanel.current.querySelector("summary")?.focus()
+                    deferredPanel.current.scrollIntoView({ block: "nearest" })
+                  }
+                } : undefined}
                 onEdit={captureAllowed && !blocked ? () => setEdit(selected.id) : undefined}
               />
             ) : (
@@ -331,6 +345,27 @@ export default function InterviewView({ session, answerId, assignmentDirty, onDi
           </div>
         </div>
       </fieldset>
+      {!protectedRecord && session.consent && session.answers.length > 0 && <DeferredQuestions
+        detailsRef={attachDeferred} session={session} parent={selected} locked={busy || !!edit || assignmentDirty || scorecardDirty || dirty.size > 0}
+        onDirty={setDeferredDirty} foundDraft={onDraftChange} select={async id => {
+          if (!session.answers.some(a => a.id === id)) {
+            setBusy(true)
+            try {
+              const fresh = await api<Interview>(`sessions/${session.id}`)
+              onTransition(fresh)
+              if (!fresh.answers.some(a => a.id === id)) throw new Error("This exchange is no longer available.")
+            } catch (err) { setError(message(err)); return }
+            finally { setBusy(false) }
+          }
+          select(id)
+          focusTarget.current?.focus({ preventScroll: true })
+          focusTarget.current?.scrollIntoView({ block: "nearest" })
+        }}
+        openDraft={draft => {
+          onDraftChange(draft); setResumed(draft); setEdit("draft")
+          focusTarget.current?.scrollIntoView({ block: "start" })
+        }}
+      />}
       <SessionScorecardPanel readOnly={protectedRecord} key={`scorecard-${session.id}`} sessionId={session.id} onDirtyChange={setScorecardDirty} />
       {!dirty.size && <ATSNote key={session.id} session={session} />}
       <div className="record-management"><MoveToTrash sessionId={session.id} candidate={session.candidate} disabled={blocked || assignmentDirty}/></div>

@@ -74,6 +74,7 @@ export default function Evidence({
   onEdit,
   onDirty,
   onFollowUp,
+  onOpenDeferred,
   canAdvance,
   judgeAvailable,
   controlsRef,
@@ -84,6 +85,7 @@ export default function Evidence({
   onSave: (a: Answer, advance?: boolean) => void
   canAdvance?: boolean
   onFollowUp?: (questionText?: string) => void
+  onOpenDeferred?: () => void
   onDirty: (id: string, value: boolean) => void
   onEdit?: () => void
   judgeAvailable?: boolean
@@ -263,6 +265,8 @@ export default function Evidence({
       <PanelDiscussion sessionId={sessionId} item={item} locked={busy || dirty || conflict || !!worksheet} onDirty={onDirty} />
       {judgeAvailable !== false && <JudgeAssist key={`${item.id}:${item.revision}`} sessionId={sessionId} item={item}
         judgeAvailable={judgeAvailable} onFollowUp={onFollowUp} />}
+      {onOpenDeferred && <Button type="button" variant="outline" size="sm" aria-controls="deferred-questions"
+        onClick={onOpenDeferred}>Keep this follow up for later…</Button>}
       {onFollowUp && (
         <Button variant="outline" size="sm" onClick={() => onFollowUp()}>
           Ask this follow up
