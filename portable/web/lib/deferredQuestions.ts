@@ -1,4 +1,4 @@
-import { api, type Answer, type Draft, type Interview, type Source } from "./api"
+import { api, DeferredUnavailable, WorksheetUnavailable, type Answer, type Draft, type Interview, type Source } from "./api"
 import { ApiError, request } from "./http"
 import { deferredFields } from "./deferredSubmission"
 import { currentWorksheet } from "./reviewWorksheet"
@@ -40,7 +40,29 @@ export async function listDeferred(sid: string, filter: DeferredFilter, page: nu
 }
 
 export async function readDeferred(sid: string, id: string, signal?: AbortSignal) {
-  return checked(await request<DeferredQuestion>(`${route(sid)}/${id}`, { signal }), sid, id)
+  try { return checked(await request<DeferredQuestion>(`${route(sid)}/${id}`, { signal }), sid, id) }
+  catch (e) {
+    if (!(e instanceof ApiError && e.status === 404)) throw e
+    // Distinguish one missing item from a withdrawn or trashed interview.
+    await request(`${route(sid)}?page_size=1`, { signal })
+    throw new Error("This saved question is no longer in the list.")
+  }
+}
+
+type CreationCheck = { outcome: "confirmed" | "matching_unconfirmed" | "missing" | "mismatch"; item: DeferredQuestion | null }
+
+export async function checkDeferredCreation(sid: string, id: string, parent: string, question: string,
+                                            material: string, signal: AbortSignal): Promise<CreationCheck> {
+  const result = await request<CreationCheck>(`${route(sid)}/${id}/creation-check`, {
+    method: "POST", signal, json: { parent_answer_id: parent, question, expected_material: material },
+  })
+  if (result?.outcome === "confirmed") {
+    const item = checked(result.item, sid, id)
+    if (item.parent_answer_id === parent && item.question === question) return result
+  } else if (result?.item === null && ["matching_unconfirmed", "missing", "mismatch"].includes(result.outcome)) {
+    return result
+  }
+  throw new Error("The server did not verify the original Keep request.")
 }
 
 export async function keepDeferred(sid: string, id: string, parent: string, question: string, expectedMaterial: string, signal: AbortSignal) {
@@ -63,10 +85,14 @@ export async function changeDeferred(item: DeferredQuestion, action: "dismiss" |
 }
 
 export async function readDeferredSource(sid: string, parentId: string, signal: AbortSignal): Promise<SourceReview> {
-  const session = await api<Interview>(`sessions/${sid}`, "GET", undefined, signal)
-  if (session?.id !== sid || !session.consent || session.ended_at || (session.privacy_state && session.privacy_state !== "unmarked")) {
-    throw new Error("This interview is no longer open for capture.")
+  const session = await request<Interview>(`/api/sessions/${sid}`, { signal })
+  if (session?.id !== sid || typeof session.consent !== "boolean" || !Array.isArray(session.answers) ||
+      !Array.isArray(session.permitted_sources)) throw new Error("The server did not verify the source interview.")
+  if (!session.consent || session.privacy_state === "anonymized" || session.privacy_state === "legacy_unverified") {
+    throw new DeferredUnavailable("This interview no longer permits deferred questions.")
   }
+  if (session.privacy_state && session.privacy_state !== "unmarked") throw new Error("The interview privacy status is unrecognized.")
+  if (session.ended_at) throw new Error("This interview is no longer open for capture.")
   const index = session.answers.findIndex(a => a.id === parentId)
   if (index < 0) throw new Error("The source exchange is no longer available.")
   const answer = session.answers[index]
@@ -78,7 +104,7 @@ export function matchesDeferredDraft(draft: Draft | null, item: DeferredQuestion
   return !!draft && validId(draft.id) && (!id || draft.id === id) && count(draft.revision) && draft.revision > 0
     && typeof draft.answer === "string" && Array.isArray(draft.references) && typeof draft.updated_at === "string"
     && draft.parent_answer_id === item.parent_answer_id && draft.planned_slot == null && draft.question === item.question
-    && draft.deferred_question?.id === item.id && draft.deferred_question.version === item.version
+    && draft.deferred_question?.id === item.id && draft.deferred_question.version === item.version && digest(draft.deferred_draft_token)
 }
 
 export function sameSources(stored: Source[], proposed: Source[]) {
@@ -87,13 +113,13 @@ export function sameSources(stored: Source[], proposed: Source[]) {
 }
 
 export async function saveDeferredDraft(item: DeferredQuestion, id: string, revision: number, answer: string,
-                                        sources: Source[], signal?: AbortSignal) {
+                                        sources: Source[], signal?: AbortSignal, draftToken?: string) {
   const fields = deferredFields(item.question, answer, sources)
   const saved = await api<Draft>(`sessions/${item.session_id}/draft`, "PUT", {
     id, expected_revision: revision, parent_answer_id: item.parent_answer_id, planned_slot: null, ...fields,
-    deferred_question: { id: item.id, version: item.version },
+    deferred_question: { id: item.id, version: item.version }, ...(revision ? { deferred_draft_token: draftToken } : {}),
   }, signal)
-  if (!matchesDeferredDraft(saved, item, id) || saved.answer !== fields.answer ||
+  if (!matchesDeferredDraft(saved, item, id) || (revision && saved.deferred_draft_token !== draftToken) || saved.answer !== fields.answer ||
       !sameSources(saved.references, fields.references)) {
     throw new Error("The server did not confirm this saved draft. Check the current draft before retrying.")
   }
@@ -101,5 +127,6 @@ export async function saveDeferredDraft(item: DeferredQuestion, id: string, revi
 }
 
 export function accessLost(error: unknown) {
-  return error instanceof ApiError && [401, 402, 403, 404].includes(error.status)
+  return error instanceof DeferredUnavailable || error instanceof WorksheetUnavailable
+    || error instanceof ApiError && [401, 402, 403, 404].includes(error.status)
 }
