@@ -8,7 +8,8 @@ Name = Annotated[str, StringConstraints(min_length=1, max_length=180)]
 Question = Annotated[str, StringConstraints(min_length=1, max_length=4000)]
 Body = Annotated[str, StringConstraints(min_length=1, max_length=24000)]
 RequestID = Annotated[UUID, Field(strict=False)]
-RoleVersion = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
+Fingerprint = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
+RoleVersion = Fingerprint
 Disposition = Literal["pending", "explained", "unresolved", "disclosed"]
 EARLIER_ANSWER_NOTE = "Note from an earlier answer version:\n"
 REVIEW_NOTE_LIMIT = 12000
@@ -72,6 +73,15 @@ class AnswerInput(OriginInput):
     question: Question
     answer: Body
     references: list[Reference] = Field(default_factory=list, max_length=12)
+
+
+class DeferredQuestionGuard(Input):
+    id: RequestID
+    version: Fingerprint
+
+
+class CreateAnswerInput(AnswerInput):
+    deferred_question: DeferredQuestionGuard | None = None
 
 
 class AnswerEdit(AnswerInput):

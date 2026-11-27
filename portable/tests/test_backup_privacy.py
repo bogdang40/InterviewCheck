@@ -44,6 +44,7 @@ def legacy(doc):
     doc = deepcopy(doc)
     doc["version"] = 5
     for record in doc["sessions"]:
+        del record["deferred_questions"]
         del record["privacy"]
         del record["rubric_snapshot"]
     return doc
