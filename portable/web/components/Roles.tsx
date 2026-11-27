@@ -2,6 +2,7 @@ import { useRef, useState, type FormEvent } from "react"
 import { ArrowRight, BriefcaseBusiness, Copy, History, Plus } from "lucide-react"
 import { api, message, RoleConflict, type PermittedMaterial } from "@/lib/api"
 import type { CalibratedRole, RubricCriterion } from "@/lib/roleCalibration"
+import { revisionNumber } from "@/lib/revisionNumber"
 import { cloneRole } from "@/lib/roleTemplates"
 import { useDraftGuard } from "@/lib/useDraftGuard"
 import ReloadRole from "./ReloadRole"
@@ -250,7 +251,7 @@ export default function Roles({
               <strong>{r.name}</strong>
               <p>{r.description || `${r.questions.length} planned questions`}</p>
               <small>
-                v{r.version_number ?? 1}
+                v{revisionNumber(r.version_number, r.version_number_text) || "unavailable"}
                 {!!r.rubric?.length && ` | ${r.rubric.length} rubric ${r.rubric.length === 1 ? "criterion" : "criteria"}`}
                 {!!r.permitted_sources?.length && ` | ${r.permitted_sources.length} permitted ${r.permitted_sources.length === 1 ? "source" : "sources"}`}
               </small>
@@ -321,7 +322,7 @@ export default function Roles({
           onRestored={(updated) => {
             onSave(updated)
             setAnalyticsRefreshKey((k) => k + 1)
-            setStatus(`Restored role ${updated.name} to version ${updated.version_number ?? 1}.`)
+            setStatus(`Restored role ${updated.name} to version ${revisionNumber(updated.version_number, updated.version_number_text) || "unavailable"}.`)
           }}
           onConflictReload={() => {
             onReloadAll?.()
