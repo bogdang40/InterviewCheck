@@ -37,8 +37,8 @@ export type Session = {
   first_pending_answer_id: string | null
   review_count: number
 }
-export type DraftSummary = {id:string;revision:number;updated_at:string}
-export type Draft = QuestionOrigin & DraftSummary & {deferred_question?: { id: string; version: string } | null; question:string;answer:string;references:Source[]}
+export type DraftSummary = {id:string;revision:number;updated_at:string;deferred_question?: { id:string;version:string } | null}
+export type Draft = QuestionOrigin & DraftSummary & {question:string;answer:string;references:Source[]}
 export type Interview = Session & { privacy_state?: "unmarked" | "anonymized" | "legacy_unverified"; draft:DraftSummary|null; answers: Answer[]; planned_questions: string[]; permitted_sources: PermittedMaterial[] }
 export type Role = { id: string; version: string; name: string; description: string; questions: string[]; policy: string; permitted_sources: PermittedMaterial[] }
 
