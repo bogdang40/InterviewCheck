@@ -53,7 +53,8 @@ def domain_state():
     value = hashlib.sha256()
     with store.connection() as db:
         for table in tables:
-            for row in db.execute(f"SELECT * FROM {table} ORDER BY rowid"):
+            order = "answer_id, revision" if table == "answer_history" else "rowid"
+            for row in db.execute(f"SELECT * FROM {table} ORDER BY {order}"):
                 value.update(repr(tuple(row)).encode())
     return value.hexdigest()
 
