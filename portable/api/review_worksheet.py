@@ -5,15 +5,8 @@ import json
 
 from fastapi import HTTPException
 
-from . import store
+from . import answer_identity, store
 from .retention_anonymizer import REDACTED_TEXT, anonymized_candidate_label
-
-
-def migrate(db) -> None:
-    db.execute("""CREATE TABLE IF NOT EXISTS worksheet_workspace (
-                  id INTEGER PRIMARY KEY CHECK(id=1),
-                  binding_key BLOB NOT NULL CHECK(length(binding_key)=32))""")
-    db.execute("INSERT OR IGNORE INTO worksheet_workspace(id,binding_key) VALUES(1,randomblob(32))")
 
 
 def _fingerprint(key: bytes, tag: str, fields) -> str:
@@ -23,12 +16,12 @@ def _fingerprint(key: bytes, tag: str, fields) -> str:
 
 def state(db, sid: str, aid: str, *, answer=None) -> dict:
     row = db.execute("""SELECT s.candidate,s.role,s.created_at,s.policy,s.consent,c.role_id,
-                               c.questions,c.permitted_sources,w.binding_key,
+                               c.questions,c.permitted_sources,
                                EXISTS(SELECT 1 FROM session_anonymizations z WHERE z.session_id=s.id) AS anonymized,
                                (SELECT count(*) FROM answers x WHERE x.session_id=s.id AND x.rowid<=a.rowid) AS ordinal
                         FROM active_sessions s JOIN answers a ON a.session_id=s.id
-                        LEFT JOIN session_context c ON c.session_id=s.id CROSS JOIN worksheet_workspace w
-                        WHERE s.id=? AND a.id=? AND w.id=1""", (sid, aid)).fetchone()
+                        LEFT JOIN session_context c ON c.session_id=s.id
+                        WHERE s.id=? AND a.id=?""", (sid, aid)).fetchone()
     if row is None:
         raise HTTPException(404, "This exchange is unavailable for worksheets.")
     saved = answer if answer is not None else store.get_answer(db, sid, aid)
@@ -40,8 +33,9 @@ def state(db, sid: str, aid: str, *, answer=None) -> dict:
     context.update(consent=bool(row["consent"]), planned_questions=json.loads(row["questions"] or "[]"),
                    permitted_sources=json.loads(row["permitted_sources"] or "[]"))
     evidence = {k: v for k, v in saved.items() if k not in {"revision", "disposition", "note"}}
-    material = _fingerprint(row["binding_key"], "material-v1", [sid, aid, row["ordinal"], context, evidence])
-    review = _fingerprint(row["binding_key"], "review-v1", [material, saved["revision"], saved["disposition"], saved["note"]])
+    key = answer_identity.binding_key(db, aid)
+    material = _fingerprint(key, "material-v1", [sid, aid, row["ordinal"], context, evidence])
+    review = _fingerprint(key, "review-v1", [material, saved["revision"], saved["disposition"], saved["note"]])
     return {"session_id": sid, "ordinal": row["ordinal"], "session": context, "answer": saved,
             "material": material, "review": review}
 
