@@ -119,6 +119,9 @@ export default function AdminConsole() {
     } catch (err) {
       if (request !== diagnosticsRequest.current) return
       setDiagnostics(null)
+      if (!(err instanceof AdminApiError && (err.status === 401 || err.status === 403))) {
+        setDiagnosticsError(err instanceof Error ? err.message : "Could not refresh diagnostics.")
+      }
       throw err
     }
   }, [])
@@ -322,9 +325,7 @@ export default function AdminConsole() {
             })
             void refreshTelemetry()
             setDiagnostics(null)
-            void refreshDiagnostics().catch(err => {
-              if (!handleAuthFailure(err)) setDiagnosticsError(err instanceof Error ? err.message : "Could not refresh diagnostics.")
-            })
+            void refreshDiagnostics().catch(handleAuthFailure)
             setBannerStatus(created ? `Connected ${saved.display_name}.` : `Updated ${saved.display_name}.`)
           }}
         />

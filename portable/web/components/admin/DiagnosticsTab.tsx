@@ -49,7 +49,7 @@ export function DiagnosticsTab({ models, data, refresh, onAuthInvalid }: {
   onAuthInvalid: (msg: string) => void
 }) {
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState("")
+  const [exportError, setExportError] = useState("")
   const [audioPhase, setAudioPhase] = useState<"idle" | "checking" | "done">("idle")
   const [audioLevel, setAudioLevel] = useState(-72)
   const [audioStatus, setAudioStatus] = useState("")
@@ -62,14 +62,14 @@ export function DiagnosticsTab({ models, data, refresh, onAuthInvalid }: {
 
   const handleExportBundle = useCallback(async () => {
     if (exporting) return
-    setExporting(true); setError(""); setExportStatus("")
+    setExporting(true); setExportError(""); setExportStatus("")
     try {
       const filename = await downloadDiagnosticBundle()
       if (mountedRef.current) setExportStatus(`Downloaded diagnostic bundle (${filename}).`)
     } catch (err) {
       if (!mountedRef.current) return
       if (err instanceof AdminApiError && (err.status === 401 || err.status === 403)) { onAuthInvalid(err.message); return }
-      setError(err instanceof Error ? err.message : "Could not export diagnostic bundle.")
+      setExportError(err instanceof Error ? err.message : "Could not export diagnostic bundle.")
     } finally {
       if (mountedRef.current) setExporting(false)
     }
@@ -89,13 +89,12 @@ export function DiagnosticsTab({ models, data, refresh, onAuthInvalid }: {
   }, [])
 
   const load = useCallback(async () => {
-    setLoading(true); setError("")
+    setLoading(true)
     try {
       await refresh()
     } catch (err) {
       if (!mountedRef.current) return
-      if (err instanceof AdminApiError && (err.status === 401 || err.status === 403)) { onAuthInvalid(err.message); return }
-      setError(err instanceof Error ? err.message : "Could not load diagnostics.")
+      if (err instanceof AdminApiError && (err.status === 401 || err.status === 403)) onAuthInvalid(err.message)
     } finally {
       if (mountedRef.current) setLoading(false)
     }
@@ -180,7 +179,7 @@ export function DiagnosticsTab({ models, data, refresh, onAuthInvalid }: {
         </div>
       </div>
 
-      {error && <p role="alert" className="error">{error}</p>}
+      {exportError && <p role="alert" className="error">{exportError}</p>}
       {exportStatus && <p role="status" aria-live="polite" className="notice">{exportStatus}</p>}
 
       {data && <div className="admin-summary-grid" aria-label="Fleet diagnostic summary">

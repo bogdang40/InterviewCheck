@@ -92,12 +92,23 @@ def test_failed_refresh_after_another_model_save_preserves_unknown_budget_usage(
         expect(fleet).to_contain_text("Estimated monthly spend $0.02")
         expect(panel.get_by_text("Recorded usage is unavailable.", exact=True)).to_have_count(0)
         expect(page.get_by_role("alert").filter(has_text=failure)).to_have_count(0)
+
+        # A failure from the tab and a retry from the header use the same diagnostics result and error.
+        page.route(diagnostics_url, lambda route: route.fulfill(status=503, json={"detail": failure}), times=1)
+        refresh.click()
+        expect(page.get_by_role("alert").filter(has_text=failure)).to_be_visible()
+        expect(meter).to_have_count(0)
+        with page.expect_response(diagnostics_url) as header_read:
+            page.get_by_role("button", name="Refresh", exact=True).click()
+        assert header_read.value.ok
+        expect(meter).to_have_attribute("aria-valuetext", "$0.02 / $0.01")
+        expect(page.get_by_role("alert").filter(has_text=failure)).to_have_count(0)
         models_tab.click()
         expect(badge).to_contain_text("$0.02/$0.01")
         expect(badge).to_have_attribute("data-variant", "destructive")
         ledger = client.get("/api/admin/usage/ai-costs?days=7").raise_for_status().json()
         assert (ledger["totals"]["requests"], ledger["totals"]["cost_usd"], calls) == (1, 0.02, [spent["model_id"]])
-    assert collector.server_errors == ["503 " + diagnostics_url]
+    assert collector.server_errors == ["503 " + diagnostics_url] * 2
     assert all("503" in message for message in collector.console_errors)
     collector.server_errors.clear()
     collector.console_errors.clear()
