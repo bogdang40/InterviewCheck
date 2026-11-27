@@ -78,7 +78,13 @@ class AnswerEdit(AnswerInput):
     expected_revision: int | None = Field(default=None, ge=1)
 
 
+class WorksheetGuard(Input):
+    material: Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
+    review: Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
+
+
 class ReviewInput(Input):
+    worksheet_guard: WorksheetGuard | None = None
     expected_revision: int | None = Field(default=None, ge=1)
     disposition: Disposition
     note: str = Field(max_length=REVIEW_NOTE_LIMIT + len(EARLIER_ANSWER_NOTE))
