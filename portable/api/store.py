@@ -204,12 +204,13 @@ def answer_row(row):
 def get_session(db, key, *, include_trashed=False):
     item = get_summary(db, key, include_trashed=include_trashed)
     item["privacy_state"] = session_privacy.read(db, key).state
-    draft = db.execute("""SELECT id,revision,updated_at,deferred_question_id,deferred_revision_id
+    draft = db.execute("""SELECT id,revision,updated_at,deferred_question_id,deferred_revision_id,deferred_draft_token
                           FROM session_drafts WHERE session_id=?""", (key,)).fetchone()
     item["draft"] = None
     if draft is not None and (include_trashed or (item["consent"] and item["privacy_state"] == "unmarked")):
         item["draft"] = {field: draft[field] for field in ("id", "revision", "updated_at")}
         if draft["deferred_question_id"] and not include_trashed:
+            item["draft"]["deferred_draft_token"] = draft["deferred_draft_token"]
             item["draft"]["deferred_question"] = deferred_items.draft_guard(
                 db, key, draft["deferred_question_id"], draft["deferred_revision_id"])
     item["answers"] = [answer_row(row) for row in db.execute(
@@ -271,6 +272,9 @@ def write_answer(db, key, item: AnswerInput, replace_id=None, *, session=None, a
     parent, slot = lineage.resolve(db, key, aid, item, own_record)
     if replace_id:
         deferred_items.preserve_child_parent(db, key, aid, parent, slot)
+    if current is not None and not replace_id and getattr(item, "deferred_question", None) is None:
+        if db.execute("SELECT 1 FROM deferred_questions WHERE child_answer_id=? AND session_id=?", (aid, key)).fetchone():
+            raise deferred_items.conflict("This child was recorded for a deferred question. Verify the original publication.")
     deferred, replay = deferred_items.begin_publish(db, key, aid, item, parent, slot)
     if replay:
         return {**get_answer(db, key, aid), "deferred_replay": True,

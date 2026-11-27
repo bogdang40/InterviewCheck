@@ -114,5 +114,6 @@ def restore(db, session):
         if fact is not None:
             deferred_fulfillment.record(db, session.id, answer.id, fact.question_id, fact.parent_answer_id, fact.question_sha256)
     if session.draft and session.draft.deferred_question_id:
-        db.execute("UPDATE session_drafts SET deferred_question_id=?, deferred_revision_id=? WHERE session_id=?",
+        db.execute("""UPDATE session_drafts SET deferred_question_id=?,deferred_revision_id=?,
+                      deferred_draft_token=lower(hex(randomblob(32))) WHERE session_id=?""",
                    (session.draft.deferred_question_id, session.draft.deferred_revision_id, session.id))

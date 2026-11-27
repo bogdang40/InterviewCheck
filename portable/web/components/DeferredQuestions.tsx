@@ -11,10 +11,10 @@ import KeepQuestion from "./KeepQuestion"
 
 type Props = {
   detailsRef: (node: HTMLDetailsElement | null) => void; session: Interview; parent?: Answer; locked: boolean; onDirty: DirtyReporter
-  openDraft: (draft: Draft) => void; foundDraft: (draft: Draft) => void; select: (id: string) => void
+  onUnavailable: () => void; openDraft: (draft: Draft) => void; foundDraft: (draft: Draft) => void; select: (id: string) => void
 }
 
-export default function DeferredQuestions({ detailsRef, session, parent, locked, onDirty, openDraft, foundDraft, select }: Props) {
+export default function DeferredQuestions({ detailsRef, session, parent, locked, onDirty, openDraft, foundDraft, select, onUnavailable }: Props) {
   const [open, setOpen] = useState(false)
   const [filter, setFilter] = useState<DeferredFilter>("all")
   const [page, setPage] = useState(1)
@@ -46,12 +46,12 @@ export default function DeferredQuestions({ detailsRef, session, parent, locked,
       else setReport(next)
     }).catch(err => {
       if (!request.signal.aborted) {
-        if (accessLost(err)) { setAuthorized(false); setNotice(""); setActionError("") }
+        if (accessLost(err)) { childId.current = null; onUnavailable(); return }
         setReadError(message(err))
       }
     })
     return () => request.abort()
-  }, [session.id, session.answers, session.draft, filter, page, tick, open])
+  }, [session.id, session.answers, session.draft, filter, page, tick, open, onUnavailable])
 
   async function act(item: DeferredQuestion, action: "dismiss" | "ask") {
     if (!editable || controlsLocked || active.current) return
@@ -79,7 +79,10 @@ export default function DeferredQuestions({ detailsRef, session, parent, locked,
         if (!controller.signal.aborted) { childId.current = null; openDraft(draft) }
       }
     } catch (e) {
-      if (!controller.signal.aborted) setActionError(message(e))
+      if (!controller.signal.aborted) {
+        if (accessLost(e)) { childId.current = null; onUnavailable() }
+        else setActionError(message(e))
+      }
     } finally {
       if (!controller.signal.aborted) { setWorking(false); reload() }
       active.current = null
@@ -91,7 +94,7 @@ export default function DeferredQuestions({ detailsRef, session, parent, locked,
     <summary className="cursor-pointer font-semibold">Questions for later</summary>
     {open && <div className="stack">
       {editable && authorized && parent && <KeepQuestion key={parent.id}
-        session={session} parent={parent} ordinal={ordinal(parent.id)} disabled={locked || working || !!sourceBusy}
+        onUnavailable={onUnavailable} session={session} parent={parent} ordinal={ordinal(parent.id)} disabled={locked || working || !!sourceBusy}
         onDirty={setEditingQuestion} onSaved={() => { setFilter("all"); setPage(1); reload() }} />}
       <div className="spread flex-wrap">
         <label className="field">Show questions
@@ -127,7 +130,7 @@ export default function DeferredQuestions({ detailsRef, session, parent, locked,
               </>}
             </div>
             {item.status === "pending" && item.needs_reconfirmation && <p role="status">The source exchange changed. Confirm it before opening a draft.</p>}
-            {editable && (item.status === "dismissed" || item.status === "pending" && item.needs_reconfirmation) && <DeferredSourceCheck questionId={item.id} sessionId={session.id}
+            {editable && (item.status === "dismissed" || item.status === "pending" && item.needs_reconfirmation) && <DeferredSourceCheck onUnavailable={onUnavailable} questionId={item.id} sessionId={session.id}
               disabled={locked || working || editingQuestion || (sourceBusy !== null && sourceBusy !== item.id)}
               reopen={item.status === "dismissed"} onBusy={value => setSourceBusy(old => value ? item.id : old === item.id ? null : old)}
               onConfirmed={() => { setNotice("Source confirmed."); reload() }} />}
