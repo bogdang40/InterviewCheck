@@ -18,7 +18,7 @@ def package(target):
     files = [*sorted((ROOT / "api").glob("*.py")), *sorted((ROOT / "api").glob("*.json")),
              ROOT / "requirements.txt", ROOT / "run.py",
              ROOT / "README.md", ROOT / "WEB.md", ROOT / "CORE.md", ROOT / "CONNECTIONS.md", ROOT / "VERIFICATION.md",
-             ROOT / "evaluate.py", ROOT / "evaluation/cases.json"]
+             ROOT / "RECOVERY-REGISTER-TEMPLATE.md", ROOT / "evaluate.py", ROOT / "evaluation/cases.json"]
     files.extend(p for p in sorted(export.rglob("*")) if p.is_file() and not p.name.startswith("."))
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = target.with_suffix(".tmp")

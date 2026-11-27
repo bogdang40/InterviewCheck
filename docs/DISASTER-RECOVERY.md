@@ -45,7 +45,7 @@ Use this procedure when `review.sqlite3`, `access.sqlite3`, or the host disk is 
 
 The nightly archive contains the two databases. The deployment owner must designate a primary key custodian and a backup custodian. Record their names, the approved vault entry identifier and the last successful restore drill in the operator runbook. Keep the secrets themselves in a restricted vault separate from the database backup.
 
-After provisioning and each rotation, use the organization's approved secret transfer channel to store the active master key and `/srv/interviewcheck/app.env` outside the VM. For file based encryption, the key is `/srv/interviewcheck/data/.model_secret.key`. Keep secret values out of command output, CI logs and Azure Run Command results. On a replacement host, restore the configuration and key before the first start. Set the key file mode to `0600` and owner to `10001`. Retain each prior key in the vault until the last backup encrypted with that key expires. Verify both a current backup and one from before rotation on a disposable host with the dry run in section 4.
+After provisioning and each rotation, use the organization's approved secret transfer channel to store the active master key and `/srv/interviewcheck/app.env` outside the VM. For file based encryption, the key is `/srv/interviewcheck/data/.model_secret.key`. Keep secret values out of command output, CI logs and Azure Run Command results. On a replacement host, restore the configuration and key before the first start. Set the key file mode to `0600` and owner to `10001`. Retain each prior key in the vault until the last backup encrypted with that key expires. Check a current backup and one from before rotation on a disposable host with the [offline recovery rehearsal](../portable/VERIFICATION.md#rehearse-a-hosted-backup-offline), then start a disposable restore. Section 4 covers key rotation on the recovered copy.
 
 1. Stop the application container so no process holds open WAL handles or writes to `/srv/interviewcheck/data`:
    ```sh
@@ -53,26 +53,8 @@ After provisioning and each rotation, use the organization's approved secret tra
    IMAGE=$(cat deployed-image) docker compose --env-file deploy.env stop app
    ```
 2. Download and extract the target archive from Azure Storage (`backups/<stamp>-<label>.tar.gz`) into a staging directory.
-3. Verify SQLite integrity, foreign key consistency, and schema version on both extracted files before moving them into production:
-   ```sh
-   python3 - <<'PY'
-   import sqlite3
-   for path, check_ver in (("/tmp/restore/review.sqlite3", False), ("/tmp/restore/access.sqlite3", True)):
-       with sqlite3.connect(path) as db:
-           db.execute("PRAGMA foreign_keys=ON")
-           assert db.execute("PRAGMA integrity_check").fetchone()[0] == "ok", path
-           assert db.execute("PRAGMA foreign_key_check").fetchall() == [], path
-           if check_ver:
-               assert db.execute("PRAGMA user_version").fetchone()[0] == 8, path
-   print("Snapshot verification passed.")
-   PY
-   ```
-4. Remove stale live files and `-wal` / `-shm` sidecars, place the verified files into `/srv/interviewcheck/data`, enforce owner `10001` and mode `0600`, and re-enable WAL mode:
-   ```sh
-   rm -f /srv/interviewcheck/data/review.sqlite3* /srv/interviewcheck/data/access.sqlite3*
-   install -m 0600 -o 10001 -g 10001 /tmp/restore/review.sqlite3 /srv/interviewcheck/data/review.sqlite3
-   install -m 0600 -o 10001 -g 10001 /tmp/restore/access.sqlite3 /srv/interviewcheck/data/access.sqlite3
-   ```
+3. Run the [offline verifier](../portable/VERIFICATION.md#rehearse-a-hosted-backup-offline) on the **exact staged pair** with the separately recovered keys and trusted database digests. Check the receipt before replacing either live database. Require both digests to match, the expected credential inventory and a verified result. For an intentionally empty credential inventory, require both structural checks and the owner's independent confirmation of those zero counts. Check that the staged account has `PRAGMA user_version == 8` for this release. A missing file, an unexpected count or a failed check stops the restore.
+4. While the service is stopped, preserve the existing databases and all of their SQLite sidecars together in a restricted rollback directory. Install the two previously verified files as `/srv/interviewcheck/data/review.sqlite3` and `access.sqlite3` with mode `0600` and owner `10001`. Keep the recovered key and configuration in place. If either installation fails, keep the service stopped and restore the complete prior pair with its sidecars. Retain the rollback directory through the application checks.
 5. Start the application and verify `/api/readyz` (Section 5).
 
 ## 3. Workspace JSON Backup and SHA-256 Restore

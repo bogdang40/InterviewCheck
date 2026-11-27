@@ -96,3 +96,59 @@ python qa/smoke_archive.py ../build/InterviewCheck-portable.zip
 On a minimal Linux installation use `python -m playwright install --with-deps chromium`. In Windows PowerShell, `py -3.13` can select Python. The workflow in `.github/workflows/portable.yml` performs these checks on Ubuntu and Windows x64 and attaches the tested ZIP to each successful job. No Windows runner was available in this local session. Its first CI run is pending.
 
 The Linux tests cover browser media APIs with synthetic tracks. The operating system source picker, real call audio and live vendor credentials still require platform acceptance. The provider tests use fixtures. The account test stops before Stripe checkout. Detection accuracy requires independently labeled interviews and a representative sample. The synthetic cases establish behavior under their stated inputs.
+
+## Rehearse a hosted backup offline
+
+Use an isolated directory on a trusted workstation. Obtain a retained nightly archive from the deployment owner's backup store and its matching key from the designated custodian. Extract the archive there. Keep both database files closed. The nightly backup contains `review.sqlite3` and `access.sqlite3`. Obtain the key independently of those files.
+
+From the directory containing the portable `api` package, run the following with the Python environment used for InterviewCheck. Replace the paths with the extracted copies and the recovered file key. On POSIX, allow only the owner to read the key file.
+
+```sh
+python -m api.recovery_rehearsal \
+  --review-db /staging/review.sqlite3 \
+  --access-db /staging/access.sqlite3 \
+  --key-file /vault-copy/.model_secret.key \
+  --json
+```
+
+For a deployment that uses an environment key, supply the variable through your approved secret channel and pass its name with `--key-env RECOVERED_MASTER_KEY`. The command reads only the key sources you specify. Repeat the key options if a snapshot contains records from more than one generation.
+
+When the custodian has trusted SHA256 digests for both extracted database files, add `--review-sha256` and `--access-sha256` with their respective 64 character hex values. The JSON field `pair_check` reports whether both files matched that inventory. A checksum calculated from an unidentified file during the rehearsal cannot establish its origin. Without a trusted pair, record the source association as unconfirmed.
+
+The rehearsal supports the current access database schema (version 8), including the scoped API token table, its unique token hash and its account relationship. For an archive from the version 7 account schema, follow [Verify a historical snapshot](#verify-a-historical-snapshot) below. The command opens closed snapshots read only, checks core schema identity, SQLite integrity and foreign keys, reports missing required model keys, and authenticates each stored model credential, alert signing secret and TOTP secret. It rejects database journal sidecars. A sidecar can contain committed changes. Obtain a clean online backup if one is present. Do not discard the sidecar to pass the check.
+
+| Exit | Result | Operator action |
+| --- | --- | --- |
+| 0 | All stored envelopes authenticated, with at least one encrypted record across the pair | Record the UTC check time and the per table counts with the private backup reference. |
+| 1 | Input, structure, integrity or key verification failed | Inspect the fixed outcome codes. Check the selected backup pair and key generations. |
+| 2 | Invalid invocation | Check the argument names and required sources. |
+| 3 | Both stores passed structural checks and contained no encrypted records | Record the empty counts. Use a snapshot with a known encrypted record to verify key recovery. |
+
+Run the rehearsal separately for the current archive and one retained from before the last rotation. A passing result applies to the files and supplied keys used in that run. The owner still needs to record who recovered the keys, which archive was used, and whether the application started successfully from a disposable restore. Use a private copy of the [recovery register template](RECOVERY-REGISTER-TEMPLATE.md) to distinguish custody acknowledgments, fixture tests and witnessed restores. Store it separately from the VM.
+
+### Verify a historical snapshot
+
+The supported historical profile is the v7 portable writer that already stored encrypted alert signing keys and scoped API tokens (including revisions `f71eb4b` and `b325deb0`). Both tables and their record identity constraints must be present even when empty. The preflight checks token ownership, unique token hashes and the rule relationship for alert deliveries. The migration adds account audit hashes and TOTP storage. Other historical layouts need separate identification before migration.
+
+1. Rehearse the original pair with its trusted digests. A result of `pair_check=matched` and `unsupported_access_version` records the byte identity of both original files. It leaves the credential check incomplete. If either file fails its digest check, obtain the correct archive.
+2. Copy the verified pair into a new, empty staging directory on an isolated workstation. Preserve the originals. Record the release used to migrate the copies. Set `INTERVIEWCHECK_DB` and `INTERVIEWCHECK_ACCESS_DB` to the absolute paths of the two existing staging copies and set `INTERVIEWCHECK_ACCESS_MODE=embedded`. Set `RECOVERY_REVIEW_SHA256` and `RECOVERY_ACCESS_SHA256` to the original digests from the trusted inventory. Run the following from the portable directory. The read only preflight validates both database identities, versions and digests before either staging copy is modified:
+
+```sh
+python - <<'PYTHON'
+import os
+from pathlib import Path
+from api import account_db, store
+from api.recovery_snapshot import check_historical_pair
+
+review = Path(os.environ["INTERVIEWCHECK_DB"])
+access = Path(os.environ["INTERVIEWCHECK_ACCESS_DB"])
+if not all(p.is_absolute() and p.is_file() for p in (review, access)) or review.samefile(access):
+    raise SystemExit("Select two existing staging copies.")
+check_historical_pair(review, access, os.environ["RECOVERY_REVIEW_SHA256"], os.environ["RECOVERY_ACCESS_SHA256"])
+store.initialize(review)
+with account_db.connection() as db:
+    print("Migrated access schema", db.execute("PRAGMA user_version").fetchone()[0])
+PYTHON
+```
+
+3. Close all connections and rehearse the migrated files with the applicable recovery keys. Migration changes the database bytes. Record the migrated result separately from the original digest match. Use the private register to keep the original archive reference, the release used for migration, and the observed startup and access results together.
