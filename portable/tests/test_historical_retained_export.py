@@ -61,7 +61,8 @@ def original_state(db, sid, aid):
 
 
 @pytest.mark.parametrize("kind", ["match", "native"])
-def test_old_scrubbed_and_native_records_export_a_restorable_marker_comparison(client, tmp_path, monkeypatch, kind):
+@pytest.mark.parametrize("scope", ["interview", "workspace"])
+def test_old_scrubbed_and_native_records_export_a_restorable_marker_comparison(client, tmp_path, monkeypatch, kind, scope):
     sid, aid = seed_old_writer(client, tmp_path, kind)
     source_db = store.db_path()
     with store.connection() as db:
@@ -69,8 +70,12 @@ def test_old_scrubbed_and_native_records_export_a_restorable_marker_comparison(c
     stored = client.get(f"/api/sessions/{sid}").raise_for_status().json()
     assert stored["privacy_state"] == "anonymized" and stored["consent"] is (kind != "native")
     assert stored["answers"][0]["result"]["status"] == ("match" if kind == "match" else "insufficient")
-    exported = client.get("/api/backups/workspace", params={"session_id": sid}).raise_for_status()
-    assert client.get("/api/backups/workspace").raise_for_status().content == exported.content
+    scoped = client.get("/api/backups/workspace", params={"session_id": sid}).raise_for_status()
+    full = client.get("/api/backups/workspace").raise_for_status()
+    assert scoped.json()["sessions"] == full.json()["sessions"] and scoped.json()["roles"] == []
+    # The native fixture also imports an independent role with a different title.
+    assert len(full.json()["roles"]) == (1 if kind == "native" else 0)
+    exported = scoped if scope == "interview" else full
     assert OWNER not in exported.text and PRIVATE not in exported.text
     session, = exported.json()["sessions"]
     answer, = session["answers"]
@@ -95,7 +100,9 @@ def test_old_scrubbed_and_native_records_export_a_restorable_marker_comparison(c
     assert recovered["privacy_state"] == "anonymized" and recovered["consent"] == stored["consent"]
     restored_answer, = recovered["answers"]
     assert restored_answer["result"] == answer["result"] and restored_answer["disposition"] == answer["disposition"]
-    assert client.get("/api/backups/workspace", params={"session_id": sid}).content == exported.content
+    params = {"session_id": sid} if scope == "interview" else {}
+    roundtrip = client.get("/api/backups/workspace", params=params).raise_for_status()
+    assert roundtrip.json() == exported.json()
     with store.connection(source_db) as db:
         assert original_state(db, sid, aid) == before
 
