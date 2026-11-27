@@ -115,7 +115,7 @@ For a deployment that uses an environment key, supply the variable through your 
 
 When the custodian has trusted SHA256 digests for both extracted database files, add `--review-sha256` and `--access-sha256` with their respective 64 character hex values. The JSON field `pair_check` reports whether both files matched that inventory. A checksum calculated from an unidentified file during the rehearsal cannot establish its origin. Without a trusted pair, record the source association as unconfirmed.
 
-The rehearsal supports the current access database schema (version 8). For a supported earlier release, follow [Verify a historical snapshot](#verify-a-historical-snapshot) below. The command opens closed snapshots read only, checks core schema identity, SQLite integrity and foreign keys, reports missing required model keys, and authenticates each stored model credential, alert signing secret and TOTP secret. It rejects database journal sidecars. A sidecar can contain committed changes. Obtain a clean online backup if one is present. Do not discard the sidecar to pass the check.
+The rehearsal supports the current access database schema (version 8). For an archive from the version 7 account schema, follow [Verify a historical snapshot](#verify-a-historical-snapshot) below. The command opens closed snapshots read only, checks core schema identity, SQLite integrity and foreign keys, reports missing required model keys, and authenticates each stored model credential, alert signing secret and TOTP secret. It rejects database journal sidecars. A sidecar can contain committed changes. Obtain a clean online backup if one is present. Do not discard the sidecar to pass the check.
 
 | Exit | Result | Operator action |
 | --- | --- | --- |
@@ -129,18 +129,20 @@ Run the rehearsal separately for the current archive and one retained from befor
 ### Verify a historical snapshot
 
 1. Rehearse the original pair with its trusted digests. A result of `pair_check=matched` and `unsupported_access_version` records the byte identity of both original files. It leaves the credential check incomplete. If either file fails its digest check, obtain the correct archive.
-2. Copy the verified pair into a new, empty staging directory on an isolated workstation. Preserve the originals. Record the release used to migrate the copies. Set `INTERVIEWCHECK_DB` and `INTERVIEWCHECK_ACCESS_DB` to the absolute paths of the two existing staging copies and set `INTERVIEWCHECK_ACCESS_MODE=embedded`. Run the application's normal schema initializers from the portable directory:
+2. Copy the verified pair into a new, empty staging directory on an isolated workstation. Preserve the originals. Record the release used to migrate the copies. Set `INTERVIEWCHECK_DB` and `INTERVIEWCHECK_ACCESS_DB` to the absolute paths of the two existing staging copies and set `INTERVIEWCHECK_ACCESS_MODE=embedded`. Set `RECOVERY_REVIEW_SHA256` and `RECOVERY_ACCESS_SHA256` to the original digests from the trusted inventory. Run the following from the portable directory. The read only preflight validates both database identities, versions and digests before either staging copy is modified:
 
 ```sh
 python - <<'PYTHON'
 import os
 from pathlib import Path
 from api import account_db, store
+from api.recovery_snapshot import check_historical_pair
 
 review = Path(os.environ["INTERVIEWCHECK_DB"])
 access = Path(os.environ["INTERVIEWCHECK_ACCESS_DB"])
 if not all(p.is_absolute() and p.is_file() for p in (review, access)) or review.samefile(access):
     raise SystemExit("Select two existing staging copies.")
+check_historical_pair(review, access, os.environ["RECOVERY_REVIEW_SHA256"], os.environ["RECOVERY_ACCESS_SHA256"])
 store.initialize(review)
 with account_db.connection() as db:
     print("Migrated access schema", db.execute("PRAGMA user_version").fetchone()[0])

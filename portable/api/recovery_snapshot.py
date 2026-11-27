@@ -26,7 +26,7 @@ SCHEMA = {
         "users": {"id", "email", "role", "password_hash", "disabled", "created_at", "updated_at",
                   "trial_ends_at", "complimentary_until", "last_login_at", "stripe_customer_id"},
         "sessions": {"id", "user_id", "expires_at", "token_hash", "device_name", "created_at", "last_seen_at", "revoked_at"},
-        "subscriptions": {"id", "user_id", "status", "plan", "current_period_end", "updated_at"},
+        "subscriptions": {"id", "user_id", "status", "plan", "current_period_end", "updated_at", "stripe_customer_id"},
         "audit_log": {"id", "at", "actor_user_id", "action", "target_user_id", "details", "prev_hash", "entry_hash"},
         "user_totp": {"user_id", "secret_enc", "enabled", "created_at", "verified_at", "last_used_step"},
         "user_backup_codes": {"id", "user_id", "code_hash", "created_at", "used_at"},
@@ -66,7 +66,11 @@ def _identity(path: Path) -> tuple[int, int, int, int, int]:
 def _check_schema(db: sqlite3.Connection, kind: str) -> None:
     if kind == "access" and db.execute("PRAGMA user_version").fetchone()[0] != account_db.VERSION:
         raise SnapshotError("unsupported_access_version")
-    for table, required in SCHEMA[kind].items():
+    _check_tables(db, SCHEMA[kind], RELATIONS[kind])
+
+
+def _check_tables(db, tables, relations):
+    for table, required in tables.items():
         entry = db.execute("SELECT type FROM pragma_table_list(?) WHERE schema='main' AND name=?",
                            (table, table)).fetchone()
         columns = dict(db.execute("SELECT name, pk FROM pragma_table_info(?)", (table,)))
@@ -74,7 +78,7 @@ def _check_schema(db: sqlite3.Connection, kind: str) -> None:
                    "login_windows": "address", "login_email_windows": "email"}.get(table, "id")
         if entry != ("table",) or not required.issubset(columns) or columns.get(primary) != 1:
             raise SnapshotError("schema_mismatch")
-    for table, column, parent in RELATIONS[kind]:
+    for table, column, parent in relations:
         relation = db.execute('SELECT 1 FROM pragma_foreign_key_list(?) WHERE "from"=? AND "table"=? AND "to"=?',
                               (table, column, parent, "id")).fetchone()
         if relation is None:
@@ -170,3 +174,36 @@ def verify_snapshot(path: Path, kind: str, keys: Sequence[tuple[str, bytes]], ex
             return {"status": "snapshot_changed"}
         result["digest_matched"] = True
     return result
+
+
+
+def check_historical_pair(review: Path, access: Path, review_sha256: str, access_sha256: str) -> None:
+    """Validate closed copies from the supported version 7 writer before any migration."""
+    if review.samefile(access):
+        raise SnapshotError("same_snapshot")
+    # Use the column contracts of the actual version 7 writer. Later releases
+    # added TOTP enrollments, audit hash fields and encrypted alert secrets.
+    tables = {
+        "review": {name: SCHEMA["review"][name] for name in ("sessions", "answers", "roles", "session_context", "connected_models")},
+        "access": {
+            "users": {"id", "email", "role", "password_hash", "created_at", "updated_at"},
+            "sessions": {"id", "token_hash", "user_id", "expires_at"},
+            "subscriptions": {"id", "user_id", "status", "stripe_customer_id"},
+            "stripe_events": {"id", "applied_at"},
+            "audit_log": {"id", "at", "actor_user_id", "action"},
+        },
+    }
+    pair = (("review", review, review_sha256), ("access", access, access_sha256))
+    identities = {kind: _identity(path) for kind, path, _ in pair}
+    for kind, path, expected in pair:
+        _check_digest(path, expected.lower(), identities[kind])
+        with closing(sqlite3.connect(path.absolute().as_uri() + "?mode=ro&immutable=1", uri=True)) as db:
+            db.execute("PRAGMA query_only=ON")
+            db.execute("PRAGMA trusted_schema=OFF")
+            if kind == "access" and db.execute("PRAGMA user_version").fetchone() != (7,):
+                raise SnapshotError("unsupported_historical_schema")
+            _check_tables(db, tables[kind], RELATIONS["review"] if kind == "review" else RELATIONS["access"][:1])
+            if db.execute("PRAGMA integrity_check(1)").fetchone() != ("ok",) or db.execute("PRAGMA foreign_key_check").fetchone():
+                raise SnapshotError("integrity_failed")
+    if any(_identity(path) != identities[kind] for kind, path, _ in pair):
+        raise SnapshotError("snapshot_changed")

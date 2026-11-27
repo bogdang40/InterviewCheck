@@ -286,3 +286,24 @@ def test_lost_webhook_secret_is_distinct_from_an_unsigned_alert(copies):
     with closing(sqlite3.connect(review)) as db, db:
         db.execute("UPDATE alert_rules SET secret_hint=NULL")
     assert recovery_rehearsal.rehearse(review, access, [key], ["RECOVERED_PREVIOUS"])["status"] == "verified"
+
+
+def test_migration_preflight_rejects_empty_account_before_either_database_changes(copies, tmp_path):
+    from api.recovery_snapshot import check_historical_pair, SnapshotError
+
+    review, _, _ = copies
+    empty = tmp_path / "empty.sqlite3"
+    empty.touch()
+    digest = lambda path: hashlib.sha256(path.read_bytes()).hexdigest()
+    original = (digest(review), digest(empty))
+    with pytest.raises(SnapshotError):
+        check_historical_pair(review, empty, *original)
+    assert (digest(review), digest(empty)) == original
+
+
+def test_rehearsal_requires_subscription_startup_field(copies):
+    review, access, key = copies
+    with closing(sqlite3.connect(access)) as db, db:
+        db.execute("ALTER TABLE subscriptions DROP COLUMN stripe_customer_id")
+    result = recovery_rehearsal.rehearse(review, access, [key], ["RECOVERED_PREVIOUS"])
+    assert result["databases"]["access"]["status"] == "schema_mismatch"
