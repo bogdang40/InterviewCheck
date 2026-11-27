@@ -143,7 +143,7 @@ The session detail returns the policy and its `permitted_sources` snapshot. Live
 
 ## Panel discussions
 
-Open a reviewer disagreement under **Roles**, or open **Panel discussion** on a saved exchange. Entitled reviewers can inspect the recorded opinions, process state, and dates. An administrator can request follow up, complete a discussion, or reopen it. Each action requires a reason. Only administrators can read the private reasons and the identities of the administrators who recorded them. Panel decisions do not change an answer disposition, score, or hiring outcome.
+Open a reviewer disagreement under **Roles**, or open **Panel discussion** on a saved exchange. Entitled reviewers can inspect the recorded opinions, process state, and dates. An administrator can request follow up, complete a discussion, or reopen it. Each action requires a reason. The editor binds that reason to the current administrator session and the saved exchange. Signing out or changing accounts clears the private draft. After a purge and JSON restore, open a fresh editor for the restored exchange. Only administrators can read the private reasons and the identities of the administrators who recorded them. Panel decisions do not change an answer disposition, score, or hiring outcome.
 
 A change to the saved exchange content or a new reviewer opinion requires another panel review, even if the wording or opinion is later restored. Editing only a reviewer note leaves the existing process state in place. A former decision remains in the history when the current context changes. Cases with required follow up remain in the open view. The history page shows up to ten changes per read.
 
