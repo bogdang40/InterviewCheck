@@ -26,10 +26,11 @@ function accountChannel() {
   catch { return null }
 }
 
-export function notifyAccountChanged(changed = true) {
+export function notifyAccountChanged(change: "identity" | "rotation" | "refresh" = "identity") {
   if (typeof window === "undefined") return
-  window.dispatchEvent(new CustomEvent(ACCOUNT_EVENT, { detail: changed }))
-  if (!changed) return
+  // Rotation confirms the current operator locally. Other tabs must discard authority bound to the old cookie.
+  window.dispatchEvent(new CustomEvent(ACCOUNT_EVENT, { detail: change === "identity" }))
+  if (change === "refresh") return
   // Only an invalidation marker crosses tabs. No account ID or credential is stored.
   try {
     window.localStorage.setItem(ACCOUNT_CHANGE_KEY, crypto.randomUUID())
@@ -63,8 +64,10 @@ export function useAccountStatus(trigger?: string, enabled = true): AccountState
       setTick(n => n + 1)
     }
     function onAccountEvent(event: Event) {
-      if ((event as CustomEvent).detail === false) setTick(n => n + 1)
-      else invalidate()
+      if ((event as CustomEvent).detail === false) {
+        pending.current?.abort()
+        setTick(n => n + 1)
+      } else invalidate()
     }
     function onStorage(event: StorageEvent) {
       if (event.key === ACCOUNT_CHANGE_KEY || event.key === null) invalidate()
