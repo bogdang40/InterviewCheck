@@ -25,7 +25,6 @@ import { useDraftGuard } from "@/lib/useDraftGuard"
 import { AdminGate } from "./AdminGate"
 import { AdminTabNav, type AdminTabItem } from "./AdminTabNav"
 import { AdminTabPanel } from "./AdminTabPanel"
-import { ModelHealthDrawer } from "./ModelHealthDrawer"
 import { ModelList } from "./ModelList"
 import { ModelSummaryCards } from "./ModelSummaryCards"
 import { RoutingSimulatorPanel } from "./RoutingSimulatorPanel"
@@ -41,6 +40,10 @@ const PromptsAndSlaTab = dynamic(() => import("./PromptsAndSlaTab").then((m) => 
 const SecurityAlertsTab = dynamic(() => import("./SecurityAlertsTab").then((m) => m.SecurityAlertsTab), { ssr: false })
 const UsageTab = dynamic(() => import("./UsageTab").then((m) => m.UsageTab), { ssr: false })
 const ModelFormModal = dynamic(() => import("./ModelFormModal").then((m) => m.ModelFormModal), { ssr: false })
+const ModelHealthDrawer = dynamic(() => import("./ModelHealthDrawer").then((m) => m.ModelHealthDrawer), {
+  ssr: false,
+  loading: () => <p role="status" className="muted">Opening model health...</p>,
+})
 
 type AdminTab = "models" | "accounts" | "usage" | "audit" | "diagnostics" | "playground" | "security" | "prompts" | "compliance"
 
