@@ -1,6 +1,6 @@
 "use client"
 
-import { Suspense, useState } from "react"
+import { Suspense, useCallback, useState } from "react"
 import dynamic from "next/dynamic"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
@@ -9,6 +9,7 @@ import InterviewView from "@/components/InterviewView"
 import WorkspaceError from "@/components/WorkspaceError"
 import type { Answer, Interview } from "@/lib/api"
 import { useResource } from "@/lib/workspace"
+import { sweepLocalDrafts } from "@/lib/localDraftSweep"
 import { useDraftGuard } from "@/lib/useDraftGuard"
 
 const SessionAssignmentBar = dynamic(() => import("@/components/SessionAssignmentBar"), {
@@ -31,7 +32,7 @@ function retainsAssignment(destination: URL) {
   return current.href === destination.href
 }
 
-function Record() {
+function Record({ onUnavailable }: { onUnavailable: () => void }) {
   const query = useSearchParams()
   const id = query.get("id")
   const valid = id && /^[\da-f-]{36}$/i.test(id)
@@ -78,6 +79,7 @@ function Record() {
       <SessionAssignmentBar key={`assignment-${session.data.id}-${protectedRecord}`} readOnly={protectedRecord} sessionId={session.data.id} onDirtyChange={setAssignmentDirty} />
       <InterviewView
         key={`interview-${id}-${protectedRecord}`}
+        onDeferredUnavailable={onUnavailable}
         session={session.data}
         answerId={query.get("answer")}
         assignmentDirty={assignmentDirty}
@@ -89,10 +91,23 @@ function Record() {
     </div>
   )
 }
+function ReviewAccessBoundary() {
+  const sessionId = useSearchParams().get("id")
+  const [withheld, setWithheld] = useState<string | null>(null)
+  const withdraw = useCallback(() => {
+    if (sessionId) { sweepLocalDrafts([sessionId]); setWithheld(sessionId) }
+  }, [sessionId])
+  if (sessionId && withheld === sessionId) return <section className="panel stack" aria-label="Interview access changed">
+    <p role="alert">Private interview details and local edits were cleared because access changed.</p>
+    <Button type="button" variant="outline" onClick={() => setWithheld(null)}>Reload interview</Button>
+  </section>
+  return <Record key={sessionId} onUnavailable={withdraw} />
+}
+
 export default function ReviewPage() {
   return (
     <Suspense fallback={<p role="status">Loading interview…</p>}>
-      <Record />
+      <ReviewAccessBoundary />
     </Suspense>
   )
 }
