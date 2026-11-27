@@ -3,6 +3,7 @@
 import json
 import sqlite3
 
+from . import retained_narratives
 from .evidence import compare
 from .models import Reference
 
@@ -55,6 +56,7 @@ class SessionAnonymizer:
             "INSERT INTO session_anonymizations(session_id, anonymized_at, anonymized_by) VALUES (?,?,?)",
             (self.sid, now_iso, actor_email),
         )
+        retained_narratives.refresh(self.db, self.sid)
 
     def _redact_answers(self) -> None:
         inherited = _references(self._permitted_sources())

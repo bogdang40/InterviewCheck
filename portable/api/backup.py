@@ -284,8 +284,9 @@ def restore_records(db, actions):
             (s.id, s.role_id, encode(s.planned_questions), s.ended_at, materials(s.permitted_sources),
              s.rubric_snapshot.model_dump_json() if s.rubric_snapshot else None),
         )
-        session_privacy.restore(db, s)
+        # A confirmed receipt seals the original, already validated narrative rows.
         review_data.restore_review_data(db, s)
+        session_privacy.restore(db, s)
         if s.trashed_at:
             db.execute("INSERT INTO session_trash(session_id,trashed_at,operation_version) VALUES (?,?,?)", (s.id, s.trashed_at, str(uuid4())))
         if s.draft:

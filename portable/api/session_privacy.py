@@ -4,6 +4,7 @@ from typing import Literal
 from fastapi import HTTPException
 from pydantic import ValidationError, model_validator
 
+from . import retained_narratives
 from .backup_types import Record, TZStamp
 from .retention_anonymizer import REDACTED_TEXT, anonymized_candidate_label
 
@@ -110,6 +111,7 @@ def archive_only_erasure(session):
 def verify_redaction(session):
     if not _erased_shape(session):
         raise ValueError("The confirmed anonymization contains data that retention should have erased.")
+    retained_narratives.verify_archive(session)
 
 
 def restore(db, session):
