@@ -4,14 +4,13 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { GitCompare, History, RotateCcw, X } from "lucide-react"
 import { dateLabel } from "@/lib/api"
 import {
-  fetchRoleVersionDiff,
   fetchRoleVersions,
   restoreRoleVersion,
   RoleApiError,
   type CalibratedRole,
-  type RoleVersionDetailResponse,
   type RoleVersionsResponse,
 } from "@/lib/roleCalibration"
+import RoleVersionComparison from "./RoleVersionComparison"
 import { GuideButton } from "./InterviewerGuide"
 import { Badge } from "./ui/badge"
 import { Button } from "./ui/button"
@@ -32,8 +31,7 @@ export default function RoleVersionHistory({ role, onRestored, onConflictReload,
   const [status, setStatus] = useState("")
   const [restoreNote, setRestoreNote] = useState("")
   const [restoringVersion, setRestoringVersion] = useState<number | null>(null)
-  const [selectedDiff, setSelectedDiff] = useState<RoleVersionDetailResponse | null>(null)
-  const [diffLoading, setDiffLoading] = useState(false)
+  const [inspected, setInspected] = useState<number | null>(null)
   const restoredVersionRef = useRef<number | null>(null)
 
   const loadVersions = useCallback(async (signal?: AbortSignal) => {
@@ -60,27 +58,10 @@ export default function RoleVersionHistory({ role, onRestored, onConflictReload,
       return
     }
     const controller = new AbortController()
-    setSelectedDiff(null)
     setConflict(false)
     void loadVersions(controller.signal)
     return () => controller.abort()
   }, [loadVersions, role.version, role.version_number])
-
-  async function inspectDiff(versionNumber: number) {
-    if (selectedDiff?.version.version_number === versionNumber) {
-      setSelectedDiff(null)
-      return
-    }
-    setDiffLoading(true)
-    setError("")
-    try {
-      setSelectedDiff(await fetchRoleVersionDiff(role.id, versionNumber))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to inspect version diff.")
-    } finally {
-      setDiffLoading(false)
-    }
-  }
 
   async function handleRestore(versionNumber: number) {
     setRestoringVersion(versionNumber)
@@ -94,7 +75,7 @@ export default function RoleVersionHistory({ role, onRestored, onConflictReload,
       })
       restoredVersionRef.current = updated.version_number ?? null
       setRestoreNote("")
-      setSelectedDiff(null)
+      setInspected(null)
       setStatus(`Restored version ${versionNumber} as version ${updated.version_number ?? "latest"}.`)
       onRestored(updated)
       await loadVersions()
@@ -110,7 +91,7 @@ export default function RoleVersionHistory({ role, onRestored, onConflictReload,
     }
   }
 
-  const diff = selectedDiff?.diff
+  const current = data?.versions.find(v => v.version_number === data.current_version_number)
 
   return (
     <section className="panel stack" aria-label={`Version history for ${role.name}`}>
@@ -158,7 +139,7 @@ export default function RoleVersionHistory({ role, onRestored, onConflictReload,
           {status}
         </p>
       )}
-      {loading ? (
+      {loading && !data ? (
         <p className="muted text-sm" role="status">Loading version history...</p>
       ) : !data?.versions.length ? (
         <p className="muted text-sm">No saved versions found for this role.</p>
@@ -166,7 +147,7 @@ export default function RoleVersionHistory({ role, onRestored, onConflictReload,
         <div className="stack">
           {data.versions.map((entry) => {
             const isLive = entry.version_number === data.current_version_number
-            const isInspected = selectedDiff?.version.version_number === entry.version_number
+            const isInspected = inspected === entry.version_number
             return (
               <div key={entry.id} className="rounded-lg border border-[var(--line)] bg-[var(--subtle)] p-3 stack">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -177,7 +158,7 @@ export default function RoleVersionHistory({ role, onRestored, onConflictReload,
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <GuideButton role={entry} historical />
-                    <Button type="button" variant="outline" size="sm" disabled={diffLoading} onClick={() => void inspectDiff(entry.version_number)}>
+                    <Button type="button" variant="outline" size="sm" disabled={!current} aria-expanded={isInspected} onClick={() => setInspected(isInspected ? null : entry.version_number)}>
                       <GitCompare aria-hidden="true" />
                       {isInspected ? "Hide diff" : "Inspect diff"}
                     </Button>
@@ -193,31 +174,7 @@ export default function RoleVersionHistory({ role, onRestored, onConflictReload,
                   <span>{entry.rubric.length} rubric criteria</span>
                   {entry.created_at && <span>{dateLabel(entry.created_at)}</span>}
                 </div>
-                {isInspected && diff && (
-                  <div className="rounded-md border border-[var(--line)] bg-[var(--surface)] p-3 text-sm stack">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <strong>Diff vs live v{diff.against_version_number}</strong>
-                      <Badge variant={diff.has_changes ? "warning" : "secondary"}>
-                        {diff.has_changes ? `${diff.changed_fields.length} changed fields` : "Identical to live"}
-                      </Badge>
-                    </div>
-                    {diff.has_changes && (
-                      <div className="stack text-xs">
-                        <p className="text-[var(--muted)]">Changed fields: {diff.changed_fields.join(", ")}</p>
-                        {diff.questions.added.length > 0 && <p>Questions added in live: {diff.questions.added.join(" | ")}</p>}
-                        {diff.questions.removed.length > 0 && <p>Questions removed since v{entry.version_number}: {diff.questions.removed.join(" | ")}</p>}
-                        {diff.rubric.added.length > 0 && <p>Rubric criteria added in live: {diff.rubric.added.map((c) => `${c.criterion} (w:${c.weight})`).join(", ")}</p>}
-                        {diff.rubric.removed.length > 0 && <p>Rubric criteria removed since v{entry.version_number}: {diff.rubric.removed.map((c) => `${c.criterion} (w:${c.weight})`).join(", ")}</p>}
-                        {diff.rubric.modified.length > 0 && (
-                          <p>Rubric modified: {diff.rubric.modified.map((m) => `${m.version.criterion} (w:${m.version.weight} -> w:${m.live.weight})`).join(", ")}</p>
-                        )}
-                        {diff.permitted_sources.added.length + diff.permitted_sources.removed.length > 0 && (
-                          <p>Permitted sources changed: +{diff.permitted_sources.added.length} / -{diff.permitted_sources.removed.length}</p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
+                {isInspected && current && <RoleVersionComparison source={entry} current={current} versions={data.versions} />}
               </div>
             )
           })}
