@@ -48,14 +48,18 @@ def verify_archive(session):
 
 
 def refresh(db, session_id: str | None = None) -> None:
-    """Add read holds in the caller's transaction. Restrict work to a new receipt when given its session."""
+    """Resolve undecided receipts in the caller's transaction and preserve witnessed conflicts."""
     # Select timestamps only. Historical narrative text must not enter a diagnostic or leave SQLite.
     where = "AND x.session_id=?" if session_id is not None else ""
     params = (session_id,) if session_id is not None else ()
     cutoff = lru_cache(maxsize=128)(_instant)
     held = set()
+    tables = {row[0] for row in db.execute("""SELECT name FROM sqlite_master WHERE type='table'
+               AND name IN ('session_handoff_notes','session_scorecards')""")}
     for table, field, recorded in (("session_handoff_notes", "body", "created_at"),
                                    ("session_scorecards", "rationale", "updated_at")):
+        if table not in tables:
+            continue
         for sid, receipt, entry in db.execute(f"""SELECT x.session_id,x.anonymized_at,n.{recorded}
                     FROM session_anonymizations x JOIN {table} n ON n.session_id=x.session_id
                     WHERE n.{field}<>'' {where}""", params):
@@ -67,4 +71,14 @@ def refresh(db, session_id: str | None = None) -> None:
                 unsafe = True  # A damaged clock cannot attest that this text predates erasure.
             if unsafe:
                 held.add(sid)
-    db.executemany("INSERT OR IGNORE INTO retention_read_holds(session_id) VALUES(?)", ((sid,) for sid in held))
+    if held:
+        db.executemany("""INSERT INTO retention_read_holds(session_id,needs_timestamp_check) VALUES(?,0)
+                          ON CONFLICT(session_id) DO UPDATE SET needs_timestamp_check=0
+                          WHERE retention_read_holds.needs_timestamp_check=1""", ((sid,) for sid in held))
+    # A receipt can be inserted by an older writer, before this checker runs. Only clear
+    # its provisional hold after examining its stored prose. A later write witnessed by
+    # the database remains a conflict even when its client supplied an earlier timestamp.
+    scope = "AND session_id=?" if session_id is not None else ""
+    db.execute(f"""DELETE FROM retention_read_holds WHERE needs_timestamp_check=1 {scope}
+                   AND EXISTS (SELECT 1 FROM session_anonymizations x WHERE x.session_id=retention_read_holds.session_id)""",
+               params)

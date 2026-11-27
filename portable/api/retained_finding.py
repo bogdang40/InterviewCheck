@@ -40,3 +40,82 @@ UNSAFE_TEXT_SQL = f"""(
     OR (json_extract(r.result,'$.explanation') COLLATE BINARY, json_extract(r.result,'$.follow_up') COLLATE BINARY)
        NOT IN (VALUES {_SQL_PAIRS})
 )"""
+
+
+def _invalid_members(obj, allowed):
+    # Unknown and repeated keys must not let Python's last-key-wins decoding see a
+    # different value from the first selection made by SQLite's JSON path.
+    keys = ",".join(f"'{key}'" for key in allowed)
+    return f"""EXISTS (SELECT 1 FROM json_each({obj}) m GROUP BY m.key
+                       HAVING count(*)!=1 OR m.key NOT IN ({keys}))"""
+
+
+def _invalid_span(name):
+    path = f"$.{name}"
+    return f"""(coalesce(json_type(p.value,'{path}'),'null')!='null' AND (
+        json_type(p.value,'{path}')!='array' OR json_array_length(p.value,'{path}')!=2
+        OR json_type(p.value,'{path}[0]') IS NOT 'integer' OR json_type(p.value,'{path}[1]') IS NOT 'integer'
+        OR json_extract(p.value,'{path}[0]')<0 OR json_extract(p.value,'{path}[1]')<=json_extract(p.value,'{path}[0]')))"""
+
+
+_TOP_KEYS = ("status", "explanation", "passages", "follow_up", "archived")
+_PASSAGE_KEYS = ("label", "words", "answer_excerpt", "source_excerpt", "source_index", "answer_span", "source_span")
+_INVALID_PASSAGE = f"""(
+    {_invalid_members('p.value', _PASSAGE_KEYS)}
+    OR json_type(p.value,'$.answer_excerpt') IS NOT 'text' OR json_extract(p.value,'$.answer_excerpt') IS NOT :rf_mask
+    OR json_type(p.value,'$.source_excerpt') IS NOT 'text' OR length(json_extract(p.value,'$.source_excerpt'))>24000
+    OR json_type(p.value,'$.label') IS NOT 'text' OR length(json_extract(p.value,'$.label'))>180
+    OR json_type(p.value,'$.words') IS NOT 'integer' OR json_extract(p.value,'$.words') NOT BETWEEN 1 AND 24000
+    OR coalesce(json_type(p.value,'$.source_index'),'null') NOT IN ('integer','null')
+    OR coalesce(json_extract(p.value,'$.source_index'),0)<0
+    OR {_invalid_span('answer_span')} OR {_invalid_span('source_span')}
+)"""
+# A literal backslash followed by u0000 is valid source wording. Remove paired
+# backslash escapes before checking for a real JSON null-character escape.
+_ENCODED_NUL = r"instr(replace(r.result,'\\',''),'\u0000')>0"
+FINDING_PARAMS = {**TEXT_PARAMS, "rf_mask": REDACTED_TEXT}
+UNSAFE_FINDING_SQL = f"""(
+    json_type(r.result) IS NOT 'object' OR {_invalid_members('r.result', _TOP_KEYS)} OR {_ENCODED_NUL}
+    OR json_type(r.result,'$.status') IS NOT 'text' OR json_extract(r.result,'$.status') NOT IN ('insufficient','match','no_match')
+    OR coalesce(json_type(r.result,'$.archived'),'null') NOT IN ('null','true','false')
+    OR {UNSAFE_TEXT_SQL}
+    OR json_type(r.result,'$.passages') IS NOT 'array' OR json_array_length(r.result,'$.passages')>3
+    OR EXISTS (SELECT 1 FROM json_each(r.result,'$.passages') p
+               WHERE CASE WHEN p.type='object' THEN {_INVALID_PASSAGE} ELSE 1 END)
+)"""
+
+
+def portable_answer(answer):
+    """Describe the retained marker instead of claiming an unverifiable original comparison.
+
+    The old scrubber left the original status, source offsets and word counts in SQLite.
+    A native archive could also retain its fixed finding after the native payload was erased.
+    Preserve the source database, and recompute only the download representation.
+    """
+    from .evidence import compare
+
+    result = answer["result"]
+    if (not recognized_text(result["explanation"], result["follow_up"]) or
+            any(p["answer_excerpt"] != REDACTED_TEXT for p in result["passages"])):
+        raise ValueError("Unrecognized retained finding.")
+    state = result["status"]
+    explanation = result["explanation"]
+    archived = bool(result.get("archived"))
+    if archived:
+        historical = (state == "insufficient" and not result["passages"]
+                      and (explanation, result["follow_up"]) == _NATIVE)
+    elif state == "match":
+        historical = explanation == _MATCH and bool(result["passages"])
+    elif state == "no_match":
+        historical = explanation == _NO_MATCH and not result["passages"]
+    else:
+        historical = state == "insufficient" and explanation in {_SHORT, _NO_SOURCE} and not result["passages"]
+    if not historical:
+        raise ValueError("Inconsistent retained finding.")
+    out = dict(answer)
+    if archived or state != "insufficient" or explanation != _SHORT:
+        out["result"] = compare(answer["question"], REDACTED_TEXT, [])
+    # The older writer erased the disclosure note but kept its disposition.
+    if out["disposition"] == "disclosed" and not out["note"]:
+        out["disposition"] = "pending"
+    return out

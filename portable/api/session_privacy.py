@@ -120,5 +120,6 @@ def restore(db, session):
         # The archive preserves when protection took effect. It carries no actor identity.
         db.execute("INSERT INTO session_anonymizations(session_id,anonymized_at,anonymized_by) VALUES(?,?,?)",
                    (session.id, privacy.anonymized_at, ""))
+        retained_narratives.refresh(db, session.id)
     elif (privacy and privacy.state == "legacy_unverified") or (privacy is None and legacy_hold(session)):
         db.execute("INSERT INTO legacy_privacy_holds(session_id) VALUES(?)", (session.id,))

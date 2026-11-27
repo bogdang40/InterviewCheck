@@ -196,7 +196,7 @@ export function ComplianceTab({ onAuthInvalid }: { onAuthInvalid: (msg: string) 
 
       <section className="panel stack" aria-label="Data retention and PII anonymization">
         <div><h2>Data retention &amp; PII anonymization</h2><p className="muted">Configure retention cutoffs, preview impact with a dry run, or execute permanent redaction and purge.</p></div>
-        {withheld > 0 && <p role="alert">Interviews withheld because stored records conflict with an erasure receipt: {withheld}. Inspect a consistent SQLite backup before sharing affected records.</p>}
+        {withheld > 0 && <p role="alert">Interviews withheld by erasure checks: {withheld}. Inspect a consistent SQLite backup before sharing affected records.</p>}
         <form className={`panel inset ${styles.policyForm}`} onSubmit={handleSavePolicy}>
           <div className={styles.policyGrid}>
             <label className="field"><span>Anonymize finished sessions after (days, 0 disables)</span><Input type="number" min={0} max={3650} value={anonDays} onChange={(e) => setAnonDays(e.target.value)} /></label>
