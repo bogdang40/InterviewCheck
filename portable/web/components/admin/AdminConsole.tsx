@@ -1,7 +1,7 @@
 "use client"
 
 import dynamic from "next/dynamic"
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { BarChart3, Cpu, FileClock, FlaskConical, Plus, RefreshCw, ShieldAlert, ShieldCheck, SlidersHorizontal, Stethoscope, Users } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -71,6 +71,7 @@ export default function AdminConsole() {
   const [envFallbacks, setEnvFallbacks] = useState<EnvFallback[]>([])
   const [fleetTelemetry, setFleetTelemetry] = useState<FleetTelemetryResponse | null>(null)
   const [diagnostics, setDiagnostics] = useState<DiagnosticsData | null>(null)
+  const diagnosticsRequest = useRef(0)
   const [modelsLoading, setModelsLoading] = useState(true)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [bannerError, setBannerError] = useState("")
@@ -107,15 +108,16 @@ export default function AdminConsole() {
   }, [handleAuthFailure])
 
   const refreshDiagnostics = useCallback(async () => {
+    const request = ++diagnosticsRequest.current
     try {
       const next = await getAdminDiagnostics()
-      setDiagnostics(next)
+      if (request === diagnosticsRequest.current) setDiagnostics(next)
     } catch (err) {
-      if (!handleAuthFailure(err)) {
-        setDiagnostics(null)
-      }
+      if (request !== diagnosticsRequest.current) return
+      setDiagnostics(null)
+      throw err
     }
-  }, [handleAuthFailure])
+  }, [])
 
   const loadModels = useCallback(async () => {
     setModelsLoading(true)
@@ -125,28 +127,28 @@ export default function AdminConsole() {
       return null
     }
     try {
-      const [data, telemetryData, diagData] = await Promise.all([
+      const [data, telemetryData] = await Promise.all([
         listAdminModels(),
         getFleetTelemetry().catch(ignoreNonAuth),
-        getAdminDiagnostics().catch(ignoreNonAuth),
+        refreshDiagnostics().catch(ignoreNonAuth),
       ])
       setModels(data.models)
       setEnvFallbacks(data.envFallbacks)
       setFleetTelemetry(telemetryData)
-      setDiagnostics(diagData)
     } catch (err) {
       if (handleAuthFailure(err)) return
       setBannerError(err instanceof Error ? err.message : "Could not load models.")
     } finally {
       setModelsLoading(false)
     }
-  }, [handleAuthFailure])
+  }, [handleAuthFailure, refreshDiagnostics])
 
   useEffect(() => {
     if (account?.admin) {
       void loadModels()
     }
-  }, [account?.admin, loadModels])
+    return () => { diagnosticsRequest.current++ }
+  }, [account?.admin, account?.email, loadModels])
 
   async function handleProbe(model: ConnectedModel) {
     setBusyId(model.id)
@@ -290,7 +292,9 @@ export default function AdminConsole() {
       <AdminTabPanel id="accounts" active={tab === "accounts"} opened={openedTabs.has("accounts")}><AccountsTab onAuthInvalid={onAuthInvalid} /></AdminTabPanel>
       <AdminTabPanel id="usage" active={tab === "usage"} opened={openedTabs.has("usage")}><UsageTab onAuthInvalid={onAuthInvalid} onOpenModels={() => selectTab("models")} onDirtyChange={reporterFor("usage-allowance")} /></AdminTabPanel>
       <AdminTabPanel id="audit" active={tab === "audit"} opened={openedTabs.has("audit")}><AuditLogTab onAuthInvalid={onAuthInvalid} /></AdminTabPanel>
-      <AdminTabPanel id="diagnostics" active={tab === "diagnostics"} opened={openedTabs.has("diagnostics")}><DiagnosticsTab models={models} onAuthInvalid={onAuthInvalid} /></AdminTabPanel>
+      <AdminTabPanel id="diagnostics" active={tab === "diagnostics"} opened={openedTabs.has("diagnostics")}>
+        <DiagnosticsTab models={models} data={diagnostics} refresh={refreshDiagnostics} onAuthInvalid={onAuthInvalid} />
+      </AdminTabPanel>
       <AdminTabPanel id="playground" active={tab === "playground"} opened={openedTabs.has("playground")}><PlaygroundTab models={models} onAuthInvalid={onAuthInvalid} /></AdminTabPanel>
       <AdminTabPanel id="security" active={tab === "security"} opened={openedTabs.has("security")}><SecurityAlertsTab onAuthInvalid={onAuthInvalid} onDirtyChange={reporterFor("security")} /></AdminTabPanel>
       <AdminTabPanel id="prompts" active={tab === "prompts"} opened={openedTabs.has("prompts")}><PromptsAndSlaTab models={models} onAuthInvalid={onAuthInvalid} onDirtyChange={reporterFor("prompts")} /></AdminTabPanel>
@@ -311,7 +315,10 @@ export default function AdminConsole() {
               return created ? [saved, ...synced] : synced.map((m) => (m.id === saved.id ? saved : m))
             })
             void refreshTelemetry()
-            void refreshDiagnostics()
+            setDiagnostics(null)
+            void refreshDiagnostics().catch(err => {
+              if (!handleAuthFailure(err)) setBannerError(err instanceof Error ? err.message : "Could not refresh diagnostics.")
+            })
             setBannerStatus(created ? `Connected ${saved.display_name}.` : `Updated ${saved.display_name}.`)
           }}
         />

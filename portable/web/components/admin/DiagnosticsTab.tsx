@@ -10,7 +10,6 @@ import {
   formatBudgetUsd,
   formatCompactTokens,
   formatUsd,
-  getAdminDiagnostics,
   readBudgetParameters,
   type DiagnosticsData,
 } from "@/lib/adminDiagnostics"
@@ -44,8 +43,12 @@ function MeterBar({ label, value, limit, text }: { label: string; value: number;
   )
 }
 
-export function DiagnosticsTab({ models, onAuthInvalid }: { models: ConnectedModel[]; onAuthInvalid: (msg: string) => void }) {
-  const [data, setData] = useState<DiagnosticsData | null>(null)
+export function DiagnosticsTab({ models, data, refresh, onAuthInvalid }: {
+  models: ConnectedModel[]
+  data: DiagnosticsData | null
+  refresh: () => Promise<void>
+  onAuthInvalid: (msg: string) => void
+}) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [audioPhase, setAudioPhase] = useState<"idle" | "checking" | "done">("idle")
@@ -89,8 +92,7 @@ export function DiagnosticsTab({ models, onAuthInvalid }: { models: ConnectedMod
   const load = useCallback(async () => {
     setLoading(true); setError("")
     try {
-      const next = await getAdminDiagnostics()
-      if (mountedRef.current) setData(next)
+      await refresh()
     } catch (err) {
       if (!mountedRef.current) return
       if (err instanceof AdminApiError && (err.status === 401 || err.status === 403)) { onAuthInvalid(err.message); return }
@@ -98,7 +100,7 @@ export function DiagnosticsTab({ models, onAuthInvalid }: { models: ConnectedMod
     } finally {
       if (mountedRef.current) setLoading(false)
     }
-  }, [onAuthInvalid])
+  }, [onAuthInvalid, refresh])
 
   useEffect(() => {
     mountedRef.current = true

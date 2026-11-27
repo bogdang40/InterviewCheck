@@ -6,11 +6,12 @@ from playwright.sync_api import expect
 from api import integrations
 from e2e_suite.harness import login_user, signup_user
 from e2e_suite.test_m11_budgets_simulator_diagnostics import (
-    ADMIN_EMAIL, ADMIN_PASS, BOOTSTRAP_SECRET, _create_model_api, _sign_in_admin,
+    ADMIN_EMAIL, ADMIN_PASS, BOOTSTRAP_SECRET, MONTHLY_THRESHOLD, _create_model_api, _setup_auth, _sign_in_admin,
 )
 
 
 def refresh_usage(page, button, diagnostics_url, model):
+    expect(button).to_be_enabled()
     with page.expect_response(diagnostics_url) as read:
         button.click()
     assert read.value.ok
@@ -113,4 +114,89 @@ def test_diagnostics_and_model_badge_agree_with_monthly_routing_boundary(e2e_wor
         assert not roster_reads
         assert client.post(request_path, json=request).raise_for_status().json()["text"] == "Fixture reading."
         assert calls == [model["model_id"]] * 3
+    collector.assert_clean()
+
+
+def test_local_threshold_save_reaches_mounted_diagnostics_before_an_older_read(e2e_workspace, desktop_page):
+    _setup_auth(e2e_workspace)
+    page, collector = desktop_page
+    base = e2e_workspace.base_url
+    diagnostics_url = base + "/api/admin/models/diagnostics"
+    with e2e_workspace.client() as admin:
+        login_user(admin, email=ADMIN_EMAIL, password=ADMIN_PASS)
+        model = _create_model_api(admin, slug="local-threshold", display_name="Local threshold fixture")
+    _sign_in_admin(page, base)
+    models_tab = page.get_by_role("tab", name="Models", exact=True)
+    diagnostics_tab = page.get_by_role("tab", name="Diagnostics", exact=True)
+    diagnostics_tab.click()
+    panel = page.locator("#panel-diagnostics")
+    refresh = panel.get_by_role("button", name="Refresh diagnostics")
+    meter = panel.get_by_role("progressbar", name="Monthly estimated spend (local-threshold)", exact=True)
+    initial = refresh_usage(page, refresh, diagnostics_url, model)
+    assert initial["monthly_cost_limit_usd"] is None
+    expect(meter).to_have_attribute("aria-valuetext", "$0.00 (No threshold)")
+    held = []
+
+    def delay_current_response(route):
+        response = route.fetch()
+        assert response.ok and response.json()["usage"]["models"][model["id"]]["monthly_cost_limit_usd"] is None
+        held.append((route, response))
+        page.evaluate("document.documentElement.dataset.oldEstimateHeld = 'yes'")
+
+    page.route(diagnostics_url, delay_current_response, times=1)
+    with page.expect_request(diagnostics_url):
+        refresh.click()
+    page.wait_for_function("() => document.documentElement.dataset.oldEstimateHeld === 'yes'")
+    models_tab.click()
+    card = page.locator("[data-model-slug='local-threshold']")
+    card.get_by_role("button", name="Configure").click()
+    editor = page.get_by_role("dialog", name="Configure Local threshold fixture")
+    editor.get_by_role("spinbutton", name=MONTHLY_THRESHOLD, exact=True).fill("0.01")
+    model_url = base + "/api/admin/models/" + model["id"]
+    with (
+        page.expect_response(lambda res: res.url == model_url and res.request.method == "PATCH") as saved,
+        page.expect_response(diagnostics_url) as latest,
+    ):
+        editor.get_by_role("button", name="Save configuration").click()
+    assert saved.value.ok and saved.value.json()["model"]["parameters"]["monthly_cost_limit_usd"] == 0.01
+    assert latest.value.ok and latest.value.json()["usage"]["models"][model["id"]]["monthly_cost_limit_usd"] == 0.01
+    expect(card.locator(".admin-budget-badge")).to_contain_text("$0.00/$0.01")
+    diagnostics_tab.click()
+    expect(meter).to_have_attribute("aria-valuetext", "$0.00 / $0.01")
+    (old_read, old_response), = held
+    with page.expect_request_finished(lambda req: req.url == diagnostics_url):
+        old_read.fulfill(response=old_response)
+    # Let the late fetch continuation and React commit before checking both views.
+    page.evaluate("() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done)))")
+    expect(meter).to_have_attribute("aria-valuemax", "0.01")
+    expect(meter).to_have_attribute("aria-valuetext", "$0.00 / $0.01")
+    models_tab.click()
+    expect(card.locator(".admin-budget-badge")).to_contain_text("$0.00/$0.01")
+    collector.assert_clean()
+
+
+def test_api_threshold_keeps_its_configured_digits_in_models_and_diagnostics(e2e_workspace, desktop_page):
+    _setup_auth(e2e_workspace)
+    page, collector = desktop_page
+    with e2e_workspace.client() as admin:
+        login_user(admin, email=ADMIN_EMAIL, password=ADMIN_PASS)
+        model = _create_model_api(admin, slug="fine-threshold", display_name="Fine threshold fixture")
+        _sign_in_admin(page, e2e_workspace.base_url)
+        diagnostics_tab = page.get_by_role("tab", name="Diagnostics", exact=True)
+        diagnostics_tab.click()
+        panel = page.locator("#panel-diagnostics")
+        meter = panel.get_by_role("progressbar", name="Monthly estimated spend (fine-threshold)", exact=True)
+        expect(meter).to_have_attribute("aria-valuetext", "$0.00 (No threshold)")
+        threshold = 0.010000001
+        updated = admin.patch("/api/admin/models/" + model["id"], json={"parameters": {"monthly_cost_limit_usd": threshold}})
+        assert updated.raise_for_status().json()["model"]["parameters"]["monthly_cost_limit_usd"] == threshold
+        usage = refresh_usage(page, panel.get_by_role("button", name="Refresh diagnostics"),
+                              e2e_workspace.base_url + "/api/admin/models/diagnostics", model)
+        assert usage["monthly_cost_usd"] == 0 and usage["monthly_cost_limit_usd"] == threshold
+    expect(meter).to_have_attribute("aria-valuenow", "0")
+    expect(meter).to_have_attribute("aria-valuemax", "0.010000001")
+    expect(meter).to_have_attribute("aria-valuetext", "$0.00 / $0.010000001")
+    expect(panel.get_by_text("$0.00 / $0.010000001", exact=True)).to_be_visible()
+    page.get_by_role("tab", name="Models", exact=True).click()
+    expect(page.locator("[data-model-slug='fine-threshold'] .admin-budget-badge")).to_contain_text("$0.00/$0.010000001")
     collector.assert_clean()

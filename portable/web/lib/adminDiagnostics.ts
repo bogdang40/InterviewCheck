@@ -120,7 +120,7 @@ export function formatUsd(usd: number): string {
 }
 
 const budgetCurrency = new Intl.NumberFormat("en-US", {
-  style: "currency", currency: "USD", maximumFractionDigits: 8,
+  style: "currency", currency: "USD", maximumFractionDigits: 20,
 })
 
 export const formatBudgetUsd = (value: number) => budgetCurrency.format(value)
