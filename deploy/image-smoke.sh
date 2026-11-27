@@ -37,6 +37,7 @@ api "/api/sessions/$sid/answers" '{"question":"How do you keep a slow dependency
   "references":[{"label":"AI answer","text":"Wrap it in a circuit breaker with a short timeout so we fail fast."}]}' >/dev/null ||
   { echo "::error::Could not add an answer through main's API."; docker logs --tail 80 base 2>&1 || true; exit 1; }
 echo "seeded interview $sid with one answer"
+retention_fixture=$(docker exec -i -w /app/portable base .venv/bin/python - prepare "$sid" < deploy/image-smoke-retention.py)
 docker stop -t 20 base >/dev/null
 docker rm base >/dev/null
 
@@ -53,19 +54,7 @@ EOF
 docker run -d --name new --network host --env-file "$RUNNER_TEMP/app.env" -v "$DATA:/data" "$NEW" >/dev/null
 started new
 
-docker exec -i new python - <<'PY'
-import sqlite3
-for name in ("review.sqlite3", "access.sqlite3"):
-    with sqlite3.connect("/data/" + name) as db:
-        result = db.execute("PRAGMA integrity_check").fetchone()[0]
-        assert result == "ok", (name, result)
-        print(name, "integrity ok")
-with sqlite3.connect("/data/review.sqlite3") as db:
-    sessions = db.execute("SELECT count(*) FROM sessions").fetchone()[0]
-    answers = db.execute("SELECT count(*) FROM answers").fetchone()[0]
-assert (sessions, answers) == (1, 1), f"main's interview did not survive the upgrade: {sessions} sessions, {answers} answers"
-print("main's interview and answer survived the upgrade")
-PY
+docker exec -i -w /app/portable new .venv/bin/python - verify "$retention_fixture" < deploy/image-smoke-retention.py
 docker stop -t 20 new >/dev/null
 
 # The health check is /api/readyz, which must also pass on a first production start with no data yet.
