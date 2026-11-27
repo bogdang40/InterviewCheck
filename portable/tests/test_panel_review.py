@@ -1,6 +1,6 @@
 """Exercise independent panel actions, visibility, retention, and both supported recovery paths."""
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import closing
+from contextlib import closing, contextmanager
 import json
 import sqlite3
 from threading import Barrier
@@ -216,3 +216,54 @@ def test_restored_identical_exchange_rejects_first_unsubmitted_draft(workspace):
     assert refused.status_code == 409 and refused.headers["X-InterviewCheck-Conflict"] == "panel-authority"
     assert not status(chair, route + "/private")["history"]
     chair.post(route, json=command(current, "follow_up_required")).raise_for_status()
+
+def test_all_page_reads_material_only_for_visible_adjudicated_cases(workspace, monkeypatch):
+    chair, member, sid, first_id, _, first_route = workspace
+    hidden_marker = "Hidden private evidence marker"
+    long_answer = hidden_marker + " Independent instrument readings were recorded." * 390
+    references = [{"label": "Fixture reference", "text": hidden_marker + " Unrelated passage." * 350}]
+    hidden = chair.post(f"/api/sessions/{sid}/answers", json={"question": hidden_marker + " question?",
+                        "answer": long_answer, "references": references}).raise_for_status().json()
+    second_id = hidden["id"]
+    second_answer = f"/api/sessions/{sid}/answers/{second_id}"
+    second_route = f"/api/calibration/sessions/{sid}/answers/{second_id}/panel"
+    for user, disposition in ((chair, "explained"), (member, "unresolved")):
+        user.patch(second_answer, json={"disposition": disposition, "note": "Opinion."}).raise_for_status()
+    for route in (second_route, first_route):
+        chair.post(route, json=command(status(chair, route + "/edit"), "discussion_complete")).raise_for_status()
+
+    # The older decision is now stale. Its status must be checked when displayed or used for filtering.
+    latest = status(chair, second_answer)
+    chair.put(second_answer, json={"expected_revision": latest["revision"], "question": hidden["question"],
+              "answer": long_answer + " Updated calibration.", "references": references}).raise_for_status()
+    with store.connection(write=True) as db:
+        # Purposeful deterministic order independent of wall clock or timestamp precision.
+        db.execute("UPDATE panel_decisions SET created_at='2080-01-03T00:00:00Z' WHERE answer_id=?", (first_id,))
+        db.execute("UPDATE panel_decisions SET created_at='2080-01-02T00:00:00Z' WHERE answer_id=?", (second_id,))
+
+    real_connection = store.connection
+    material_ids, large_rows = [], []
+
+    @contextmanager
+    def observed(*args, **kwargs):
+        with real_connection(*args, **kwargs) as db:
+            def row_factory(cursor, values):
+                row = sqlite3.Row(cursor, values)
+                if any(isinstance(value, str) and hidden_marker in value for value in values):
+                    large_rows.append(True)
+                if {"answer_id", "answer", "refs"} <= set(row.keys()):
+                    material_ids.append(row["answer_id"])
+                return row
+            db.row_factory = row_factory
+            yield db
+
+    with monkeypatch.context() as capture:
+        capture.setattr(store, "connection", observed)
+        one = member.get(QUEUE, params={"panel_view": "all", "limit": 1, "page": 1}).raise_for_status().json()
+    assert one["matching_cases"] == 2 and one["summary"]["total_disagreed_answers"] == 2
+    assert [(row["answer_id"], row["panel_status"]) for row in one["items"]] == [(first_id, "discussion_complete")]
+    assert not large_rows and set(material_ids) <= {first_id}
+    two = member.get(QUEUE, params={"panel_view": "all", "limit": 1, "page": 2}).raise_for_status().json()
+    assert [(row["answer_id"], row["panel_status"]) for row in two["items"]] == [(second_id, "changed")]
+    assert [row["answer_id"] for row in decisions(member, "completed")] == [first_id]
+    assert [row["answer_id"] for row in decisions(member, "open")] == [second_id]
