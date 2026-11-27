@@ -5,9 +5,10 @@ import { useState, type FormEvent } from "react"
 import { ShieldAlert } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { submit, type ProviderStatus } from "@/lib/integrations"
+import { signOutAccount, type ProviderStatus } from "@/lib/integrations"
 import { sweepLocalDrafts } from "@/lib/localDraftSweep"
 import { submitAccessAuth } from "@/lib/totpApi"
+import { PasswordChangeNotice, setPasswordChangeUnconfirmed } from "../PasswordChangeNotice"
 import { notifyAccountChanged, type AccountSnapshot } from "@/lib/useAccountStatus"
 import WorkspaceError from "../WorkspaceError"
 
@@ -47,7 +48,7 @@ export function AdminGate({
     setBusy(true)
     onError("")
     try {
-      const res = await submitAccessAuth<AccountSnapshot>("login", {
+      const res = await submitAccessAuth("login", {
         email,
         password,
         ...(totpRequired && trimmedTotp ? { totpCode: trimmedTotp } : {}),
@@ -61,6 +62,7 @@ export function AdminGate({
       setTotpCode("")
       setTotpRequired(false)
       notifyAccountChanged()
+      setPasswordChangeUnconfirmed(false)
       onSignedIn(res.account)
     } catch (err) {
       onError(err instanceof Error ? err.message : "Sign in failed.")
@@ -73,7 +75,7 @@ export function AdminGate({
     setBusy(true)
     onError("")
     try {
-      await submit("logout")
+      await signOutAccount()
       sweepLocalDrafts()
       setPassword("")
       setTotpCode("")
@@ -130,6 +132,7 @@ export function AdminGate({
         <span className="eyebrow">ADMINISTRATION</span>
         <h1>Model administration</h1>
         <h2>Administrator sign in required</h2>
+        <PasswordChangeNotice />
         <p className="muted">Sign in with an administrator account to manage connected models and users.</p>
         {error && (
           <p role="alert" className="error">
