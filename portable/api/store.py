@@ -204,8 +204,14 @@ def answer_row(row):
 def get_session(db, key, *, include_trashed=False):
     item = get_summary(db, key, include_trashed=include_trashed)
     item["privacy_state"] = session_privacy.read(db, key).state
-    draft = db.execute("SELECT id,revision,updated_at FROM session_drafts WHERE session_id=?", (key,)).fetchone()
-    item["draft"] = dict(draft) if draft else None
+    draft = db.execute("""SELECT id,revision,updated_at,deferred_question_id,deferred_revision_id
+                          FROM session_drafts WHERE session_id=?""", (key,)).fetchone()
+    item["draft"] = None
+    if draft is not None and (include_trashed or (item["consent"] and item["privacy_state"] == "unmarked")):
+        item["draft"] = {field: draft[field] for field in ("id", "revision", "updated_at")}
+        if draft["deferred_question_id"] and not include_trashed:
+            item["draft"]["deferred_question"] = deferred_items.draft_guard(
+                db, key, draft["deferred_question_id"], draft["deferred_revision_id"])
     item["answers"] = [answer_row(row) for row in db.execute(
         "SELECT * FROM answers WHERE session_id=? ORDER BY rowid", (key,))]
     context = db.execute("SELECT questions,permitted_sources FROM session_context WHERE session_id=?", (key,)).fetchone()
@@ -267,7 +273,8 @@ def write_answer(db, key, item: AnswerInput, replace_id=None, *, session=None, a
         deferred_items.preserve_child_parent(db, key, aid, parent, slot)
     deferred, replay = deferred_items.begin_publish(db, key, aid, item, parent, slot)
     if replay:
-        return {**get_answer(db, key, aid), "deferred_replay": True}
+        return {**get_answer(db, key, aid), "deferred_replay": True,
+                "deferred_receipt": deferred_items.receipt(deferred, aid, deferred["fulfillment_digest"])}
     refs = json.dumps([ref.model_dump() for ref in item.references], ensure_ascii=False)
     if current is not None and current["session_id"] == key:
         same_input = (current["question"], current["answer"], json.loads(current["refs"]), current["parent_answer_id"],
@@ -300,8 +307,9 @@ def write_answer(db, key, item: AnswerInput, replace_id=None, *, session=None, a
         db.execute("INSERT INTO answers(question,answer,refs,result,status,parent_answer_id,planned_slot,id,session_id) VALUES (?,?,?,?,?,?,?,?,?)",
                    (*fields, aid, key))
         usage_events.bump(db, "answer")
-        deferred_items.finish_publish(db, deferred, aid, item, parent, slot)
     saved = get_answer(db, key, aid)
+    if deferred is not None:
+        saved["deferred_receipt"] = deferred_items.finish_publish(db, deferred, aid, item, parent, slot)
     if replace_id:
         answer_history.record(db, saved, "answer_edit", saved_at=timestamp(), actor=actor)
     return saved

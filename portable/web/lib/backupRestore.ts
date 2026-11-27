@@ -5,7 +5,7 @@ type Kind = "roles" | "sessions"
 type Conflict = { kind: Kind; id: string; label: string; descriptions: string[] }
 export type BackupPreview = {
   roles: Counts; sessions: Counts; answers: number; drafts: number; trashed: number
-  assignments?: number; handoff_notes?: number; scorecard_items?: number
+  assignments?: number; handoff_notes?: number; scorecard_items?: number; deferred_questions?: number
   fingerprint: string; conflicts: Conflict[]
 }
 export type BackupOperation = { action: "preview" } | { action: "restore"; preview: BackupPreview }
@@ -16,12 +16,12 @@ export class UncertainRestoreError extends Error {
 }
 const hex = /^[a-f\d]{64}$/i
 const uuid = /^[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/
-const reviewCounts = ["assignments", "handoff_notes", "scorecard_items"] as const
+const reviewCounts = ["assignments", "handoff_notes", "scorecard_items", "deferred_questions"] as const
 const reasonLabels: Record<Kind, Record<string, string>> = {
   roles: { role_template: "Role template", rubric: "Rubric criteria", role_history: "Role history" },
   sessions: {
     interview_details: "Interview details", assignment: "Review assignment", handoff_notes: "Panel handoff notes",
-    scorecard_items: "Saved scorecard", exchanges: "Recorded exchanges", draft: "Saved draft",
+    scorecard_items: "Saved scorecard", deferred_questions: "Deferred questions", exchanges: "Recorded exchanges", draft: "Saved draft",
   },
 }
 
@@ -84,7 +84,7 @@ function parseReply(value: unknown, digest: string, header: string | null): Back
   for (const field of reviewCounts) if (Object.hasOwn(value, field)) reply[field] = count(value[field])
   if (reply.trashed > sessionCount || reply.drafts > sessionCount || (reply.assignments ?? 0) > sessionCount ||
       reply.answers > sessionCount * 20_000 || (reply.scorecard_items ?? 0) > sessionCount * 25 ||
-      (sessionCount === 0 && (reply.handoff_notes ?? 0) > 0)) {
+      (sessionCount === 0 && ((reply.handoff_notes ?? 0) > 0 || (reply.deferred_questions ?? 0) > 0))) {
     throw new Error(invalid)
   }
   return reply
@@ -98,7 +98,7 @@ function confirmsFile(before: BackupPreview, after: BackupPreview) {
   return after.roles.conflict === 0 && after.sessions.conflict === 0 &&
     total(before.roles) === total(after.roles) && total(before.sessions) === total(after.sessions) &&
     before.answers === after.answers && before.drafts === after.drafts && before.trashed === after.trashed &&
-    reviewCounts.every(key => before[key] === undefined || before[key] === after[key])
+    reviewCounts.every(key => before[key] === after[key] || (key !== "deferred_questions" && before[key] === undefined))
 }
 
 async function fingerprint(file: File) {
