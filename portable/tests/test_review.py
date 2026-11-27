@@ -129,6 +129,7 @@ def test_roles_and_notice_required(client):
         "version": saved["version"],
         "rubric": [],
         "version_number": 1,
+        "version_number_text": "1",
     }
     assert client.post("/api/roles", json=role).json() == result
     assert client.post("/api/roles", json=saved).json() == result
