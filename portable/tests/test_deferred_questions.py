@@ -71,6 +71,7 @@ def test_reconfirm_material_after_edit_and_revert_even_with_parked_work(client):
     payload = child(item)
     parked = client.put(base + "/draft", json={**payload, "expected_revision": 0}).raise_for_status().json()
     assert parked["deferred_question"] == payload["deferred_question"]
+    payload["deferred_draft_token"] = parked["deferred_draft_token"]
     assert action(client, base, item, "dismiss").status_code == 409
     assert client.patch(f"{base}/answers/{aid}", json={"note": "Reviewed later.", "disposition": "explained"}).status_code == 200
     assert get_item(client, base, item) == item
@@ -83,7 +84,7 @@ def test_reconfirm_material_after_edit_and_revert_even_with_parked_work(client):
     assert action(client, base, stale, "reconfirm", expected_material="a"*64).status_code == 409
     current = action(client, base, stale, "reconfirm", expected_material=receipt(client, base, aid)).raise_for_status().json()
     assert not current["needs_reconfirmation"]
-    refreshed_payload = child(current, aid=payload["id"])
+    refreshed_payload = {**child(current, aid=payload["id"]), "deferred_draft_token": parked["deferred_draft_token"]}
     assert client.post(base + "/draft/publish", json={**refreshed_payload, "expected_revision": parked["revision"]}).status_code == 409
     rebound = client.put(base + "/draft", json={**refreshed_payload, "expected_revision": parked["revision"]}).raise_for_status().json()
     assert rebound["revision"] == parked["revision"] + 1 and rebound["answer"] == parked["answer"]
@@ -127,6 +128,7 @@ def test_failed_completion_rolls_back_child_removal_of_draft_and_usage(client, m
     queued, _ = select(client, base, aid)
     data = child(queued)
     draft = client.put(base + "/draft", json={**data, "expected_revision": 0}).raise_for_status().json()
+    data["deferred_draft_token"] = draft["deferred_draft_token"]
     def fail(*args):
         raise HTTPException(409, "Synthetic commit failure.")
     monkeypatch.setattr(deferred_items, "finish_publish", fail)
