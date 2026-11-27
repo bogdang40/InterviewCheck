@@ -86,6 +86,12 @@ export function usePendingQuestionHandoff(session: Interview, enabled: boolean, 
     })
   }
 
+  function forgetDismissed(id: string) {
+    if (!selected.some(item => item.id === id)) return
+    invalidate()
+    setSelected(prior => prior.filter(item => item.id !== id))
+  }
+
   async function act(target: Target) {
     if (active.current || !enabled || locked || !selected.length || (target !== "preview" && !preview)) return
     const shown = target === "preview" ? null : preview
@@ -143,7 +149,7 @@ export function usePendingQuestionHandoff(session: Interview, enabled: boolean, 
     }
   }
 
-  return { area, field, selected, preview, busy, error, notice, choose, act, invalidate }
+  return { area, field, selected, preview, busy, error, notice, choose, act, invalidate, forgetDismissed }
 }
 
 export function PendingHandoffControls({ handoff, locked }: { handoff: ReturnType<typeof usePendingQuestionHandoff>; locked: boolean }) {
