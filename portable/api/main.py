@@ -62,6 +62,8 @@ from .migrate import import_role, preview_role
 from .discovery import router as discovery
 from .interview_catalog import router as interview_catalog
 from .exports import router as exports
+from . import deferred_routes
+from .models import CreateAnswerInput
 from .models import AnswerEdit, AnswerInput, ReviewInput, RoleInput, SessionInput
 from .report import report
 from .security_headers import SecurityHeadersMiddleware
@@ -143,7 +145,7 @@ def preview(item: AnswerInput):
 
 
 @workspace.post("/sessions/{sid}/answers", status_code=201)
-def add(sid: UUID, item: AnswerInput):
+def add(sid: UUID, item: CreateAnswerInput):
     with store.connection(write=True) as db:
         return store.write_answer(db, str(sid), item)
 
@@ -233,6 +235,7 @@ def preview_exported_role(document: dict):
 workspace.include_router(trash.router)
 workspace.include_router(answer_history)
 workspace.include_router(drafts.router)
+workspace.include_router(deferred_routes.router)
 workspace.include_router(backup.router)
 workspace.include_router(bulk_operations.router)
 workspace.include_router(role_analytics.router)

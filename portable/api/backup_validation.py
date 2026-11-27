@@ -154,7 +154,8 @@ def verify_records(backup):
             from .drafts import DraftInput
 
             draft = DraftInput.model_validate(
-                {**session.draft.model_dump(exclude={"revision", "updated_at"}), "expected_revision": 0}
+                {**session.draft.model_dump(exclude={"revision", "updated_at", "deferred_question_id", "deferred_revision_id"}),
+                 "expected_revision": 0}
             )
             if (
                 not session.consent

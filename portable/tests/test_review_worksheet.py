@@ -172,7 +172,7 @@ def test_legacy_partial_erasure_holds_the_entire_interview(web, tmp_path, monkey
     file = web.get("/api/backups/workspace", params=selected).raise_for_status().json()
     file["version"] = 5
     record = file["sessions"][0]
-    del record["privacy"], record["rubric_snapshot"]
+    del record["privacy"], record["rubric_snapshot"], record["deferred_questions"]
     original = next(item for item in before["sessions"][0]["answers"] if item["id"] == other)
     record["answers"] = [original if item["id"] == other else item for item in record["answers"]]
     target = tmp_path / "legacy-import.sqlite"
