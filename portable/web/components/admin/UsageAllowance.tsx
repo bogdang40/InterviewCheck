@@ -14,6 +14,12 @@ function limitText(limit: number | null) {
   return limit === null ? "" : String(limit)
 }
 
+function parseLimit(text: string): number | null | undefined {
+  if (text === "") return null
+  const n = Number(text)
+  return /^\d+$/.test(text) && Number.isSafeInteger(n) && n <= MAX_ATTEMPTS ? n : undefined
+}
+
 function stamp(iso: string) {
   return iso.slice(0, 16).replace("T", " ") + " UTC"
 }
@@ -43,7 +49,8 @@ export function UsageAllowance({ refreshKey, onAuthInvalid, onDirtyChange }: Pro
       // A normal refresh updates the counter. Only an explicit reload rebases an edit.
       if (reconcile) {
         setUnconfirmed(false)
-        setDraft(current => current && { value: current.value, revision: next.revision })
+        setDraft(current => current && parseLimit(current.value) !== next.monthly_limit
+          ? { value: current.value, revision: next.revision } : null)
         setNotice("Current policy loaded. Compare it with your entry before saving.")
       }
       setError("")
@@ -60,8 +67,8 @@ export function UsageAllowance({ refreshKey, onAuthInvalid, onDirtyChange }: Pro
   useEffect(() => () => { ++sequence.current }, [])
 
   const value = draft?.value ?? (report ? limitText(report.monthly_limit) : "")
-  const limit = value === "" ? null : Number(value)
-  const invalid = value !== "" && (!/^\d+$/.test(value) || !Number.isSafeInteger(limit) || Number(limit) > MAX_ATTEMPTS)
+  const limit = parseLimit(value)
+  const invalid = limit === undefined
   const stale = !!(report && draft && draft.revision !== report.revision)
   const mustReload = stale || unconfirmed
   useReportDirty(!!draft && (unconfirmed || invalid || limit !== report?.monthly_limit), onDirtyChange)
@@ -69,7 +76,7 @@ export function UsageAllowance({ refreshKey, onAuthInvalid, onDirtyChange }: Pro
 
   async function save(event: FormEvent) {
     event.preventDefault()
-    if (!canSave || !draft || writing.current) return
+    if (!canSave || !draft || limit === undefined || writing.current) return
     const serial = ++sequence.current
     writing.current = true
     setWorking("write")
@@ -114,7 +121,8 @@ export function UsageAllowance({ refreshKey, onAuthInvalid, onDirtyChange }: Pro
               aria-describedby="ai-attempt-guidance" aria-invalid={invalid}
               onChange={event => {
                 const next = event.target.value
-                setDraft(next === limitText(report.monthly_limit) ? null : { value: next, revision: draft?.revision ?? report.revision })
+                setDraft(!unconfirmed && parseLimit(next) === report.monthly_limit
+                  ? null : { value: next, revision: draft?.revision ?? report.revision })
                 setNotice("")
               }} />
             <small className="muted" id="ai-attempt-guidance">Leave blank for unlimited. Enter 0 to pause new attempts.</small>

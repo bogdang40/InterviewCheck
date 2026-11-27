@@ -89,11 +89,19 @@ def test_allowance_edit_conflict_and_uncertain_ack(e2e_workspace, desktop_page, 
         expect(save).to_be_disabled()
         assert len(writes) == 1 and writes[0]["monthly_limit"] is None
 
+        # A confirmed lost reply clears the draft. A later administrator can change the limit.
+        confirmed = other.get(ALLOWANCE).raise_for_status().json()
+        other.put(ALLOWANCE, json={"expected_revision": confirmed["revision"], "monthly_limit": 8}).raise_for_status()
+        page.get_by_role("button", name="Refresh usage").click()
+        expect(field).to_have_value("8")
+        expect(save).to_be_disabled()
+        assert len(writes) == 1
+
     phone, _ = mobile_page
     card = open_card(phone, e2e_workspace)
     field = card.get_by_label("Monthly attempt limit")
-    expect(field).to_have_value("")
-    expect(card).to_contain_text("Unlimited")
+    expect(field).to_have_value("8")
+    expect(card).to_contain_text("Saved limit 8")
     field.fill("12")
     card.get_by_role("button", name="Save allowance").click()
     expect(card).to_contain_text("12 remaining · Saved limit 12")
@@ -154,7 +162,7 @@ def test_reverting_allowance_edit_follows_later_policy_refresh(e2e_workspace, de
         for before, edited, newer in (("", "5", 6), ("6", "0", 10)):
             field.fill(edited)
             expect(card.get_by_role("button", name="Save allowance")).to_be_enabled()
-            field.fill(before)
+            field.fill("0" + before if before else before)
             expect(card.get_by_role("button", name="Save allowance")).to_be_disabled()
             policy = other.get(ALLOWANCE).raise_for_status().json()
             other.put(ALLOWANCE, json={"expected_revision": policy["revision"], "monthly_limit": newer}).raise_for_status()
