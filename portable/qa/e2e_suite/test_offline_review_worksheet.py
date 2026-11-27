@@ -55,6 +55,9 @@ def test_explicit_disclosure_compare_stage_then_save(e2e_workspace, mobile_page)
         private = preview.input_value()
         assert "Number: 2" in private and "Question: Omitted" in private and "Candidate excerpt: Omitted" in private
         assert all(s not in private for s in ["Private alias", "Private role", "Private rule", "literal", SOURCE, "original answer"])
+        targets = [card.get_by_label(name).locator("..").bounding_box() for name in ("Include the question", "Include the first 240")]
+        assert all(box and box["height"] >= 44 for box in targets)
+        assert targets[1]["y"] >= targets[0]["y"] + targets[0]["height"]
         card.get_by_label("Include the question").check()
         card.get_by_label("Include the first 240").check()
         expect(card.get_by_role("button", name="Download text file")).to_have_count(0)

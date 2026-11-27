@@ -60,8 +60,8 @@ def setup_web(refresh):
             print("This distribution includes its production interface. Rebuild it from the source checkout.")
         return
     lock = WEB / "package-lock.json"
-    sources = [WEB / "next.config.ts", WEB / "export.mjs", lock, WEB / "package.json", WEB / "postcss.config.mjs",
-               *WEB.glob("tsconfig*.json")]
+    sources = [WEB / "next.config.ts", WEB / "export.mjs", WEB / "export-segments.mjs", lock,
+               WEB / "package.json", WEB / "postcss.config.mjs", *WEB.glob("tsconfig*.json")]
     for folder in ("app", "components", "lib", "public"):
         sources.extend(path for path in (WEB / folder).rglob("*") if path.is_file())
     stamp = WEB / "out/.interviewcheck-build"
