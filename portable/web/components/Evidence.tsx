@@ -257,7 +257,7 @@ export default function Evidence({
       <h2>{item.question}</h2>
       <CandidateResponse item={item}/>
       <Findings result={item.result} />
-      <PanelDiscussion sessionId={sessionId} item={item} locked={busy || dirty} onDirty={onDirty} />
+      <PanelDiscussion sessionId={sessionId} item={item} locked={busy || dirty || conflict || !!worksheet} onDirty={onDirty} />
       <JudgeAssist key={`${item.id}:${item.revision}`} sessionId={sessionId} item={item}
         judgeAvailable={judgeAvailable} onFollowUp={onFollowUp} />
       {onFollowUp && (
