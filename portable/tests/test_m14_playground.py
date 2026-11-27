@@ -134,17 +134,14 @@ def test_presets_and_concurrent_multi_model_benchmark_telemetry_and_audit(env, m
         enc1 = db.execute("SELECT encrypted_api_key FROM connected_models WHERE id=?", (m1["id"],)).fetchone()[0]
 
     in_flight = max_in_flight = 0
-    all_models_started = asyncio.Event()
+    all_models_started = asyncio.Barrier(3)
     captured_calls = []
 
     async def fake_fetch(name, method, url, **kwargs):
         nonlocal in_flight, max_in_flight
         in_flight += 1
         max_in_flight = max(max_in_flight, in_flight)
-        if in_flight == 3:
-            all_models_started.set()
         try:
-            # No provider replies until all three actual transports have entered.
             await asyncio.wait_for(all_models_started.wait(), timeout=10)
         finally:
             in_flight -= 1
