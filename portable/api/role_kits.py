@@ -48,6 +48,7 @@ def role_row(row):
         role["legacy"] = json.loads(role["legacy"])
     else:
         role.pop("legacy", None)
+    role["version_number_text"] = str(role["version_number"])
     role["version"] = content_version(role)
     return role
 
@@ -59,6 +60,15 @@ def content_version(role):
         for key in ("id", "name", "description", "questions", "policy", "permitted_sources", "rubric")
     }
     return hashlib.sha256(json.dumps(fields, sort_keys=True).encode()).hexdigest()
+
+
+def next_version_number(db, row):
+    number = int(row["version_number"])
+    if number >= 2**63 - 1:
+        raise HTTPException(409, "This role has reached the maximum revision number. Duplicate the role to continue editing.")
+    if db.execute("SELECT 1 FROM role_versions WHERE role_id=? AND version_number=?", (row["id"], number + 1)).fetchone():
+        raise HTTPException(409, "The next role revision already exists. Inspect the saved version history.")
+    return number + 1
 
 
 def check_role_version(row, version):
@@ -128,7 +138,7 @@ def update_role(db, key, role: RoleInput, *, created_by: str = "local-operator")
         if "rubric" in role.model_fields_set
         else existing["rubric_json"]
     )
-    next_version = int(existing["version_number"]) + 1
+    next_version = next_version_number(db, existing)
     db.execute(
         """UPDATE roles
            SET name=?,description=?,questions=?,policy=?,permitted_sources=?,rubric_json=?,version_number=?
