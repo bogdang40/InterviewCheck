@@ -9,7 +9,7 @@ import { Button } from "./ui/button"
 import { Textarea } from "./ui/textarea"
 import { formatDraftTimestamp, reviewDraftKey, useLocalDraftRecovery } from "@/lib/localDraftBuffer"
 import UnlinkedDraftCopy from "./UnlinkedDraftCopy"
-import { confirmsWorksheetSave, currentWorksheet, MAX_NOTE_CHARACTERS, type WorksheetGuard, type WorksheetState } from "@/lib/reviewWorksheet"
+import { confirmsWorksheetSave, currentWorksheet, MAX_NOTE_CHARACTERS, normalizedWorksheetNote, type WorksheetGuard, type WorksheetState } from "@/lib/reviewWorksheet"
 import { watchWorksheetAccess } from "@/lib/worksheetPrivacy"
 
 const ReviewWorksheet = dynamic(() => import("./ReviewWorksheet"), { ssr: false })
@@ -100,7 +100,7 @@ export default function Evidence({
     [error, setError] = useState(""),
     [saved, setSaved] = useState(false)
   const noteRef = useRef<HTMLTextAreaElement>(null)
-  const oversizedWorksheetNote = !!worksheet && Array.from(note.trim()).length > MAX_NOTE_CHARACTERS
+  const oversizedWorksheetNote = !!worksheet && Array.from(normalizedWorksheetNote(note)).length > MAX_NOTE_CHARACTERS
   const dirty = !withdrawn && (note !== item.note || disposition !== item.disposition)
   const { recovered, clear: clearLocalBuffer, markRestored } = useLocalDraftRecovery(
     reviewDraftKey(sessionId, item.id), dirty && !worksheet, JSON.stringify([note, disposition]),
@@ -166,7 +166,7 @@ export default function Evidence({
     e.preventDefault()
     if (busy || conflict || worksheetBlocked || oversizedWorksheetNote || (worksheet && !dirty)) return
     const savingEpoch = worksheetEpoch.current
-    const proposed = worksheet ? note.trim() : note
+    const proposed = worksheet ? normalizedWorksheetNote(note) : note
     const submitter = (e.nativeEvent as SubmitEvent).submitter
     const advance = !!canAdvance && disposition !== "pending" && submitter?.getAttribute("value") === "next"
     setError(""); setReconcileNotice("")
@@ -214,7 +214,7 @@ export default function Evidence({
         setCompared(live); setError("The saved review changed. Compare it with your edited note.")
         return
       }
-      const unfinished = note.trim() !== live.answer.note
+      const unfinished = normalizedWorksheetNote(note) !== live.answer.note
       setItem(live.answer); setDisposition(live.answer.disposition)
       setSubmittedNote(null); setCompared(null); setError("")
       if (unfinished) {
