@@ -279,7 +279,7 @@ def test_m23_roles_calibration_queue_filter_deeplink_and_exports(e2e_workspace, 
     expect(cal).to_contain_text("1 disagreement")
     expect(cal.locator("ul > li")).to_have_count(1)
     review_link = cal.get_by_role("link", name="Review exchange")
-    expect(review_link).to_have_attribute("href", f"/interviews/review/?id={s1}&answer={a2}")
+    expect(review_link).to_have_attribute("href", f"/interviews/review/?id={s1}&answer={a2}#panel-discussion")
     review_link.click()
     expect(page).to_have_url(re.compile(rf"/interviews/review/\?id={s1}&answer={a2}"))
     expect(page.get_by_role("heading", name="Explain WAL fsync.")).to_be_visible()

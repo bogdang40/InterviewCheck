@@ -10,6 +10,7 @@ import {
   type CalibrationDisagreementsResponse,
   type CalibrationExportFormat,
 } from "@/lib/calibrationQueue"
+import { panelLabels, type PanelView } from "@/lib/panelReview"
 import WorkspaceError from "./WorkspaceError"
 import { Badge } from "./ui/badge"
 import { Button } from "./ui/button"
@@ -44,14 +45,17 @@ export default function CalibrationQueuePanel({ roles }: { roles: Array<{ id: st
   const [exportBusy, setExportBusy] = useState<CalibrationExportFormat | null>(null)
   const [exportError, setExportError] = useState("")
   const [notice, setNotice] = useState("")
+  const [page, setPage] = useState(1)
+  const [view, setView] = useState<PanelView>("open")
   const [refreshSeq, setRefreshSeq] = useState(0)
 
   useEffect(() => {
     const controller = new AbortController()
     setLoading(true)
     setError("")
-    fetchCalibrationDisagreements(roleId, 50, controller.signal)
-      .then((next) => setData(next))
+    setData(null)
+    fetchCalibrationDisagreements(roleId, 50, controller.signal, view, page)
+      .then((next) => { if (!controller.signal.aborted) setData(next) })
       .catch((err) => {
         if (!(err instanceof DOMException && err.name === "AbortError")) setError(message(err))
       })
@@ -59,7 +63,7 @@ export default function CalibrationQueuePanel({ roles }: { roles: Array<{ id: st
         if (!controller.signal.aborted) setLoading(false)
       })
     return () => controller.abort()
-  }, [roleId, refreshSeq])
+  }, [roleId, refreshSeq, view, page])
 
   async function handleExport(format: CalibrationExportFormat) {
     if (exportBusy) return
@@ -116,13 +120,21 @@ export default function CalibrationQueuePanel({ roles }: { roles: Array<{ id: st
       <div className="flex flex-wrap items-end justify-between gap-3">
         <label className="field min-w-[220px] max-w-xs flex-1">
           Filter by role
-          <select aria-label="Filter calibration queue by role" value={roleId} onChange={(e) => setRoleId(e.target.value)}>
+          <select aria-label="Filter calibration queue by role" value={roleId} onChange={(e) => { setPage(1); setRoleId(e.target.value) }}>
             <option value="">All roles</option>
             {roles.map((r) => (
               <option key={r.id} value={r.id}>
                 {r.name}
               </option>
             ))}
+          </select>
+        </label>
+        <label className="field">
+          Panel discussions
+          <select aria-label="Filter panel discussions" value={view} onChange={event => { setPage(1); setView(event.target.value as PanelView) }}>
+            <option value="open">Open discussions</option>
+            <option value="completed">Completed discussions</option>
+            <option value="all">All discussions</option>
           </select>
         </label>
         {summary && (
@@ -134,6 +146,7 @@ export default function CalibrationQueuePanel({ roles }: { roles: Array<{ id: st
         )}
       </div>
 
+      <p className="muted text-sm">CSV and JSON export reviewer disagreements for the selected role. Panel decisions stay in this workspace.</p>
       {notice && <p role="status" aria-live="polite" className="notice">{notice}</p>}
       {exportError && <p role="alert" className="error">{exportError}</p>}
 
@@ -144,7 +157,7 @@ export default function CalibrationQueuePanel({ roles }: { roles: Array<{ id: st
           Loading calibration disagreements...
         </p>
       ) : !data || data.items.length === 0 ? (
-        <p className="muted text-sm">No multi-reviewer disagreements found for this filter.</p>
+        <p className="muted text-sm">No panel discussions match these filters.</p>
       ) : (
         <ul className="stack list-none p-0 m-0">
           {data.items.map((item) => (
@@ -154,6 +167,7 @@ export default function CalibrationQueuePanel({ roles }: { roles: Array<{ id: st
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge variant="outline">{item.role_name || "Unassigned role"}</Badge>
                     <span className="font-semibold text-sm">{item.candidate}</span>
+                    {item.panel_status && <Badge variant="secondary">{panelLabels[item.panel_status]}</Badge>}
                     <Badge variant={dispositionBadgeVariant(item.current_disposition)}>
                       Current: {dispositionLabel(item.current_disposition)}
                     </Badge>
@@ -161,7 +175,7 @@ export default function CalibrationQueuePanel({ roles }: { roles: Array<{ id: st
                   <p className="text-sm font-medium break-words">{item.question}</p>
                 </div>
                 <Button asChild variant="outline" size="sm" className="min-h-[44px] md:min-h-8 shrink-0">
-                  <Link href={`/interviews/review/?id=${encodeURIComponent(item.session_id)}&answer=${encodeURIComponent(item.answer_id)}`}>
+                  <Link href={`/interviews/review/?id=${encodeURIComponent(item.session_id)}&answer=${encodeURIComponent(item.answer_id)}#panel-discussion`}>
                     <span>Review exchange</span>
                     <ExternalLink className="size-3.5" aria-hidden="true" />
                   </Link>
@@ -181,6 +195,13 @@ export default function CalibrationQueuePanel({ roles }: { roles: Array<{ id: st
             </li>
           ))}
         </ul>
+      )}
+      {data?.matching_cases !== undefined && data.matching_cases > 50 && (
+        <nav className="row" aria-label="Panel discussion pages">
+          <Button variant="outline" disabled={!data.page || data.page < 2} onClick={() => setPage((data.page ?? 1) - 1)}>Previous cases</Button>
+          <span>Page {data.page} of {Math.ceil(data.matching_cases / 50)}</span>
+          <Button variant="outline" disabled={(data.page ?? 1) * 50 >= data.matching_cases} onClick={() => setPage((data.page ?? 1) + 1)}>Next cases</Button>
+        </nav>
       )}
     </section>
   )

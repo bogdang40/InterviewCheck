@@ -49,6 +49,7 @@ from . import (
     sample,
     usage_admin,
 )
+from . import panel_review
 from .access import embedded_enabled, require_entitlement
 from .answer_history_routes import mutation_actor, router as answer_history
 from .error_sanitizer import sanitize_error_text
@@ -248,6 +249,7 @@ workspace.include_router(session_scorecard.router)
 workspace.include_router(session_assignment.router)
 workspace.include_router(cohort_analytics.router)
 workspace.include_router(calibration_queue.router)
+workspace.include_router(panel_review.router)
 app.include_router(health_probes.router)
 app.include_router(sample.router)  # public: fixed fictional cases only
 app.include_router(usage_admin.visit_router)  # public: counts one signed-out page view

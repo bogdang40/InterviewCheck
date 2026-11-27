@@ -5,6 +5,7 @@ import sqlite3
 # Children first, so the delete also succeeds on a connection without foreign keys.
 # Tables created lazily by optional features may be absent and are skipped.
 SESSION_CHILD_TABLES = (
+    "panel_decisions",
     "answer_review_events",
     "session_scorecards",
     "session_handoff_notes",
