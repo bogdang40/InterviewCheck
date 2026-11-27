@@ -6,8 +6,24 @@ from uuid import uuid4
 import pytest
 
 from api import store
+from api.retention_anonymizer import SessionAnonymizer
 from backup_requests import client, preview, restore
 from test_deferred_questions import PARENT, action, child, get_item, prepare, receipt, select
+
+
+def test_mixed_retained_backup_keeps_the_deferred_count_for_its_selected_scope(client):
+    normal, (parent, _) = prepare(client)
+    select(client, normal, parent)
+    retained, _ = prepare(client)
+    sid = retained.rsplit("/", 1)[1]
+    with store.connection(write=True) as db:
+        SessionAnonymizer(db, sid).run(preserve_scorecard_aggregates=False, actor_email="fixture",
+                                       now_iso=store.timestamp())
+    for params, count in (({}, 1), ({"session_id": sid}, 0)):
+        response = client.get("/api/backups/workspace", params=params).raise_for_status()
+        assert response.headers["X-Backup-Deferred-Questions"] == str(count)
+        assert sum(len(item["deferred_questions"]) for item in response.json()["sessions"]) == count
+        assert preview(client, response.content)["deferred_questions"] == count
 
 
 def recover_to(tmp_path, monkeypatch, name):
