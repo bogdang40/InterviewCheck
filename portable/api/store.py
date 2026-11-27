@@ -9,7 +9,7 @@ from uuid import uuid4
 
 from fastapi import HTTPException
 
-from . import answer_history, bulk_operations, lineage, model_registry, retention_policy, retention_visibility, role_analytics, role_kits, role_versions, search_fts, session_privacy, session_rubric, session_scorecard, sql_script, usage_events
+from . import answer_history, deferred_items, bulk_operations, lineage, model_registry, retention_policy, retention_visibility, role_analytics, role_kits, role_versions, search_fts, session_privacy, session_rubric, session_scorecard, sql_script, usage_events
 from .role_kits import role_row, create_role
 from .models import EARLIER_ANSWER_NOTE, AnswerEdit, AnswerInput, ReviewInput, SessionInput
 
@@ -109,6 +109,7 @@ def initialize(path):
         if "revision" not in columns:
             db.execute("ALTER TABLE answers ADD COLUMN revision INTEGER NOT NULL DEFAULT 1")
         lineage.migrate(db)
+        deferred_items.migrate(db)
         role_kits.migrate_columns(db)
         db.execute(answer_history.SCHEMA)
         role_versions.migrate(db)
@@ -203,8 +204,15 @@ def answer_row(row):
 def get_session(db, key, *, include_trashed=False):
     item = get_summary(db, key, include_trashed=include_trashed)
     item["privacy_state"] = session_privacy.read(db, key).state
-    draft = db.execute("SELECT id,revision,updated_at FROM session_drafts WHERE session_id=?", (key,)).fetchone()
-    item["draft"] = dict(draft) if draft else None
+    draft = db.execute("""SELECT id,revision,updated_at,deferred_question_id,deferred_revision_id,deferred_draft_token
+                          FROM session_drafts WHERE session_id=?""", (key,)).fetchone()
+    item["draft"] = None
+    if draft is not None and (include_trashed or (item["consent"] and item["privacy_state"] == "unmarked")):
+        item["draft"] = {field: draft[field] for field in ("id", "revision", "updated_at")}
+        if draft["deferred_question_id"] and not include_trashed:
+            item["draft"]["deferred_draft_token"] = draft["deferred_draft_token"]
+            item["draft"]["deferred_question"] = deferred_items.draft_guard(
+                db, key, draft["deferred_question_id"], draft["deferred_revision_id"])
     item["answers"] = [answer_row(row) for row in db.execute(
         "SELECT * FROM answers WHERE session_id=? ORDER BY rowid", (key,))]
     context = db.execute("SELECT questions,permitted_sources FROM session_context WHERE session_id=?", (key,)).fetchone()
@@ -262,6 +270,15 @@ def write_answer(db, key, item: AnswerInput, replace_id=None, *, session=None, a
         check_revision(current, item.expected_revision)
     own_record = current if current and current["session_id"] == key else None
     parent, slot = lineage.resolve(db, key, aid, item, own_record)
+    if replace_id:
+        deferred_items.preserve_child_parent(db, key, aid, parent, slot)
+    if current is not None and not replace_id and getattr(item, "deferred_question", None) is None:
+        if db.execute("SELECT 1 FROM deferred_questions WHERE child_answer_id=? AND session_id=?", (aid, key)).fetchone():
+            raise deferred_items.conflict("This child was recorded for a deferred question. Verify the original publication.")
+    deferred, replay = deferred_items.begin_publish(db, key, aid, item, parent, slot)
+    if replay:
+        return {**get_answer(db, key, aid), "deferred_replay": True,
+                "deferred_receipt": deferred_items.receipt(deferred, aid, deferred["fulfillment_digest"])}
     refs = json.dumps([ref.model_dump() for ref in item.references], ensure_ascii=False)
     if current is not None and current["session_id"] == key:
         same_input = (current["question"], current["answer"], json.loads(current["refs"]), current["parent_answer_id"],
@@ -289,11 +306,14 @@ def write_answer(db, key, item: AnswerInput, replace_id=None, *, session=None, a
         db.execute("""UPDATE answers SET question=?,answer=?,refs=?,result=?,status=?,parent_answer_id=?,planned_slot=?,disposition='pending',note=?,revision=revision+1,
                    panel_evidence_generation=panel_evidence_generation+1 WHERE id=?""",
                    (*fields, note, aid))
+        deferred_items.mark_changed(db, aid)
     else:
         db.execute("INSERT INTO answers(question,answer,refs,result,status,parent_answer_id,planned_slot,id,session_id) VALUES (?,?,?,?,?,?,?,?,?)",
                    (*fields, aid, key))
         usage_events.bump(db, "answer")
     saved = get_answer(db, key, aid)
+    if deferred is not None:
+        saved["deferred_receipt"] = deferred_items.finish_publish(db, deferred, aid, item, parent, slot)
     if replace_id:
         answer_history.record(db, saved, "answer_edit", saved_at=timestamp(), actor=actor)
     return saved

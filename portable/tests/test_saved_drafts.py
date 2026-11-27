@@ -66,6 +66,7 @@ def test_backup_preview_restores_only_explicit_saved_draft(web, tmp_path, monkey
     }
     saved = client.put(route + "/draft", json=d).json()
     raw = client.get("/api/backups/workspace").content
+    assert saved["recovery_fingerprint"].encode() not in raw
     target = tmp_path / "restored.sqlite"
     store.initialize(target)
     monkeypatch.setenv("INTERVIEWCHECK_DB", str(target))
@@ -74,7 +75,9 @@ def test_backup_preview_restores_only_explicit_saved_draft(web, tmp_path, monkey
     client.post(
         "/api/backups/restore", content=raw, headers={"X-Backup-Preview": plan["fingerprint"]}
     ).raise_for_status()
-    assert client.get(route + "/draft").json() == saved
+    restored = client.get(route + "/draft").raise_for_status().json()
+    assert restored.pop("recovery_fingerprint") != saved.pop("recovery_fingerprint")
+    assert restored == saved
     client.post(
         route + "/draft/discard", json={"id": saved["id"], "expected_revision": saved["revision"]}
     ).raise_for_status()

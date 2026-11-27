@@ -131,9 +131,12 @@ def test_permission_snapshot_and_browser_restore(workspace_url, browser_page, mo
         file = tmp_path / "fixture.json"
         download.value.save_as(file)
         backup = json.loads(file.read_bytes())
-        assert backup["version"] == 6
+        assert backup["version"] == 7
         assert [r["id"] for r in backup["roles"]] == [rid]
         assert [r["id"] for r in backup["sessions"]] == [sid]
+        portable_draft = held.json()
+        original_fingerprint = portable_draft.pop("recovery_fingerprint")
+        assert backup["sessions"][0]["draft"] == portable_draft
         assert backup["sessions"][0]["assignment"] == {
             field: assignment[field] for field in ("assignee_email", "assigned_by", "priority", "due_at", "updated_at")
         }
@@ -149,7 +152,9 @@ def test_permission_snapshot_and_browser_restore(workspace_url, browser_page, mo
         assert c.get("/api/sessions").json() == []
         page.get_by_role("button", name="Preview restore").click()
         expect(page.get_by_role("heading", name="Restore preview")).to_be_visible()
-        expect(page.get_by_text("1 review assignment, 1 panel handoff note and 1 rubric score", exact=False)).to_be_visible()
+        contents = page.get_by_text("This file contains", exact=False)
+        for count in ("1 review assignment", "1 panel handoff note", "1 rubric score", "0 deferred questions"):
+            expect(contents).to_contain_text(count)
         expect(page.get_by_text(note_text, exact=False)).to_have_count(0)
         expect(page.get_by_text(rationale_text, exact=False)).to_have_count(0)
         assert c.get("/api/roles").json() == []
@@ -157,7 +162,10 @@ def test_permission_snapshot_and_browser_restore(workspace_url, browser_page, mo
         expect(page.get_by_role("status").filter(has_text="Restored 1")).to_be_visible()
         assert c.get(route).json() == original
         assert c.get(route + "/assignment").raise_for_status().json()["assignment"] == assignment
-        assert c.get(route + "/draft").json() == held.json()
+        restored_draft = c.get(route + "/draft").raise_for_status().json()
+        restored_fingerprint = restored_draft.pop("recovery_fingerprint")
+        assert restored_fingerprint and restored_fingerprint != original_fingerprint
+        assert restored_draft == portable_draft
         assert c.get(route + "/report").text == original_report
         assert "Private unfinished draft" not in original_report
         restored_print = c.get(route + "/print").text

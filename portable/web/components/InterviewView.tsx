@@ -18,13 +18,17 @@ import { useReportDirty, type DirtyReporter } from "@/lib/dirtyTracking"
 import { useReviewHotkeys } from "@/lib/useReviewHotkeys"
 import { useScoringCapabilities } from "@/lib/scoringHooks"
 import AnswerEditor from "./LazyAnswerEditor"
-import SavedDraft from "./SavedDraft"
+import DeferredQuestions from "./DeferredQuestions"
 import MoveToTrash from "./MoveToTrash"
 import ReportExport from "./ReportExport"
 import Evidence, { type EvidenceHotkeyControls } from "./Evidence"
 import QuestionLineage from "./QuestionLineage"
 import QuestionNavigator, { needsReview, nextPending } from "./QuestionNavigator"
 
+const SavedDraft = dynamic(() => import("./SavedDraft"), {
+  ssr: false,
+  loading: () => <p role="status">Loading saved draft controls…</p>,
+})
 const ATSNote = dynamic(() => import("./ATSNote"), { ssr: false })
 const LocalRecordingPlayback = dynamic(() => import("./LocalRecordingPlayback"), { ssr: false })
 const TranscriptBatchImport = dynamic(() => import("./TranscriptBatchImport"), { ssr: false })
@@ -35,12 +39,13 @@ type Props = {
   answerId: string | null
   assignmentDirty: boolean
   onDirtyChange: DirtyReporter
+  onDeferredUnavailable: () => void
   changed: (id: string, answer: Answer) => void
   onDraftChange: (draft: DraftSummary | null) => void
   onTransition: (session: Interview) => void
 }
 
-export default function InterviewView({ session, answerId, assignmentDirty, onDirtyChange, changed, onTransition, onDraftChange }: Props) {
+export default function InterviewView({ session, answerId, assignmentDirty, onDirtyChange, changed, onTransition, onDraftChange, onDeferredUnavailable }: Props) {
   const protectedRecord = session.privacy_state === "anonymized" || session.privacy_state === "legacy_unverified"
   const captureAllowed = !protectedRecord && session.consent && !session.ended_at
   const [edit, setEdit] = useState<string | null>(
@@ -51,8 +56,15 @@ export default function InterviewView({ session, answerId, assignmentDirty, onDi
   const [firstOrigin,setFirstOrigin] = useState<QuestionOrigin>()
   const [dirty, setDirty] = useState<Set<string>>(() => new Set())
   const [scorecardDirty, setScorecardDirty] = useState(false)
+  const [deferredDirty, setDeferredDirty] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
+  const [captureNotice, setCaptureNotice] = useState<{ id: string; text: string } | null>(null)
+  const deferredPanel = useRef<HTMLDetailsElement | null>(null)
+  const [deferredReady, setDeferredReady] = useState(false)
+  const attachDeferred = useCallback((node: HTMLDetailsElement | null) => {
+    deferredPanel.current = node; setDeferredReady(!!node)
+  }, [])
   const focusTarget = useRef<HTMLDivElement>(null)
   const evidenceControls = useRef<EvidenceHotkeyControls | null>(null)
   const focusOnChange = useRef(false)
@@ -60,7 +72,7 @@ export default function InterviewView({ session, answerId, assignmentDirty, onDi
   const selected = answerId ? session.answers.find((a) => a.id === answerId) : session.answers[0]
   const index = selected ? session.answers.indexOf(selected) : -1
   const next = selected && nextPending(session.answers, selected.id)
-  const unsaved = dirty.size > 0 || scorecardDirty
+  const unsaved = dirty.size > 0 || scorecardDirty || deferredDirty
   const blocked = unsaved || busy
   const pending = session.answers.filter(needsReview).length
   const capabilities = useScoringCapabilities()
@@ -114,6 +126,7 @@ export default function InterviewView({ session, answerId, assignmentDirty, onDi
   }, [answerId, selected])
 
   function select(id: string, replace = false) {
+    setCaptureNotice(null)
     setEdit(null)
     if (answerId === id) return
     const url = new URL(window.location.href)
@@ -157,6 +170,7 @@ export default function InterviewView({ session, answerId, assignmentDirty, onDi
     select(destination, !advance)
   }
   function begin(question = "", origin?: QuestionOrigin) {
+    setCaptureNotice(null)
     setFirstOrigin(origin)
     setFollowUp(question)
     setEdit("new")
@@ -190,6 +204,7 @@ export default function InterviewView({ session, answerId, assignmentDirty, onDi
           )}
         </div>
       </header>
+      {captureNotice && captureNotice.id === selected?.id && <p role="status">{captureNotice.text}</p>}
       {error && (
         <p className="error" role="alert">
           {error}
@@ -231,6 +246,8 @@ export default function InterviewView({ session, answerId, assignmentDirty, onDi
           summary={session.draft}
           disabled={blocked || !!edit}
           discard={() => onDraftChange(null)}
+          refresh={onDraftChange}
+          onUnavailable={onDeferredUnavailable}
           resume={(draft) => {
             setResumed(draft)
             setEdit("draft")
@@ -261,6 +278,7 @@ export default function InterviewView({ session, answerId, assignmentDirty, onDi
           <div className="review-pane" tabIndex={-1} ref={focusTarget} aria-label="Selected exchange">
             {captureAllowed && edit ? (
               <AnswerEditor
+                onDeferredUnavailable={onDeferredUnavailable}
                 key={edit}
                 session={session}
                 firstQuestion={edit === "new" ? followUp : ""}
@@ -272,7 +290,7 @@ export default function InterviewView({ session, answerId, assignmentDirty, onDi
                 }}
                 initial={session.answers.find((a) => a.id === edit)}
                 onDirty={onDirty}
-                onSave={save}
+                onSave={(answer, notice) => { save(answer); if (notice) setCaptureNotice({ id: answer.id, text: notice }) }}
                 onCancel={() => { setEdit(null); focusTarget.current?.focus({ preventScroll: true }) }}
                 embeddingAvailable={capabilities.embedding}
               />
@@ -300,6 +318,13 @@ export default function InterviewView({ session, answerId, assignmentDirty, onDi
                         begin(questionText ?? selected.result.follow_up, { parent_answer_id: selected.id })
                     : undefined
                 }
+                onOpenDeferred={deferredReady && captureAllowed && !blocked ? () => {
+                  if (deferredPanel.current) {
+                    deferredPanel.current.open = true
+                    deferredPanel.current.querySelector("summary")?.focus()
+                    deferredPanel.current.scrollIntoView({ block: "nearest" })
+                  }
+                } : undefined}
                 onEdit={captureAllowed && !blocked ? () => setEdit(selected.id) : undefined}
               />
             ) : (
@@ -331,6 +356,27 @@ export default function InterviewView({ session, answerId, assignmentDirty, onDi
           </div>
         </div>
       </fieldset>
+      {!protectedRecord && session.consent && session.answers.length > 0 && <DeferredQuestions
+        onUnavailable={onDeferredUnavailable} detailsRef={attachDeferred} session={session} parent={selected} locked={busy || !!edit || assignmentDirty || scorecardDirty || dirty.size > 0}
+        onDirty={setDeferredDirty} foundDraft={onDraftChange} select={async id => {
+          if (!session.answers.some(a => a.id === id)) {
+            setBusy(true)
+            try {
+              const fresh = await api<Interview>(`sessions/${session.id}`)
+              onTransition(fresh)
+              if (!fresh.answers.some(a => a.id === id)) throw new Error("This exchange is no longer available.")
+            } catch (err) { setError(message(err)); return }
+            finally { setBusy(false) }
+          }
+          select(id)
+          focusTarget.current?.focus({ preventScroll: true })
+          focusTarget.current?.scrollIntoView({ block: "nearest" })
+        }}
+        openDraft={draft => {
+          onDraftChange(draft); setResumed(draft); setEdit("draft")
+          focusTarget.current?.scrollIntoView({ block: "start" })
+        }}
+      />}
       <SessionScorecardPanel readOnly={protectedRecord} key={`scorecard-${session.id}`} sessionId={session.id} onDirtyChange={setScorecardDirty} />
       {!dirty.size && <ATSNote key={session.id} session={session} />}
       <div className="record-management"><MoveToTrash sessionId={session.id} candidate={session.candidate} disabled={blocked || assignmentDirty}/></div>

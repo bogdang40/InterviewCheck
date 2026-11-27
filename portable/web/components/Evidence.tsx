@@ -4,18 +4,19 @@ import { ClipboardCheck, Pencil, Quote } from "lucide-react"
 import { api, message, RevisionConflict, statusText, WorksheetUnavailable, type Answer, type Disposition, type Interview } from "@/lib/api"
 import CandidateResponse from "./CandidateResponse"
 import MarkedText from "./MarkedText"
+import ReviewWorksheet from "./ReviewWorksheet"
 import { Button } from "./ui/button"
 import { Textarea } from "./ui/textarea"
 import { formatDraftTimestamp, reviewDraftKey, useLocalDraftRecovery } from "@/lib/localDraftBuffer"
 import UnlinkedDraftCopy from "./UnlinkedDraftCopy"
-import { confirmsWorksheetSave, currentWorksheet, MAX_NOTE_CHARACTERS, normalizedWorksheetNote, type WorksheetGuard, type WorksheetState } from "@/lib/reviewWorksheet"
+import type { WorksheetGuard, WorksheetState } from "@/lib/reviewWorksheet"
+import { MAX_NOTE_CHARACTERS, normalizedWorksheetNote } from "@/lib/worksheetNote"
 import { watchWorksheetAccess } from "@/lib/worksheetPrivacy"
 
 const JudgeAssist = dynamic(() => import("./JudgeAssist"), {
   ssr: false,
   loading: () => <p role="status">Loading AI follow up controls…</p>,
 })
-const ReviewWorksheet = dynamic(() => import("./ReviewWorksheet"), { ssr: false })
 
 const PanelDiscussion = dynamic(() => import("./PanelDiscussion"), { ssr: false })
 
@@ -74,6 +75,7 @@ export default function Evidence({
   onEdit,
   onDirty,
   onFollowUp,
+  onOpenDeferred,
   canAdvance,
   judgeAvailable,
   controlsRef,
@@ -84,9 +86,10 @@ export default function Evidence({
   onSave: (a: Answer, advance?: boolean) => void
   canAdvance?: boolean
   onFollowUp?: (questionText?: string) => void
+  onOpenDeferred?: () => void
   onDirty: (id: string, value: boolean) => void
   onEdit?: () => void
-  judgeAvailable?: boolean
+  judgeAvailable: boolean
   controlsRef?: MutableRefObject<EvidenceHotkeyControls | null>
 }) {
   const sessionId = session.id
@@ -176,12 +179,18 @@ export default function Evidence({
     const advance = !!canAdvance && disposition !== "pending" && submitter?.getAttribute("value") === "next"
     setError(""); setReconcileNotice("")
     setBusy(true)
+    let attempted = false
     try {
+      // Resolve the verifier before a guarded write. An unavailable chunk cannot
+      // turn a local preparation failure into an uncertain server mutation.
+      const verifier = worksheet ? await import("@/lib/reviewWorksheet") : null
+      if (worksheet && savingEpoch !== worksheetEpoch.current) return
+      attempted = true
       const result = await api<Answer>(`sessions/${sessionId}/answers/${item.id}`, "PATCH", {
         note: proposed, disposition, expected_revision: item.revision, ...(worksheet ? { worksheet_guard: worksheet } : {}),
       })
       if (worksheet && savingEpoch !== worksheetEpoch.current) return
-      if (worksheet && !confirmsWorksheetSave(result, item, proposed)) {
+      if (verifier && !verifier.confirmsWorksheetSave(result, item, proposed)) {
         throw new Error("The server did not confirm the worksheet save.")
       }
       setWorksheet(null); setSubmittedNote(null); setCompared(null)
@@ -195,7 +204,7 @@ export default function Evidence({
       if (worksheet && savingEpoch !== worksheetEpoch.current) return
       if (worksheet && e instanceof WorksheetUnavailable) {
         withdrawWorksheet()
-      } else if (worksheet) {
+      } else if (worksheet && attempted) {
         setSubmittedNote(proposed); setCompared(null)
         setError(message(e) + " Check the saved review before sending another change.")
       } else if (e instanceof RevisionConflict) setConflict(true)
@@ -209,6 +218,8 @@ export default function Evidence({
     const epoch = worksheetEpoch.current
     setBusy(true)
     try {
+      const { currentWorksheet } = await import("@/lib/reviewWorksheet")
+      if (worksheetEpoch.current !== epoch) return
       const live = await currentWorksheet(session, item, index + 1)
       if (worksheetEpoch.current !== epoch) return
       if (live.material !== worksheet.material) {
@@ -263,6 +274,8 @@ export default function Evidence({
       <PanelDiscussion sessionId={sessionId} item={item} locked={busy || dirty || conflict || !!worksheet} onDirty={onDirty} />
       {judgeAvailable !== false && <JudgeAssist key={`${item.id}:${item.revision}`} sessionId={sessionId} item={item}
         judgeAvailable={judgeAvailable} onFollowUp={onFollowUp} />}
+      {onOpenDeferred && <Button type="button" variant="outline" size="sm" aria-controls="deferred-questions"
+        onClick={onOpenDeferred}>Keep this follow up for later…</Button>}
       {onFollowUp && (
         <Button variant="outline" size="sm" onClick={() => onFollowUp()}>
           Ask this follow up
