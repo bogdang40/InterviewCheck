@@ -166,6 +166,7 @@ class Origin(Record):
 
 
 class Answer(Record):
+    deferred_origin: deferred_archive.FulfillmentFact | None = None
     parent_answer_id: ID | None = None
     planned_slot: int | None = Field(default=None, ge=1)
     id: ID
@@ -271,6 +272,8 @@ class Backup(Record):
                     raise ValueError("The interview rubric refers to a revision newer than its linked role.")
             if ("deferred_questions" in s.model_fields_set) != (self.version >= 7):
                 raise ValueError("Version 7 requires deferred questions on each interview.")
+            if self.version < 7 and any("deferred_origin" in a.model_fields_set for a in s.answers):
+                raise ValueError("This file version cannot contain a deferred publication fact.")
             if self.version < 7 and s.draft and {"deferred_question_id", "deferred_revision_id"} & s.draft.model_fields_set:
                 raise ValueError("This file version cannot contain a deferred draft link.")
             aids = {a.id for a in s.answers}

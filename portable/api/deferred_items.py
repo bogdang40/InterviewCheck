@@ -6,7 +6,7 @@ import secrets
 
 from fastapi import HTTPException
 
-from . import answer_identity, sql_script
+from . import answer_identity, deferred_fulfillment, sql_script
 
 
 SCHEMA = """
@@ -26,7 +26,13 @@ CREATE INDEX IF NOT EXISTS idx_deferred_parent ON deferred_questions(parent_answ
 
 
 def migrate(db):
+    had_facts = db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='deferred_publications'").fetchone()
     sql_script.execute(db, SCHEMA)
+    sql_script.execute(db, deferred_fulfillment.SCHEMA)
+    if "creation_receipt" not in {r[1] for r in db.execute("PRAGMA table_info(deferred_questions)")}:
+        db.execute("ALTER TABLE deferred_questions ADD COLUMN creation_receipt TEXT")
+    if not had_facts:
+        deferred_fulfillment.migrate_receipts(db)
     columns = {r[1] for r in db.execute("PRAGMA table_info(session_drafts)")}
     if "deferred_question_id" not in columns:
         db.execute("ALTER TABLE session_drafts ADD COLUMN deferred_question_id TEXT REFERENCES deferred_questions(id)")
@@ -100,7 +106,7 @@ def preserve_child_parent(db, sid, aid, parent, slot):
 
 
 def submission_digest(aid, item, parent, slot):
-    return digest([aid, parent, slot, item.question, item.answer, [r.model_dump() for r in item.references]])
+    return deferred_fulfillment.submission_hash(aid, parent, slot, item.question, item.answer, [r.model_dump() for r in item.references])
 
 
 def checked_binding(db, sid, binding, question, parent, slot):
@@ -141,12 +147,20 @@ def begin_publish(db, sid, aid, item, parent, slot):
 
 def finish_publish(db, row, aid, item, parent, slot):
     if row is not None:
+        proof = submission_digest(aid, item, parent, slot)
         updated = db.execute("""UPDATE deferred_questions SET child_answer_id=?,status='fulfilled',
                                 previous_revision_id=revision_id,revision_id=?,fulfillment_digest=?
                                 WHERE id=? AND status='pending' AND revision_id=?""",
-                             (aid, secrets.token_hex(16), submission_digest(aid, item, parent, slot), row["id"], row["revision_id"]))
+                             (aid, secrets.token_hex(16), proof, row["id"], row["revision_id"]))
         if updated.rowcount != 1:
             raise conflict("The deferred question changed before its response was saved.")
+        deferred_fulfillment.record(db, row["session_id"], aid, row["id"], parent, deferred_fulfillment.question_hash(row["question"]))
+        return receipt(row, aid, proof)
+
+
+def receipt(row, aid, proof):
+    return {"question_id": row["id"], "parent_answer_id": row["parent_answer_id"],
+            "child_answer_id": aid, "submission_sha256": proof}
 
 
 def draft_guard(db, sid, qid, revision):
