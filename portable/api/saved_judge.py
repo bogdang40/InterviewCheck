@@ -64,6 +64,20 @@ OUTPUT_RULE = (
 )
 
 
+def prepare_payload(question, finding, consent):
+    """Apply the saved evidence gate before constructing any provider input."""
+    if not consent:
+        return "notice_required", None
+    if finding.get("archived"):
+        return "archived", None
+    passages = finding.get("passages", [])
+    if finding.get("status") != "match" or not passages:
+        return "no_eligible_passage", None
+    excerpts = [{"answer_excerpt": p["answer_excerpt"][:EXCERPT_LIMIT],
+                 "source_excerpt": p["source_excerpt"][:EXCERPT_LIMIT]} for p in passages[:3]]
+    return "matched_passage", {"question": question, "matched_passages": excerpts}
+
+
 def _contains_sent_phrase(answer, passage, phrase):
     excerpt = passage["answer_excerpt"]
     span = passage.get("answer_span")
