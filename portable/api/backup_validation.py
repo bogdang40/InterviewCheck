@@ -6,6 +6,7 @@ from uuid import UUID
 from .evidence import Words, compare
 from .role_kits import content_version
 from .lineage import validate_graph
+from .retained_finding import recognized_text
 from .session_privacy import archive_only_erasure
 from .models import AnswerInput, Reference, RoleInput, SessionInput, validate_note_length
 
@@ -20,6 +21,9 @@ def check_session_chronology(created_at: str, ended_at: str | None, trashed_at: 
 
 def verify_finding(answer, session, inherited_grams, *, erased_archive=False):
     finding = answer.result
+    confirmed = session.privacy is not None and session.privacy.state == "anonymized"
+    if confirmed and not recognized_text(finding.explanation, finding.follow_up):
+        raise ValueError("The confirmed anonymization contains unrecognized finding text.")
     if answer.disposition == "disclosed" and not answer.note.strip():
         raise ValueError("Missing disclosure note.")
     if answer.import_origin:
@@ -43,7 +47,12 @@ def verify_finding(answer, session, inherited_grams, *, erased_archive=False):
     if erased_archive:
         # The retained marker is shorter than a match. Native questions and source
         # lists can exceed capture limits. Verify the newly computed finding.
-        if finding.model_dump(exclude_none=True) != compare(answer.question, answer.answer, []):
+        expected = compare(answer.question, answer.answer, [])
+        if confirmed:
+            # An older writer may have scrubbed this prompt to the fixed marker. Its text
+            # has already been checked above. Keep all structural evidence checks.
+            expected["follow_up"] = finding.follow_up
+        if finding.model_dump(exclude_none=True) != expected:
             raise ValueError("Invalid comparison for the retained archive exchange.")
         return
     if len(answer.answer) > 24000 or len(answer.question) > 4000 or len(answer.references) > 12:
