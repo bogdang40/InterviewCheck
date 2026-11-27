@@ -61,7 +61,10 @@ export default function DeferredQuestionQueue({ session, parent, locked, onDirty
     try {
       if (action === "dismiss") {
         await changeDeferred(item, "dismiss", controller.signal)
-        if (!controller.signal.aborted) setNotice("Question dismissed.")
+        if (!controller.signal.aborted) {
+          handoff.forgetDismissed(item.id)
+          setNotice("Question dismissed.")
+        }
       } else {
         const existing = await api<Draft | null>(`sessions/${session.id}/draft`, "GET", undefined, controller.signal)
         if (existing) {
