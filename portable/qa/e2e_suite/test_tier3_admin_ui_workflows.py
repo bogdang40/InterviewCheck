@@ -306,13 +306,41 @@ def test_account_password_rotation_revokes_other_browser_context_session(e2e_wor
         _sign_in_on_account(page_a, e2e_workspace.base_url, ADMIN1_EMAIL, ADMIN_PASS)
         _sign_in_on_account(page_b, e2e_workspace.base_url, ADMIN1_EMAIL, ADMIN_PASS)
 
-        # Rotate password in context A.
+        # A manual refresh issued with the previous cookie is still in flight when A rotates.
+        account_url = e2e_workspace.base_url + "/api/integrations/account"
+        status_url = e2e_workspace.base_url + "/api/integrations/status"
+        held_account, held_status = [], []
+        collector_a.assert_clean()
+        page_a.route(account_url, lambda route: held_account.append(route), times=1)
+        with page_a.expect_request(lambda req: req.method == "GET" and req.url == account_url):
+            page_a.get_by_role("button", name="Refresh access").click()
         pw_form = page_a.get_by_role("form", name="Change password")
         pw_form.get_by_label("Current password").fill(ADMIN_PASS)
         pw_form.get_by_label("New password", exact=True).fill(NEW_ADMIN_PASS)
         pw_form.get_by_label("Confirm new password").fill(NEW_ADMIN_PASS)
-        pw_form.get_by_role("button", name="Update password").click()
+        page_a.route(status_url, lambda route: held_status.append(route), times=1)
+        with page_a.expect_request(lambda req: req.method == "GET" and req.url == status_url):
+            pw_form.get_by_role("button", name="Update password").click()
         expect(pw_form.get_by_role("status")).to_contain_text("Password updated and session rotated.")
+        confirmed = page_a.request.get(account_url)
+        assert confirmed.ok and confirmed.json()["email"] == ADMIN1_EMAIL and confirmed.json()["admin"]
+        # Deliver the genuine expired-session response from B to the held pre-rotation read.
+        expired = page_b.request.get(account_url)
+        assert expired.status == 401 and len(held_account) == len(held_status) == 1
+        expected_console = []
+        def observe(message):
+            if message.type == "error" and message.location.get("url") == account_url and "401" in message.text:
+                expected_console.append(message.text)
+        page_a.on("console", observe)
+        with page_a.expect_request_finished(lambda req: req.method == "GET" and req.url == account_url):
+            held_account[0].fulfill(response=expired)
+        held_status[0].continue_()
+        page_a.wait_for_load_state("networkidle", timeout=15_000)
+        page_a.remove_listener("console", observe)
+        assert len(expected_console) <= 1 and collector_a.console_errors == expected_console
+        collector_a.console_errors.clear()
+        expect(pw_form.get_by_role("status")).to_contain_text("Password updated and session rotated.")
+        expect(page_a.get_by_role("link", name="Open model admin panel")).to_be_visible()
 
         # Context A keeps an active rotated session.
         page_a.get_by_role("button", name="Refresh access").click()
